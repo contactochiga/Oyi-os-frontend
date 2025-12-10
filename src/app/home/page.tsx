@@ -76,9 +76,11 @@ export default function HomePage() {
         },
       ]);
 
-      // If panel is devices → fetch devices
+      // FIXED: ensure estateId is NEVER null
       if (panel === "devices") {
-        const estateId = user?.estate_id ?? localStorage.getItem("ochiga_estate");
+        const rawId = user?.estate_id ?? localStorage.getItem("ochiga_estate");
+        const estateId = rawId ?? undefined; // null → undefined
+
         const devices = await deviceService.getDevices(estateId);
         setDiscoveredDevices(devices || []);
       }
@@ -129,7 +131,6 @@ export default function HomePage() {
                     </div>
                   )}
 
-                  {/* Panel placeholder */}
                   {m.panel && (
                     <div className="mt-2">
                       {/* TODO: Render device panel, CCTV panel, visitor panel etc */}
