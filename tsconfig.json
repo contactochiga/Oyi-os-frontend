@@ -14,21 +14,17 @@
     "noEmit": true,
     "incremental": true,
 
-    "baseUrl": "./src",
+    "baseUrl": "./",
     "paths": {
-      "@/*": ["./*"],
-      "@components/*": ["./components/*"],
-      "@hooks/*": ["./hooks/*"],
-      "@services/*": ["./services/*"],
-      "@utils/*": ["./utils/*"]
+      "@/*": ["src/*"],
+      "@components/*": ["src/app/components/*"],
+      "@hooks/*": ["src/app/hooks/*"],
+      "@services/*": ["src/app/services/*"],
+      "@utils/*": ["src/app/utils/*"]
     },
 
     "types": ["node"]
   },
-  "include": [
-    "next-env.d.ts",
-    "**/*.ts",
-    "**/*.tsx"
-  ],
+  "include": ["next-env.d.ts", "src/**/*"],
   "exclude": ["node_modules"]
 }
