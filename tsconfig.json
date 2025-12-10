@@ -13,8 +13,19 @@
     "jsx": "preserve",
     "noEmit": true,
     "incremental": true,
+
+    // 🔥 ADD THESE TWO (CRITICAL)
+    "baseUrl": "./src",
+    "paths": {
+      "@/*": ["./*"]
+    },
+
     "types": ["node"]
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx"
+  ],
   "exclude": ["node_modules"]
 }
