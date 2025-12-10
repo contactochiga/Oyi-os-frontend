@@ -2,19 +2,18 @@
 
 import { useRef, useState } from "react";
 
-// ⬇ COMPONENTS (src/app/components)
+// COMPONENTS
 import LayoutWrapper from "../components/LayoutWrapper";
 import ChatFooter from "../components/ChatFooter";
 import DynamicSuggestionCard from "../components/DynamicSuggestionCard";
 
-// ⬇ SERVICES (src/services)
+// SERVICES
 import { aiService } from "../../services/aiService";
 import { deviceService } from "../../services/deviceService";
 
-// ⬇ HOOKS (src/hooks)
+// HOOKS
 import useAuth from "../../hooks/useAuth";
 
-// ------------------ TYPES ------------------
 type ChatMessage = {
   id: string;
   role: "user" | "assistant";
@@ -24,7 +23,6 @@ type ChatMessage = {
   time: string;
 };
 
-// ---------------- HOME PAGE ----------------
 export default function HomePage() {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -42,7 +40,6 @@ export default function HomePage() {
   const [discoveredDevices, setDiscoveredDevices] = useState<any[]>([]);
   const { user } = useAuth();
 
-  // ---------------- HELPERS ----------------
   const createId = () => Math.random().toString(36).slice(2, 9);
 
   const isAtBottom = () => {
@@ -51,7 +48,6 @@ export default function HomePage() {
     return scrollTop + clientHeight >= scrollHeight - 100;
   };
 
-  // ---------------- SEND MESSAGE ----------------
   async function handleSend(text?: string) {
     const t = (text ?? input).trim();
     if (!t) return;
@@ -60,19 +56,15 @@ export default function HomePage() {
     setInput("");
 
     // Add user message
-    setMessages(prev => [
-      ...prev,
-      { id: createId(), role: "user", content: t, time: now },
-    ]);
+    setMessages((prev) => [...prev, { id: createId(), role: "user", content: t, time: now }]);
 
     try {
       const resp = await aiService.chat(t);
-
       const reply = resp.reply ?? `Processed: "${t}"`;
       const panel = resp.panel ?? null;
 
       // Add assistant reply
-      setMessages(prev => [
+      setMessages((prev) => [
         ...prev,
         {
           id: createId(),
@@ -84,7 +76,7 @@ export default function HomePage() {
         },
       ]);
 
-      // Load device panel data
+      // If panel is devices → fetch devices
       if (panel === "devices") {
         const estateId = user?.estate_id ?? localStorage.getItem("ochiga_estate");
         const devices = await deviceService.getDevices(estateId);
@@ -101,7 +93,7 @@ export default function HomePage() {
         }
       }, 80);
     } catch (err) {
-      setMessages(prev => [
+      setMessages((prev) => [
         ...prev,
         {
           id: createId(),
@@ -113,33 +105,34 @@ export default function HomePage() {
     }
   }
 
-  // ---------------- UI ----------------
+  // ---------- UI ----------
   return (
     <LayoutWrapper>
       <main className="fixed inset-0 flex flex-col">
+
         {/* CHAT WINDOW */}
         <div ref={chatRef} className="flex-1 overflow-y-auto p-6 pt-24 pb-32">
           <div className="max-w-3xl mx-auto flex flex-col gap-4">
             {messages.map((m) => (
               <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
                 <div className="max-w-[80%]">
-                  {/* BUBBLE */}
+                  {/* Chat bubble */}
                   {m.content && (
                     <div
                       className={`px-4 py-2 rounded-2xl ${
-                        m.role === "user
-                        " ? "bg-blue-600 text-white"
-                        : "bg-gray-900 text-gray-100"
+                        m.role === "user"
+                          ? "bg-blue-600 text-white"
+                          : "bg-gray-900 text-gray-100"
                       }`}
                     >
                       {m.content}
                     </div>
                   )}
 
-                  {/* PANEL PLACEHOLDER */}
+                  {/* Panel placeholder */}
                   {m.panel && (
                     <div className="mt-2">
-                      {/* TODO: dynamic panel render here */}
+                      {/* TODO: Render device panel, CCTV panel, visitor panel etc */}
                     </div>
                   )}
                 </div>
@@ -148,7 +141,7 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* SUGGESTIONS */}
+        {/* SUGGESTION CARD */}
         <div className="w-full px-4 z-40 pointer-events-none">
           <div className="max-w-3xl mx-auto pointer-events-auto">
             <DynamicSuggestionCard
@@ -157,7 +150,7 @@ export default function HomePage() {
                 { id: "2", title: "Schedule visitor" },
                 { id: "3", title: "Open CCTV feed" },
               ]}
-              onSend={(t) => handleSend(t)}
+              onSend={(t?: string) => handleSend(t)}
             />
           </div>
         </div>
@@ -166,6 +159,7 @@ export default function HomePage() {
         <div className="fixed bottom-0 left-0 right-0 p-4 bg-gray-900 border-t border-gray-700">
           <ChatFooter input={input} setInput={setInput} onSend={() => handleSend()} />
         </div>
+
       </main>
     </LayoutWrapper>
   );
