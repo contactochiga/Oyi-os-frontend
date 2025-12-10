@@ -1,11 +1,7 @@
 "use client";
 
-// ✅ Corrected path: components are inside src/app/components
 import LayoutWrapper from "../components/LayoutWrapper";
-
-// ✅ Corrected path: hooks are inside src/hooks
 import useAuth from "../../hooks/useAuth";
-
 import { useRouter } from "next/navigation";
 
 export default function EstatePage() {
