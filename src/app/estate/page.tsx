@@ -1,7 +1,11 @@
 "use client";
 
-import LayoutWrapper from "/src/app/components/LayoutWrapper";
-import useAuth from "/src/app/hooks/useAuth";
+// ✅ Corrected path: components are inside src/app/components
+import LayoutWrapper from "../components/LayoutWrapper";
+
+// ✅ Corrected path: hooks are inside src/hooks
+import useAuth from "../../hooks/useAuth";
+
 import { useRouter } from "next/navigation";
 
 export default function EstatePage() {
@@ -18,15 +22,24 @@ export default function EstatePage() {
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <button onClick={() => router.push("/estate/homes")} className="p-4 bg-gray-800 rounded-lg text-white">
+          <button
+            onClick={() => router.push("/estate/homes")}
+            className="p-4 bg-gray-800 rounded-lg text-white"
+          >
             Create Home
           </button>
 
-          <button onClick={() => router.push("/estate/users")} className="p-4 bg-gray-800 rounded-lg text-white">
+          <button
+            onClick={() => router.push("/estate/users")}
+            className="p-4 bg-gray-800 rounded-lg text-white"
+          >
             Assign Users
           </button>
 
-          <button onClick={() => router.push("/estate/devices")} className="p-4 bg-gray-800 rounded-lg text-white">
+          <button
+            onClick={() => router.push("/estate/devices")}
+            className="p-4 bg-gray-800 rounded-lg text-white"
+          >
             Manage Devices
           </button>
         </div>
