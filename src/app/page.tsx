@@ -1,16 +1,63 @@
-import Link from "next/link";
+"use client";
 
-export default function Page() {
+import Image from "next/image";
+import { useRouter } from "next/navigation";
+
+export default function LandingPage() {
+  const router = useRouter();
+
   return (
-    <main className="min-h-screen flex items-center justify-center p-6">
-      <div className="max-w-2xl w-full text-center">
-        <h1 className="text-3xl font-bold mb-2">Oyi OS — Resident & Estate</h1>
-        <p className="text-gray-500 mb-6">Minimal, voice + chat-first interface for estates and residents.</p>
-        <div className="flex gap-3 justify-center">
-          <Link href="/auth" className="px-4 py-2 rounded-md bg-blue-600 text-white">Get started</Link>
-          <Link href="/home" className="px-4 py-2 rounded-md bg-gray-800 text-white">Open Home (demo)</Link>
-          <Link href="/estate" className="px-4 py-2 rounded-md border border-gray-300">Open Estate (demo)</Link>
+    <main className="min-h-screen flex items-center justify-center bg-gradient-to-b from-gray-900 to-gray-950 text-white px-6">
+      <div className="w-full max-w-sm text-center flex flex-col items-center gap-6">
+
+        {/* Logo */}
+        <div className="w-20 h-20 relative">
+          <Image
+            src="/oyi-logo.png"   // place logo in /public/oyi-logo.png
+            alt="Oyi OS Logo"
+            fill
+            className="object-contain"
+            priority
+          />
         </div>
+
+        {/* Wordmark */}
+        <div className="text-3xl font-semibold tracking-wide">
+          OYI&nbsp;OS
+        </div>
+
+        {/* Tagline */}
+        <div className="text-lg text-gray-300">
+          The operating system for smart living
+        </div>
+
+        {/* Description */}
+        <p className="text-sm text-gray-400 leading-relaxed">
+          Control your home and estate through one intelligent interface.
+        </p>
+
+        {/* Actions */}
+        <div className="w-full flex flex-col gap-3 mt-4">
+          <button
+            onClick={() => router.push("/auth/signup")}
+            className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 transition font-medium"
+          >
+            Get started
+          </button>
+
+          <button
+            onClick={() => router.push("/auth/login")}
+            className="w-full py-3 rounded-xl bg-gray-800 hover:bg-gray-700 transition font-medium"
+          >
+            I already have access
+          </button>
+        </div>
+
+        {/* Trust hint */}
+        <div className="text-xs text-gray-500 mt-6">
+          Secure · Private · Estate-native
+        </div>
+
       </div>
     </main>
   );
