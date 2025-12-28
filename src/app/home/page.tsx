@@ -24,29 +24,26 @@ import { useEventStore } from "../../store/useEventStore";
 
 type ChatMessage = {
   id: string;
-  role: "user" | "assistant";
+  role: "assistant";
   content: string;
   panel?: string | null;
   panelKey?: string;
   deviceId?: string;
   time: string;
-  lastUpdated?: number;
+  lastUpdated: number;
 };
 
 /**
- * Enterprise-grade intent inference
- * UI logic is authoritative
+ * UI-driven intent inference
  */
 function inferPanel(aiPanel?: string | null, userText?: string): string | null {
-  const source = `${aiPanel || ""} ${userText || ""}`.toLowerCase();
-
-  if (source.includes("light")) return "light";
-  if (source.includes("ac") || source.includes("air")) return "ac";
-  if (source.includes("tv")) return "tv";
-  if (source.includes("door") || source.includes("lock")) return "door";
-  if (source.includes("cctv") || source.includes("camera")) return "cctv";
-  if (source.includes("device")) return "devices";
-
+  const src = `${aiPanel || ""} ${userText || ""}`.toLowerCase();
+  if (src.includes("light")) return "light";
+  if (src.includes("ac") || src.includes("air")) return "ac";
+  if (src.includes("tv")) return "tv";
+  if (src.includes("door") || src.includes("lock")) return "door";
+  if (src.includes("cctv") || src.includes("camera")) return "cctv";
+  if (src.includes("device")) return "devices";
   return null;
 }
 
@@ -58,10 +55,8 @@ export default function HomePage() {
       id: "sys-1",
       role: "assistant",
       content: "Hello! I’m Oyi — how can I help?",
-      time: new Date().toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
+      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      lastUpdated: Date.now(),
     },
   ]);
 
@@ -69,87 +64,74 @@ export default function HomePage() {
 
   const { user } = useAuth();
   const { pushEvent } = useEventStore();
-
   const [discoveredDevices, setDiscoveredDevices] = useState<any[]>([]);
 
   const createId = () => Math.random().toString(36).slice(2, 9);
 
   async function handleSend(text?: string) {
-    const t = (text ?? input).trim();
-    if (!t) return;
-
-    const now = new Date().toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-
+    const command = (text ?? input).trim();
+    if (!command) return;
     setInput("");
 
-    // 🔹 USER MESSAGE (only added if NOT repeating same panel)
-    setMessages((prev) => [
-      ...prev,
-      { id: createId(), role: "user", content: t, time: now },
-    ]);
+    const now = new Date();
+    const time = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const stamp = now.getTime();
 
-    try {
-      const resp = await aiService.chat(t);
+    const resp = await aiService.chat(command);
+    const reply = resp.reply ?? `Processed: "${command}"`;
+    const panel = inferPanel(resp.panel, command);
+    const deviceId = resp.deviceId;
+    const panelKey = panel ? `${panel}:${deviceId || "default"}` : null;
 
-      const reply = resp.reply ?? `Processed: "${t}"`;
-      const panel = inferPanel(resp.panel, t);
-      const deviceId = resp.deviceId ?? undefined;
-      const panelKey = panel ? `${panel}:${deviceId || "default"}` : undefined;
-      const stamp = Date.now();
+    setMessages((prev) => {
+      if (!panelKey) return prev;
 
-      // 🔹 SINGLE-INSTANCE PANEL RULE
-      setMessages((prev) => {
-        if (!panelKey) return prev;
+      const existing = prev.find((m) => m.panelKey === panelKey);
 
-        // remove old instance of this panel
-        const filtered = prev.filter((m) => m.panelKey !== panelKey);
+      // 🔁 PANEL ALREADY EXISTS → UPDATE & MOVE
+      if (existing) {
+        const others = prev.filter((m) => m.id !== existing.id);
 
         return [
-          ...filtered,
+          ...others,
           {
-            id: createId(),
-            role: "assistant",
+            ...existing,
             content: reply,
-            panel,
-            panelKey,
-            deviceId,
-            time: now,
+            time,
             lastUpdated: stamp,
           },
         ];
-      });
-
-      // DEVICE DISCOVERY
-      if (panel === "devices") {
-        const rawId =
-          user?.estate_id ?? localStorage.getItem("ochiga_estate");
-        const estateId = rawId ?? undefined;
-        const devices = await deviceService.getDevices(estateId);
-        setDiscoveredDevices(devices || []);
       }
 
-      // SYSTEM EVENT
-      pushEvent({
-        id: createId(),
-        type: "info",
-        title: "Oyi",
-        message: reply,
-        timestamp: stamp,
-      });
-    } catch {
-      setMessages((prev) => [
+      // 🆕 NEW PANEL → CREATE ONCE
+      return [
         ...prev,
         {
           id: createId(),
           role: "assistant",
-          content: "Sorry, AI unreachable.",
-          time: now,
+          content: reply,
+          panel,
+          panelKey,
+          deviceId,
+          time,
+          lastUpdated: stamp,
         },
-      ]);
+      ];
+    });
+
+    if (panel === "devices") {
+      const estateId = user?.estate_id ?? localStorage.getItem("ochiga_estate");
+      const devices = await deviceService.getDevices(estateId ?? undefined);
+      setDiscoveredDevices(devices || []);
     }
+
+    pushEvent({
+      id: createId(),
+      type: "info",
+      title: "Oyi",
+      message: reply,
+      timestamp: stamp,
+    });
   }
 
   return (
@@ -164,63 +146,40 @@ export default function HomePage() {
         </div>
 
         {/* CHAT */}
-        <div
-          ref={chatRef}
-          className="flex-1 overflow-y-auto p-6 pt-24 pb-48"
-        >
+        <div className="flex-1 overflow-y-auto p-6 pt-24 pb-48">
           <div className="max-w-3xl mx-auto flex flex-col gap-4">
             {messages.map((m) => (
-              <div
-                key={m.id}
-                className={`flex ${
-                  m.role === "user"
-                    ? "justify-end"
-                    : "justify-start"
-                }`}
-              >
+              <div key={m.id} className="flex justify-start">
                 <div className="max-w-[80%]">
-                  {/* CHAT BUBBLE */}
-                  <div
-                    className={`px-4 py-2 rounded-2xl ${
-                      m.role === "user"
-                        ? "bg-gray-800 text-white"
-                        : "bg-gray-900 text-gray-100"
-                    }`}
-                  >
+                  <div className="px-4 py-2 rounded-2xl bg-gray-900 text-gray-100">
                     {m.content}
                   </div>
 
-                  {/* REMOTE PANEL */}
                   {m.panel && (
                     <div className="mt-3">
                       {m.panel === "devices" ? (
-                        <DeviceDiscoveryPanel
-                          devices={discoveredDevices}
-                        />
+                        <DeviceDiscoveryPanel devices={discoveredDevices} />
                       ) : (
                         <RemotePanelRenderer
                           panel={m.panel}
                           deviceId={m.deviceId}
                           lastUpdated={m.lastUpdated}
-                          onInteraction={() => {
+                          onInteraction={() =>
                             setMessages((prev) =>
                               prev.map((x) =>
                                 x.id === m.id
                                   ? {
                                       ...x,
+                                      time: new Date().toLocaleTimeString([], {
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                      }),
                                       lastUpdated: Date.now(),
-                                      time: new Date().toLocaleTimeString(
-                                        [],
-                                        {
-                                          hour: "2-digit",
-                                          minute: "2-digit",
-                                        }
-                                      ),
                                     }
                                   : x
                               )
-                            );
-                          }}
+                            )
+                          }
                         />
                       )}
                     </div>
@@ -247,11 +206,7 @@ export default function HomePage() {
 
         {/* FOOTER */}
         <div className="fixed bottom-0 left-0 right-0 p-4 bg-gray-900 border-t border-gray-700 z-50">
-          <ChatFooter
-            input={input}
-            setInput={setInput}
-            onSend={() => handleSend()}
-          />
+          <ChatFooter input={input} setInput={setInput} onSend={() => handleSend()} />
         </div>
 
       </main>
