@@ -8,6 +8,10 @@ import ChatFooter from "../components/ChatFooter";
 import DynamicSuggestionCard from "../components/DynamicSuggestionCard";
 import HamburgerMenu from "../components/HamburgerMenu";
 
+// REMOTE PANELS
+import RemotePanelRenderer from "../components/remotes/RemotePanelRenderer";
+import DeviceDiscoveryPanel from "../components/remotes/DeviceDiscoveryPanel";
+
 // SERVICES
 import { aiService } from "../../services/aiService";
 import { deviceService } from "../../services/deviceService";
@@ -16,7 +20,7 @@ import { deviceService } from "../../services/deviceService";
 import useAuth from "../../hooks/useAuth";
 import { useEstateContext } from "../../hooks/useEstateContext";
 
-// STORES (prepared, not yet rendered)
+// STORES
 import { useEventStore } from "../../store/useEventStore";
 
 type ChatMessage = {
@@ -48,7 +52,7 @@ export default function HomePage() {
 
   const chatRef = useRef<HTMLDivElement | null>(null);
 
-  // Context & stores (now available to page)
+  // Context & stores
   const { user } = useAuth();
   const { estateName, unitName } = useEstateContext();
   const { pushEvent } = useEventStore();
@@ -101,7 +105,7 @@ export default function HomePage() {
         },
       ]);
 
-      // PREP: Device discovery (existing behavior preserved)
+      // DEVICE DISCOVERY FLOW
       if (panel === "devices") {
         const rawId = user?.estate_id ?? localStorage.getItem("ochiga_estate");
         const estateId = rawId ?? undefined;
@@ -109,7 +113,7 @@ export default function HomePage() {
         setDiscoveredDevices(devices || []);
       }
 
-      // PREP: Push system event (not yet rendered)
+      // SYSTEM EVENT (feeds notifications later)
       pushEvent({
         id: createId(),
         type: "info",
@@ -179,10 +183,17 @@ export default function HomePage() {
                     </div>
                   )}
 
-                  {/* LIVE PANEL SLOT (next phase) */}
+                  {/* LIVE REMOTE PANEL */}
                   {m.panel && (
                     <div className="mt-2">
-                      {/* Remote panel will mount here */}
+                      {m.panel === "devices" ? (
+                        <DeviceDiscoveryPanel devices={discoveredDevices} />
+                      ) : (
+                        <RemotePanelRenderer
+                          panel={m.panel}
+                          deviceId={m.deviceId}
+                        />
+                      )}
                     </div>
                   )}
                 </div>
