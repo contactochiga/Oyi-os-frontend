@@ -1,5 +1,6 @@
 import LightPanel from "./LightPanel";
 import AcPanel from "./AcPanel";
+import TvPanel from "./TvPanel";
 
 export default function RemotePanelRenderer({
   panel,
@@ -27,6 +28,15 @@ export default function RemotePanelRenderer({
     case "ac":
       return (
         <AcPanel
+          deviceId={deviceId}
+          lastUpdated={lastUpdated}
+          onInteraction={onInteraction}
+        />
+      );
+
+    case "tv":
+      return (
+        <TvPanel
           deviceId={deviceId}
           lastUpdated={lastUpdated}
           onInteraction={onInteraction}
