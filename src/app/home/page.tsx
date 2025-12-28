@@ -14,6 +14,10 @@ import { deviceService } from "../../services/deviceService";
 
 // HOOKS
 import useAuth from "../../hooks/useAuth";
+import { useEstateContext } from "../../hooks/useEstateContext";
+
+// STORES (prepared, not yet rendered)
+import { useEventStore } from "../../store/useEventStore";
 
 type ChatMessage = {
   id: string;
@@ -21,11 +25,13 @@ type ChatMessage = {
   content: string;
   panel?: string | null;
   panelTag?: string | null;
+  deviceId?: string;
   time: string;
 };
 
 export default function HomePage() {
   const [input, setInput] = useState("");
+
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: "sys-1",
@@ -41,8 +47,13 @@ export default function HomePage() {
   ]);
 
   const chatRef = useRef<HTMLDivElement | null>(null);
-  const [discoveredDevices, setDiscoveredDevices] = useState<any[]>([]);
+
+  // Context & stores (now available to page)
   const { user } = useAuth();
+  const { estateName, unitName } = useEstateContext();
+  const { pushEvent } = useEventStore();
+
+  const [discoveredDevices, setDiscoveredDevices] = useState<any[]>([]);
 
   const createId = () => Math.random().toString(36).slice(2, 9);
 
@@ -60,8 +71,10 @@ export default function HomePage() {
       hour: "2-digit",
       minute: "2-digit",
     });
+
     setInput("");
 
+    // USER MESSAGE
     setMessages((prev) => [
       ...prev,
       { id: createId(), role: "user", content: t, time: now },
@@ -69,9 +82,12 @@ export default function HomePage() {
 
     try {
       const resp = await aiService.chat(t);
+
       const reply = resp.reply ?? `Processed: "${t}"`;
       const panel = resp.panel ?? null;
+      const deviceId = resp.deviceId ?? undefined;
 
+      // ASSISTANT MESSAGE
       setMessages((prev) => [
         ...prev,
         {
@@ -80,10 +96,12 @@ export default function HomePage() {
           content: reply,
           panel,
           panelTag: panel,
+          deviceId,
           time: now,
         },
       ]);
 
+      // PREP: Device discovery (existing behavior preserved)
       if (panel === "devices") {
         const rawId = user?.estate_id ?? localStorage.getItem("ochiga_estate");
         const estateId = rawId ?? undefined;
@@ -91,6 +109,16 @@ export default function HomePage() {
         setDiscoveredDevices(devices || []);
       }
 
+      // PREP: Push system event (not yet rendered)
+      pushEvent({
+        id: createId(),
+        type: "info",
+        title: "Oyi",
+        message: reply,
+        timestamp: Date.now(),
+      });
+
+      // AUTO-SCROLL
       setTimeout(() => {
         if (isAtBottom()) {
           chatRef.current?.scrollTo({
@@ -138,6 +166,7 @@ export default function HomePage() {
                 }`}
               >
                 <div className="max-w-[80%]">
+                  {/* CHAT BUBBLE */}
                   {m.content && (
                     <div
                       className={`px-4 py-2 rounded-2xl ${
@@ -150,7 +179,12 @@ export default function HomePage() {
                     </div>
                   )}
 
-                  {m.panel && <div className="mt-2">{/* Panel */}</div>}
+                  {/* LIVE PANEL SLOT (next phase) */}
+                  {m.panel && (
+                    <div className="mt-2">
+                      {/* Remote panel will mount here */}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
