@@ -28,47 +28,26 @@ type ChatMessage = {
   role: "user" | "assistant";
   content: string;
   panel?: string | null;
-  panelTag?: string | null;
   deviceId?: string;
   time: string;
 };
 
 /**
- * Normalize AI panel names → canonical UI panel IDs
- * This keeps AI flexible and UI stable (enterprise-grade)
+ * Enterprise-grade intent inference
+ * AI response is optional — user intent is authoritative
  */
-function normalizePanel(panel?: string | null): string | null {
-  if (!panel) return null;
+function inferPanel(
+  aiPanel?: string | null,
+  userText?: string
+): string | null {
+  const source = `${aiPanel || ""} ${userText || ""}`.toLowerCase();
 
-  const p = panel.toLowerCase();
-
-  if (
-    p.includes("light")
-  ) return "light";
-
-  if (
-    p.includes("ac") ||
-    p.includes("air") ||
-    p.includes("condition")
-  ) return "ac";
-
-  if (
-    p.includes("tv")
-  ) return "tv";
-
-  if (
-    p.includes("door") ||
-    p.includes("lock")
-  ) return "door";
-
-  if (
-    p.includes("cctv") ||
-    p.includes("camera")
-  ) return "cctv";
-
-  if (
-    p.includes("device")
-  ) return "devices";
+  if (source.includes("light")) return "light";
+  if (source.includes("ac") || source.includes("air")) return "ac";
+  if (source.includes("tv")) return "tv";
+  if (source.includes("door") || source.includes("lock")) return "door";
+  if (source.includes("cctv") || source.includes("camera")) return "cctv";
+  if (source.includes("device")) return "devices";
 
   return null;
 }
@@ -81,8 +60,6 @@ export default function HomePage() {
       id: "sys-1",
       role: "assistant",
       content: "Hello! I’m Oyi — how can I help?",
-      panel: null,
-      panelTag: null,
       time: new Date().toLocaleTimeString([], {
         hour: "2-digit",
         minute: "2-digit",
@@ -92,20 +69,12 @@ export default function HomePage() {
 
   const chatRef = useRef<HTMLDivElement | null>(null);
 
-  // Context & stores
   const { user } = useAuth();
-  const { estateName, unitName } = useEstateContext();
   const { pushEvent } = useEventStore();
 
   const [discoveredDevices, setDiscoveredDevices] = useState<any[]>([]);
 
   const createId = () => Math.random().toString(36).slice(2, 9);
-
-  const isAtBottom = () => {
-    if (!chatRef.current) return true;
-    const { scrollTop, scrollHeight, clientHeight } = chatRef.current;
-    return scrollTop + clientHeight >= scrollHeight - 100;
-  };
 
   async function handleSend(text?: string) {
     const t = (text ?? input).trim();
@@ -128,7 +97,7 @@ export default function HomePage() {
       const resp = await aiService.chat(t);
 
       const reply = resp.reply ?? `Processed: "${t}"`;
-      const normalizedPanel = normalizePanel(resp.panel);
+      const panel = inferPanel(resp.panel, t);
       const deviceId = resp.deviceId ?? undefined;
 
       // ASSISTANT MESSAGE
@@ -138,15 +107,14 @@ export default function HomePage() {
           id: createId(),
           role: "assistant",
           content: reply,
-          panel: normalizedPanel,
-          panelTag: normalizedPanel,
+          panel,
           deviceId,
           time: now,
         },
       ]);
 
-      // DEVICE DISCOVERY FLOW
-      if (normalizedPanel === "devices") {
+      // DEVICE DISCOVERY
+      if (panel === "devices") {
         const rawId = user?.estate_id ?? localStorage.getItem("ochiga_estate");
         const estateId = rawId ?? undefined;
         const devices = await deviceService.getDevices(estateId);
@@ -161,16 +129,6 @@ export default function HomePage() {
         message: reply,
         timestamp: Date.now(),
       });
-
-      // AUTO-SCROLL
-      setTimeout(() => {
-        if (isAtBottom()) {
-          chatRef.current?.scrollTo({
-            top: chatRef.current.scrollHeight,
-            behavior: "smooth",
-          });
-        }
-      }, 80);
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -184,7 +142,6 @@ export default function HomePage() {
     }
   }
 
-  // ---------- UI ----------
   return (
     <LayoutWrapper>
       <main className="fixed inset-0 flex flex-col">
@@ -196,36 +153,27 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* CHAT WINDOW */}
-        <div
-          ref={chatRef}
-          className="flex-1 overflow-y-auto p-6 pt-24 pb-48"
-        >
+        {/* CHAT */}
+        <div ref={chatRef} className="flex-1 overflow-y-auto p-6 pt-24 pb-48">
           <div className="max-w-3xl mx-auto flex flex-col gap-4">
             {messages.map((m) => (
               <div
                 key={m.id}
-                className={`flex ${
-                  m.role === "user" ? "justify-end" : "justify-start"
-                }`}
+                className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
               >
                 <div className="max-w-[80%]">
-                  {/* CHAT BUBBLE */}
-                  {m.content && (
-                    <div
-                      className={`px-4 py-2 rounded-2xl ${
-                        m.role === "user"
-                          ? "bg-gray-800 text-white"
-                          : "bg-gray-900 text-gray-100"
-                      }`}
-                    >
-                      {m.content}
-                    </div>
-                  )}
+                  <div
+                    className={`px-4 py-2 rounded-2xl ${
+                      m.role === "user"
+                        ? "bg-gray-800 text-white"
+                        : "bg-gray-900 text-gray-100"
+                    }`}
+                  >
+                    {m.content}
+                  </div>
 
-                  {/* LIVE REMOTE PANEL */}
                   {m.panel && (
-                    <div className="mt-2">
+                    <div className="mt-3">
                       {m.panel === "devices" ? (
                         <DeviceDiscoveryPanel devices={discoveredDevices} />
                       ) : (
@@ -242,7 +190,7 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* DYNAMIC SUGGESTION / EVENT BAR */}
+        {/* SUGGESTIONS */}
         <div className="fixed bottom-[88px] left-0 right-0 z-40 px-4">
           <div className="max-w-3xl mx-auto">
             <DynamicSuggestionCard
@@ -251,18 +199,14 @@ export default function HomePage() {
                 { id: "2", title: "Schedule visitor" },
                 { id: "3", title: "Open CCTV feed" },
               ]}
-              onSend={(t?: string) => handleSend(t)}
+              onSend={(t) => handleSend(t)}
             />
           </div>
         </div>
 
-        {/* CHAT FOOTER */}
+        {/* FOOTER */}
         <div className="fixed bottom-0 left-0 right-0 p-4 bg-gray-900 border-t border-gray-700 z-50">
-          <ChatFooter
-            input={input}
-            setInput={setInput}
-            onSend={() => handleSend()}
-          />
+          <ChatFooter input={input} setInput={setInput} onSend={() => handleSend()} />
         </div>
 
       </main>
