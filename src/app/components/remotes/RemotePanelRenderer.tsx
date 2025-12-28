@@ -1,12 +1,20 @@
+"use client";
+
+// CORE REMOTES
 import LightPanel from "./LightPanel";
 import AcPanel from "./AcPanel";
 import TvPanel from "./TvPanel";
+
+// ACCESS & SECURITY
 import DoorPanel from "./DoorPanel";
 import CctvPanel from "./CctvPanel";
-import SensorsPanel from "./SensorsPanel";
+import SensorPanel from "./SensorPanel";
+
+// PEOPLE & SYSTEM
 import VisitorPanel from "./VisitorPanel";
-import RoomsPanel from "./RoomsPanel";
+import CommunityPanel from "./CommunityPanel";
 import WalletPanel from "./WalletPanel";
+import RoomsPanel from "./RoomsPanel";
 
 export default function RemotePanelRenderer({
   panel,
@@ -22,33 +30,46 @@ export default function RemotePanelRenderer({
   if (!panel) return null;
 
   switch (panel) {
+    /* -----------------------
+       CORE DEVICE CONTROLS
+    ------------------------ */
+
     case "light":
       return (
         <LightPanel
           deviceId={deviceId}
-          lastUpdated={lastUpdated!}
-          onInteraction={onInteraction!}
+          lastUpdated={lastUpdated ?? Date.now()}
+          onInteraction={onInteraction}
         />
       );
 
     case "ac":
-      return <AcPanel deviceId={deviceId} onInteraction={onInteraction} />;
+      return (
+        <AcPanel
+          deviceId={deviceId}
+          lastUpdated={lastUpdated ?? Date.now()}
+          onInteraction={onInteraction}
+        />
+      );
 
     case "tv":
       return (
         <TvPanel
           deviceId={deviceId}
-          lastUpdated={lastUpdated}
+          lastUpdated={lastUpdated ?? Date.now()}
           onInteraction={onInteraction}
         />
       );
+
+    /* -----------------------
+       SECURITY & ACCESS
+    ------------------------ */
 
     case "door":
       return (
         <DoorPanel
           deviceId={deviceId}
-          hasCamera={true}
-          lastUpdated={lastUpdated}
+          lastUpdated={lastUpdated ?? Date.now()}
           onInteraction={onInteraction}
         />
       );
@@ -57,25 +78,28 @@ export default function RemotePanelRenderer({
       return (
         <CctvPanel
           deviceId={deviceId}
-          lastUpdated={lastUpdated}
+          lastUpdated={lastUpdated ?? Date.now()}
           onInteraction={onInteraction}
         />
       );
 
-    case "sensors":
+    case "sensor":
       return (
-        <SensorsPanel
+        <SensorPanel
           deviceId={deviceId}
-          lastUpdated={lastUpdated}
+          lastUpdated={lastUpdated ?? Date.now()}
           onInteraction={onInteraction}
         />
       );
+
+    /* -----------------------
+       PEOPLE & OPERATIONS
+    ------------------------ */
 
     case "visitor":
       return (
         <VisitorPanel
-          deviceId={deviceId}
-          lastUpdated={lastUpdated}
+          lastUpdated={lastUpdated ?? Date.now()}
           onInteraction={onInteraction}
         />
       );
@@ -83,7 +107,7 @@ export default function RemotePanelRenderer({
     case "rooms":
       return (
         <RoomsPanel
-          lastUpdated={lastUpdated}
+          lastUpdated={lastUpdated ?? Date.now()}
           onInteraction={onInteraction}
         />
       );
@@ -91,10 +115,22 @@ export default function RemotePanelRenderer({
     case "wallet":
       return (
         <WalletPanel
-          lastUpdated={lastUpdated}
+          lastUpdated={lastUpdated ?? Date.now()}
           onInteraction={onInteraction}
         />
       );
+
+    case "community":
+      return (
+        <CommunityPanel
+          lastUpdated={lastUpdated ?? Date.now()}
+          onInteraction={onInteraction}
+        />
+      );
+
+    /* -----------------------
+       FALLBACK
+    ------------------------ */
 
     default:
       return null;
