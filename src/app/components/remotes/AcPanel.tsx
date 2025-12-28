@@ -8,9 +8,11 @@ type FanSpeed = "low" | "medium" | "high" | "auto";
 
 export default function AcPanel({
   deviceId,
+  lastUpdated,
   onInteraction,
 }: {
   deviceId?: string;
+  lastUpdated?: number;
   onInteraction?: () => void;
 }) {
   const [power, setPower] = useState(false);
@@ -24,7 +26,7 @@ export default function AcPanel({
   }
 
   return (
-    <RemotePanel title="Air Conditioner">
+    <RemotePanel title="Air Conditioner" lastUpdated={lastUpdated}>
       {/* POWER */}
       <div className="flex items-center justify-between mb-4">
         <span className="text-sm text-white">
