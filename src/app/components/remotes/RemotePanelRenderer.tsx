@@ -1,4 +1,5 @@
 import LightPanel from "./LightPanel";
+import AcPanel from "./AcPanel";
 
 export default function RemotePanelRenderer({
   panel,
@@ -8,20 +9,17 @@ export default function RemotePanelRenderer({
 }: {
   panel?: string | null;
   deviceId?: string;
-  lastUpdated: number;
-  onInteraction: () => void;
+  lastUpdated?: number;
+  onInteraction?: () => void;
 }) {
   if (!panel) return null;
 
   switch (panel) {
     case "light":
-      return (
-        <LightPanel
-          deviceId={deviceId}
-          lastUpdated={lastUpdated}
-          onInteraction={onInteraction}
-        />
-      );
+      return <LightPanel deviceId={deviceId} onInteraction={onInteraction} />;
+
+    case "ac":
+      return <AcPanel deviceId={deviceId} onInteraction={onInteraction} />;
 
     default:
       return null;
