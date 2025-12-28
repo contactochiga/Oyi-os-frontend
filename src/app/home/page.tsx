@@ -6,6 +6,7 @@ import { useRef, useState } from "react";
 import LayoutWrapper from "../components/LayoutWrapper";
 import ChatFooter from "../components/ChatFooter";
 import DynamicSuggestionCard from "../components/DynamicSuggestionCard";
+import HamburgerMenu from "../components/HamburgerMenu";
 
 // SERVICES
 import { aiService } from "../../services/aiService";
@@ -61,7 +62,6 @@ export default function HomePage() {
     });
     setInput("");
 
-    // Add user message
     setMessages((prev) => [
       ...prev,
       { id: createId(), role: "user", content: t, time: now },
@@ -72,7 +72,6 @@ export default function HomePage() {
       const reply = resp.reply ?? `Processed: "${t}"`;
       const panel = resp.panel ?? null;
 
-      // Add assistant reply
       setMessages((prev) => [
         ...prev,
         {
@@ -85,16 +84,13 @@ export default function HomePage() {
         },
       ]);
 
-      // Fetch devices if needed
       if (panel === "devices") {
         const rawId = user?.estate_id ?? localStorage.getItem("ochiga_estate");
         const estateId = rawId ?? undefined;
-
         const devices = await deviceService.getDevices(estateId);
         setDiscoveredDevices(devices || []);
       }
 
-      // Auto-scroll if user is already near bottom
       setTimeout(() => {
         if (isAtBottom()) {
           chatRef.current?.scrollTo({
@@ -103,7 +99,7 @@ export default function HomePage() {
           });
         }
       }, 80);
-    } catch (err) {
+    } catch {
       setMessages((prev) => [
         ...prev,
         {
@@ -121,6 +117,13 @@ export default function HomePage() {
     <LayoutWrapper>
       <main className="fixed inset-0 flex flex-col">
 
+        {/* TOPBAR */}
+        <div className="fixed top-0 left-0 right-0 z-50 h-16 bg-gray-900/80 backdrop-blur border-b border-gray-800">
+          <div className="max-w-3xl mx-auto h-full flex items-center px-4">
+            <HamburgerMenu />
+          </div>
+        </div>
+
         {/* CHAT WINDOW */}
         <div
           ref={chatRef}
@@ -135,7 +138,6 @@ export default function HomePage() {
                 }`}
               >
                 <div className="max-w-[80%]">
-                  {/* Chat bubble */}
                   {m.content && (
                     <div
                       className={`px-4 py-2 rounded-2xl ${
@@ -148,7 +150,6 @@ export default function HomePage() {
                     </div>
                   )}
 
-                  {/* Placeholder for future panels/remotes */}
                   {m.panel && <div className="mt-2">{/* Panel */}</div>}
                 </div>
               </div>
