@@ -16,10 +16,22 @@ export default function RemotePanelRenderer({
 
   switch (panel) {
     case "light":
-      return <LightPanel deviceId={deviceId} onInteraction={onInteraction} />;
+      return (
+        <LightPanel
+          deviceId={deviceId}
+          lastUpdated={lastUpdated}
+          onInteraction={onInteraction}
+        />
+      );
 
     case "ac":
-      return <AcPanel deviceId={deviceId} onInteraction={onInteraction} />;
+      return (
+        <AcPanel
+          deviceId={deviceId}
+          lastUpdated={lastUpdated}
+          onInteraction={onInteraction}
+        />
+      );
 
     default:
       return null;
