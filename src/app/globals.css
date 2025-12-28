@@ -26,7 +26,7 @@ body {
 }
 
 /* -------------------------------------------------
-   Slide-up animation (Settings panel)
+   Slide-up animation (Settings / panels)
 -------------------------------------------------- */
 
 @keyframes slide-up {
@@ -45,7 +45,7 @@ body {
 }
 
 /* -------------------------------------------------
-   Utility: safe tap highlight removal (mobile)
+   Mobile interaction hygiene
 -------------------------------------------------- */
 
 button,
@@ -59,4 +59,37 @@ a {
 
 * {
   scroll-behavior: smooth;
+}
+
+/* -------------------------------------------------
+   Remote control button system (TV / AC / Devices)
+-------------------------------------------------- */
+
+@layer components {
+  /* General TV action buttons */
+  .btn-tv {
+    @apply px-4 py-2 rounded-full bg-gray-700 text-sm text-white
+           active:scale-95 transition;
+  }
+
+  /* Directional pad buttons */
+  .btn-dir {
+    @apply w-12 h-12 rounded-full bg-gray-700 text-white
+           flex items-center justify-center
+           active:scale-95 transition;
+  }
+
+  /* OK / Select button */
+  .btn-ok {
+    @apply w-16 h-16 rounded-full bg-[#E11D2E] text-white
+           font-semibold
+           active:scale-95 transition;
+  }
+
+  /* Number pad buttons */
+  .btn-num {
+    @apply h-12 rounded-xl bg-gray-700 text-white text-sm
+           flex items-center justify-center
+           active:scale-95 transition;
+  }
 }
