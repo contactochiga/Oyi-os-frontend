@@ -18,7 +18,6 @@ import { deviceService } from "../../services/deviceService";
 
 // HOOKS
 import useAuth from "../../hooks/useAuth";
-import { useEstateContext } from "../../hooks/useEstateContext";
 
 // STORES
 import { useEventStore } from "../../store/useEventStore";
@@ -30,16 +29,14 @@ type ChatMessage = {
   panel?: string | null;
   deviceId?: string;
   time: string;
+  lastUpdated?: number;
 };
 
 /**
  * Enterprise-grade intent inference
- * AI response is optional — user intent is authoritative
+ * UI decides the panel, not AI hallucinations
  */
-function inferPanel(
-  aiPanel?: string | null,
-  userText?: string
-): string | null {
+function inferPanel(aiPanel?: string | null, userText?: string): string | null {
   const source = `${aiPanel || ""} ${userText || ""}`.toLowerCase();
 
   if (source.includes("light")) return "light";
@@ -60,10 +57,7 @@ export default function HomePage() {
       id: "sys-1",
       role: "assistant",
       content: "Hello! I’m Oyi — how can I help?",
-      time: new Date().toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
+      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     },
   ]);
 
@@ -80,10 +74,7 @@ export default function HomePage() {
     const t = (text ?? input).trim();
     if (!t) return;
 
-    const now = new Date().toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
     setInput("");
 
@@ -99,19 +90,27 @@ export default function HomePage() {
       const reply = resp.reply ?? `Processed: "${t}"`;
       const panel = inferPanel(resp.panel, t);
       const deviceId = resp.deviceId ?? undefined;
+      const stamp = Date.now();
 
-      // ASSISTANT MESSAGE
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: createId(),
-          role: "assistant",
-          content: reply,
-          panel,
-          deviceId,
-          time: now,
-        },
-      ]);
+      // SINGLE-INSTANCE PANEL RULE
+      setMessages((prev) => {
+        const withoutSamePanel = panel
+          ? prev.filter((m) => m.panel !== panel)
+          : prev;
+
+        return [
+          ...withoutSamePanel,
+          {
+            id: createId(),
+            role: "assistant",
+            content: reply,
+            panel,
+            deviceId,
+            time: now,
+            lastUpdated: stamp,
+          },
+        ];
+      });
 
       // DEVICE DISCOVERY
       if (panel === "devices") {
@@ -127,7 +126,7 @@ export default function HomePage() {
         type: "info",
         title: "Oyi",
         message: reply,
-        timestamp: Date.now(),
+        timestamp: stamp,
       });
     } catch {
       setMessages((prev) => [
@@ -157,10 +156,7 @@ export default function HomePage() {
         <div ref={chatRef} className="flex-1 overflow-y-auto p-6 pt-24 pb-48">
           <div className="max-w-3xl mx-auto flex flex-col gap-4">
             {messages.map((m) => (
-              <div
-                key={m.id}
-                className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
-              >
+              <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
                 <div className="max-w-[80%]">
                   <div
                     className={`px-4 py-2 rounded-2xl ${
@@ -180,6 +176,16 @@ export default function HomePage() {
                         <RemotePanelRenderer
                           panel={m.panel}
                           deviceId={m.deviceId}
+                          lastUpdated={m.lastUpdated ?? Date.now()}
+                          onInteraction={() => {
+                            setMessages((prev) =>
+                              prev.map((x) =>
+                                x.id === m.id
+                                  ? { ...x, lastUpdated: Date.now() }
+                                  : x
+                              )
+                            );
+                          }}
                         />
                       )}
                     </div>
