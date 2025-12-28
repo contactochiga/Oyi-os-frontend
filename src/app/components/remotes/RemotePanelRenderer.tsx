@@ -6,6 +6,7 @@ import CctvPanel from "./CctvPanel";
 import SensorsPanel from "./SensorsPanel";
 import VisitorPanel from "./VisitorPanel";
 import RoomsPanel from "./RoomsPanel";
+import WalletPanel from "./WalletPanel";
 
 export default function RemotePanelRenderer({
   panel,
@@ -82,6 +83,14 @@ export default function RemotePanelRenderer({
     case "rooms":
       return (
         <RoomsPanel
+          lastUpdated={lastUpdated}
+          onInteraction={onInteraction}
+        />
+      );
+
+    case "wallet":
+      return (
+        <WalletPanel
           lastUpdated={lastUpdated}
           onInteraction={onInteraction}
         />
