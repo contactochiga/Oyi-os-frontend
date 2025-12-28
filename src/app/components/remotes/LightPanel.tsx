@@ -9,36 +9,28 @@ export default function LightPanel({
   onInteraction,
 }: {
   deviceId?: string;
-  lastUpdated: number;
-  onInteraction: () => void;
+  lastUpdated?: number;
+  onInteraction?: () => void;
 }) {
   const [on, setOn] = useState(false);
   const [brightness, setBrightness] = useState(70);
 
-  const timeLabel = new Date(lastUpdated).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
-  function toggleLight() {
-    setOn(!on);
-    onInteraction();
-  }
-
-  function changeBrightness(v: number) {
-    setBrightness(v);
-    onInteraction();
+  function touch() {
+    onInteraction?.();
   }
 
   return (
-    <RemotePanel title="Living Room Light" timestamp={timeLabel}>
+    <RemotePanel title="Living Room Light" lastUpdated={lastUpdated}>
       <div className="flex items-center justify-between mb-4">
         <span className="text-sm text-gray-300">
           Status: <span className="text-white">{on ? "On" : "Off"}</span>
         </span>
 
         <button
-          onClick={toggleLight}
+          onClick={() => {
+            setOn(!on);
+            touch();
+          }}
           className={`px-4 py-2 rounded-full text-sm font-medium transition
             ${on ? "bg-[#E11D2E]" : "bg-gray-700 hover:bg-gray-600"}`}
         >
@@ -55,7 +47,10 @@ export default function LightPanel({
           min={0}
           max={100}
           value={brightness}
-          onChange={(e) => changeBrightness(Number(e.target.value))}
+          onChange={(e) => {
+            setBrightness(Number(e.target.value));
+            touch();
+          }}
           className="w-full accent-[#E11D2E]"
         />
       </div>
