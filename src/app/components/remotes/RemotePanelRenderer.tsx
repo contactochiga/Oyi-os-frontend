@@ -1,6 +1,7 @@
 import LightPanel from "./LightPanel";
 import AcPanel from "./AcPanel";
 import TvPanel from "./TvPanel";
+import DoorPanel from "./DoorPanel";
 
 export default function RemotePanelRenderer({
   panel,
@@ -20,8 +21,8 @@ export default function RemotePanelRenderer({
       return (
         <LightPanel
           deviceId={deviceId}
-          lastUpdated={lastUpdated}
-          onInteraction={onInteraction}
+          lastUpdated={lastUpdated!}
+          onInteraction={onInteraction!}
         />
       );
 
@@ -29,7 +30,6 @@ export default function RemotePanelRenderer({
       return (
         <AcPanel
           deviceId={deviceId}
-          lastUpdated={lastUpdated}
           onInteraction={onInteraction}
         />
       );
@@ -38,6 +38,16 @@ export default function RemotePanelRenderer({
       return (
         <TvPanel
           deviceId={deviceId}
+          lastUpdated={lastUpdated}
+          onInteraction={onInteraction}
+        />
+      );
+
+    case "door":
+      return (
+        <DoorPanel
+          deviceId={deviceId}
+          hasCamera={true} // toggle per device later
           lastUpdated={lastUpdated}
           onInteraction={onInteraction}
         />
