@@ -33,6 +33,46 @@ type ChatMessage = {
   time: string;
 };
 
+/**
+ * Normalize AI panel names → canonical UI panel IDs
+ * This keeps AI flexible and UI stable (enterprise-grade)
+ */
+function normalizePanel(panel?: string | null): string | null {
+  if (!panel) return null;
+
+  const p = panel.toLowerCase();
+
+  if (
+    p.includes("light")
+  ) return "light";
+
+  if (
+    p.includes("ac") ||
+    p.includes("air") ||
+    p.includes("condition")
+  ) return "ac";
+
+  if (
+    p.includes("tv")
+  ) return "tv";
+
+  if (
+    p.includes("door") ||
+    p.includes("lock")
+  ) return "door";
+
+  if (
+    p.includes("cctv") ||
+    p.includes("camera")
+  ) return "cctv";
+
+  if (
+    p.includes("device")
+  ) return "devices";
+
+  return null;
+}
+
 export default function HomePage() {
   const [input, setInput] = useState("");
 
@@ -88,7 +128,7 @@ export default function HomePage() {
       const resp = await aiService.chat(t);
 
       const reply = resp.reply ?? `Processed: "${t}"`;
-      const panel = resp.panel ?? null;
+      const normalizedPanel = normalizePanel(resp.panel);
       const deviceId = resp.deviceId ?? undefined;
 
       // ASSISTANT MESSAGE
@@ -98,22 +138,22 @@ export default function HomePage() {
           id: createId(),
           role: "assistant",
           content: reply,
-          panel,
-          panelTag: panel,
+          panel: normalizedPanel,
+          panelTag: normalizedPanel,
           deviceId,
           time: now,
         },
       ]);
 
       // DEVICE DISCOVERY FLOW
-      if (panel === "devices") {
+      if (normalizedPanel === "devices") {
         const rawId = user?.estate_id ?? localStorage.getItem("ochiga_estate");
         const estateId = rawId ?? undefined;
         const devices = await deviceService.getDevices(estateId);
         setDiscoveredDevices(devices || []);
       }
 
-      // SYSTEM EVENT (feeds notifications later)
+      // SYSTEM EVENT
       pushEvent({
         id: createId(),
         type: "info",
