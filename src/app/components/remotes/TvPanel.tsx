@@ -7,9 +7,11 @@ type Mode = "trackpad" | "numbers";
 
 export default function TvPanel({
   deviceId,
+  lastUpdated,
   onInteraction,
 }: {
   deviceId?: string;
+  lastUpdated?: number;
   onInteraction?: () => void;
 }) {
   const [power, setPower] = useState(true);
@@ -24,8 +26,15 @@ export default function TvPanel({
     touch();
   }
 
+  const timeLabel =
+    lastUpdated &&
+    new Date(lastUpdated).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
   return (
-    <RemotePanel title="Living Room TV">
+    <RemotePanel title="Living Room TV" timestamp={timeLabel}>
       {/* POWER */}
       <div className="flex justify-between mb-4">
         <button
@@ -50,17 +59,25 @@ export default function TvPanel({
       {/* VOL / CH */}
       <div className="flex justify-between mb-6">
         <div className="flex flex-col gap-2">
-          <button onClick={() => send("vol_up")} className="btn-tv">Vol +</button>
-          <button onClick={() => send("vol_down")} className="btn-tv">Vol -</button>
+          <button onClick={() => send("vol_up")} className="btn-tv">
+            Vol +
+          </button>
+          <button onClick={() => send("vol_down")} className="btn-tv">
+            Vol -
+          </button>
         </div>
 
         <div className="flex flex-col gap-2">
-          <button onClick={() => send("ch_up")} className="btn-tv">Ch ↑</button>
-          <button onClick={() => send("ch_down")} className="btn-tv">Ch ↓</button>
+          <button onClick={() => send("ch_up")} className="btn-tv">
+            Ch ↑
+          </button>
+          <button onClick={() => send("ch_down")} className="btn-tv">
+            Ch ↓
+          </button>
         </div>
       </div>
 
-      {/* CENTER */}
+      {/* CENTER CONTROL */}
       {mode === "trackpad" ? (
         <div className="flex flex-col items-center gap-2 mb-6">
           <button onClick={() => send("up")} className="btn-dir">↑</button>
@@ -75,7 +92,7 @@ export default function TvPanel({
         </div>
       ) : (
         <div className="grid grid-cols-3 gap-2 mb-6">
-          {[1,2,3,4,5,6,7,8,9,"←",0].map((n) => (
+          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 0].map((n) => (
             <button
               key={n}
               onClick={() => send(`num_${n}`)}
@@ -89,8 +106,9 @@ export default function TvPanel({
 
       {/* BOTTOM */}
       <div className="flex justify-between items-center">
-        <button onClick={() => send("back")} className="btn-tv">Back</button>
-        <button onClick={() => send("home")} className="btn-tv">Home</button>
+        <button onClick={() => send("home")} className="btn-tv">
+          Home
+        </button>
 
         <button
           onClick={() => setMode(mode === "trackpad" ? "numbers" : "trackpad")}
