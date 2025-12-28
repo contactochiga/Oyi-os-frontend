@@ -27,6 +27,7 @@ type ChatMessage = {
   role: "user" | "assistant";
   content: string;
   panel?: string | null;
+  panelKey?: string;
   deviceId?: string;
   time: string;
   lastUpdated?: number;
@@ -34,7 +35,7 @@ type ChatMessage = {
 
 /**
  * Enterprise-grade intent inference
- * UI decides the panel, not AI hallucinations
+ * UI logic is authoritative
  */
 function inferPanel(aiPanel?: string | null, userText?: string): string | null {
   const source = `${aiPanel || ""} ${userText || ""}`.toLowerCase();
@@ -57,7 +58,10 @@ export default function HomePage() {
       id: "sys-1",
       role: "assistant",
       content: "Hello! I’m Oyi — how can I help?",
-      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      time: new Date().toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
     },
   ]);
 
@@ -74,11 +78,14 @@ export default function HomePage() {
     const t = (text ?? input).trim();
     if (!t) return;
 
-    const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const now = new Date().toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
 
     setInput("");
 
-    // USER MESSAGE
+    // 🔹 USER MESSAGE (only added if NOT repeating same panel)
     setMessages((prev) => [
       ...prev,
       { id: createId(), role: "user", content: t, time: now },
@@ -90,21 +97,24 @@ export default function HomePage() {
       const reply = resp.reply ?? `Processed: "${t}"`;
       const panel = inferPanel(resp.panel, t);
       const deviceId = resp.deviceId ?? undefined;
+      const panelKey = panel ? `${panel}:${deviceId || "default"}` : undefined;
       const stamp = Date.now();
 
-      // SINGLE-INSTANCE PANEL RULE
+      // 🔹 SINGLE-INSTANCE PANEL RULE
       setMessages((prev) => {
-        const withoutSamePanel = panel
-          ? prev.filter((m) => m.panel !== panel)
-          : prev;
+        if (!panelKey) return prev;
+
+        // remove old instance of this panel
+        const filtered = prev.filter((m) => m.panelKey !== panelKey);
 
         return [
-          ...withoutSamePanel,
+          ...filtered,
           {
             id: createId(),
             role: "assistant",
             content: reply,
             panel,
+            panelKey,
             deviceId,
             time: now,
             lastUpdated: stamp,
@@ -114,7 +124,8 @@ export default function HomePage() {
 
       // DEVICE DISCOVERY
       if (panel === "devices") {
-        const rawId = user?.estate_id ?? localStorage.getItem("ochiga_estate");
+        const rawId =
+          user?.estate_id ?? localStorage.getItem("ochiga_estate");
         const estateId = rawId ?? undefined;
         const devices = await deviceService.getDevices(estateId);
         setDiscoveredDevices(devices || []);
@@ -153,11 +164,22 @@ export default function HomePage() {
         </div>
 
         {/* CHAT */}
-        <div ref={chatRef} className="flex-1 overflow-y-auto p-6 pt-24 pb-48">
+        <div
+          ref={chatRef}
+          className="flex-1 overflow-y-auto p-6 pt-24 pb-48"
+        >
           <div className="max-w-3xl mx-auto flex flex-col gap-4">
             {messages.map((m) => (
-              <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div
+                key={m.id}
+                className={`flex ${
+                  m.role === "user"
+                    ? "justify-end"
+                    : "justify-start"
+                }`}
+              >
                 <div className="max-w-[80%]">
+                  {/* CHAT BUBBLE */}
                   <div
                     className={`px-4 py-2 rounded-2xl ${
                       m.role === "user"
@@ -168,20 +190,33 @@ export default function HomePage() {
                     {m.content}
                   </div>
 
+                  {/* REMOTE PANEL */}
                   {m.panel && (
                     <div className="mt-3">
                       {m.panel === "devices" ? (
-                        <DeviceDiscoveryPanel devices={discoveredDevices} />
+                        <DeviceDiscoveryPanel
+                          devices={discoveredDevices}
+                        />
                       ) : (
                         <RemotePanelRenderer
                           panel={m.panel}
                           deviceId={m.deviceId}
-                          lastUpdated={m.lastUpdated ?? Date.now()}
+                          lastUpdated={m.lastUpdated}
                           onInteraction={() => {
                             setMessages((prev) =>
                               prev.map((x) =>
                                 x.id === m.id
-                                  ? { ...x, lastUpdated: Date.now() }
+                                  ? {
+                                      ...x,
+                                      lastUpdated: Date.now(),
+                                      time: new Date().toLocaleTimeString(
+                                        [],
+                                        {
+                                          hour: "2-digit",
+                                          minute: "2-digit",
+                                        }
+                                      ),
+                                    }
                                   : x
                               )
                             );
@@ -212,7 +247,11 @@ export default function HomePage() {
 
         {/* FOOTER */}
         <div className="fixed bottom-0 left-0 right-0 p-4 bg-gray-900 border-t border-gray-700 z-50">
-          <ChatFooter input={input} setInput={setInput} onSend={() => handleSend()} />
+          <ChatFooter
+            input={input}
+            setInput={setInput}
+            onSend={() => handleSend()}
+          />
         </div>
 
       </main>
