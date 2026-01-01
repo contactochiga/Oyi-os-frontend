@@ -21,13 +21,6 @@ export default function RoomsPanel({
     { id: "kitchen", name: "Kitchen", devices: 2 },
   ];
 
-  const timeLabel =
-    lastUpdated &&
-    new Date(lastUpdated).toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-
   function touch() {
     onInteraction?.();
   }
@@ -38,7 +31,7 @@ export default function RoomsPanel({
   }
 
   return (
-    <RemotePanel title="Rooms" timestamp={timeLabel}>
+    <RemotePanel title="Rooms" lastUpdated={lastUpdated}>
       <div className="space-y-3">
         {rooms.map((room) => (
           <div
