@@ -8,7 +8,7 @@ import TvPanel from "./TvPanel";
 // ACCESS & SECURITY
 import DoorPanel from "./DoorPanel";
 import CctvPanel from "./CctvPanel";
-import SensorPanel from "./SensorPanel";
+import SensorsPanel from "./SensorsPanel";
 
 // PEOPLE & SYSTEM
 import VisitorPanel from "./VisitorPanel";
@@ -85,7 +85,7 @@ export default function RemotePanelRenderer({
 
     case "sensor":
       return (
-        <SensorPanel
+        <SensorsPanel
           deviceId={deviceId}
           lastUpdated={lastUpdated ?? Date.now()}
           onInteraction={onInteraction}
