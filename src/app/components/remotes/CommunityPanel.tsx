@@ -41,19 +41,12 @@ export default function CommunityPanel({
     },
   ];
 
-  const timeLabel =
-    lastUpdated &&
-    new Date(lastUpdated).toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-
   function touch() {
     onInteraction?.();
   }
 
   return (
-    <RemotePanel title="Community" timestamp={timeLabel}>
+    <RemotePanel title="Community" lastUpdated={lastUpdated}>
       <div className="space-y-3">
         {items.map((item) => (
           <div
