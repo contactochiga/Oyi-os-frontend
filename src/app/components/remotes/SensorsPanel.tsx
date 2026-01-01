@@ -47,13 +47,6 @@ export default function SensorsPanel({
     },
   ];
 
-  const timeLabel =
-    lastUpdated &&
-    new Date(lastUpdated).toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-
   function color(status: SensorStatus) {
     switch (status) {
       case "critical":
@@ -66,7 +59,7 @@ export default function SensorsPanel({
   }
 
   return (
-    <RemotePanel title="Sensors" timestamp={timeLabel}>
+    <RemotePanel title="Sensors" lastUpdated={lastUpdated}>
       <div className="space-y-3">
         {sensors.map((s) => (
           <div
