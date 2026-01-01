@@ -36,13 +36,6 @@ export default function WalletPanel({
     },
   ];
 
-  const timeLabel =
-    lastUpdated &&
-    new Date(lastUpdated).toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-
   function touch() {
     onInteraction?.();
   }
@@ -58,7 +51,7 @@ export default function WalletPanel({
   }
 
   return (
-    <RemotePanel title="Wallet" timestamp={timeLabel}>
+    <RemotePanel title="Wallet" lastUpdated={lastUpdated}>
       {/* BALANCE */}
       <div className="mb-4 rounded-xl bg-gray-800 border border-gray-700 p-4">
         <div className="text-xs text-gray-400 mb-1">Available Balance</div>
