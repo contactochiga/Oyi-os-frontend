@@ -1,4 +1,4 @@
-"use client";
+""use client";
 
 import { useState } from "react";
 import RemotePanel from "./RemotePanel";
@@ -20,20 +20,13 @@ export default function DoorPanel({
     onInteraction?.();
   }
 
-  const timeLabel =
-    lastUpdated &&
-    new Date(lastUpdated).toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-
   function toggleLock() {
     setLocked(!locked);
     touch();
   }
 
   return (
-    <RemotePanel title="Front Door" timestamp={timeLabel}>
+    <RemotePanel title="Front Door" lastUpdated={lastUpdated}>
       {/* STATUS */}
       <div className="flex justify-between items-center mb-4">
         <span className="text-sm text-gray-300">
