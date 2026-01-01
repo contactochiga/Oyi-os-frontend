@@ -27,13 +27,6 @@ export default function VisitorPanel({
     status: "pending",
   };
 
-  const timeLabel =
-    lastUpdated &&
-    new Date(lastUpdated).toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-
   function approve() {
     console.log("Visitor approved");
     onInteraction?.();
@@ -45,7 +38,7 @@ export default function VisitorPanel({
   }
 
   return (
-    <RemotePanel title="Visitor Access" timestamp={timeLabel}>
+    <RemotePanel title="Visitor Access" lastUpdated={lastUpdated}>
       <div className="space-y-4">
         {/* VISITOR INFO */}
         <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
