@@ -40,7 +40,7 @@ export default function ReactQueryProvider({
       {showDevtools && (
         <ReactQueryDevtools
           initialIsOpen={false}
-          position="bottom-right"
+          position="bottom-left"
         />
       )}
     </QueryClientProvider>
