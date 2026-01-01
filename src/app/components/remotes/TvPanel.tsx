@@ -26,15 +26,8 @@ export default function TvPanel({
     touch();
   }
 
-  const timeLabel =
-    lastUpdated &&
-    new Date(lastUpdated).toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-
   return (
-    <RemotePanel title="Living Room TV" timestamp={timeLabel}>
+    <RemotePanel title="Living Room TV" lastUpdated={lastUpdated}>
       {/* POWER */}
       <div className="flex justify-between mb-4">
         <button
@@ -80,15 +73,25 @@ export default function TvPanel({
       {/* CENTER CONTROL */}
       {mode === "trackpad" ? (
         <div className="flex flex-col items-center gap-2 mb-6">
-          <button onClick={() => send("up")} className="btn-dir">↑</button>
+          <button onClick={() => send("up")} className="btn-dir">
+            ↑
+          </button>
 
           <div className="flex gap-2">
-            <button onClick={() => send("left")} className="btn-dir">←</button>
-            <button onClick={() => send("ok")} className="btn-ok">OK</button>
-            <button onClick={() => send("right")} className="btn-dir">→</button>
+            <button onClick={() => send("left")} className="btn-dir">
+              ←
+            </button>
+            <button onClick={() => send("ok")} className="btn-ok">
+              OK
+            </button>
+            <button onClick={() => send("right")} className="btn-dir">
+              →
+            </button>
           </div>
 
-          <button onClick={() => send("down")} className="btn-dir">↓</button>
+          <button onClick={() => send("down")} className="btn-dir">
+            ↓
+          </button>
         </div>
       ) : (
         <div className="grid grid-cols-3 gap-2 mb-6">
@@ -111,7 +114,9 @@ export default function TvPanel({
         </button>
 
         <button
-          onClick={() => setMode(mode === "trackpad" ? "numbers" : "trackpad")}
+          onClick={() =>
+            setMode(mode === "trackpad" ? "numbers" : "trackpad")
+          }
           className="btn-tv"
         >
           {mode === "trackpad" ? "123" : "Pad"}
