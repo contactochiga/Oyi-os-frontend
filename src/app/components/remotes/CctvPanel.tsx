@@ -25,19 +25,12 @@ export default function CctvPanel({
 
   const [activeCam, setActiveCam] = useState(cameras[0]);
 
-  const timeLabel =
-    lastUpdated &&
-    new Date(lastUpdated).toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-
   function touch() {
     onInteraction?.();
   }
 
   return (
-    <RemotePanel title="CCTV" timestamp={timeLabel}>
+    <RemotePanel title="CCTV" lastUpdated={lastUpdated}>
       {/* CAMERA FEED */}
       <div className="mb-4 rounded-xl overflow-hidden border border-gray-800">
         <div className="h-40 bg-black flex items-center justify-center text-xs text-gray-400">
