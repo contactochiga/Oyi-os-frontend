@@ -1,20 +1,40 @@
 "use client";
 
-// CORE REMOTES
+/* =================================================
+   CORE DEVICE REMOTES
+================================================= */
+
 import LightPanel from "./LightPanel";
 import AcPanel from "./AcPanel";
 import TvPanel from "./TvPanel";
 
-// ACCESS & SECURITY
+/* =================================================
+   SECURITY & ACCESS
+================================================= */
+
 import DoorPanel from "./DoorPanel";
 import CctvPanel from "./CctvPanel";
 import SensorsPanel from "./SensorsPanel";
 
-// PEOPLE & SYSTEM
+/* =================================================
+   PEOPLE, SYSTEM & OPERATIONS
+================================================= */
+
 import VisitorPanel from "./VisitorPanel";
 import CommunityPanel from "./CommunityPanel";
 import WalletPanel from "./WalletPanel";
 import RoomsPanel from "./RoomsPanel";
+
+/* =================================================
+   SYSTEM DASHBOARDS (NEW)
+================================================= */
+
+import HomeSummaryPanel from "./HomeSummaryPanel";
+import UtilitiesPanel from "./UtilitiesPanel";
+
+/* =================================================
+   RENDERER
+================================================= */
 
 export default function RemotePanelRenderer({
   panel,
@@ -84,6 +104,7 @@ export default function RemotePanelRenderer({
       );
 
     case "sensor":
+    case "sensors":
       return (
         <SensorsPanel
           deviceId={deviceId}
@@ -93,16 +114,21 @@ export default function RemotePanelRenderer({
       );
 
     /* -----------------------
-       PEOPLE & OPERATIONS
+       VISITORS (ESTATE FLOW)
     ------------------------ */
 
     case "visitor":
+    case "visitors":
       return (
         <VisitorPanel
           lastUpdated={lastUpdated ?? Date.now()}
           onInteraction={onInteraction}
         />
       );
+
+    /* -----------------------
+       ROOMS & STRUCTURE
+    ------------------------ */
 
     case "rooms":
       return (
@@ -112,6 +138,10 @@ export default function RemotePanelRenderer({
         />
       );
 
+    /* -----------------------
+       FINANCE & UTILITIES
+    ------------------------ */
+
     case "wallet":
       return (
         <WalletPanel
@@ -120,11 +150,35 @@ export default function RemotePanelRenderer({
         />
       );
 
+    case "utilities":
+      return (
+        <UtilitiesPanel
+          lastUpdated={lastUpdated ?? Date.now()}
+        />
+      );
+
+    /* -----------------------
+       COMMUNITY
+    ------------------------ */
+
     case "community":
       return (
         <CommunityPanel
           lastUpdated={lastUpdated ?? Date.now()}
           onInteraction={onInteraction}
+        />
+      );
+
+    /* -----------------------
+       SYSTEM OVERVIEW
+    ------------------------ */
+
+    case "home":
+    case "home_summary":
+    case "summary":
+      return (
+        <HomeSummaryPanel
+          lastUpdated={lastUpdated ?? Date.now()}
         />
       );
 
