@@ -18,6 +18,15 @@ interface HamburgerMenuProps {
   onToggle?: (open: boolean) => void;
 }
 
+const MENU_ITEMS = [
+  "Devices",
+  "Scenes",
+  "Automations",
+  "Access & Security",
+  "Energy",
+  "Community",
+];
+
 export default function HamburgerMenu({
   isOpen = false,
   onToggle,
@@ -30,18 +39,17 @@ export default function HamburgerMenu({
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
-  // Sync with parent if needed
   useEffect(() => {
     setOpen(isOpen);
   }, [isOpen]);
 
-  // Body lock
+  // Lock body scroll
   useEffect(() => {
-    if (open) document.body.classList.add("sidebar-open");
-    else document.body.classList.remove("sidebar-open");
+    if (open) document.body.style.overflow = "hidden";
+    else document.body.style.overflow = "";
   }, [open]);
 
-  // Escape handler
+  // Escape to close
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") closeAll();
@@ -77,45 +85,51 @@ export default function HamburgerMenu({
 
   return (
     <>
-      {/* TOPBAR BUTTON */}
+      {/* TOP BUTTON */}
       <button
         onClick={toggleMenu}
         className="p-2 rounded-md bg-gray-800/70 hover:bg-gray-800 text-white transition"
       >
-        {open ? <FiX className="text-xl" /> : <FiMenu className="text-xl" />}
+        {open ? <FiX size={22} /> : <FiMenu size={22} />}
       </button>
 
-      {/* SIDEBAR */}
+      {/* FULLSCREEN SIDEBAR */}
       <aside
-        className={`fixed top-0 left-0 h-[100dvh] w-[72%] max-w-[360px] z-40 transform transition-transform duration-300
+        className={`fixed inset-0 z-[9999] transition-transform duration-300 ease-[cubic-bezier(.22,1,.36,1)]
           ${open ? "translate-x-0" : "-translate-x-full"}`}
         style={{
-          background: "linear-gradient(180deg, #06080E 0%, #090A0F 100%)",
-          borderRight: "1px solid rgba(255,255,255,0.05)",
+          background:
+            "linear-gradient(180deg, #05070C 0%, #090B12 100%)",
         }}
       >
+        {/* TOP SPACER */}
         <div className="h-16" />
 
-        {/* NAVIGATION */}
-        <nav className="px-4 mt-6 space-y-1 text-gray-200">
-          {[
-            "Home",
-            "Voice Assistant",
-            "Devices",
-            "Scenes",
-            "Automations",
-          ].map((item) => (
+        {/* MENU */}
+        <nav className="px-6 mt-8 space-y-2">
+          {MENU_ITEMS.map((item, i) => (
             <button
               key={item}
-              className="w-full text-left py-3 px-3 rounded-lg hover:bg-gray-800 transition"
+              style={{ animationDelay: `${i * 60}ms` }}
+              className="w-full text-left py-3 px-4 rounded-xl text-lg text-white
+                         opacity-0 translate-x-[-8px] animate-[slideIn_.35s_ease-out_forwards]
+                         hover:bg-white/5 transition"
             >
               {item}
             </button>
           ))}
         </nav>
 
+        {/* LISTENING INDICATOR */}
+        <div className="absolute bottom-28 left-6 right-6">
+          <div className="flex items-center gap-3 text-gray-400 text-sm">
+            <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+            Oyi is listening
+          </div>
+        </div>
+
         {/* USER SECTION */}
-        <div className="absolute bottom-0 left-0 w-full px-4 py-5 border-t border-white/10 bg-black/40">
+        <div className="absolute bottom-0 left-0 w-full px-6 py-5 border-t border-white/10 bg-black/50">
           <div className="flex items-center justify-between">
             <button className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-full bg-[#E11D2E] flex items-center justify-center text-white font-semibold">
@@ -135,16 +149,12 @@ export default function HamburgerMenu({
               onClick={() => setProfileOpen(!profileOpen)}
               className="p-2 text-white/70"
             >
-              {profileOpen ? (
-                <FiChevronUp size={20} />
-              ) : (
-                <FiChevronDown size={20} />
-              )}
+              {profileOpen ? <FiChevronUp /> : <FiChevronDown />}
             </button>
           </div>
 
           {profileOpen && (
-            <div className="mt-3 bg-gray-900/95 border border-white/5 rounded-xl overflow-hidden shadow-xl">
+            <div className="mt-3 bg-gray-900/95 border border-white/5 rounded-xl overflow-hidden">
               <button className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-800 transition">
                 <MdOutlinePerson size={18} /> Profile
               </button>
@@ -170,23 +180,9 @@ export default function HamburgerMenu({
         </div>
       </aside>
 
-      {/* OVERLAY */}
-      {open && (
-        <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-30"
-          onClick={closeAll}
-        />
-      )}
-
-      {/* SETTINGS */}
-      <SlideUpSettings
-        isOpen={showSettings}
-        onClose={() => setShowSettings(false)}
-      />
-
       {/* LOGOUT CONFIRM */}
       {showLogoutConfirm && (
-        <div className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center px-6">
+        <div className="fixed inset-0 z-[10000] bg-black/80 flex items-center justify-center px-6">
           <div className="bg-gray-900 px-6 py-6 rounded-2xl w-full max-w-sm border border-gray-700">
             <p className="text-white text-center font-semibold text-lg mb-6">
               Logout from Oyi OS?
@@ -202,7 +198,7 @@ export default function HamburgerMenu({
 
               <button
                 onClick={handleLogout}
-                className="flex-1 py-3 rounded-xl bg-[#E11D2E] hover:bg-[#C81E2A]"
+                className="flex-1 py-3 rounded-xl bg-[#E11D2E]"
               >
                 Logout
               </button>
@@ -210,6 +206,22 @@ export default function HamburgerMenu({
           </div>
         </div>
       )}
+
+      {/* SETTINGS */}
+      <SlideUpSettings
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+      />
+
+      {/* SLIDE-IN KEYFRAME */}
+      <style jsx>{`
+        @keyframes slideIn {
+          to {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
+      `}</style>
     </>
   );
 }
