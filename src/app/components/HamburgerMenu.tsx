@@ -1,98 +1,201 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { FiMenu, FiX } from "react-icons/fi";
+import { useState, useEffect } from "react";
+import { FiMenu, FiX, FiChevronDown, FiChevronUp, FiLogOut } from "react-icons/fi";
+import { MdOutlinePerson, MdSettings } from "react-icons/md";
+import { useRouter } from "next/navigation";
+import useAuth from "@/hooks/useAuth";
+import SlideUpSettings from "./SlideUpSettings";
 
-const MENU_ITEMS = [
-  "Devices",
-  "Scenes",
-  "Automations",
-  "Access & Security",
-  "Energy",
-  "Community",
-];
+const MENU_ITEMS = ["Devices", "Scenes", "Automations"];
 
-export default function HamburgerMenu() {
-  const [open, setOpen] = useState(false);
+interface HamburgerMenuProps {
+  isOpen?: boolean;
+  onToggle?: (open: boolean) => void;
+}
 
-  // Lock body scroll when menu is open
+export default function HamburgerMenu({
+  isOpen = false,
+  onToggle,
+}: HamburgerMenuProps) {
+  const router = useRouter();
+  const { user } = useAuth();
+
+  const [open, setOpen] = useState(isOpen);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+
+  // Sync with parent
   useEffect(() => {
-    document.body.style.overflow = open ? "hidden" : "";
-    return () => {
-      document.body.style.overflow = "";
-    };
+    setOpen(isOpen);
+  }, [isOpen]);
+
+  // Lock body scroll
+  useEffect(() => {
+    if (open) document.body.style.overflow = "hidden";
+    else document.body.style.overflow = "";
   }, [open]);
+
+  const closeAll = () => {
+    setOpen(false);
+    setProfileOpen(false);
+    setShowLogoutConfirm(false);
+    setShowSettings(false);
+    onToggle?.(false);
+  };
+
+  const toggleMenu = () => {
+    const next = !open;
+    setOpen(next);
+    onToggle?.(next);
+  };
+
+  const handleLogout = () => {
+    document.cookie = "ochiga_estate_auth=; Max-Age=0; path=/";
+    localStorage.clear();
+    router.replace("/auth/login");
+  };
+
+  const initials = user?.username
+    ? user.username[0].toUpperCase()
+    : "U";
 
   return (
     <>
-      {/* TOGGLE BUTTON */}
+      {/* TOP BAR BUTTON */}
       <button
-        onClick={() => setOpen((v) => !v)}
-        className="p-2 rounded-md bg-gray-800/80 text-white backdrop-blur"
+        onClick={toggleMenu}
+        className="p-2 rounded-md bg-black/60 text-white backdrop-blur hover:bg-black/80 transition"
       >
         {open ? <FiX size={22} /> : <FiMenu size={22} />}
       </button>
 
-      {/* BACKDROP (CHATGPT STYLE) */}
+      {/* FULLSCREEN OVERLAY (CHATGPT STYLE) */}
       {open && (
         <div
-          className="fixed inset-0 z-[9998] bg-black/60 backdrop-blur-md transition-opacity"
-          onClick={() => setOpen(false)}
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-md"
+          onClick={closeAll}
         />
       )}
 
-      {/* SLIDE PANEL */}
+      {/* SIDEBAR */}
       <aside
-        className={`fixed top-0 left-0 h-[100dvh] w-[72%] max-w-[360px] z-[9999]
+        className={`fixed top-0 left-0 z-50 h-[100dvh] w-[78%] max-w-[360px]
         transform transition-transform duration-300
         ${open ? "translate-x-0" : "-translate-x-full"}`}
         style={{
-          background: "linear-gradient(180deg, #05070C 0%, #0A0D16 100%)",
+          background:
+            "linear-gradient(180deg, rgba(8,10,18,0.98), rgba(5,6,12,0.98))",
           borderRight: "1px solid rgba(255,255,255,0.06)",
         }}
       >
+        {/* SPACER */}
         <div className="h-16" />
 
-        <nav className="px-6 mt-10 space-y-2">
+        {/* MENU */}
+        <nav className="px-5 mt-6 space-y-2">
           {MENU_ITEMS.map((item, i) => (
             <button
               key={item}
-              data-delay={i}
-              className="menu-item w-full text-left py-3 px-4 rounded-xl
-                         text-lg text-white opacity-0 translate-x-[-8px]
-                         hover:bg-white/5 transition"
+              style={{ animationDelay: `${i * 60}ms` }}
+              className="w-full text-left py-3 px-4 rounded-xl text-lg
+              text-white opacity-0 translate-x-[-8px]
+              animate-[slideIn_.35s_ease-out_forwards]
+              hover:bg-white/5 transition"
             >
               {item}
             </button>
           ))}
         </nav>
+
+        {/* USER AREA */}
+        <div className="absolute bottom-0 left-0 w-full px-5 py-5 border-t border-white/10 bg-black/40">
+          <div className="flex items-center justify-between">
+            <button className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-full bg-[#E11D2E] flex items-center justify-center text-white font-semibold">
+                {initials}
+              </div>
+              <div className="text-left">
+                <p className="text-white text-sm font-semibold">
+                  {user?.username || "Resident"}
+                </p>
+                <p className="text-white/50 text-xs">
+                  {user?.email || "Account"}
+                </p>
+              </div>
+            </button>
+
+            <button
+              onClick={() => setProfileOpen(!profileOpen)}
+              className="text-white/70"
+            >
+              {profileOpen ? <FiChevronUp /> : <FiChevronDown />}
+            </button>
+          </div>
+
+          {profileOpen && (
+            <div className="mt-3 bg-gray-900 border border-white/10 rounded-xl overflow-hidden">
+              <button className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-800 transition">
+                <MdOutlinePerson /> Profile
+              </button>
+
+              <button
+                onClick={() => {
+                  setShowSettings(true);
+                  closeAll();
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-800 transition"
+              >
+                <MdSettings /> Settings
+              </button>
+
+              <button
+                onClick={() => setShowLogoutConfirm(true)}
+                className="w-full flex items-center gap-3 px-4 py-3 text-[#E11D2E] hover:bg-gray-800 transition"
+              >
+                <FiLogOut /> Logout
+              </button>
+            </div>
+          )}
+        </div>
       </aside>
 
-      {/* STAGGER ANIMATION */}
-      <style jsx global>{`
-        .menu-item {
-          animation: slideIn 0.35s ease-out forwards;
-        }
+      {/* SETTINGS SLIDE */}
+      <SlideUpSettings
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+      />
 
-        .menu-item[data-delay="0"] {
-          animation-delay: 0ms;
-        }
-        .menu-item[data-delay="1"] {
-          animation-delay: 60ms;
-        }
-        .menu-item[data-delay="2"] {
-          animation-delay: 120ms;
-        }
-        .menu-item[data-delay="3"] {
-          animation-delay: 180ms;
-        }
-        .menu-item[data-delay="4"] {
-          animation-delay: 240ms;
-        }
-        .menu-item[data-delay="5"] {
-          animation-delay: 300ms;
-        }
+      {/* LOGOUT CONFIRM */}
+      {showLogoutConfirm && (
+        <div className="fixed inset-0 z-[70] bg-black/70 backdrop-blur flex items-center justify-center px-6">
+          <div className="bg-gray-900 p-6 rounded-2xl w-full max-w-sm border border-gray-700">
+            <p className="text-white text-center font-semibold text-lg mb-6">
+              Logout from Oyi OS?
+            </p>
 
+            <div className="flex gap-4">
+              <button
+                onClick={() => setShowLogoutConfirm(false)}
+                className="flex-1 py-3 rounded-xl bg-gray-700"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={handleLogout}
+                className="flex-1 py-3 rounded-xl bg-[#E11D2E]"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* KEYFRAMES */}
+      <style jsx>{`
         @keyframes slideIn {
           to {
             opacity: 1;
