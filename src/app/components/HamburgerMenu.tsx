@@ -13,11 +13,6 @@ import { useRouter } from "next/navigation";
 import useAuth from "@/hooks/useAuth";
 import SlideUpSettings from "./SlideUpSettings";
 
-interface HamburgerMenuProps {
-  isOpen?: boolean;
-  onToggle?: (open: boolean) => void;
-}
-
 const MENU_ITEMS = [
   "Devices",
   "Scenes",
@@ -27,57 +22,27 @@ const MENU_ITEMS = [
   "Community",
 ];
 
-export default function HamburgerMenu({
-  isOpen = false,
-  onToggle,
-}: HamburgerMenuProps) {
+export default function HamburgerMenu() {
   const router = useRouter();
   const { user } = useAuth();
 
-  const [open, setOpen] = useState(isOpen);
+  const [open, setOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
-    setOpen(isOpen);
-  }, [isOpen]);
-
-  // Lock body scroll
-  useEffect(() => {
     if (open) document.body.style.overflow = "hidden";
     else document.body.style.overflow = "";
   }, [open]);
 
-  // Escape to close
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeAll();
+      if (e.key === "Escape") setOpen(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
-
-  const closeAll = () => {
-    setOpen(false);
-    setProfileOpen(false);
-    setShowLogoutConfirm(false);
-    setShowSettings(false);
-    onToggle?.(false);
-  };
-
-  const toggleMenu = () => {
-    const next = !open;
-    setOpen(next);
-    if (!next) setProfileOpen(false);
-    onToggle?.(next);
-  };
-
-  const handleLogout = () => {
-    document.cookie = "ochiga_estate_auth=; Max-Age=0; path=/";
-    localStorage.clear();
-    router.replace("/auth/login");
-  };
 
   const initials = user?.username
     ? user.username[0].toUpperCase()
@@ -85,24 +50,22 @@ export default function HamburgerMenu({
 
   return (
     <>
-      {/* TOP BUTTON */}
+      {/* TOGGLE */}
       <button
-        onClick={toggleMenu}
-        className="p-2 rounded-md bg-gray-800/70 hover:bg-gray-800 text-white transition"
+        onClick={() => setOpen(!open)}
+        className="p-2 rounded-md bg-gray-800/70 hover:bg-gray-800 text-white"
       >
         {open ? <FiX size={22} /> : <FiMenu size={22} />}
       </button>
 
-      {/* FULLSCREEN SIDEBAR */}
+      {/* FULLSCREEN DRAWER */}
       <aside
-        className={`fixed inset-0 z-[9999] transition-transform duration-300 ease-[cubic-bezier(.22,1,.36,1)]
-          ${open ? "translate-x-0" : "-translate-x-full"}`}
+        className={`fixed inset-0 z-[9999] transition-transform duration-300
+        ${open ? "translate-x-0" : "-translate-x-full"}`}
         style={{
-          background:
-            "linear-gradient(180deg, #05070C 0%, #090B12 100%)",
+          background: "linear-gradient(180deg, #05070C 0%, #090B12 100%)",
         }}
       >
-        {/* TOP SPACER */}
         <div className="h-16" />
 
         {/* MENU */}
@@ -110,9 +73,9 @@ export default function HamburgerMenu({
           {MENU_ITEMS.map((item, i) => (
             <button
               key={item}
-              style={{ animationDelay: `${i * 60}ms` }}
-              className="w-full text-left py-3 px-4 rounded-xl text-lg text-white
-                         opacity-0 translate-x-[-8px] animate-[slideIn_.35s_ease-out_forwards]
+              data-delay={i}
+              className="menu-item w-full text-left py-3 px-4 rounded-xl
+                         text-lg text-white opacity-0 translate-x-[-8px]
                          hover:bg-white/5 transition"
             >
               {item}
@@ -128,22 +91,22 @@ export default function HamburgerMenu({
           </div>
         </div>
 
-        {/* USER SECTION */}
+        {/* USER */}
         <div className="absolute bottom-0 left-0 w-full px-6 py-5 border-t border-white/10 bg-black/50">
           <div className="flex items-center justify-between">
-            <button className="flex items-center gap-3">
+            <div className="flex gap-3 items-center">
               <div className="w-12 h-12 rounded-full bg-[#E11D2E] flex items-center justify-center text-white font-semibold">
                 {initials}
               </div>
-              <div className="text-left">
-                <p className="text-white font-semibold text-sm">
+              <div>
+                <p className="text-white text-sm font-semibold">
                   {user?.username || "Resident"}
                 </p>
                 <p className="text-white/50 text-xs">
                   {user?.email || "View profile"}
                 </p>
               </div>
-            </button>
+            </div>
 
             <button
               onClick={() => setProfileOpen(!profileOpen)}
@@ -154,37 +117,37 @@ export default function HamburgerMenu({
           </div>
 
           {profileOpen && (
-            <div className="mt-3 bg-gray-900/95 border border-white/5 rounded-xl overflow-hidden">
-              <button className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-800 transition">
-                <MdOutlinePerson size={18} /> Profile
+            <div className="mt-3 bg-gray-900 rounded-xl border border-white/5">
+              <button className="w-full px-4 py-3 flex gap-3 hover:bg-gray-800">
+                <MdOutlinePerson /> Profile
               </button>
 
               <button
                 onClick={() => {
                   setShowSettings(true);
-                  closeAll();
+                  setOpen(false);
                 }}
-                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-800 transition"
+                className="w-full px-4 py-3 flex gap-3 hover:bg-gray-800"
               >
-                <MdSettings size={18} /> Settings
+                <MdSettings /> Settings
               </button>
 
               <button
                 onClick={() => setShowLogoutConfirm(true)}
-                className="w-full flex items-center gap-3 px-4 py-3 text-[#E11D2E] hover:bg-gray-800 transition"
+                className="w-full px-4 py-3 flex gap-3 text-red-500 hover:bg-gray-800"
               >
-                <FiLogOut size={18} /> Logout
+                <FiLogOut /> Logout
               </button>
             </div>
           )}
         </div>
       </aside>
 
-      {/* LOGOUT CONFIRM */}
+      {/* LOGOUT MODAL */}
       {showLogoutConfirm && (
         <div className="fixed inset-0 z-[10000] bg-black/80 flex items-center justify-center px-6">
-          <div className="bg-gray-900 px-6 py-6 rounded-2xl w-full max-w-sm border border-gray-700">
-            <p className="text-white text-center font-semibold text-lg mb-6">
+          <div className="bg-gray-900 p-6 rounded-2xl w-full max-w-sm border border-gray-700">
+            <p className="text-white text-center font-semibold mb-6">
               Logout from Oyi OS?
             </p>
 
@@ -197,7 +160,7 @@ export default function HamburgerMenu({
               </button>
 
               <button
-                onClick={handleLogout}
+                onClick={() => router.replace("/auth/login")}
                 className="flex-1 py-3 rounded-xl bg-[#E11D2E]"
               >
                 Logout
@@ -207,14 +170,18 @@ export default function HamburgerMenu({
         </div>
       )}
 
-      {/* SETTINGS */}
       <SlideUpSettings
         isOpen={showSettings}
         onClose={() => setShowSettings(false)}
       />
 
-      {/* SLIDE-IN KEYFRAME */}
+      {/* ANIMATION */}
       <style jsx>{`
+        .menu-item {
+          animation: slideIn 0.35s ease-out forwards;
+          animation-delay: calc(attr(data-delay number) * 60ms);
+        }
+
         @keyframes slideIn {
           to {
             opacity: 1;
