@@ -4,9 +4,18 @@ import { FaMicrophone, FaPaperPlane, FaStop } from "react-icons/fa";
 import { useEffect, useRef, useState } from "react";
 
 type VoiceState = "idle" | "recording" | "processing";
+type Intent = "default" | "light" | "ac" | "security" | "tv";
 
 const BAR_COUNT = 32;
 const SMOOTHING = 0.85;
+
+const INTENT_COLORS: Record<Intent, string> = {
+  default: "#E11D2E",
+  light: "#E11D2E",
+  ac: "#3B82F6",
+  security: "#10B981",
+  tv: "#8B5CF6",
+};
 
 export default function ChatFooter({
   input,
@@ -19,6 +28,7 @@ export default function ChatFooter({
 }) {
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
   const [isSending, setIsSending] = useState(false);
+  const [intent, setIntent] = useState<Intent>("default");
 
   const recognitionRef = useRef<any>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -26,13 +36,30 @@ export default function ChatFooter({
   const barsRef = useRef<HTMLDivElement[]>([]);
   const smoothValues = useRef<number[]>(Array(BAR_COUNT).fill(0));
 
-  const canSend =
-    input.trim().length > 0 &&
-    !isSending &&
-    voiceState === "idle";
+  const canSend = input.trim().length > 0 && !isSending && voiceState === "idle";
 
   /* -----------------------------
-     SPEECH RECOGNITION
+     HAPTIC
+  ------------------------------ */
+  function vibrate(ms: number) {
+    navigator.vibrate?.(ms);
+  }
+
+  /* -----------------------------
+     INTENT INFERENCE (LIVE)
+  ------------------------------ */
+  function inferIntent(text: string): Intent {
+    const t = text.toLowerCase();
+    if (t.includes("light")) return "light";
+    if (t.includes("ac") || t.includes("air")) return "ac";
+    if (t.includes("door") || t.includes("lock") || t.includes("security"))
+      return "security";
+    if (t.includes("tv")) return "tv";
+    return "default";
+  }
+
+  /* -----------------------------
+     SPEECH RECOGNITION + WAKE WORD
   ------------------------------ */
   useEffect(() => {
     const SpeechRecognition =
@@ -43,24 +70,42 @@ export default function ChatFooter({
 
     const recognition = new SpeechRecognition();
     recognition.lang = "en-US";
-    recognition.continuous = false;
-    recognition.interimResults = false;
+    recognition.continuous = true;
+    recognition.interimResults = true;
 
     recognition.onresult = (e: any) => {
-      const transcript = e.results[0][0].transcript;
-      setInput(transcript);
+      const transcript = Array.from(e.results)
+        .map((r: any) => r[0].transcript)
+        .join("");
+
+      // 🔑 WAKE WORD
+      if (
+        voiceState === "idle" &&
+        transcript.toLowerCase().includes("hey oyi")
+      ) {
+        vibrate(30);
+        startRecording();
+        return;
+      }
+
+      if (voiceState === "recording") {
+        setInput(transcript);
+        setIntent(inferIntent(transcript));
+      }
     };
 
     recognition.onend = () => {
-      stopAudio();
-      setVoiceState("idle");
+      if (voiceState === "recording") {
+        stopRecording();
+      }
     };
 
     recognitionRef.current = recognition;
-  }, [setInput]);
+    recognition.start(); // passive always-on
+  }, [voiceState]);
 
   /* -----------------------------
-     AUDIO VISUALIZER (SMOOTH)
+     AUDIO VISUALIZER
   ------------------------------ */
   async function startAudio() {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -87,12 +132,10 @@ export default function ChatFooter({
 
   function animate() {
     if (!analyserRef.current) return;
-
     const data = new Uint8Array(analyserRef.current.fftSize);
 
     const loop = () => {
       if (!analyserRef.current) return;
-
       analyserRef.current.getByteTimeDomainData(data);
 
       for (let i = 0; i < BAR_COUNT; i++) {
@@ -102,10 +145,9 @@ export default function ChatFooter({
         );
 
         const avg =
-          slice.reduce((a, b) => a + Math.abs(b - 128), 0) /
-          slice.length;
+          slice.reduce((a, b) => a + Math.abs(b - 128), 0) / slice.length;
 
-        const target = Math.min(32, avg * 1.4);
+        const target = Math.min(36, avg * 1.5);
         smoothValues.current[i] =
           smoothValues.current[i] * SMOOTHING +
           target * (1 - SMOOTHING);
@@ -124,16 +166,20 @@ export default function ChatFooter({
      CONTROLS
   ------------------------------ */
   function startRecording() {
-    if (!recognitionRef.current) return;
+    vibrate(20);
+    setIntent("default");
     setInput("");
     setVoiceState("recording");
-    recognitionRef.current.start();
+    recognitionRef.current?.start();
     startAudio();
   }
 
   function stopRecording() {
+    vibrate(40);
     setVoiceState("processing");
     recognitionRef.current?.stop();
+    stopAudio();
+    setVoiceState("idle");
   }
 
   async function handleSend() {
@@ -153,16 +199,10 @@ export default function ChatFooter({
         {/* MIC / STOP */}
         <button
           onClick={
-            voiceState === "recording"
-              ? stopRecording
-              : startRecording
+            voiceState === "recording" ? stopRecording : startRecording
           }
-          className={`w-10 h-10 rounded-full flex items-center justify-center transition
-            ${
-              voiceState === "recording"
-                ? "bg-[#E11D2E]"
-                : "bg-gray-700 hover:bg-gray-600"
-            }
+          className={`w-10 h-10 rounded-full flex items-center justify-center
+            ${voiceState === "recording" ? "bg-red-600" : "bg-gray-700"}
           `}
         >
           {voiceState === "recording" ? (
@@ -174,15 +214,16 @@ export default function ChatFooter({
 
         {/* INPUT / VISUALIZER */}
         {voiceState === "recording" ? (
-          <div className="flex-1 flex items-end gap-[2px] h-8">
+          <div className="flex-1 flex items-end gap-[2px] h-9">
             {Array.from({ length: BAR_COUNT }).map((_, i) => (
               <div
                 key={i}
-                ref={(el) => {
-                  if (el) barsRef.current[i] = el;
+                ref={(el) => el && (barsRef.current[i] = el)}
+                className="flex-1 rounded-full transition-[height]"
+                style={{
+                  height: 6,
+                  backgroundColor: INTENT_COLORS[intent],
                 }}
-                className="flex-1 bg-[#E11D2E] rounded-full transition-[height] duration-75"
-                style={{ height: 6 }}
               />
             ))}
           </div>
@@ -200,12 +241,8 @@ export default function ChatFooter({
         <button
           onClick={handleSend}
           disabled={!canSend}
-          className={`w-10 h-10 rounded-full flex items-center justify-center transition
-            ${
-              canSend
-                ? "bg-[#E11D2E] hover:bg-[#C81E2A]"
-                : "bg-gray-700 opacity-50 cursor-not-allowed"
-            }
+          className={`w-10 h-10 rounded-full flex items-center justify-center
+            ${canSend ? "bg-[#E11D2E]" : "bg-gray-700 opacity-50"}
           `}
         >
           <FaPaperPlane className="text-white text-[13px]" />
