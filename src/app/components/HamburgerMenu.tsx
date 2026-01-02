@@ -1,13 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import {
-  FiMenu,
-  FiX,
-  FiChevronDown,
-  FiChevronUp,
-  FiLogOut,
-} from "react-icons/fi";
+import { FiMenu, FiX, FiChevronDown, FiChevronUp, FiLogOut } from "react-icons/fi";
 import { MdOutlinePerson, MdSettings } from "react-icons/md";
 import { useRouter } from "next/navigation";
 import useAuth from "@/hooks/useAuth";
@@ -32,8 +26,7 @@ export default function HamburgerMenu() {
   const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
-    if (open) document.body.style.overflow = "hidden";
-    else document.body.style.overflow = "";
+    document.body.style.overflow = open ? "hidden" : "";
   }, [open]);
 
   useEffect(() => {
@@ -44,13 +37,11 @@ export default function HamburgerMenu() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const initials = user?.username
-    ? user.username[0].toUpperCase()
-    : "U";
+  const initials = user?.username?.[0]?.toUpperCase() ?? "U";
 
   return (
     <>
-      {/* TOGGLE */}
+      {/* TOGGLE BUTTON */}
       <button
         onClick={() => setOpen(!open)}
         className="p-2 rounded-md bg-gray-800/70 hover:bg-gray-800 text-white"
@@ -58,23 +49,27 @@ export default function HamburgerMenu() {
         {open ? <FiX size={22} /> : <FiMenu size={22} />}
       </button>
 
-      {/* FULLSCREEN DRAWER */}
+      {/* FULLSCREEN MENU */}
       <aside
-        className={`fixed inset-0 z-[9999] transition-transform duration-300
-        ${open ? "translate-x-0" : "-translate-x-full"}`}
+        className={`fixed inset-0 z-[9999] transform transition-transform duration-300 ${
+          open ? "translate-x-0" : "-translate-x-full"
+        }`}
         style={{
           background: "linear-gradient(180deg, #05070C 0%, #090B12 100%)",
         }}
       >
         <div className="h-16" />
 
-        {/* MENU */}
+        {/* MENU ITEMS */}
         <nav className="px-6 mt-8 space-y-2">
           {MENU_ITEMS.map((item, i) => (
             <button
               key={item}
-              data-delay={i}
-              className="menu-item w-full text-left py-3 px-4 rounded-xl
+              style={{
+                animation: "slideIn 0.35s ease-out forwards",
+                animationDelay: `${i * 60}ms`,
+              }}
+              className="w-full text-left py-3 px-4 rounded-xl
                          text-lg text-white opacity-0 translate-x-[-8px]
                          hover:bg-white/5 transition"
             >
@@ -91,7 +86,7 @@ export default function HamburgerMenu() {
           </div>
         </div>
 
-        {/* USER */}
+        {/* USER FOOTER */}
         <div className="absolute bottom-0 left-0 w-full px-6 py-5 border-t border-white/10 bg-black/50">
           <div className="flex items-center justify-between">
             <div className="flex gap-3 items-center">
@@ -175,13 +170,8 @@ export default function HamburgerMenu() {
         onClose={() => setShowSettings(false)}
       />
 
-      {/* ANIMATION */}
-      <style jsx>{`
-        .menu-item {
-          animation: slideIn 0.35s ease-out forwards;
-          animation-delay: calc(attr(data-delay number) * 60ms);
-        }
-
+      {/* GLOBAL KEYFRAMES */}
+      <style jsx global>{`
         @keyframes slideIn {
           to {
             opacity: 1;
