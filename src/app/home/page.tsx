@@ -22,9 +22,6 @@ import useAuth from "../../hooks/useAuth";
 // STORES
 import { useEventStore } from "../../store/useEventStore";
 
-// ✅ SUMMARY ROUTER (STEP 1)
-import { summaryRouter } from "@/lib/summaryRouter";
-
 type ChatMessage = {
   id: string;
   role: "assistant";
@@ -35,6 +32,61 @@ type ChatMessage = {
   time: string;
   lastUpdated: number;
 };
+
+/**
+ * Authoritative UI intent inference
+ * (UI decides, AI assists)
+ */
+function inferPanel(aiPanel?: string | null, userText?: string): string | null {
+  const src = `${aiPanel || ""} ${userText || ""}`.toLowerCase();
+
+  if (src.includes("summary") || src.includes("status")) return "home_summary";
+  if (src.includes("room")) return "room_summary";
+  if (src.includes("wallet") || src.includes("payment")) return "wallet";
+  if (src.includes("community") || src.includes("announcement")) return "community";
+  if (src.includes("visitor") || src.includes("guest")) return "visitor";
+
+  if (src.includes("light")) return "light";
+  if (src.includes("ac") || src.includes("air")) return "ac";
+  if (src.includes("tv")) return "tv";
+  if (src.includes("door") || src.includes("lock")) return "door";
+  if (src.includes("cctv") || src.includes("camera")) return "cctv";
+  if (src.includes("device")) return "devices";
+
+  return null;
+}
+
+/**
+ * Human, enterprise-grade suggestion titles
+ */
+function getSuggestionTitle(intent: string | null): string {
+  switch (intent) {
+    case "ac":
+      return "Adjust air conditioner";
+    case "light":
+      return "Control lights";
+    case "tv":
+      return "Control TV";
+    case "door":
+      return "Manage door access";
+    case "visitor":
+      return "Manage visitors";
+    case "cctv":
+      return "View CCTV feed";
+    case "devices":
+      return "View all devices";
+    case "home_summary":
+      return "View home summary";
+    case "room_summary":
+      return "View room status";
+    case "wallet":
+      return "Open wallet";
+    case "community":
+      return "View community updates";
+    default:
+      return "Continue";
+  }
+}
 
 export default function HomePage() {
   const [input, setInput] = useState("");
@@ -61,31 +113,28 @@ export default function HomePage() {
   async function handleSend(text?: string) {
     const command = (text ?? input).trim();
     if (!command) return;
+
     setInput("");
 
     const now = new Date();
-    const time = now.toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    const time = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     const stamp = now.getTime();
 
     try {
       const resp = await aiService.chat(command);
       const reply = resp.reply ?? `Processed: "${command}"`;
 
-      // ✅ AUTHORITATIVE INTENT RESOLUTION
-      const intent = summaryRouter(resp.panel, command);
+      const panel = inferPanel(resp.panel, command);
       const deviceId = resp.deviceId;
-      const panelKey = intent ? `${intent}:${deviceId || "default"}` : null;
+      const panelKey = panel ? `${panel}:${deviceId || "default"}` : null;
 
-      // ---- CHAT + PANEL STATE (SINGLE INSTANCE RULE) ----
+      // ---------- CHAT + PANEL STATE ----------
       setMessages((prev) => {
         if (!panelKey) return prev;
 
         const existing = prev.find((m) => m.panelKey === panelKey);
 
-        // 🔁 PANEL EXISTS → UPDATE & MOVE TO LATEST
+        // Update & move panel
         if (existing) {
           return [
             ...prev.filter((m) => m.id !== existing.id),
@@ -98,14 +147,14 @@ export default function HomePage() {
           ];
         }
 
-        // 🆕 NEW PANEL
+        // Create new panel
         return [
           ...prev,
           {
             id: createId(),
             role: "assistant",
             content: reply,
-            panel: intent,
+            panel,
             panelKey,
             deviceId,
             time,
@@ -114,18 +163,15 @@ export default function HomePage() {
         ];
       });
 
-      // ---- DEVICE DISCOVERY ----
-      if (intent === "devices") {
-        const estateId =
-          user?.estate_id ?? localStorage.getItem("ochiga_estate");
-        const devices = await deviceService.getDevices(
-          estateId ?? undefined
-        );
+      // ---------- DEVICE DISCOVERY ----------
+      if (panel === "devices") {
+        const estateId = user?.estate_id ?? localStorage.getItem("ochiga_estate");
+        const devices = await deviceService.getDevices(estateId ?? undefined);
         setDiscoveredDevices(devices || []);
       }
 
-      // ---- EVENT → DYNAMIC SUGGESTION CARD ----
-      if (intent) {
+      // ---------- 🔥 CLEAN EVENT PUSH ----------
+      if (panel) {
         pushEvent({
           id: createId(),
           type: "info",
@@ -133,13 +179,10 @@ export default function HomePage() {
           priority: "medium",
           actionable: true,
 
-          // Button text
-          title: reply
-            .replace(/^okay[, ]*/i, "")
-            .replace(/[".]/g, "")
-            .trim(),
+          // HUMAN SUGGESTION (NOT AI TEXT)
+          title: getSuggestionTitle(panel),
 
-          // Re-executed command
+          // Replayed when tapped
           message: command,
 
           timestamp: stamp,
@@ -216,7 +259,7 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* DYNAMIC SUGGESTIONS */}
+        {/* SUGGESTIONS */}
         <div className="fixed bottom-[88px] left-0 right-0 z-40 px-4">
           <div className="max-w-3xl mx-auto">
             <DynamicSuggestionCard onSend={(t) => handleSend(t)} />
