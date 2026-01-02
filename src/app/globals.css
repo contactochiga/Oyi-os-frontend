@@ -19,6 +19,16 @@ body.sidebar-open {
   touch-action: none;
 }
 
+/* -------------------------------------------------
+   Sidebar-open state control (CRITICAL FIX)
+   Hide chat footer & suggestions when menu is open
+-------------------------------------------------- */
+
+body.sidebar-open .chat-footer,
+body.sidebar-open .chat-suggestions {
+  display: none !important;
+}
+
 /* Improve text rendering */
 body {
   -webkit-font-smoothing: antialiased;
