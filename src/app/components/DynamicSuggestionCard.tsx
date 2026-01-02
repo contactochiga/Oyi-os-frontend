@@ -10,20 +10,12 @@ export default function DynamicSuggestionCard({
 }) {
   const { events, dismissEvent, clearExpired } = useEventStore();
 
-  /**
-   * Auto-clean expired events
-   */
+  // Auto-expiry cleanup
   useEffect(() => {
-    const interval = setInterval(() => {
-      clearExpired();
-    }, 2000);
-
-    return () => clearInterval(interval);
+    const id = setInterval(clearExpired, 1500);
+    return () => clearInterval(id);
   }, [clearExpired]);
 
-  /**
-   * Only show active, non-dismissed, actionable events
-   */
   const visible = events.filter(
     (e) =>
       !e.dismissed &&
@@ -34,7 +26,7 @@ export default function DynamicSuggestionCard({
   if (visible.length === 0) return null;
 
   return (
-    <div className="flex gap-3 overflow-x-auto py-2">
+    <div className="flex gap-3 overflow-x-auto py-2 scrollbar-hide">
       {visible.map((e) => (
         <button
           key={e.id}
