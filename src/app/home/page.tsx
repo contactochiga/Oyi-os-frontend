@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 
 // COMPONENTS
 import LayoutWrapper from "../components/LayoutWrapper";
@@ -34,7 +34,7 @@ type ChatMessage = {
 };
 
 /**
- * UI-driven intent inference
+ * UI-driven intent inference (authoritative UI)
  */
 function inferPanel(aiPanel?: string | null, userText?: string): string | null {
   const src = `${aiPanel || ""} ${userText || ""}`.toLowerCase();
@@ -82,12 +82,12 @@ export default function HomePage() {
       const deviceId = resp.deviceId;
       const panelKey = panel ? `${panel}:${deviceId || "default"}` : null;
 
+      // ---- CHAT + PANEL STATE ----
       setMessages((prev) => {
         if (!panelKey) return prev;
 
         const existing = prev.find((m) => m.panelKey === panelKey);
 
-        // UPDATE EXISTING PANEL
         if (existing) {
           return [
             ...prev.filter((m) => m.id !== existing.id),
@@ -100,7 +100,6 @@ export default function HomePage() {
           ];
         }
 
-        // CREATE NEW PANEL
         return [
           ...prev,
           {
@@ -116,19 +115,35 @@ export default function HomePage() {
         ];
       });
 
+      // ---- DEVICE DISCOVERY ----
       if (panel === "devices") {
         const estateId = user?.estate_id ?? localStorage.getItem("ochiga_estate");
         const devices = await deviceService.getDevices(estateId ?? undefined);
         setDiscoveredDevices(devices || []);
       }
 
-      pushEvent({
-        id: createId(),
-        type: "info",
-        title: "Oyi",
-        message: reply,
-        timestamp: stamp,
-      });
+      // ---- ✅ CORRECT EVENT PUSH (FIXED OYI BUG) ----
+      if (panel) {
+        pushEvent({
+          id: createId(),
+          type: "info",
+          category: "assistant",
+          priority: "medium",
+          actionable: true,
+
+          // This is what the button shows
+          title: reply
+            .replace(/^Okay\s*—\s*I processed\s*/i, "")
+            .replace(/[".]/g, "")
+            .trim(),
+
+          // This is what gets re-sent
+          message: command,
+
+          timestamp: stamp,
+          expiresAt: Date.now() + 60_000, // auto-dismiss after 1 min
+        });
+      }
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -200,21 +215,14 @@ export default function HomePage() {
         </div>
 
         {/* SUGGESTIONS */}
-        <div className="chat-suggestions fixed bottom-[88px] left-0 right-0 z-40 px-4">
+        <div className="fixed bottom-[88px] left-0 right-0 z-40 px-4">
           <div className="max-w-3xl mx-auto">
-            <DynamicSuggestionCard
-              suggestions={[
-                { id: "1", title: "Turn on living room lights" },
-                { id: "2", title: "Schedule visitor" },
-                { id: "3", title: "Open CCTV feed" },
-              ]}
-              onSend={(t) => handleSend(t)}
-            />
+            <DynamicSuggestionCard onSend={(t) => handleSend(t)} />
           </div>
         </div>
 
         {/* FOOTER */}
-        <div className="chat-footer fixed bottom-0 left-0 right-0 p-4 bg-gray-900 border-t border-gray-700 z-50">
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-gray-900 border-t border-gray-700 z-50">
           <ChatFooter input={input} setInput={setInput} onSend={() => handleSend()} />
         </div>
 
