@@ -38,10 +38,7 @@ export default function ReactQueryProvider({
       {children}
 
       {showDevtools && (
-        <ReactQueryDevtools
-          initialIsOpen={false}
-          position="bottom-left"
-        />
+        <ReactQueryDevtools initialIsOpen={false} />
       )}
     </QueryClientProvider>
   );
