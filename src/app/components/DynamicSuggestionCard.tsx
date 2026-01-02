@@ -1,16 +1,28 @@
-"use client";
+""use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { DynamicItem } from "@/types/dynamic";
+
+export type DynamicItem = {
+  id: string;
+  type: "action" | "notification" | "alert" | "info";
+  title: string;
+  subtitle?: string;
+  intent?: "light" | "ac" | "tv" | "door" | "security" | "visitor";
+  priority?: "low" | "normal" | "high";
+  autoDismiss?: boolean;
+  expiresAt?: number;
+  onSelect?: () => void;
+};
 
 export default function DynamicSuggestionCard({
-  items,
+  items = [], // ✅ DEFAULT VALUE (CRITICAL)
 }: {
-  items: DynamicItem[];
+  items?: DynamicItem[];
 }) {
+  if (!Array.isArray(items) || items.length === 0) return null;
+
   const now = Date.now();
 
-  // Filter expired items
   const visibleItems = items.filter(
     (i) => !i.expiresAt || i.expiresAt > now
   );
@@ -48,9 +60,7 @@ function SuggestionItem({ item }: { item: DynamicItem }) {
   }[item.type];
 
   const priorityRing =
-    item.priority === "high"
-      ? "ring-2 ring-[#E11D2E]/40"
-      : "";
+    item.priority === "high" ? "ring-2 ring-[#E11D2E]/40" : "";
 
   return (
     <button
