@@ -5,6 +5,9 @@ import { useEffect, useRef, useState } from "react";
 
 type VoiceState = "idle" | "recording" | "processing";
 
+const BAR_COUNT = 32;
+const SMOOTHING = 0.85;
+
 export default function ChatFooter({
   input,
   setInput,
@@ -18,18 +21,20 @@ export default function ChatFooter({
   const [isSending, setIsSending] = useState(false);
 
   const recognitionRef = useRef<any>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
   const barsRef = useRef<HTMLDivElement[]>([]);
+  const smoothValues = useRef<number[]>(Array(BAR_COUNT).fill(0));
 
-  const canSend = input.trim().length > 0 && !isSending && voiceState === "idle";
+  const canSend =
+    input.trim().length > 0 &&
+    !isSending &&
+    voiceState === "idle";
 
-  /* ---------------------------
-     INIT SPEECH RECOGNITION
-  ---------------------------- */
+  /* -----------------------------
+     SPEECH RECOGNITION
+  ------------------------------ */
   useEffect(() => {
-    if (typeof window === "undefined") return;
-
     const SpeechRecognition =
       (window as any).SpeechRecognition ||
       (window as any).webkitSpeechRecognition;
@@ -54,14 +59,16 @@ export default function ChatFooter({
     recognitionRef.current = recognition;
   }, [setInput]);
 
-  /* ---------------------------
-     AUDIO VISUALIZER
-  ---------------------------- */
+  /* -----------------------------
+     AUDIO VISUALIZER (SMOOTH)
+  ------------------------------ */
   async function startAudio() {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     const audioCtx = new AudioContext();
     const analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 64;
+
+    analyser.fftSize = 128;
+    analyser.smoothingTimeConstant = 0.8;
 
     const source = audioCtx.createMediaStreamSource(stream);
     source.connect(analyser);
@@ -69,7 +76,7 @@ export default function ChatFooter({
     audioCtxRef.current = audioCtx;
     analyserRef.current = analyser;
 
-    animateBars();
+    animate();
   }
 
   function stopAudio() {
@@ -78,19 +85,34 @@ export default function ChatFooter({
     analyserRef.current = null;
   }
 
-  function animateBars() {
+  function animate() {
     if (!analyserRef.current) return;
 
-    const buffer = new Uint8Array(analyserRef.current.frequencyBinCount);
+    const data = new Uint8Array(analyserRef.current.fftSize);
 
     const loop = () => {
       if (!analyserRef.current) return;
 
-      analyserRef.current.getByteFrequencyData(buffer);
-      buffer.slice(0, barsRef.current.length).forEach((v, i) => {
-        const h = Math.max(6, v / 2);
-        barsRef.current[i].style.height = `${h}px`;
-      });
+      analyserRef.current.getByteTimeDomainData(data);
+
+      for (let i = 0; i < BAR_COUNT; i++) {
+        const slice = data.slice(
+          (i * data.length) / BAR_COUNT,
+          ((i + 1) * data.length) / BAR_COUNT
+        );
+
+        const avg =
+          slice.reduce((a, b) => a + Math.abs(b - 128), 0) /
+          slice.length;
+
+        const target = Math.min(32, avg * 1.4);
+        smoothValues.current[i] =
+          smoothValues.current[i] * SMOOTHING +
+          target * (1 - SMOOTHING);
+
+        const bar = barsRef.current[i];
+        if (bar) bar.style.height = `${smoothValues.current[i]}px`;
+      }
 
       requestAnimationFrame(loop);
     };
@@ -98,9 +120,9 @@ export default function ChatFooter({
     loop();
   }
 
-  /* ---------------------------
-     MIC CONTROLS
-  ---------------------------- */
+  /* -----------------------------
+     CONTROLS
+  ------------------------------ */
   function startRecording() {
     if (!recognitionRef.current) return;
     setInput("");
@@ -114,9 +136,6 @@ export default function ChatFooter({
     recognitionRef.current?.stop();
   }
 
-  /* ---------------------------
-     SEND
-  ---------------------------- */
   async function handleSend() {
     if (!canSend) return;
     setIsSending(true);
@@ -129,15 +148,16 @@ export default function ChatFooter({
 
   return (
     <div className="max-w-3xl mx-auto">
-      <div className="relative flex items-center bg-gray-800 rounded-full p-2 gap-2">
+      <div className="relative flex items-center bg-gray-800 rounded-full px-3 py-2 gap-3">
 
         {/* MIC / STOP */}
         <button
           onClick={
-            voiceState === "recording" ? stopRecording : startRecording
+            voiceState === "recording"
+              ? stopRecording
+              : startRecording
           }
-          className={`
-            w-10 h-10 rounded-full flex items-center justify-center transition
+          className={`w-10 h-10 rounded-full flex items-center justify-center transition
             ${
               voiceState === "recording"
                 ? "bg-[#E11D2E]"
@@ -152,17 +172,17 @@ export default function ChatFooter({
           )}
         </button>
 
-        {/* INPUT OR VISUALIZER */}
+        {/* INPUT / VISUALIZER */}
         {voiceState === "recording" ? (
-          <div className="flex-1 flex items-center gap-1 px-3 h-8">
-            {Array.from({ length: 10 }).map((_, i) => (
+          <div className="flex-1 flex items-end gap-[2px] h-8">
+            {Array.from({ length: BAR_COUNT }).map((_, i) => (
               <div
                 key={i}
                 ref={(el) => {
                   if (el) barsRef.current[i] = el;
                 }}
-                className="w-[3px] bg-[#E11D2E] rounded-full transition-all"
-                style={{ height: 8 }}
+                className="flex-1 bg-[#E11D2E] rounded-full transition-[height] duration-75"
+                style={{ height: 6 }}
               />
             ))}
           </div>
@@ -172,10 +192,7 @@ export default function ChatFooter({
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSend()}
             placeholder="Ask Oyi…"
-            className="
-              flex-1 bg-transparent outline-none px-2
-              text-sm text-white placeholder-gray-400
-            "
+            className="flex-1 bg-transparent outline-none px-2 text-sm text-white placeholder-gray-400"
           />
         )}
 
@@ -183,12 +200,11 @@ export default function ChatFooter({
         <button
           onClick={handleSend}
           disabled={!canSend}
-          className={`
-            w-10 h-10 rounded-full flex items-center justify-center transition
+          className={`w-10 h-10 rounded-full flex items-center justify-center transition
             ${
               canSend
                 ? "bg-[#E11D2E] hover:bg-[#C81E2A]"
-                : "bg-gray-700 cursor-not-allowed opacity-60"
+                : "bg-gray-700 opacity-50 cursor-not-allowed"
             }
           `}
         >
