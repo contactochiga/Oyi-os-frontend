@@ -15,58 +15,26 @@ import SlideUpSettings from "./SlideUpSettings";
 
 const MENU_ITEMS = ["Devices", "Scenes", "Automations"];
 
-interface HamburgerMenuProps {
-  isOpen?: boolean;
-  onToggle?: (open: boolean) => void;
-}
-
-export default function HamburgerMenu({
-  isOpen = false,
-  onToggle,
-}: HamburgerMenuProps) {
+export default function HamburgerMenu() {
   const router = useRouter();
   const { user, logout } = useAuth();
 
-  const [open, setOpen] = useState(isOpen);
+  const [open, setOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
-  /* sync with parent */
-  useEffect(() => {
-    setOpen(isOpen);
-  }, [isOpen]);
-
-  /* lock body scroll */
+  /* lock entire app scroll */
   useEffect(() => {
     if (open) document.body.classList.add("sidebar-open");
     else document.body.classList.remove("sidebar-open");
   }, [open]);
-
-  /* escape key */
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        closeAll();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
 
   const closeAll = () => {
     setOpen(false);
     setProfileOpen(false);
     setShowLogoutConfirm(false);
     setShowSettings(false);
-    onToggle?.(false);
-  };
-
-  const toggleMenu = () => {
-    const next = !open;
-    setOpen(next);
-    if (!next) setProfileOpen(false);
-    onToggle?.(next);
   };
 
   const handleLogout = async () => {
@@ -81,25 +49,25 @@ export default function HamburgerMenu({
 
   return (
     <>
-      {/* MENU BUTTON */}
+      {/* HAMBURGER BUTTON */}
       <button
-        onClick={toggleMenu}
+        onClick={() => setOpen(!open)}
         className="p-2 rounded-md bg-black/60 text-white backdrop-blur hover:bg-black/80 transition"
       >
         {open ? <FiX size={22} /> : <FiMenu size={22} />}
       </button>
 
-      {/* OVERLAY */}
+      {/* FULLSCREEN OVERLAY — COVERS FOOTER TOO */}
       {open && (
         <div
-          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
+          className="fixed inset-0 z-[90] bg-black/60 backdrop-blur-md"
           onClick={closeAll}
         />
       )}
 
       {/* SIDEBAR */}
       <aside
-        className={`fixed top-0 left-0 z-50 h-[100dvh] w-[78%] max-w-[360px]
+        className={`fixed top-0 left-0 z-[100] h-[100dvh] w-[78%] max-w-[360px]
         transform transition-transform duration-300
         ${open ? "translate-x-0" : "-translate-x-full"}`}
         style={{
@@ -108,9 +76,10 @@ export default function HamburgerMenu({
           borderRight: "1px solid rgba(255,255,255,0.06)",
         }}
       >
+        {/* spacer for top bar */}
         <div className="h-16" />
 
-        {/* MENU ITEMS */}
+        {/* MENU */}
         <nav className="px-5 mt-6 space-y-2">
           {MENU_ITEMS.map((item) => (
             <button
@@ -123,7 +92,7 @@ export default function HamburgerMenu({
           ))}
         </nav>
 
-        {/* USER AREA */}
+        {/* PROFILE + SETTINGS + LOGOUT */}
         <div className="absolute bottom-0 left-0 w-full px-5 py-5 border-t border-white/10 bg-black/40">
           <div className="flex items-center justify-between">
             <button className="flex items-center gap-3">
@@ -175,7 +144,7 @@ export default function HamburgerMenu({
         </div>
       </aside>
 
-      {/* SETTINGS */}
+      {/* SETTINGS SLIDE-UP */}
       <SlideUpSettings
         isOpen={showSettings}
         onClose={() => setShowSettings(false)}
@@ -183,7 +152,7 @@ export default function HamburgerMenu({
 
       {/* LOGOUT CONFIRM */}
       {showLogoutConfirm && (
-        <div className="fixed inset-0 z-[70] bg-black/70 backdrop-blur flex items-center justify-center px-6">
+        <div className="fixed inset-0 z-[120] bg-black/70 backdrop-blur flex items-center justify-center px-6">
           <div className="bg-gray-900 p-6 rounded-2xl w-full max-w-sm border border-gray-700">
             <p className="text-white text-center font-semibold text-lg mb-6">
               Logout from Oyi OS?
