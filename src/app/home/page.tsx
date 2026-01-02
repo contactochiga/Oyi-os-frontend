@@ -22,6 +22,9 @@ import useAuth from "../../hooks/useAuth";
 // STORES
 import { useEventStore } from "../../store/useEventStore";
 
+// ✅ SUMMARY ROUTER (STEP 1)
+import { summaryRouter } from "@/lib/summaryRouter";
+
 type ChatMessage = {
   id: string;
   role: "assistant";
@@ -33,20 +36,6 @@ type ChatMessage = {
   lastUpdated: number;
 };
 
-/**
- * UI-driven intent inference (authoritative UI)
- */
-function inferPanel(aiPanel?: string | null, userText?: string): string | null {
-  const src = `${aiPanel || ""} ${userText || ""}`.toLowerCase();
-  if (src.includes("light")) return "light";
-  if (src.includes("ac") || src.includes("air")) return "ac";
-  if (src.includes("tv")) return "tv";
-  if (src.includes("door") || src.includes("lock")) return "door";
-  if (src.includes("cctv") || src.includes("camera")) return "cctv";
-  if (src.includes("device")) return "devices";
-  return null;
-}
-
 export default function HomePage() {
   const [input, setInput] = useState("");
 
@@ -55,7 +44,10 @@ export default function HomePage() {
       id: "sys-1",
       role: "assistant",
       content: "Hello! I’m Oyi — how can I help?",
-      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      time: new Date().toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
       lastUpdated: Date.now(),
     },
   ]);
@@ -72,22 +64,28 @@ export default function HomePage() {
     setInput("");
 
     const now = new Date();
-    const time = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const time = now.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
     const stamp = now.getTime();
 
     try {
       const resp = await aiService.chat(command);
       const reply = resp.reply ?? `Processed: "${command}"`;
-      const panel = inferPanel(resp.panel, command);
-      const deviceId = resp.deviceId;
-      const panelKey = panel ? `${panel}:${deviceId || "default"}` : null;
 
-      // ---- CHAT + PANEL STATE ----
+      // ✅ AUTHORITATIVE INTENT RESOLUTION
+      const intent = summaryRouter(resp.panel, command);
+      const deviceId = resp.deviceId;
+      const panelKey = intent ? `${intent}:${deviceId || "default"}` : null;
+
+      // ---- CHAT + PANEL STATE (SINGLE INSTANCE RULE) ----
       setMessages((prev) => {
         if (!panelKey) return prev;
 
         const existing = prev.find((m) => m.panelKey === panelKey);
 
+        // 🔁 PANEL EXISTS → UPDATE & MOVE TO LATEST
         if (existing) {
           return [
             ...prev.filter((m) => m.id !== existing.id),
@@ -100,13 +98,14 @@ export default function HomePage() {
           ];
         }
 
+        // 🆕 NEW PANEL
         return [
           ...prev,
           {
             id: createId(),
             role: "assistant",
             content: reply,
-            panel,
+            panel: intent,
             panelKey,
             deviceId,
             time,
@@ -116,14 +115,17 @@ export default function HomePage() {
       });
 
       // ---- DEVICE DISCOVERY ----
-      if (panel === "devices") {
-        const estateId = user?.estate_id ?? localStorage.getItem("ochiga_estate");
-        const devices = await deviceService.getDevices(estateId ?? undefined);
+      if (intent === "devices") {
+        const estateId =
+          user?.estate_id ?? localStorage.getItem("ochiga_estate");
+        const devices = await deviceService.getDevices(
+          estateId ?? undefined
+        );
         setDiscoveredDevices(devices || []);
       }
 
-      // ---- ✅ CORRECT EVENT PUSH (FIXED OYI BUG) ----
-      if (panel) {
+      // ---- EVENT → DYNAMIC SUGGESTION CARD ----
+      if (intent) {
         pushEvent({
           id: createId(),
           type: "info",
@@ -131,17 +133,17 @@ export default function HomePage() {
           priority: "medium",
           actionable: true,
 
-          // This is what the button shows
+          // Button text
           title: reply
-            .replace(/^Okay\s*—\s*I processed\s*/i, "")
+            .replace(/^okay[, ]*/i, "")
             .replace(/[".]/g, "")
             .trim(),
 
-          // This is what gets re-sent
+          // Re-executed command
           message: command,
 
           timestamp: stamp,
-          expiresAt: Date.now() + 60_000, // auto-dismiss after 1 min
+          expiresAt: Date.now() + 60_000,
         });
       }
     } catch {
@@ -214,7 +216,7 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* SUGGESTIONS */}
+        {/* DYNAMIC SUGGESTIONS */}
         <div className="fixed bottom-[88px] left-0 right-0 z-40 px-4">
           <div className="max-w-3xl mx-auto">
             <DynamicSuggestionCard onSend={(t) => handleSend(t)} />
@@ -223,7 +225,11 @@ export default function HomePage() {
 
         {/* FOOTER */}
         <div className="fixed bottom-0 left-0 right-0 p-4 bg-gray-900 border-t border-gray-700 z-50">
-          <ChatFooter input={input} setInput={setInput} onSend={() => handleSend()} />
+          <ChatFooter
+            input={input}
+            setInput={setInput}
+            onSend={() => handleSend()}
+          />
         </div>
 
       </main>
