@@ -36,17 +36,18 @@ export default function ChatFooter({
   const barsRef = useRef<HTMLDivElement[]>([]);
   const smoothValues = useRef<number[]>(Array(BAR_COUNT).fill(0));
 
-  const canSend = input.trim().length > 0 && !isSending && voiceState === "idle";
+  const canSend =
+    input.trim().length > 0 && !isSending && voiceState === "idle";
 
   /* -----------------------------
-     HAPTIC
+     HAPTIC FEEDBACK
   ------------------------------ */
   function vibrate(ms: number) {
     navigator.vibrate?.(ms);
   }
 
   /* -----------------------------
-     INTENT INFERENCE (LIVE)
+     LIVE INTENT INFERENCE
   ------------------------------ */
   function inferIntent(text: string): Intent {
     const t = text.toLowerCase();
@@ -78,7 +79,7 @@ export default function ChatFooter({
         .map((r: any) => r[0].transcript)
         .join("");
 
-      // 🔑 WAKE WORD
+      // 🔑 Wake word
       if (
         voiceState === "idle" &&
         transcript.toLowerCase().includes("hey oyi")
@@ -95,13 +96,11 @@ export default function ChatFooter({
     };
 
     recognition.onend = () => {
-      if (voiceState === "recording") {
-        stopRecording();
-      }
+      if (voiceState === "recording") stopRecording();
     };
 
     recognitionRef.current = recognition;
-    recognition.start(); // passive always-on
+    recognition.start();
   }, [voiceState]);
 
   /* -----------------------------
@@ -218,7 +217,9 @@ export default function ChatFooter({
             {Array.from({ length: BAR_COUNT }).map((_, i) => (
               <div
                 key={i}
-                ref={(el) => el && (barsRef.current[i] = el)}
+                ref={(el) => {
+                  if (el) barsRef.current[i] = el;
+                }}
                 className="flex-1 rounded-full transition-[height]"
                 style={{
                   height: 6,
