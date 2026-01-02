@@ -15,24 +15,29 @@ const MENU_ITEMS = [
 export default function HamburgerMenu() {
   const [open, setOpen] = useState(false);
 
+  // lock scroll (covers chat input too)
   useEffect(() => {
     document.body.style.overflow = open ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
   }, [open]);
 
   return (
     <>
       {/* TOGGLE */}
       <button
-        onClick={() => setOpen(!open)}
+        onClick={() => setOpen((v) => !v)}
         className="p-2 rounded-md bg-gray-800 text-white"
       >
         {open ? <FiX size={22} /> : <FiMenu size={22} />}
       </button>
 
-      {/* FULLSCREEN OVERLAY MENU */}
+      {/* FULL SCREEN SLIDE */}
       <aside
-        className={`fixed inset-0 z-[9999] transition-transform duration-300
-          ${open ? "translate-x-0" : "-translate-x-full"}`}
+        className={`fixed inset-0 z-[9999] transition-transform duration-300 ${
+          open ? "translate-x-0" : "-translate-x-full"
+        }`}
         style={{
           background: "linear-gradient(180deg, #05070C 0%, #090B12 100%)",
         }}
@@ -44,9 +49,7 @@ export default function HamburgerMenu() {
             <button
               key={item}
               data-delay={i}
-              className="menu-item w-full text-left py-3 px-4 rounded-xl
-                         text-lg text-white opacity-0 translate-x-[-8px]
-                         hover:bg-white/5 transition"
+              className="menu-item w-full text-left py-3 px-4 rounded-xl text-lg text-white opacity-0 translate-x-[-8px] hover:bg-white/5 transition"
             >
               {item}
             </button>
@@ -60,12 +63,24 @@ export default function HamburgerMenu() {
           animation: slideIn 0.35s ease-out forwards;
         }
 
-        .menu-item[data-delay="0"] { animation-delay: 0ms; }
-        .menu-item[data-delay="1"] { animation-delay: 60ms; }
-        .menu-item[data-delay="2"] { animation-delay: 120ms; }
-        .menu-item[data-delay="3"] { animation-delay: 180ms; }
-        .menu-item[data-delay="4"] { animation-delay: 240ms; }
-        .menu-item[data-delay="5"] { animation-delay: 300ms; }
+        .menu-item[data-delay="0"] {
+          animation-delay: 0ms;
+        }
+        .menu-item[data-delay="1"] {
+          animation-delay: 60ms;
+        }
+        .menu-item[data-delay="2"] {
+          animation-delay: 120ms;
+        }
+        .menu-item[data-delay="3"] {
+          animation-delay: 180ms;
+        }
+        .menu-item[data-delay="4"] {
+          animation-delay: 240ms;
+        }
+        .menu-item[data-delay="5"] {
+          animation-delay: 300ms;
+        }
 
         @keyframes slideIn {
           to {
