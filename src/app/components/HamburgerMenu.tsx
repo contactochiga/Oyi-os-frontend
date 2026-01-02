@@ -15,7 +15,7 @@ const MENU_ITEMS = [
 export default function HamburgerMenu() {
   const [open, setOpen] = useState(false);
 
-  // lock scroll (covers chat input too)
+  // Lock body scroll when menu is open
   useEffect(() => {
     document.body.style.overflow = open ? "hidden" : "";
     return () => {
@@ -25,21 +25,30 @@ export default function HamburgerMenu() {
 
   return (
     <>
-      {/* TOGGLE */}
+      {/* TOGGLE BUTTON */}
       <button
         onClick={() => setOpen((v) => !v)}
-        className="p-2 rounded-md bg-gray-800 text-white"
+        className="p-2 rounded-md bg-gray-800/80 text-white backdrop-blur"
       >
         {open ? <FiX size={22} /> : <FiMenu size={22} />}
       </button>
 
-      {/* FULL SCREEN SLIDE */}
+      {/* BACKDROP (CHATGPT STYLE) */}
+      {open && (
+        <div
+          className="fixed inset-0 z-[9998] bg-black/60 backdrop-blur-md transition-opacity"
+          onClick={() => setOpen(false)}
+        />
+      )}
+
+      {/* SLIDE PANEL */}
       <aside
-        className={`fixed inset-0 z-[9999] transition-transform duration-300 ${
-          open ? "translate-x-0" : "-translate-x-full"
-        }`}
+        className={`fixed top-0 left-0 h-[100dvh] w-[72%] max-w-[360px] z-[9999]
+        transform transition-transform duration-300
+        ${open ? "translate-x-0" : "-translate-x-full"}`}
         style={{
-          background: "linear-gradient(180deg, #05070C 0%, #090B12 100%)",
+          background: "linear-gradient(180deg, #05070C 0%, #0A0D16 100%)",
+          borderRight: "1px solid rgba(255,255,255,0.06)",
         }}
       >
         <div className="h-16" />
@@ -49,7 +58,9 @@ export default function HamburgerMenu() {
             <button
               key={item}
               data-delay={i}
-              className="menu-item w-full text-left py-3 px-4 rounded-xl text-lg text-white opacity-0 translate-x-[-8px] hover:bg-white/5 transition"
+              className="menu-item w-full text-left py-3 px-4 rounded-xl
+                         text-lg text-white opacity-0 translate-x-[-8px]
+                         hover:bg-white/5 transition"
             >
               {item}
             </button>
@@ -57,7 +68,7 @@ export default function HamburgerMenu() {
         </nav>
       </aside>
 
-      {/* ANIMATION */}
+      {/* STAGGER ANIMATION */}
       <style jsx global>{`
         .menu-item {
           animation: slideIn 0.35s ease-out forwards;
