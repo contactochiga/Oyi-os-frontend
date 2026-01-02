@@ -26,11 +26,12 @@ import WalletPanel from "./WalletPanel";
 import RoomsPanel from "./RoomsPanel";
 
 /* =================================================
-   SYSTEM DASHBOARDS (NEW)
+   SYSTEM DASHBOARDS
 ================================================= */
 
 import HomeSummaryPanel from "./HomeSummaryPanel";
 import UtilitiesPanel from "./UtilitiesPanel";
+import MaintenancePanel from "./MaintenancePanel";
 
 /* =================================================
    RENDERER
@@ -151,9 +152,20 @@ export default function RemotePanelRenderer({
       );
 
     case "utilities":
+      return <UtilitiesPanel lastUpdated={lastUpdated ?? Date.now()} />;
+
+    /* -----------------------
+       MAINTENANCE & SUPPORT
+    ------------------------ */
+
+    case "maintenance":
+    case "support":
+    case "issue":
+    case "repair":
       return (
-        <UtilitiesPanel
+        <MaintenancePanel
           lastUpdated={lastUpdated ?? Date.now()}
+          onInteraction={onInteraction}
         />
       );
 
@@ -176,11 +188,7 @@ export default function RemotePanelRenderer({
     case "home":
     case "home_summary":
     case "summary":
-      return (
-        <HomeSummaryPanel
-          lastUpdated={lastUpdated ?? Date.now()}
-        />
-      );
+      return <HomeSummaryPanel lastUpdated={lastUpdated ?? Date.now()} />;
 
     /* -----------------------
        FALLBACK
