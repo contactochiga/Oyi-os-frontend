@@ -15,24 +15,64 @@ import SlideUpSettings from "./SlideUpSettings";
 
 const MENU_ITEMS = ["Devices", "Scenes", "Automations"];
 
-export default function HamburgerMenu() {
+interface HamburgerMenuProps {
+  isOpen?: boolean;
+  onToggle?: (open: boolean) => void;
+}
+
+export default function HamburgerMenu({
+  isOpen = false,
+  onToggle,
+}: HamburgerMenuProps) {
   const router = useRouter();
   const { user, logout } = useAuth();
 
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(isOpen);
   const [profileOpen, setProfileOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
-  /* Lock scroll */
+  /* sync with parent */
   useEffect(() => {
-    document.body.classList.toggle("sidebar-open", open);
-    return () => document.body.classList.remove("sidebar-open");
+    setOpen(isOpen);
+  }, [isOpen]);
+
+  /* lock body scroll */
+  useEffect(() => {
+    if (open) document.body.classList.add("sidebar-open");
+    else document.body.classList.remove("sidebar-open");
   }, [open]);
+
+  /* escape key */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        closeAll();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const closeAll = () => {
     setOpen(false);
     setProfileOpen(false);
+    setShowLogoutConfirm(false);
+    setShowSettings(false);
+    onToggle?.(false);
+  };
+
+  const toggleMenu = () => {
+    const next = !open;
+    setOpen(next);
+    if (!next) setProfileOpen(false);
+    onToggle?.(next);
+  };
+
+  const handleLogout = async () => {
+    await logout?.();
+    localStorage.clear();
+    router.replace("/auth/login");
   };
 
   const initials = user?.username
@@ -43,7 +83,7 @@ export default function HamburgerMenu() {
     <>
       {/* MENU BUTTON */}
       <button
-        onClick={() => setOpen(!open)}
+        onClick={toggleMenu}
         className="p-2 rounded-md bg-black/60 text-white backdrop-blur hover:bg-black/80 transition"
       >
         {open ? <FiX size={22} /> : <FiMenu size={22} />}
@@ -52,7 +92,7 @@ export default function HamburgerMenu() {
       {/* OVERLAY */}
       {open && (
         <div
-          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-md"
+          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
           onClick={closeAll}
         />
       )}
@@ -60,7 +100,7 @@ export default function HamburgerMenu() {
       {/* SIDEBAR */}
       <aside
         className={`fixed top-0 left-0 z-50 h-[100dvh] w-[78%] max-w-[360px]
-        transition-transform duration-300
+        transform transition-transform duration-300
         ${open ? "translate-x-0" : "-translate-x-full"}`}
         style={{
           background:
@@ -72,13 +112,11 @@ export default function HamburgerMenu() {
 
         {/* MENU ITEMS */}
         <nav className="px-5 mt-6 space-y-2">
-          {MENU_ITEMS.map((item, i) => (
+          {MENU_ITEMS.map((item) => (
             <button
               key={item}
-              style={{ animationDelay: `${i * 60}ms` }}
               className="w-full text-left py-3 px-4 rounded-xl text-lg
-              text-white opacity-0 -translate-x-2
-              slide-in-item hover:bg-white/5 transition"
+              text-white hover:bg-white/5 transition"
             >
               {item}
             </button>
@@ -160,10 +198,7 @@ export default function HamburgerMenu() {
               </button>
 
               <button
-                onClick={async () => {
-                  await logout();
-                  router.replace("/auth/login");
-                }}
+                onClick={handleLogout}
                 className="flex-1 py-3 rounded-xl bg-[#E11D2E]"
               >
                 Logout
@@ -172,24 +207,6 @@ export default function HamburgerMenu() {
           </div>
         </div>
       )}
-
-      {/* SAFE KEYFRAMES */}
-      <style jsx>{`
-        .slide-in-item {
-          animation: slideIn 0.35s ease-out forwards;
-        }
-
-        @keyframes slideIn {
-          from {
-            opacity: 0;
-            transform: translateX(-8px);
-          }
-          to {
-            opacity: 1;
-            transform: translateX(0);
-          }
-        }
-      `}</style>
     </>
   );
 }
