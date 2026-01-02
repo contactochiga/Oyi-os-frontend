@@ -1,80 +1,62 @@
 "use client";
 
-import { motion, AnimatePresence } from "framer-motion";
-
-export type DynamicItem = {
-  id: string;
-  type: "action" | "notification" | "alert" | "info";
-  title: string;
-  subtitle?: string;
-  intent?: "light" | "ac" | "tv" | "door" | "security" | "visitor";
-  priority?: "low" | "normal" | "high";
-  autoDismiss?: boolean;
-  expiresAt?: number;
-  onSelect?: () => void;
-};
+import { useEffect } from "react";
+import { useEventStore } from "@/store/useEventStore";
 
 export default function DynamicSuggestionCard({
-  items = [], // ✅ DEFAULT VALUE (CRITICAL)
+  onSend,
 }: {
-  items?: DynamicItem[];
+  onSend: (t: string) => void;
 }) {
-  if (!Array.isArray(items) || items.length === 0) return null;
+  const { events, dismissEvent, clearExpired } = useEventStore();
 
-  const now = Date.now();
+  /**
+   * Auto-clean expired events
+   */
+  useEffect(() => {
+    const interval = setInterval(() => {
+      clearExpired();
+    }, 2000);
 
-  const visibleItems = items.filter(
-    (i) => !i.expiresAt || i.expiresAt > now
+    return () => clearInterval(interval);
+  }, [clearExpired]);
+
+  /**
+   * Only show active, non-dismissed, actionable events
+   */
+  const visible = events.filter(
+    (e) =>
+      !e.dismissed &&
+      e.actionable !== false &&
+      e.category !== "system"
   );
 
-  if (visibleItems.length === 0) return null;
+  if (visible.length === 0) return null;
 
   return (
-    <div className="pointer-events-none">
-      <AnimatePresence>
-        <motion.div
-          initial={{ y: 16, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          exit={{ y: 16, opacity: 0 }}
-          transition={{ duration: 0.25, ease: "easeOut" }}
-          className="pointer-events-auto flex gap-2 overflow-x-auto pb-2"
+    <div className="flex gap-3 overflow-x-auto py-2">
+      {visible.map((e) => (
+        <button
+          key={e.id}
+          onClick={() => {
+            onSend(e.message);
+            dismissEvent(e.id);
+          }}
+          className={`
+            px-4 py-2 rounded-full whitespace-nowrap text-sm font-medium
+            transition active:scale-95
+            ${
+              e.priority === "high"
+                ? "bg-[#E11D2E] text-white"
+                : e.priority === "medium"
+                ? "bg-gray-700 text-white"
+                : "bg-gray-800 text-gray-300"
+            }
+          `}
         >
-          {visibleItems.map((item) => (
-            <SuggestionItem key={item.id} item={item} />
-          ))}
-        </motion.div>
-      </AnimatePresence>
+          {e.title}
+        </button>
+      ))}
     </div>
-  );
-}
-
-function SuggestionItem({ item }: { item: DynamicItem }) {
-  const base =
-    "px-4 py-2 rounded-full text-sm whitespace-nowrap transition active:scale-95";
-
-  const styleByType = {
-    action: "bg-gray-800 hover:bg-gray-700",
-    notification: "bg-gray-800/80",
-    info: "bg-gray-700/70",
-    alert: "bg-[#E11D2E]",
-  }[item.type];
-
-  const priorityRing =
-    item.priority === "high" ? "ring-2 ring-[#E11D2E]/40" : "";
-
-  return (
-    <button
-      onClick={item.onSelect}
-      className={`${base} ${styleByType} ${priorityRing} text-white`}
-    >
-      <div className="flex flex-col text-left">
-        <span className="font-medium">{item.title}</span>
-        {item.subtitle && (
-          <span className="text-xs text-white/60">
-            {item.subtitle}
-          </span>
-        )}
-      </div>
-    </button>
   );
 }
