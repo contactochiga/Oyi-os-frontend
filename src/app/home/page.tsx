@@ -35,46 +35,126 @@ type ChatMessage = {
 
 /**
  * 🔒 Authoritative UI intent inference
- * Renderer keys ONLY
+ * Human-first, estate-aware, enterprise-grade
  */
 function inferPanel(aiPanel?: string | null, userText?: string): string | null {
-  const src = `${aiPanel || ""} ${userText || ""}`.toLowerCase();
+  const src = `${aiPanel || ""} ${userText || ""}`
+    .toLowerCase()
+    .replace(/[^\w\s]/g, "");
 
-  // SYSTEM OVERVIEW
-  if (src.includes("summary") || src.includes("status") || src.includes("home"))
+  // HOME / SYSTEM SUMMARY
+  if (
+    src.includes("home") ||
+    src.includes("house") ||
+    src.includes("summary") ||
+    src.includes("overview") ||
+    src.includes("status") ||
+    src.includes("what's happening")
+  ) {
     return "home";
+  }
 
   // ROOMS
-  if (src.includes("room")) return "rooms";
+  if (
+    src.includes("room") ||
+    src.includes("bedroom") ||
+    src.includes("kitchen") ||
+    src.includes("living room")
+  ) {
+    return "rooms";
+  }
 
-  // FINANCE & UTILITIES
-  if (src.includes("wallet") || src.includes("payment")) return "wallet";
-  if (src.includes("utility") || src.includes("electric") || src.includes("water"))
-    return "utilities";
+  // VISITORS (ESTATE FLOW)
+  if (
+    src.includes("visitor") ||
+    src.includes("guest") ||
+    src.includes("expecting") ||
+    src.includes("delivery") ||
+    src.includes("access code") ||
+    src.includes("gate pass")
+  ) {
+    return "visitor";
+  }
 
-  // COMMUNITY
-  if (src.includes("community") || src.includes("announcement")) return "community";
+  // DOOR (PHYSICAL LOCK)
+  if (
+    src.includes("door") ||
+    src.includes("lock") ||
+    src.includes("unlock") ||
+    src.includes("front door")
+  ) {
+    return "door";
+  }
 
-  // VISITORS (NOT DOOR)
-  if (src.includes("visitor") || src.includes("guest")) return "visitor";
+  // SECURITY
+  if (
+    src.includes("cctv") ||
+    src.includes("camera") ||
+    src.includes("surveillance")
+  ) {
+    return "cctv";
+  }
+
+  if (
+    src.includes("sensor") ||
+    src.includes("motion") ||
+    src.includes("smoke") ||
+    src.includes("gas") ||
+    src.includes("alert")
+  ) {
+    return "sensors";
+  }
 
   // MAINTENANCE
   if (
     src.includes("maintenance") ||
     src.includes("repair") ||
+    src.includes("fix") ||
     src.includes("issue") ||
+    src.includes("problem") ||
     src.includes("support")
-  )
+  ) {
     return "maintenance";
+  }
 
-  // DEVICE CONTROLS
+  // FINANCE & UTILITIES
+  if (
+    src.includes("wallet") ||
+    src.includes("payment") ||
+    src.includes("balance") ||
+    src.includes("fund")
+  ) {
+    return "wallet";
+  }
+
+  if (
+    src.includes("utility") ||
+    src.includes("electric") ||
+    src.includes("power") ||
+    src.includes("water") ||
+    src.includes("internet") ||
+    src.includes("gas") ||
+    src.includes("service charge") ||
+    src.includes("rent")
+  ) {
+    return "utilities";
+  }
+
+  // COMMUNITY
+  if (
+    src.includes("community") ||
+    src.includes("announcement") ||
+    src.includes("estate news") ||
+    src.includes("notice")
+  ) {
+    return "community";
+  }
+
+  // CORE DEVICES
   if (src.includes("light")) return "light";
-  if (src.includes("ac") || src.includes("air")) return "ac";
-  if (src.includes("tv")) return "tv";
-  if (src.includes("door") || src.includes("lock")) return "door";
-  if (src.includes("cctv") || src.includes("camera")) return "cctv";
-  if (src.includes("sensor")) return "sensors";
-  if (src.includes("device")) return "devices";
+  if (src.includes("ac") || src.includes("air conditioner")) return "ac";
+  if (src.includes("tv") || src.includes("television")) return "tv";
+  if (src.includes("device") || src.includes("appliance")) return "devices";
 
   return null;
 }
@@ -88,26 +168,28 @@ function getSuggestionTitle(panel: string): string {
       return "View home summary";
     case "rooms":
       return "Manage rooms";
+    case "visitor":
+      return "Manage visitors";
+    case "door":
+      return "Door access";
     case "wallet":
       return "Open wallet";
     case "utilities":
       return "View utilities";
-    case "community":
-      return "Community updates";
-    case "visitor":
-      return "Manage visitors";
     case "maintenance":
       return "Report maintenance issue";
+    case "community":
+      return "Community updates";
     case "light":
       return "Control lights";
     case "ac":
       return "Adjust air conditioner";
     case "tv":
       return "Control TV";
-    case "door":
-      return "Door access";
     case "cctv":
       return "View CCTV";
+    case "sensors":
+      return "View sensors";
     case "devices":
       return "View devices";
     default:
@@ -123,7 +205,10 @@ export default function HomePage() {
       id: "sys-1",
       role: "assistant",
       content: "Hello! I’m Oyi — how can I help?",
-      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      time: new Date().toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
       lastUpdated: Date.now(),
     },
   ]);
@@ -146,7 +231,10 @@ export default function HomePage() {
 
     try {
       const resp = await aiService.chat(command);
-      const reply = resp.reply ?? command;
+
+      const reply =
+        resp.reply ||
+        `Got it. ${command.charAt(0).toUpperCase()}${command.slice(1)}.`;
 
       const panel = inferPanel(resp.panel, command);
       const deviceId = resp.deviceId;
@@ -217,7 +305,7 @@ export default function HomePage() {
       <main className="fixed inset-0 flex flex-col">
 
         {/* TOPBAR */}
-        <div className="fixed top-0 left-0 right-0 z-[60] h-16 bg-gray-900/80 backdrop-blur border-b border-gray-800">
+        <div className="fixed top-0 left-0 right-0 z-[70] h-16 bg-gray-900/80 backdrop-blur border-b border-gray-800">
           <div className="max-w-3xl mx-auto h-full flex items-center px-4">
             <HamburgerMenu />
           </div>
@@ -269,14 +357,14 @@ export default function HomePage() {
         </div>
 
         {/* SUGGESTIONS */}
-        <div className="fixed bottom-[88px] left-0 right-0 z-[30] px-4">
+        <div className="fixed bottom-[88px] left-0 right-0 z-[40] px-4">
           <div className="max-w-3xl mx-auto">
             <DynamicSuggestionCard onSend={(t) => handleSend(t)} />
           </div>
         </div>
 
         {/* FOOTER */}
-        <div className="fixed bottom-0 left-0 right-0 z-[40] p-4 bg-gray-900 border-t border-gray-700">
+        <div className="fixed bottom-0 left-0 right-0 z-[50] p-4 bg-gray-900 border-t border-gray-700">
           <ChatFooter input={input} setInput={setInput} onSend={() => handleSend()} />
         </div>
 
