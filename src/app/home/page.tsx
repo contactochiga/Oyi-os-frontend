@@ -60,8 +60,6 @@ export default function HomePage() {
     },
   ]);
 
-  const chatRef = useRef<HTMLDivElement | null>(null);
-
   const { user } = useAuth();
   const { pushEvent } = useEventStore();
   const [discoveredDevices, setDiscoveredDevices] = useState<any[]>([]);
@@ -77,61 +75,72 @@ export default function HomePage() {
     const time = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     const stamp = now.getTime();
 
-    const resp = await aiService.chat(command);
-    const reply = resp.reply ?? `Processed: "${command}"`;
-    const panel = inferPanel(resp.panel, command);
-    const deviceId = resp.deviceId;
-    const panelKey = panel ? `${panel}:${deviceId || "default"}` : null;
+    try {
+      const resp = await aiService.chat(command);
+      const reply = resp.reply ?? `Processed: "${command}"`;
+      const panel = inferPanel(resp.panel, command);
+      const deviceId = resp.deviceId;
+      const panelKey = panel ? `${panel}:${deviceId || "default"}` : null;
 
-    setMessages((prev) => {
-      if (!panelKey) return prev;
+      setMessages((prev) => {
+        if (!panelKey) return prev;
 
-      const existing = prev.find((m) => m.panelKey === panelKey);
+        const existing = prev.find((m) => m.panelKey === panelKey);
 
-      // 🔁 PANEL ALREADY EXISTS → UPDATE & MOVE
-      if (existing) {
-        const others = prev.filter((m) => m.id !== existing.id);
+        // UPDATE EXISTING PANEL
+        if (existing) {
+          return [
+            ...prev.filter((m) => m.id !== existing.id),
+            {
+              ...existing,
+              content: reply,
+              time,
+              lastUpdated: stamp,
+            },
+          ];
+        }
 
+        // CREATE NEW PANEL
         return [
-          ...others,
+          ...prev,
           {
-            ...existing,
+            id: createId(),
+            role: "assistant",
             content: reply,
+            panel,
+            panelKey,
+            deviceId,
             time,
             lastUpdated: stamp,
           },
         ];
+      });
+
+      if (panel === "devices") {
+        const estateId = user?.estate_id ?? localStorage.getItem("ochiga_estate");
+        const devices = await deviceService.getDevices(estateId ?? undefined);
+        setDiscoveredDevices(devices || []);
       }
 
-      // 🆕 NEW PANEL → CREATE ONCE
-      return [
+      pushEvent({
+        id: createId(),
+        type: "info",
+        title: "Oyi",
+        message: reply,
+        timestamp: stamp,
+      });
+    } catch {
+      setMessages((prev) => [
         ...prev,
         {
           id: createId(),
           role: "assistant",
-          content: reply,
-          panel,
-          panelKey,
-          deviceId,
+          content: "Sorry — I couldn’t reach the system.",
           time,
           lastUpdated: stamp,
         },
-      ];
-    });
-
-    if (panel === "devices") {
-      const estateId = user?.estate_id ?? localStorage.getItem("ochiga_estate");
-      const devices = await deviceService.getDevices(estateId ?? undefined);
-      setDiscoveredDevices(devices || []);
+      ]);
     }
-
-    pushEvent({
-      id: createId(),
-      type: "info",
-      title: "Oyi",
-      message: reply,
-      timestamp: stamp,
-    });
   }
 
   return (
@@ -191,7 +200,7 @@ export default function HomePage() {
         </div>
 
         {/* SUGGESTIONS */}
-        <div className="fixed bottom-[88px] left-0 right-0 z-40 px-4">
+        <div className="chat-suggestions fixed bottom-[88px] left-0 right-0 z-40 px-4">
           <div className="max-w-3xl mx-auto">
             <DynamicSuggestionCard
               suggestions={[
@@ -205,7 +214,7 @@ export default function HomePage() {
         </div>
 
         {/* FOOTER */}
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-gray-900 border-t border-gray-700 z-50">
+        <div className="chat-footer fixed bottom-0 left-0 right-0 p-4 bg-gray-900 border-t border-gray-700 z-50">
           <ChatFooter input={input} setInput={setInput} onSend={() => handleSend()} />
         </div>
 
