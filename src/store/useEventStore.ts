@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { EstateEvent } from "@/types/events";
+import { EstateEvent, EventPriority } from "@/types/events";
 
 type EventState = {
   events: EstateEvent[];
@@ -8,24 +8,32 @@ type EventState = {
   clearExpired: () => void;
 };
 
-export const useEventStore = create<EventState>((set, get) => ({
+export const useEventStore = create<EventState>((set) => ({
   events: [],
 
   pushEvent: (e) =>
     set((s) => {
-      const next = [
+      const next: EstateEvent[] = [
         {
           ...e,
           dismissed: false,
+          actionable: e.actionable ?? true,
+          priority: e.priority ?? "low",
         },
         ...s.events,
       ];
 
       // Priority sort: high → medium → low
-      next.sort((a, b) => {
-        const p = { high: 3, medium: 2, low: 1 };
-        return (p[b.priority ?? "low"] ?? 0) - (p[a.priority ?? "low"] ?? 0);
-      });
+      const weight: Record<EventPriority, number> = {
+        high: 3,
+        medium: 2,
+        low: 1,
+      };
+
+      next.sort(
+        (a, b) =>
+          weight[b.priority ?? "low"] - weight[a.priority ?? "low"]
+      );
 
       return { events: next.slice(0, 6) };
     }),
@@ -37,14 +45,15 @@ export const useEventStore = create<EventState>((set, get) => ({
       ),
     })),
 
-  clearExpired: () => {
-    const now = Date.now();
-    set((s) => ({
-      events: s.events.filter(
-        (e) =>
-          !e.dismissed &&
-          (!e.expiresAt || e.expiresAt > now)
-      ),
-    }));
-  },
+  clearExpired: () =>
+    set((s) => {
+      const now = Date.now();
+      return {
+        events: s.events.filter(
+          (e) =>
+            !e.dismissed &&
+            (!e.expiresAt || e.expiresAt > now)
+        ),
+      };
+    }),
 }));
