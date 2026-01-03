@@ -47,6 +47,11 @@ export default function DeviceDiscoveryPanel({
 }) {
   const list = devices ?? [];
 
+  function retryDiscovery() {
+    console.log("Retry device discovery");
+    // later: trigger socket / api / scan command
+  }
+
   return (
     <div className="rounded-2xl bg-gray-900 border border-gray-800 p-4">
       {/* HEADER */}
@@ -55,9 +60,14 @@ export default function DeviceDiscoveryPanel({
           Discovered Devices
         </h3>
 
-        <span className="text-xs text-gray-400">
-          {list.length} found
-        </span>
+        <button
+          onClick={retryDiscovery}
+          className="text-xs px-3 py-1.5 rounded-lg
+                     bg-gray-800 border border-gray-700
+                     text-gray-300 hover:bg-gray-700 transition"
+        >
+          Search again
+        </button>
       </div>
 
       {/* LIST */}
@@ -112,10 +122,19 @@ export default function DeviceDiscoveryPanel({
 
         {/* EMPTY STATE */}
         {list.length === 0 && (
-          <div className="py-6 text-center text-sm text-gray-400">
-            No devices found.  
-            <br />
-            Try saying <span className="text-white">“Discover devices”</span>.
+          <div className="py-8 text-center">
+            <p className="text-sm text-gray-400 mb-4">
+              No devices found on your network.
+            </p>
+
+            <button
+              onClick={retryDiscovery}
+              className="px-4 py-2 rounded-xl
+                         bg-[#E11D2E] text-white text-sm
+                         active:scale-95 transition"
+            >
+              Try again
+            </button>
           </div>
         )}
       </div>
