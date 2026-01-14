@@ -21,32 +21,69 @@ export default function DeviceDiscoveryPanel({
 }) {
   const [devices, setDevices] = useState<Device[]>(initialDevices);
   const [scanning, setScanning] = useState(false);
+  const [assigning, setAssigning] = useState(false);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
-  const [assigning, setAssigning] = useState<string | null>(null);
   const [room, setRoom] = useState<string>("");
 
-  /* -----------------------------
-     DISCOVERY
-  ------------------------------ */
+  /* --------------------------------
+     DISCOVERY (BACKEND WIRED)
+     GET /devices/discover
+  --------------------------------- */
   async function discover() {
     setScanning(true);
     try {
-      const result = await deviceService.discover();
+      const result = await deviceService.getDevices();
       setDevices(result || []);
       setSelected({});
+    } catch (err) {
+      console.warn("Device discovery failed:", err);
+      setDevices([]);
     } finally {
       setScanning(false);
     }
   }
 
-  /* -----------------------------
-     DEVICE ADD (SINGLE / BULK)
-  ------------------------------ */
-  function addDevices(ids: string[]) {
-    console.log("ADDING DEVICES:", ids, "→ ROOM:", room || "Unassigned");
-    setAssigning(null);
-    setRoom("");
-    setSelected({});
+  /* --------------------------------
+     INITIAL LOAD (FROM CHAT / AI)
+  --------------------------------- */
+  useEffect(() => {
+    if (initialDevices.length > 0) {
+      setDevices(initialDevices);
+    }
+  }, [initialDevices]);
+
+  /* --------------------------------
+     DEVICE ASSIGNMENT (BACKEND WIRED)
+     POST /devices/assign
+  --------------------------------- */
+  async function addDevices(ids: string[]) {
+    if (ids.length === 0) return;
+
+    setAssigning(true);
+
+    try {
+      await deviceService.assignDevices({
+        deviceIds: ids,
+        room: room || null,
+      });
+
+      // Optimistic UI update
+      setDevices((prev) =>
+        prev.map((d) =>
+          ids.includes(d.id)
+            ? { ...d, status: "Assigned" }
+            : d
+        )
+      );
+
+      setSelected({});
+      setRoom("");
+    } catch (err) {
+      console.error("Device assignment failed:", err);
+      alert("Failed to assign devices. Please try again.");
+    } finally {
+      setAssigning(false);
+    }
   }
 
   const selectedIds = Object.keys(selected).filter((id) => selected[id]);
@@ -60,7 +97,7 @@ export default function DeviceDiscoveryPanel({
             Device Discovery
           </h3>
           <p className="text-xs text-gray-400">
-            Local network & estate scan
+            Estate & local network scan
           </p>
         </div>
 
@@ -82,7 +119,7 @@ export default function DeviceDiscoveryPanel({
       {scanning && (
         <div className="flex items-center gap-3 text-xs text-gray-400">
           <div className="w-4 h-4 border-2 border-gray-600 border-t-white rounded-full animate-spin" />
-          Scanning for devices on the network…
+          Discovering devices…
         </div>
       )}
 
@@ -91,12 +128,15 @@ export default function DeviceDiscoveryPanel({
         {devices.map((d) => (
           <label
             key={d.id}
-            className="flex items-center justify-between bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 cursor-pointer"
+            className="flex items-center justify-between
+                       bg-gray-800 border border-gray-700
+                       rounded-xl px-3 py-2 cursor-pointer"
           >
             <div className="flex items-center gap-3">
               <input
                 type="checkbox"
                 checked={!!selected[d.id]}
+                disabled={d.status === "Assigned"}
                 onChange={() =>
                   setSelected((s) => ({
                     ...s,
@@ -110,12 +150,18 @@ export default function DeviceDiscoveryPanel({
                   {d.name || d.type || "Unknown Device"}
                 </div>
                 <div className="text-xs text-gray-400">
-                  {d.protocol || d.ip}
+                  {d.protocol || d.ip || "—"}
                 </div>
               </div>
             </div>
 
-            <span className="text-xs text-gray-400">
+            <span
+              className={`text-xs ${
+                d.status === "Assigned"
+                  ? "text-green-400"
+                  : "text-gray-400"
+              }`}
+            >
               {d.status || "Available"}
             </span>
           </label>
@@ -139,7 +185,8 @@ export default function DeviceDiscoveryPanel({
           <select
             value={room}
             onChange={(e) => setRoom(e.target.value)}
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+            className="w-full bg-gray-800 border border-gray-700
+                       rounded-lg px-3 py-2 text-sm text-white"
           >
             <option value="">Assign to room (optional)</option>
             {ROOMS.map((r) => (
@@ -151,9 +198,15 @@ export default function DeviceDiscoveryPanel({
 
           <button
             onClick={() => addDevices(selectedIds)}
-            className="w-full py-2 rounded-xl bg-[#E11D2E] text-white text-sm font-medium active:scale-95 transition"
+            disabled={assigning}
+            className={`w-full py-2 rounded-xl text-sm font-medium
+              ${
+                assigning
+                  ? "bg-gray-700 text-gray-400"
+                  : "bg-[#E11D2E] text-white"
+              }`}
           >
-            Add Selected Devices
+            {assigning ? "Assigning…" : "Add Selected Devices"}
           </button>
         </div>
       )}
