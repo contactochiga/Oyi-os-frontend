@@ -11,7 +11,6 @@ import {
 import { MdOutlinePerson, MdSettings } from "react-icons/md";
 import { useRouter } from "next/navigation";
 import useAuth from "@/hooks/useAuth";
-import SlideUpSettings from "./SlideUpSettings";
 
 const MENU_ITEMS = [
   { key: "rooms", label: "Rooms" },
@@ -30,7 +29,6 @@ export default function HamburgerMenu() {
   const [open, setOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
 
   /* Lock background scroll */
   useEffect(() => {
@@ -42,13 +40,18 @@ export default function HamburgerMenu() {
     setOpen(false);
     setProfileOpen(false);
     setShowLogoutConfirm(false);
-    setShowSettings(false);
   };
 
   const handleLogout = async () => {
+    closeAll();
     await logout?.();
     localStorage.clear();
     router.replace("/auth/login");
+  };
+
+  const goToAccount = (tab?: "profile" | "settings") => {
+    closeAll();
+    router.push(tab ? `/account?tab=${tab}` : "/account");
   };
 
   const initials = user?.username
@@ -57,7 +60,7 @@ export default function HamburgerMenu() {
 
   return (
     <>
-      {/* HAMBURGER / CLOSE BUTTON */}
+      {/* HAMBURGER BUTTON */}
       <button
         onClick={() => setOpen((v) => !v)}
         aria-label="Toggle menu"
@@ -67,7 +70,7 @@ export default function HamburgerMenu() {
         {open ? <FiX size={22} /> : <FiMenu size={22} />}
       </button>
 
-      {/* FULLSCREEN OVERLAY (covers footer too) */}
+      {/* OVERLAY */}
       {open && (
         <div
           className="fixed inset-0 z-[90] bg-black/60 backdrop-blur-md"
@@ -87,7 +90,6 @@ export default function HamburgerMenu() {
           borderRight: "1px solid rgba(255,255,255,0.06)",
         }}
       >
-        {/* Top spacer */}
         <div className="h-16" />
 
         {/* MENU */}
@@ -95,11 +97,7 @@ export default function HamburgerMenu() {
           {MENU_ITEMS.map((item) => (
             <button
               key={item.key}
-              onClick={() => {
-                closeAll();
-                // Future: route or trigger intent
-                // router.push(`/home/${item.key}`);
-              }}
+              onClick={closeAll}
               className="w-full text-left py-3 px-4 rounded-xl
                          text-lg text-white
                          hover:bg-white/5 transition"
@@ -109,11 +107,14 @@ export default function HamburgerMenu() {
           ))}
         </nav>
 
-        {/* PROFILE / SETTINGS / LOGOUT */}
+        {/* PROFILE FOOTER */}
         <div className="absolute bottom-0 left-0 w-full
                         px-5 py-5 border-t border-white/10 bg-black/40">
           <div className="flex items-center justify-between">
-            <button className="flex items-center gap-3">
+            <button
+              onClick={() => goToAccount("profile")}
+              className="flex items-center gap-3"
+            >
               <div className="w-12 h-12 rounded-full bg-[#E11D2E]
                               flex items-center justify-center
                               text-white font-semibold">
@@ -142,16 +143,16 @@ export default function HamburgerMenu() {
             <div className="mt-3 bg-gray-900
                             border border-white/10
                             rounded-xl overflow-hidden">
-              <button className="w-full flex items-center gap-3
-                                 px-4 py-3 hover:bg-gray-800 transition">
+              <button
+                onClick={() => goToAccount("profile")}
+                className="w-full flex items-center gap-3
+                           px-4 py-3 hover:bg-gray-800 transition"
+              >
                 <MdOutlinePerson /> Profile
               </button>
 
               <button
-                onClick={() => {
-                  setShowSettings(true);
-                  closeAll();
-                }}
+                onClick={() => goToAccount("settings")}
                 className="w-full flex items-center gap-3
                            px-4 py-3 hover:bg-gray-800 transition"
               >
@@ -170,12 +171,6 @@ export default function HamburgerMenu() {
           )}
         </div>
       </aside>
-
-      {/* SETTINGS SLIDE-UP */}
-      <SlideUpSettings
-        isOpen={showSettings}
-        onClose={() => setShowSettings(false)}
-      />
 
       {/* LOGOUT CONFIRM */}
       {showLogoutConfirm && (
