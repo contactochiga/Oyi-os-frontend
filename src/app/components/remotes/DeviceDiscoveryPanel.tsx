@@ -25,8 +25,7 @@ export default function DeviceDiscoveryPanel({
   const [room, setRoom] = useState("");
 
   /* -----------------------------
-     REFRESH / DISCOVERY
-     (uses backend discover endpoint)
+     INITIAL LOAD / REFRESH
   ------------------------------ */
   async function refreshDevices() {
     setLoading(true);
@@ -39,8 +38,15 @@ export default function DeviceDiscoveryPanel({
     }
   }
 
+  useEffect(() => {
+    if (initialDevices.length === 0) {
+      refreshDevices();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /* -----------------------------
-     ASSIGN DEVICES
+     ASSIGN SELECTED DEVICES
   ------------------------------ */
   async function addDevices(ids: string[]) {
     if (ids.length === 0) return;
@@ -52,7 +58,7 @@ export default function DeviceDiscoveryPanel({
         room: room || null,
       });
 
-      // Refresh list after assignment
+      // Re-fetch devices after assignment
       const updated = await deviceService.getDevices();
       setDevices(updated || []);
       setSelected({});
