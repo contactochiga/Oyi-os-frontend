@@ -6,6 +6,15 @@ import API from "./api";
  *  - error:   { error: string }
  */
 
+function pickError(err: any, fallback: string) {
+  return (
+    err?.response?.data?.error ||      // ✅ your backend format
+    err?.response?.data?.message ||    // (some endpoints/middleware may use message)
+    err?.message ||
+    fallback
+  );
+}
+
 export async function signUpWithEmail(
   email: string,
   password: string,
@@ -16,7 +25,7 @@ export async function signUpWithEmail(
     return res.data;
   } catch (err: any) {
     console.error("Signup error:", err);
-    return { error: err?.response?.data?.error || "Signup failed" };
+    return { error: pickError(err, "Signup failed") };
   }
 }
 
@@ -26,7 +35,7 @@ export async function loginWithEmail(email: string, password: string) {
     return res.data;
   } catch (err: any) {
     console.error("Login error:", err);
-    return { error: err?.response?.data?.error || "Login failed" };
+    return { error: pickError(err, "Login failed") };
   }
 }
 
