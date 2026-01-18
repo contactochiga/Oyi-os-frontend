@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build --debug",
+    "build": "next build",
     "start": "next start",
     "lint": "eslint . --ext .ts,.tsx",
     "cap:init": "npx cap init Ochiga com.ochiga.app",
