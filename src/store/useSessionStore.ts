@@ -1,58 +1,87 @@
-import axios from "axios";
+import { create } from "zustand";
+import { decodeToken, deleteCookie, getCookie, isExpired } from "@/lib/auth";
 
-/**
- * Normalize backend URL
- * - prevents double slashes
- * - guarantees fallback in dev
- */
-function getBaseURL() {
-  const raw =
-    process.env.NEXT_PUBLIC_API_URL ||
-    "http://localhost:5000";
+export type SessionUser = {
+  id: string;
+  email?: string;
+  role?: string;
+  estate_id?: string;
+  home_id?: string;
+};
 
-  return raw.replace(/\/$/, "");
-}
+type SessionState = {
+  token: string | null;
+  user: SessionUser | null;
 
-/**
- * Read cookie safely in browser
- */
-function getCookie(name: string): string | null {
-  if (typeof document === "undefined") return null;
+  setToken: (t: string | null) => void;
+  setUser: (u: SessionUser | null) => void;
 
-  const match = document.cookie
-    .split("; ")
-    .find((row) => row.startsWith(name + "="));
+  setSession: (token: string, user?: SessionUser | null) => void;
+  hydrate: () => void;
+  clear: () => void;
+};
 
-  return match ? decodeURIComponent(match.split("=")[1]) : null;
-}
+export const useSessionStore = create<SessionState>((set, get) => ({
+  token: null,
+  user: null,
 
-/**
- * Axios instance
- */
-const API = axios.create({
-  baseURL: getBaseURL(),
-  headers: {
-    "Content-Type": "application/json",
-  },
-  timeout: 15000,
-});
+  setToken: (t) => set({ token: t }),
+  setUser: (u) => set({ user: u }),
 
-/**
- * Attach JWT automatically
- * Source of truth:
- * - oyi_consumer_token (cookie)
- */
-API.interceptors.request.use((config) => {
-  if (typeof window !== "undefined") {
-    const token = getCookie("oyi_consumer_token");
+  setSession: (token, user) => {
+    set({ token });
 
-    if (token) {
-      config.headers = config.headers || {};
-      config.headers.Authorization = `Bearer ${token}`;
+    // If backend returns user, trust it
+    if (typeof user !== "undefined") {
+      set({ user });
+      return;
     }
-  }
 
-  return config;
-});
+    // Else infer minimal user from JWT
+    const decoded = decodeToken(token);
+    if (!decoded) return;
 
-export default API;
+    set({
+      user: {
+        id: decoded.id,
+        email: decoded.email,
+        role: decoded.role,
+        estate_id: decoded.estate_id,
+        home_id: decoded.home_id,
+      },
+    });
+  },
+
+  hydrate: () => {
+    if (get().token) return;
+
+    const token = getCookie("oyi_consumer_token");
+    if (!token) return;
+
+    const decoded = decodeToken(token);
+    if (!decoded || isExpired(decoded)) {
+      deleteCookie("oyi_consumer_token");
+      set({ token: null, user: null });
+      return;
+    }
+
+    set({
+      token,
+      user: {
+        id: decoded.id,
+        email: decoded.email,
+        role: decoded.role,
+        estate_id: decoded.estate_id,
+        home_id: decoded.home_id,
+      },
+    });
+  },
+
+  clear: () => {
+    deleteCookie("oyi_consumer_token");
+    set({ token: null, user: null });
+  },
+}));
+
+// Optional: keeps compatibility if any file imports default
+export default useSessionStore;
