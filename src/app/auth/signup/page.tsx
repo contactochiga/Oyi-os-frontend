@@ -1,14 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { signUpWithEmail } from "@/services/authService";
 import { decodeToken, isExpired, setCookie } from "@/lib/auth";
-import { useSessionStore } from "@/store/useSessionStore";
+import useAuth from "@/hooks/useAuth";
 
 export default function Signup() {
   const router = useRouter();
-  const { setToken } = useSessionStore();
+  const searchParams = useSearchParams();
+  const { setSession } = useAuth();
+
+  const returnTo = searchParams.get("returnTo") || "/home";
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -19,6 +22,7 @@ export default function Signup() {
   async function submit() {
     setErr(null);
     setLoading(true);
+
     try {
       const res = await signUpWithEmail(email.trim(), password, fullName.trim());
 
@@ -34,9 +38,9 @@ export default function Signup() {
       }
 
       setCookie("oyi_consumer_token", res.token, 30);
-      setToken(res.token);
+      setSession(res.token, res.user ?? undefined);
 
-      router.replace("/overview");
+      router.replace(returnTo);
     } catch (e: any) {
       setErr(e?.message || "Signup failed");
     } finally {
@@ -50,7 +54,6 @@ export default function Signup() {
         <h1 className="text-2xl font-semibold">Create your account</h1>
         <p className="text-sm text-gray-400">Choose how you’d like to continue.</p>
 
-        {/* Social auth (disabled for now) */}
         <button className="bg-gray-800 py-3 rounded-xl font-medium opacity-60" disabled>
           Continue with Apple (soon)
         </button>
@@ -104,7 +107,9 @@ export default function Signup() {
         </p>
 
         <button
-          onClick={() => router.push("/auth/login")}
+          onClick={() =>
+            router.push(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`)
+          }
           className="text-sm text-gray-400 mt-2 hover:text-gray-300"
         >
           Already have access? Log in
