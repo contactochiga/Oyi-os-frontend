@@ -31,18 +31,9 @@ export default function AcPanel({
     onInteraction?.();
   }
 
-  function applyStateFromBackend(state?: Record<string, any>) {
-    if (!state) return;
-    if (typeof state.power === "boolean") setPower(state.power);
-    if (typeof state.temperature === "number") setTemperature(state.temperature);
-    if (typeof state.mode === "string") setMode(state.mode as AcMode);
-    if (typeof state.fanSpeed === "string") setFanSpeed(state.fanSpeed as FanSpeed);
-    if (typeof state.swing === "boolean") setSwing(state.swing);
-  }
-
-  async function send(capability: string, value: any) {
+  async function send(capability: string, value: any, applyLocal?: () => void) {
     if (!deviceId) {
-      setErr("No device selected for AC panel.");
+      setErr("No AC device selected.");
       return;
     }
 
@@ -50,23 +41,30 @@ export default function AcPanel({
     setPending(true);
 
     try {
-      const resp = await signalService.commandDevice(deviceId, {
+      const resp = await signalService.sendDeviceCommand({
+        deviceId,
         capability,
         value,
-        meta: { source: "consumer-ui", panel: "ac" },
+        meta: { panel: "ac" },
       });
 
-      // If backend returns a state object, use it as source of truth
-      applyStateFromBackend(resp?.state);
+      if (resp?.status !== "accepted") {
+        throw new Error("Command not accepted");
+      }
+
+      // ✅ Since backend returns 202 only, we apply local state after acceptance.
+      // Later, we’ll replace this with socket-confirmed state.
+      applyLocal?.();
       touch();
+
+      // keep pending briefly (feels like “confirmation”)
+      setTimeout(() => setPending(false), 250);
     } catch (e: any) {
       setErr(e?.response?.data?.error || e?.message || "Command failed");
-    } finally {
       setPending(false);
     }
   }
 
-  // Clean up debounce timer
   useEffect(() => {
     return () => {
       if (tempTimer.current) clearTimeout(tempTimer.current);
@@ -91,7 +89,11 @@ export default function AcPanel({
         </span>
 
         <button
-          onClick={() => send("power", !power)}
+          onClick={() =>
+            send("power", !power, () => {
+              setPower((p) => !p);
+            })
+          }
           disabled={disabled}
           className={`px-4 py-2 rounded-full text-sm font-medium transition disabled:opacity-50
             ${power ? "bg-[#E11D2E]" : "bg-gray-700"}`}
@@ -115,7 +117,6 @@ export default function AcPanel({
             const val = Number(e.target.value);
             setTemperature(val);
 
-            // debounce backend calls
             if (tempTimer.current) clearTimeout(tempTimer.current);
             tempTimer.current = setTimeout(() => {
               send("temperature", val);
@@ -132,7 +133,11 @@ export default function AcPanel({
           {(["cool", "heat", "fan", "dry"] as AcMode[]).map((m) => (
             <button
               key={m}
-              onClick={() => send("mode", m)}
+              onClick={() =>
+                send("mode", m, () => {
+                  setMode(m);
+                })
+              }
               className={`px-3 py-1 rounded-full text-xs capitalize
                 ${mode === m ? "bg-[#E11D2E] text-white" : "bg-gray-700 text-gray-300"}`}
             >
@@ -149,7 +154,11 @@ export default function AcPanel({
           {(["low", "medium", "high", "auto"] as FanSpeed[]).map((f) => (
             <button
               key={f}
-              onClick={() => send("fanSpeed", f)}
+              onClick={() =>
+                send("fanSpeed", f, () => {
+                  setFanSpeed(f);
+                })
+              }
               className={`px-3 py-1 rounded-full text-xs capitalize
                 ${fanSpeed === f ? "bg-[#E11D2E] text-white" : "bg-gray-700 text-gray-300"}`}
             >
@@ -163,7 +172,11 @@ export default function AcPanel({
       <div className={`flex items-center justify-between ${(!power || disabled) && "opacity-40 pointer-events-none"}`}>
         <span className="text-xs text-gray-400">Swing</span>
         <button
-          onClick={() => send("swing", !swing)}
+          onClick={() =>
+            send("swing", !swing, () => {
+              setSwing((s) => !s);
+            })
+          }
           className={`px-3 py-1 rounded-full text-xs
             ${swing ? "bg-[#E11D2E] text-white" : "bg-gray-700 text-gray-300"}`}
         >
@@ -173,7 +186,7 @@ export default function AcPanel({
 
       {!deviceId && (
         <div className="mt-3 text-[11px] text-gray-500">
-          No AC device bound yet. Select/bind an AC device to enable commands.
+          No AC device bound yet. Bind an AC device to enable commands.
         </div>
       )}
     </RemotePanel>
