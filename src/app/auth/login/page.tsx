@@ -1,14 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { loginWithEmail } from "@/services/authService";
 import { decodeToken, isExpired, setCookie } from "@/lib/auth";
-import { useSessionStore } from "@/store/useSessionStore";
+import useAuth from "@/hooks/useAuth";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { setToken } = useSessionStore();
+  const searchParams = useSearchParams();
+  const { setSession } = useAuth();
+
+  const returnTo = searchParams.get("returnTo") || "/home";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -18,6 +21,7 @@ export default function LoginPage() {
   async function submit() {
     setErr(null);
     setLoading(true);
+
     try {
       const res = await loginWithEmail(email.trim(), password);
 
@@ -33,10 +37,9 @@ export default function LoginPage() {
       }
 
       setCookie("oyi_consumer_token", res.token, 30);
-      setToken(res.token);
+      setSession(res.token, res.user ?? undefined);
 
-      // ✅ send them to consumer home (change to your real consumer landing page)
-      router.replace("/overview");
+      router.replace(returnTo);
     } catch (e: any) {
       setErr(e?.message || "Login failed");
     } finally {
@@ -52,7 +55,6 @@ export default function LoginPage() {
           <p className="text-sm text-gray-400">Sign in to continue.</p>
         </div>
 
-        {/* Social auth (disabled for now) */}
         <button
           className="w-full bg-gray-800 hover:bg-gray-700 transition py-3 rounded-xl font-medium opacity-60"
           disabled
@@ -101,14 +103,14 @@ export default function LoginPage() {
           {loading ? "Signing in..." : "Sign in"}
         </button>
 
-        <div className="flex flex-col gap-2 mt-2">
-          <button
-            onClick={() => router.push("/auth/signup")}
-            className="text-sm text-gray-400 hover:text-gray-300 transition"
-          >
-            Don’t have access yet? Create an account
-          </button>
-        </div>
+        <button
+          onClick={() =>
+            router.push(`/auth/signup?returnTo=${encodeURIComponent(returnTo)}`)
+          }
+          className="text-sm text-gray-400 hover:text-gray-300 transition"
+        >
+          Don’t have access yet? Create an account
+        </button>
 
         <div className="text-[11px] text-gray-500">
           Backend:{" "}
