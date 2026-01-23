@@ -33,7 +33,6 @@ export default function HamburgerMenu() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
-  /* Lock background scroll */
   useEffect(() => {
     if (open) document.body.classList.add("sidebar-open");
     else document.body.classList.remove("sidebar-open");
@@ -73,23 +72,22 @@ export default function HamburgerMenu() {
           {open ? <FiX size={22} /> : <FiMenu size={22} />}
         </button>
 
-        {/* LOGO (same button size as hamburger, but scale logo inside) */}
+        {/* LOGO BUTTON (fills the whole button, no inner box visible) */}
         <button
           onClick={() => router.push("/")}
           aria-label="Go to Home"
-          className="p-2 rounded-md bg-black/60 backdrop-blur
-                     hover:bg-black/80 transition"
+          className="h-[38px] w-[38px] rounded-md overflow-hidden
+                     bg-black/60 backdrop-blur hover:bg-black/80 transition
+                     flex items-center justify-center"
         >
-          {/* Fixed icon box same as hamburger icon */}
-          <span className="relative block h-[22px] w-[22px] overflow-visible">
-            <Image
-              src="/oyi-logo-transparent.png"
-              alt="Oyi"
-              fill
-              priority
-              className="object-contain scale-[1.35] origin-center"
-            />
-          </span>
+          <Image
+            src="/oyi-logo-transparent.png"
+            alt="Oyi"
+            width={38}
+            height={38}
+            priority
+            className="h-full w-full object-cover"
+          />
         </button>
       </div>
 
