@@ -1,4 +1,3 @@
-// src/app/components/remotes/TvPanel.tsx
 "use client";
 
 import { useMemo, useRef, useState, useEffect } from "react";
@@ -31,16 +30,20 @@ export default function TvPanel({
 }) {
   const { user } = useAuth();
   const estateId = useMemo(
-    () => user?.estate_id ?? (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null),
+    () =>
+      user?.estate_id ??
+      (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null),
     [user?.estate_id]
   );
 
   const { state, loading } = useDeviceLiveState(deviceId, estateId);
+
   const tvOn = useMemo(() => pickBool(state, ["power", "on", "tvOn"], true), [state]);
 
   const [mode, setMode] = useState<Mode>("trackpad");
   const [pending, setPending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
   const pendingTimer = useRef<any>(null);
 
   function touch() {
@@ -54,11 +57,11 @@ export default function TvPanel({
     }
 
     setErr(null);
-    setPending(true);
     touch();
+    setPending(true);
 
     if (pendingTimer.current) clearTimeout(pendingTimer.current);
-    pendingTimer.current = setTimeout(() => setPending(false), 2500);
+    pendingTimer.current = setTimeout(() => setPending(false), 1200);
 
     try {
       const resp = await signalService.sendDeviceCommand({
@@ -69,15 +72,12 @@ export default function TvPanel({
       });
 
       if (resp?.status !== "accepted") throw new Error("Command not accepted");
+      // keep it brief; no fake “confirmed”
       setTimeout(() => setPending(false), 200);
     } catch (e: any) {
       setErr(e?.response?.data?.error || e?.message || "Command failed");
       setPending(false);
     }
-  }
-
-  async function togglePower() {
-    await sendAction("power");
   }
 
   useEffect(() => {
@@ -99,7 +99,7 @@ export default function TvPanel({
       {/* POWER */}
       <div className="flex justify-between mb-4">
         <button
-          onClick={togglePower}
+          onClick={() => sendAction("power")}
           disabled={disabled}
           className={`px-4 py-2 rounded-full text-sm font-medium disabled:opacity-50
             ${tvOn ? "bg-[#E11D2E]" : "bg-gray-700"}`}
