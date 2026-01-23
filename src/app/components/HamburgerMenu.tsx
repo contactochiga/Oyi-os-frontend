@@ -1,6 +1,9 @@
+// src/app/components/HamburgerMenu.tsx
+
 "use client";
 
 import { useState, useEffect } from "react";
+import Image from "next/image";
 import {
   FiMenu,
   FiX,
@@ -54,21 +57,42 @@ export default function HamburgerMenu() {
     router.push(tab ? `/account?tab=${tab}` : "/account");
   };
 
-  const initials = user?.username
-    ? user.username[0].toUpperCase()
-    : "U";
+  const initials = user?.username ? user.username[0].toUpperCase() : "U";
 
   return (
     <>
-      {/* HAMBURGER BUTTON */}
-      <button
-        onClick={() => setOpen((v) => !v)}
-        aria-label="Toggle menu"
-        className="p-2 rounded-md bg-black/60 text-white backdrop-blur
-                   hover:bg-black/80 transition"
-      >
-        {open ? <FiX size={22} /> : <FiMenu size={22} />}
-      </button>
+      {/* TOP BAR ICONS: Hamburger + Logo */}
+      <div className="flex items-center gap-2">
+        {/* HAMBURGER BUTTON */}
+        <button
+          onClick={() => setOpen((v) => !v)}
+          aria-label="Toggle menu"
+          className="p-2 rounded-md bg-black/60 text-white backdrop-blur
+                     hover:bg-black/80 transition"
+        >
+          {open ? <FiX size={22} /> : <FiMenu size={22} />}
+        </button>
+
+        {/* LOGO (same visual size as hamburger) */}
+        <button
+          onClick={() => {
+            // optional: go home / dashboard
+            router.push("/");
+          }}
+          aria-label="Go to Home"
+          className="p-2 rounded-md bg-black/60 backdrop-blur
+                     hover:bg-black/80 transition"
+        >
+          <Image
+            src="/oyi-logo-transparent.png"
+            alt="Oyi"
+            width={22}
+            height={22}
+            className="h-[22px] w-[22px]"
+            priority
+          />
+        </button>
+      </div>
 
       {/* OVERLAY */}
       {open && (
@@ -108,16 +132,20 @@ export default function HamburgerMenu() {
         </nav>
 
         {/* PROFILE FOOTER */}
-        <div className="absolute bottom-0 left-0 w-full
-                        px-5 py-5 border-t border-white/10 bg-black/40">
+        <div
+          className="absolute bottom-0 left-0 w-full
+                        px-5 py-5 border-t border-white/10 bg-black/40"
+        >
           <div className="flex items-center justify-between">
             <button
               onClick={() => goToAccount("profile")}
               className="flex items-center gap-3"
             >
-              <div className="w-12 h-12 rounded-full bg-[#E11D2E]
+              <div
+                className="w-12 h-12 rounded-full bg-[#E11D2E]
                               flex items-center justify-center
-                              text-white font-semibold">
+                              text-white font-semibold"
+              >
                 {initials}
               </div>
 
@@ -140,9 +168,11 @@ export default function HamburgerMenu() {
           </div>
 
           {profileOpen && (
-            <div className="mt-3 bg-gray-900
+            <div
+              className="mt-3 bg-gray-900
                             border border-white/10
-                            rounded-xl overflow-hidden">
+                            rounded-xl overflow-hidden"
+            >
               <button
                 onClick={() => goToAccount("profile")}
                 className="w-full flex items-center gap-3
@@ -174,14 +204,20 @@ export default function HamburgerMenu() {
 
       {/* LOGOUT CONFIRM */}
       {showLogoutConfirm && (
-        <div className="fixed inset-0 z-[120]
+        <div
+          className="fixed inset-0 z-[120]
                         bg-black/70 backdrop-blur
-                        flex items-center justify-center px-6">
-          <div className="bg-gray-900 p-6 rounded-2xl
+                        flex items-center justify-center px-6"
+        >
+          <div
+            className="bg-gray-900 p-6 rounded-2xl
                           w-full max-w-sm
-                          border border-gray-700">
-            <p className="text-white text-center
-                          font-semibold text-lg mb-6">
+                          border border-gray-700"
+          >
+            <p
+              className="text-white text-center
+                          font-semibold text-lg mb-6"
+            >
               Logout from Oyi OS?
             </p>
 
