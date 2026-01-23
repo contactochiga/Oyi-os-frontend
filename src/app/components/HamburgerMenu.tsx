@@ -73,24 +73,23 @@ export default function HamburgerMenu() {
           {open ? <FiX size={22} /> : <FiMenu size={22} />}
         </button>
 
-        {/* LOGO (same visual size as hamburger) */}
+        {/* LOGO (same button size as hamburger, but scale logo inside) */}
         <button
-          onClick={() => {
-            // optional: go home / dashboard
-            router.push("/");
-          }}
+          onClick={() => router.push("/")}
           aria-label="Go to Home"
           className="p-2 rounded-md bg-black/60 backdrop-blur
                      hover:bg-black/80 transition"
         >
-          <Image
-            src="/oyi-logo-transparent.png"
-            alt="Oyi"
-            width={22}
-            height={22}
-            className="h-[22px] w-[22px]"
-            priority
-          />
+          {/* Fixed icon box same as hamburger icon */}
+          <span className="relative block h-[22px] w-[22px] overflow-visible">
+            <Image
+              src="/oyi-logo-transparent.png"
+              alt="Oyi"
+              fill
+              priority
+              className="object-contain scale-[1.35] origin-center"
+            />
+          </span>
         </button>
       </div>
 
@@ -132,20 +131,16 @@ export default function HamburgerMenu() {
         </nav>
 
         {/* PROFILE FOOTER */}
-        <div
-          className="absolute bottom-0 left-0 w-full
-                        px-5 py-5 border-t border-white/10 bg-black/40"
-        >
+        <div className="absolute bottom-0 left-0 w-full
+                        px-5 py-5 border-t border-white/10 bg-black/40">
           <div className="flex items-center justify-between">
             <button
               onClick={() => goToAccount("profile")}
               className="flex items-center gap-3"
             >
-              <div
-                className="w-12 h-12 rounded-full bg-[#E11D2E]
+              <div className="w-12 h-12 rounded-full bg-[#E11D2E]
                               flex items-center justify-center
-                              text-white font-semibold"
-              >
+                              text-white font-semibold">
                 {initials}
               </div>
 
@@ -168,11 +163,9 @@ export default function HamburgerMenu() {
           </div>
 
           {profileOpen && (
-            <div
-              className="mt-3 bg-gray-900
+            <div className="mt-3 bg-gray-900
                             border border-white/10
-                            rounded-xl overflow-hidden"
-            >
+                            rounded-xl overflow-hidden">
               <button
                 onClick={() => goToAccount("profile")}
                 className="w-full flex items-center gap-3
@@ -204,20 +197,14 @@ export default function HamburgerMenu() {
 
       {/* LOGOUT CONFIRM */}
       {showLogoutConfirm && (
-        <div
-          className="fixed inset-0 z-[120]
+        <div className="fixed inset-0 z-[120]
                         bg-black/70 backdrop-blur
-                        flex items-center justify-center px-6"
-        >
-          <div
-            className="bg-gray-900 p-6 rounded-2xl
+                        flex items-center justify-center px-6">
+          <div className="bg-gray-900 p-6 rounded-2xl
                           w-full max-w-sm
-                          border border-gray-700"
-          >
-            <p
-              className="text-white text-center
-                          font-semibold text-lg mb-6"
-            >
+                          border border-gray-700">
+            <p className="text-white text-center
+                          font-semibold text-lg mb-6">
               Logout from Oyi OS?
             </p>
 
