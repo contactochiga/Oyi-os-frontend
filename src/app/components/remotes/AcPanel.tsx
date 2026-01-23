@@ -30,7 +30,12 @@ function pickNumber(state: any, keys: string[], fallback: number) {
   return fallback;
 }
 
-function pickEnum<T extends string>(state: any, keys: string[], allowed: T[], fallback: T) {
+function pickEnum<T extends string>(
+  state: any,
+  keys: string[],
+  allowed: T[],
+  fallback: T
+) {
   for (const k of keys) {
     const v = String(state?.[k] ?? "").toLowerCase();
     if (allowed.includes(v as T)) return v as T;
@@ -51,13 +56,15 @@ export default function AcPanel({
   const estateId = useMemo(
     () =>
       user?.estate_id ??
-      (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null),
+      (typeof window !== "undefined"
+        ? localStorage.getItem("ochiga_estate")
+        : null),
     [user?.estate_id]
   );
 
   const { state, loading, refresh } = useDeviceLiveState(deviceId, estateId);
 
-  // UI is derived from device state (authoritative)
+  // ✅ Authoritative values from backend state
   const power = useMemo(
     () => pickBool(state, ["power", "on", "acOn", "switch"], false),
     [state]
@@ -70,7 +77,12 @@ export default function AcPanel({
 
   const mode = useMemo(
     () =>
-      pickEnum<AcMode>(state, ["mode", "acMode"], ["cool", "heat", "fan", "dry"], "cool"),
+      pickEnum<AcMode>(
+        state,
+        ["mode", "acMode"],
+        ["cool", "heat", "fan", "dry"],
+        "cool"
+      ),
     [state]
   );
 
@@ -90,15 +102,71 @@ export default function AcPanel({
     [state]
   );
 
+  // ✅ Local draft (only for slider UX)
+  const [tempDraft, setTempDraft] = useState<number>(temperature);
+
+  // Keep draft aligned with authoritative state when backend updates
+  useEffect(() => {
+    setTempDraft(temperature);
+  }, [temperature]);
+
   const [pending, setPending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const pendingTimer = useRef<any>(null);
   const tempTimer = useRef<any>(null);
+  const pendingTimer = useRef<any>(null);
+
+  // Track last known state snapshot to detect confirmation
+  const lastStateRef = useRef<any>(null);
+
+  // Track what we are waiting to be confirmed
+  const expectedRef = useRef<{ key: string; value: any } | null>(null);
 
   function touch() {
     onInteraction?.();
   }
+
+  function startPending(expected: { key: string; value: any }) {
+    expectedRef.current = expected;
+    setPending(true);
+
+    if (pendingTimer.current) clearTimeout(pendingTimer.current);
+    pendingTimer.current = setTimeout(() => {
+      // fallback: stop pending even if device never reported back
+      expectedRef.current = null;
+      setPending(false);
+    }, 3500);
+  }
+
+  // ✅ Clear pending when we see state reflect the command (confirmation)
+  useEffect(() => {
+    const expected = expectedRef.current;
+    if (!expected) {
+      lastStateRef.current = state;
+      return;
+    }
+
+    // If no state, nothing to confirm
+    if (!state) return;
+
+    // We confirm by checking if the derived value now matches what we requested
+    const derived: Record<string, any> = {
+      power,
+      temperature,
+      mode,
+      fanSpeed,
+      swing,
+    };
+
+    if (derived[expected.key] === expected.value) {
+      expectedRef.current = null;
+      if (pendingTimer.current) clearTimeout(pendingTimer.current);
+      setPending(false);
+    }
+
+    lastStateRef.current = state;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, power, temperature, mode, fanSpeed, swing]);
 
   async function send(capability: string, value: any) {
     if (!deviceId) {
@@ -107,12 +175,10 @@ export default function AcPanel({
     }
 
     setErr(null);
-    setPending(true);
     touch();
 
-    // pending "window" while we wait for device update
-    if (pendingTimer.current) clearTimeout(pendingTimer.current);
-    pendingTimer.current = setTimeout(() => setPending(false), 3500);
+    // Start pending until confirmed (or timeout fallback)
+    startPending({ key: capability === "fanSpeed" ? "fanSpeed" : capability, value });
 
     try {
       const resp = await signalService.sendDeviceCommand({
@@ -124,14 +190,12 @@ export default function AcPanel({
 
       if (resp?.status !== "accepted") throw new Error("Command not accepted");
 
-      // ✅ NO optimistic local update here.
-      // Wait for socket update from MQTT bridge -> device:update
-      // But do a fast refresh as backup (in case socket missed)
+      // Backup pull (if socket missed)
       setTimeout(() => refresh(), 450);
-
-      setTimeout(() => setPending(false), 250);
     } catch (e: any) {
       setErr(e?.response?.data?.error || e?.message || "Command failed");
+      expectedRef.current = null;
+      if (pendingTimer.current) clearTimeout(pendingTimer.current);
       setPending(false);
     }
   }
@@ -172,22 +236,21 @@ export default function AcPanel({
         </button>
       </div>
 
-      {/* TEMPERATURE (debounced send) */}
+      {/* TEMPERATURE (responsive UI + debounced send) */}
       <div className={`mb-4 ${(!power || disabled) && "opacity-40 pointer-events-none"}`}>
         <label className="block text-xs text-gray-400 mb-2">
-          Temperature ({temperature}°C)
+          Temperature ({tempDraft}°C)
         </label>
 
         <input
           type="range"
           min={16}
           max={30}
-          value={temperature}
+          value={tempDraft}
           onChange={(e) => {
             const val = Number(e.target.value);
+            setTempDraft(val);
 
-            // We don’t set local state; UI follows backend.
-            // But users need a responsive feel -> send after short debounce.
             if (tempTimer.current) clearTimeout(tempTimer.current);
             tempTimer.current = setTimeout(() => {
               send("temperature", val);
@@ -205,7 +268,8 @@ export default function AcPanel({
             <button
               key={m}
               onClick={() => send("mode", m)}
-              className={`px-3 py-1 rounded-full text-xs capitalize
+              disabled={disabled}
+              className={`px-3 py-1 rounded-full text-xs capitalize disabled:opacity-50
                 ${mode === m ? "bg-[#E11D2E] text-white" : "bg-gray-700 text-gray-300"}`}
             >
               {m}
@@ -222,7 +286,8 @@ export default function AcPanel({
             <button
               key={f}
               onClick={() => send("fanSpeed", f)}
-              className={`px-3 py-1 rounded-full text-xs capitalize
+              disabled={disabled}
+              className={`px-3 py-1 rounded-full text-xs capitalize disabled:opacity-50
                 ${fanSpeed === f ? "bg-[#E11D2E] text-white" : "bg-gray-700 text-gray-300"}`}
             >
               {f}
