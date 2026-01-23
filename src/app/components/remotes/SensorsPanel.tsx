@@ -1,4 +1,3 @@
-// src/app/components/remotes/SensorsPanel.tsx
 "use client";
 
 import { useMemo } from "react";
@@ -25,15 +24,15 @@ function toStatus(v: any): SensorStatus {
 export default function SensorsPanel({
   deviceId,
   lastUpdated,
-  onInteraction,
 }: {
   deviceId?: string;
   lastUpdated?: number;
-  onInteraction?: () => void;
 }) {
   const { user } = useAuth();
   const estateId = useMemo(
-    () => user?.estate_id ?? (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null),
+    () =>
+      user?.estate_id ??
+      (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null),
     [user?.estate_id]
   );
 
@@ -43,7 +42,6 @@ export default function SensorsPanel({
     const list = state?.sensors || state?.readings || null;
     if (!list) return null;
 
-    // supports: array or object map
     if (Array.isArray(list)) {
       return list.map((x: any, idx: number) => ({
         id: x?.id || `s${idx}`,
@@ -85,11 +83,7 @@ export default function SensorsPanel({
 
   return (
     <RemotePanel title="Sensors" lastUpdated={lastUpdated}>
-      {loading && (
-        <div className="mb-3 text-xs text-gray-400">
-          Syncing sensor state…
-        </div>
-      )}
+      {loading && <div className="mb-3 text-xs text-gray-400">Syncing sensor state…</div>}
 
       <div className="space-y-3">
         {sensors.map((s) => (
