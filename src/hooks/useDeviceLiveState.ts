@@ -1,7 +1,7 @@
 // src/hooks/useDeviceLiveState.ts
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { deviceService } from "@/services/deviceService";
 import { getSocket } from "@/services/socket";
 
@@ -21,6 +21,8 @@ export function useDeviceLiveState(deviceId?: string, estateId?: string | null) 
   });
 
   const canUse = useMemo(() => !!deviceId, [deviceId]);
+
+  const estateJoinedRef = useRef<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!deviceId) return;
@@ -43,25 +45,37 @@ export function useDeviceLiveState(deviceId?: string, estateId?: string | null) 
     }
   }, [deviceId]);
 
+  // Initial fetch (and when device changes)
   useEffect(() => {
     if (!canUse) return;
     refresh();
   }, [canUse, refresh]);
 
+  // Live updates via Socket.IO
   useEffect(() => {
     const socket = getSocket();
     if (!socket || !deviceId) return;
 
+    const joinEstate = () => {
+      if (!estateId) return;
+
+      // avoid spam-joining the same estate on every render
+      if (estateJoinedRef.current === estateId) return;
+
+      socket.emit("subscribe:estate", estateId);
+      estateJoinedRef.current = estateId;
+    };
+
     const onConnect = () => {
-      if (estateId) socket.emit("subscribe:estate", estateId);
+      joinEstate();
     };
 
     const onUpdate = (payload: any) => {
       if (!payload?.deviceId || payload.deviceId !== deviceId) return;
+
       setData((s) => ({
         ...s,
         state: payload?.state ?? s.state,
-        // backend sends state + topic; lastSeen is in DB, but this is still "fresh"
         lastSeen: new Date().toISOString(),
         error: null,
       }));
@@ -70,14 +84,32 @@ export function useDeviceLiveState(deviceId?: string, estateId?: string | null) 
     socket.on("connect", onConnect);
     socket.on("device:update", onUpdate);
 
-    // If already connected, join immediately
-    if (socket.connected && estateId) socket.emit("subscribe:estate", estateId);
+    // If already connected, join immediately (important when estateId arrives late)
+    if (socket.connected) joinEstate();
 
     return () => {
       socket.off("connect", onConnect);
       socket.off("device:update", onUpdate);
     };
   }, [deviceId, estateId]);
+
+  // If estateId becomes available AFTER mount, join and refresh once
+  useEffect(() => {
+    if (!deviceId) return;
+    if (!estateId) return;
+
+    const socket = getSocket();
+    if (!socket) return;
+
+    // join (if not already)
+    if (estateJoinedRef.current !== estateId) {
+      socket.emit("subscribe:estate", estateId);
+      estateJoinedRef.current = estateId;
+    }
+
+    // optional: pull fresh state once when estate context becomes known
+    refresh();
+  }, [estateId, deviceId, refresh]);
 
   return { ...data, refresh };
 }
