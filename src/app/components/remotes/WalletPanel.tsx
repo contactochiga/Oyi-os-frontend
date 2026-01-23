@@ -1,3 +1,5 @@
+// src/app/components/remotes/WalletPanel.tsx
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -21,6 +23,7 @@ export default function WalletPanel({
   onInteraction?: () => void;
 }) {
   const { user } = useAuth();
+
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -34,20 +37,19 @@ export default function WalletPanel({
   async function load() {
     setLoading(true);
     setErr(null);
+
     try {
       const w = await walletService.getWallet();
       setBalance(Number(w?.balance ?? 0));
 
-      // If you later store transactions in DB, map it here.
+      // NOTE: you don’t have wallet transactions endpoint yet,
+      // so keep this empty until we add it.
       setTransactions([]);
     } catch (e: any) {
+      // ✅ NO demo fallback — show real state
       setErr(e?.response?.data?.error || e?.message || "Wallet not ready yet");
-      // demo fallback
-      setBalance(24500);
-      setTransactions([
-        { id: "t1", title: "Electricity Bill", amount: 4500, type: "debit", time: "Today" },
-        { id: "t2", title: "Wallet Funding", amount: 20000, type: "credit", time: "Yesterday" },
-      ]);
+      setBalance(0);
+      setTransactions([]);
     } finally {
       setLoading(false);
     }
@@ -62,14 +64,20 @@ export default function WalletPanel({
 
     try {
       touch();
+      setErr(null);
+      setLoading(true);
+
       // example: ₦5,000
       const init = await walletService.initPayment({ amount: 5000, email: user.email });
+
       // Paystack response typically includes authorization_url
       const url = init?.data?.authorization_url || init?.authorization_url;
       if (url) window.location.href = url;
       else setErr("Paystack init returned no redirect URL.");
     } catch (e: any) {
       setErr(e?.response?.data?.error || e?.message || "Funding failed");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -77,21 +85,28 @@ export default function WalletPanel({
     // placeholder: you can use /wallets/debit for now as “bill payment”
     try {
       touch();
+      setErr(null);
+      setLoading(true);
+
       await walletService.debit({ amount: 1000, reason: "bills_payment_placeholder" });
       await load();
     } catch (e: any) {
       setErr(e?.response?.data?.error || e?.message || "Payment failed");
+    } finally {
+      setLoading(false);
     }
   }
 
   useEffect(() => {
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
     <RemotePanel title="Wallet" lastUpdated={lastUpdated}>
       <div className="flex items-center justify-between mb-3">
         <div className="text-xs text-gray-400">{loading ? "Syncing…" : "Balance"}</div>
+
         <button
           onClick={load}
           disabled={loading}
@@ -111,7 +126,9 @@ export default function WalletPanel({
 
       <div className="mb-4 rounded-xl bg-gray-800 border border-gray-700 p-4">
         <div className="text-xs text-gray-400 mb-1">Available Balance</div>
-        <div className="text-2xl font-semibold text-white">₦{Number(balance).toLocaleString()}</div>
+        <div className="text-2xl font-semibold text-white">
+          ₦{Number(balance).toLocaleString()}
+        </div>
       </div>
 
       <div className="flex gap-3 mb-5">
