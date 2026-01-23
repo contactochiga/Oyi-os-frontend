@@ -1,8 +1,22 @@
+// src/app/components/remotes/DoorPanel.tsx
 "use client";
 
-import { useState } from "react";
+import { useMemo, useRef, useState, useEffect } from "react";
 import RemotePanel from "./RemotePanel";
 import { signalService } from "@/services/signalService";
+import useAuth from "@/hooks/useAuth";
+import { useDeviceLiveState } from "@/hooks/useDeviceLiveState";
+
+function pickBool(state: any, keys: string[], fallback: boolean) {
+  for (const k of keys) {
+    const v = state?.[k];
+    if (typeof v === "boolean") return v;
+    if (v === 1 || v === 0) return !!v;
+    if (v === "locked") return true;
+    if (v === "unlocked") return false;
+  }
+  return fallback;
+}
 
 export default function DoorPanel({
   deviceId,
@@ -15,42 +29,58 @@ export default function DoorPanel({
   lastUpdated?: number;
   onInteraction?: () => void;
 }) {
-  const [locked, setLocked] = useState(true);
+  const { user } = useAuth();
+  const estateId = useMemo(
+    () => user?.estate_id ?? (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null),
+    [user?.estate_id]
+  );
+
+  const { state, loading } = useDeviceLiveState(deviceId, estateId);
+
+  const locked = useMemo(() => pickBool(state, ["locked", "lock", "isLocked", "doorLocked"], true), [state]);
 
   const [pending, setPending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const pendingTimer = useRef<any>(null);
 
   function touch() {
     onInteraction?.();
   }
 
-  async function send(capability: string, value: any, applyLocal?: () => void) {
+  async function sendLock(nextLocked: boolean) {
     if (!deviceId) {
-      setErr("No door/lock device selected.");
+      setErr("No Door device selected.");
       return;
     }
 
     setErr(null);
     setPending(true);
+    touch();
+
+    if (pendingTimer.current) clearTimeout(pendingTimer.current);
+    pendingTimer.current = setTimeout(() => setPending(false), 3500);
 
     try {
       const resp = await signalService.sendDeviceCommand({
         deviceId,
-        capability,
-        value,
+        capability: "lock",
+        value: nextLocked ? "locked" : "unlocked",
         meta: { panel: "door" },
       });
 
       if (resp?.status !== "accepted") throw new Error("Command not accepted");
-
-      applyLocal?.();
-      touch();
-      setTimeout(() => setPending(false), 200);
+      setTimeout(() => setPending(false), 250);
     } catch (e: any) {
       setErr(e?.response?.data?.error || e?.message || "Command failed");
       setPending(false);
     }
   }
+
+  useEffect(() => {
+    return () => {
+      if (pendingTimer.current) clearTimeout(pendingTimer.current);
+    };
+  }, []);
 
   const disabled = pending || !deviceId;
 
@@ -62,22 +92,15 @@ export default function DoorPanel({
         </div>
       )}
 
-      {/* STATUS */}
       <div className="flex justify-between items-center mb-4">
         <span className="text-sm text-gray-300">
           Status:{" "}
-          <span className="text-white">
-            {locked ? "Locked" : "Unlocked"}
-          </span>{" "}
-          {pending && <span className="text-xs text-gray-400">• syncing…</span>}
+          <span className="text-white">{locked ? "Locked" : "Unlocked"}</span>{" "}
+          {(pending || loading) && <span className="text-xs text-gray-400">• syncing…</span>}
         </span>
 
         <button
-          onClick={() =>
-            send("lock", locked ? "unlock" : "lock", () => {
-              setLocked((x) => !x);
-            })
-          }
+          onClick={() => sendLock(!locked)}
           disabled={disabled}
           className={`px-4 py-2 rounded-full text-sm font-medium transition disabled:opacity-50
             ${locked ? "bg-[#E11D2E]" : "bg-gray-700"}`}
@@ -86,21 +109,27 @@ export default function DoorPanel({
         </button>
       </div>
 
-      {/* CAMERA (OPTIONAL) */}
       {hasCamera && (
         <div className="mb-4 rounded-xl overflow-hidden border border-gray-800">
           <div className="h-36 bg-black flex items-center justify-center text-xs text-gray-400">
-            Camera Feed (placeholder)
+            Camera Feed (panel wired separately)
           </div>
         </div>
       )}
 
-      {/* ACTIONS */}
       <div className="flex gap-2">
         {hasCamera && (
           <button
-            disabled={disabled}
-            onClick={() => send("doorbell", "ring")}
+            onClick={() => {
+              signalService.sendDeviceCommand({
+                deviceId: deviceId!,
+                capability: "doorbell",
+                value: "ring",
+                meta: { panel: "door" },
+              });
+              touch();
+            }}
+            disabled={!deviceId}
             className="btn-tv disabled:opacity-50"
           >
             Ring
@@ -108,9 +137,11 @@ export default function DoorPanel({
         )}
 
         <button
-          disabled={disabled}
-          onClick={() => send("accessLog", "open")}
-          className="btn-tv disabled:opacity-50"
+          onClick={() => {
+            // placeholder (you can wire /access/log later)
+            touch();
+          }}
+          className="btn-tv"
         >
           Access Log
         </button>
@@ -118,7 +149,7 @@ export default function DoorPanel({
 
       {!deviceId && (
         <div className="mt-3 text-[11px] text-gray-500">
-          No door device bound yet. Bind a lock/door device to enable commands.
+          No Door device bound yet. Bind a Door lock to enable commands.
         </div>
       )}
     </RemotePanel>
