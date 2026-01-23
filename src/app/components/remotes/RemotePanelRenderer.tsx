@@ -4,6 +4,8 @@
    CORE DEVICE REMOTES
 ================================================= */
 
+import { useEffect, useMemo, useState } from "react";
+
 import LightPanel from "./LightPanel";
 import AcPanel from "./AcPanel";
 import TvPanel from "./TvPanel";
@@ -34,6 +36,13 @@ import UtilitiesPanel from "./UtilitiesPanel";
 import MaintenancePanel from "./MaintenancePanel";
 
 /* =================================================
+   SOCKET + AUTH (for estate subscribe)
+================================================= */
+
+import useAuth from "@/hooks/useAuth";
+import { getSocket } from "@/services/socket";
+
+/* =================================================
    RENDERER
 ================================================= */
 
@@ -48,6 +57,64 @@ export default function RemotePanelRenderer({
   lastUpdated?: number;
   onInteraction?: () => void;
 }) {
+  const { user } = useAuth();
+
+  // estateId is needed so socket can join the right estate room
+  const estateId = useMemo(
+    () =>
+      user?.estate_id ??
+      (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null),
+    [user?.estate_id]
+  );
+
+  // Central "control room" timestamp
+  const [computedLastUpdated, setComputedLastUpdated] = useState<number>(
+    lastUpdated ?? Date.now()
+  );
+
+  // Keep in sync if parent sends a newer value
+  useEffect(() => {
+    if (!lastUpdated) return;
+    setComputedLastUpdated((prev) => (lastUpdated > prev ? lastUpdated : prev));
+  }, [lastUpdated]);
+
+  // Wrap interaction: bump time + call parent callback
+  function handleInteraction() {
+    setComputedLastUpdated(Date.now());
+    onInteraction?.();
+  }
+
+  // Listen for device:update and bump time when it matches current deviceId
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+
+    const onConnect = () => {
+      if (estateId) socket.emit("subscribe:estate", estateId);
+    };
+
+    const onUpdate = (payload: any) => {
+      // payload: { deviceId, state, topic }
+      if (!payload?.deviceId) return;
+
+      // If this renderer is bound to a specific deviceId, update only when that device updates.
+      if (deviceId && payload.deviceId === deviceId) {
+        setComputedLastUpdated(Date.now());
+      }
+    };
+
+    socket.on("connect", onConnect);
+    socket.on("device:update", onUpdate);
+
+    // If already connected, join immediately
+    if (socket.connected && estateId) socket.emit("subscribe:estate", estateId);
+
+    return () => {
+      socket.off("connect", onConnect);
+      socket.off("device:update", onUpdate);
+    };
+  }, [estateId, deviceId]);
+
   if (!panel) return null;
 
   switch (panel) {
@@ -59,8 +126,8 @@ export default function RemotePanelRenderer({
       return (
         <LightPanel
           deviceId={deviceId}
-          lastUpdated={lastUpdated ?? Date.now()}
-          onInteraction={onInteraction}
+          lastUpdated={computedLastUpdated}
+          onInteraction={handleInteraction}
         />
       );
 
@@ -68,8 +135,8 @@ export default function RemotePanelRenderer({
       return (
         <AcPanel
           deviceId={deviceId}
-          lastUpdated={lastUpdated ?? Date.now()}
-          onInteraction={onInteraction}
+          lastUpdated={computedLastUpdated}
+          onInteraction={handleInteraction}
         />
       );
 
@@ -77,8 +144,8 @@ export default function RemotePanelRenderer({
       return (
         <TvPanel
           deviceId={deviceId}
-          lastUpdated={lastUpdated ?? Date.now()}
-          onInteraction={onInteraction}
+          lastUpdated={computedLastUpdated}
+          onInteraction={handleInteraction}
         />
       );
 
@@ -90,8 +157,8 @@ export default function RemotePanelRenderer({
       return (
         <DoorPanel
           deviceId={deviceId}
-          lastUpdated={lastUpdated ?? Date.now()}
-          onInteraction={onInteraction}
+          lastUpdated={computedLastUpdated}
+          onInteraction={handleInteraction}
         />
       );
 
@@ -99,8 +166,8 @@ export default function RemotePanelRenderer({
       return (
         <CctvPanel
           deviceId={deviceId}
-          lastUpdated={lastUpdated ?? Date.now()}
-          onInteraction={onInteraction}
+          lastUpdated={computedLastUpdated}
+          onInteraction={handleInteraction}
         />
       );
 
@@ -109,8 +176,8 @@ export default function RemotePanelRenderer({
       return (
         <SensorsPanel
           deviceId={deviceId}
-          lastUpdated={lastUpdated ?? Date.now()}
-          onInteraction={onInteraction}
+          lastUpdated={computedLastUpdated}
+          onInteraction={handleInteraction}
         />
       );
 
@@ -122,8 +189,8 @@ export default function RemotePanelRenderer({
     case "visitors":
       return (
         <VisitorPanel
-          lastUpdated={lastUpdated ?? Date.now()}
-          onInteraction={onInteraction}
+          lastUpdated={computedLastUpdated}
+          onInteraction={handleInteraction}
         />
       );
 
@@ -134,8 +201,8 @@ export default function RemotePanelRenderer({
     case "rooms":
       return (
         <RoomsPanel
-          lastUpdated={lastUpdated ?? Date.now()}
-          onInteraction={onInteraction}
+          lastUpdated={computedLastUpdated}
+          onInteraction={handleInteraction}
         />
       );
 
@@ -146,13 +213,13 @@ export default function RemotePanelRenderer({
     case "wallet":
       return (
         <WalletPanel
-          lastUpdated={lastUpdated ?? Date.now()}
-          onInteraction={onInteraction}
+          lastUpdated={computedLastUpdated}
+          onInteraction={handleInteraction}
         />
       );
 
     case "utilities":
-      return <UtilitiesPanel lastUpdated={lastUpdated ?? Date.now()} />;
+      return <UtilitiesPanel lastUpdated={computedLastUpdated} />;
 
     /* -----------------------
        MAINTENANCE & SUPPORT
@@ -164,8 +231,8 @@ export default function RemotePanelRenderer({
     case "repair":
       return (
         <MaintenancePanel
-          lastUpdated={lastUpdated ?? Date.now()}
-          onInteraction={onInteraction}
+          lastUpdated={computedLastUpdated}
+          onInteraction={handleInteraction}
         />
       );
 
@@ -176,8 +243,8 @@ export default function RemotePanelRenderer({
     case "community":
       return (
         <CommunityPanel
-          lastUpdated={lastUpdated ?? Date.now()}
-          onInteraction={onInteraction}
+          lastUpdated={computedLastUpdated}
+          onInteraction={handleInteraction}
         />
       );
 
@@ -188,11 +255,7 @@ export default function RemotePanelRenderer({
     case "home":
     case "home_summary":
     case "summary":
-      return <HomeSummaryPanel lastUpdated={lastUpdated ?? Date.now()} />;
-
-    /* -----------------------
-       FALLBACK
-    ------------------------ */
+      return <HomeSummaryPanel lastUpdated={computedLastUpdated} />;
 
     default:
       return null;
