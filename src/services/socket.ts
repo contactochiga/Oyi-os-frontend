@@ -1,11 +1,28 @@
-import { io as makeIO, type Socket } from "socket.io-client";
+// src/services/socket.ts
+"use client";
+
+import { io as createIO, Socket } from "socket.io-client";
 
 let socket: Socket | null = null;
 
-export function getSocket() {
-  if (socket) return socket;
+function getBaseURL() {
+  const raw = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+  return raw.replace(/\/$/, "");
+}
 
-  const url = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000").replace(/\/$/, "");
-  socket = makeIO(url, { transports: ["websocket"], withCredentials: true });
+export function getSocket() {
+  if (typeof window === "undefined") return null;
+
+  if (!socket) {
+    socket = createIO(getBaseURL(), {
+      withCredentials: true,
+      transports: ["websocket", "polling"],
+      autoConnect: true,
+      reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 600,
+    });
+  }
+
   return socket;
 }
