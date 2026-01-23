@@ -10,18 +10,57 @@ function getBaseURL() {
   return raw.replace(/\/$/, "");
 }
 
+function getCookie(name: string): string | null {
+  if (typeof document === "undefined") return null;
+
+  const match = document.cookie
+    .split("; ")
+    .find((row) => row.startsWith(name + "="));
+
+  return match ? decodeURIComponent(match.split("=")[1]) : null;
+}
+
+/**
+ * Get (or create) the singleton socket.
+ * - attaches Authorization header from cookie token
+ * - safe in browser only
+ */
 export function getSocket() {
   if (typeof window === "undefined") return null;
 
+  const token = getCookie("oyi_consumer_token");
+  const baseURL = getBaseURL();
+
+  // If socket exists but token changed, rebuild it cleanly
+  const prevToken = (socket as any)?._ochigaToken as string | undefined;
+  if (socket && prevToken !== token) {
+    try {
+      socket.disconnect();
+    } catch {}
+    socket = null;
+  }
+
   if (!socket) {
-    socket = createIO(getBaseURL(), {
+    socket = createIO(baseURL, {
       withCredentials: true,
       transports: ["websocket", "polling"],
       autoConnect: true,
       reconnection: true,
       reconnectionAttempts: 10,
       reconnectionDelay: 600,
+
+      /**
+       * ✅ Important: pass JWT for your backend auth middleware
+       * Socket.IO supports `auth` (recommended) and `extraHeaders` (websocket-only).
+       */
+      auth: token ? { token } : {},
+
+      // optional: for polling phase in some envs
+      extraHeaders: token ? { Authorization: `Bearer ${token}` } : undefined,
     });
+
+    // store token for comparison
+    (socket as any)._ochigaToken = token;
   }
 
   return socket;
