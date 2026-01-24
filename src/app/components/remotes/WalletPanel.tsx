@@ -4,8 +4,8 @@
 
 import { useEffect, useState } from "react";
 import RemotePanel from "./RemotePanel";
-import { walletService } from "@/services/estateOpsService";
 import useAuth from "@/hooks/useAuth";
+import { walletService } from "@/services/estateOpsService";
 
 type Transaction = {
   id: string;
@@ -14,6 +14,27 @@ type Transaction = {
   type: "credit" | "debit";
   time: string;
 };
+
+function pickErr(e: any) {
+  return (
+    e?.response?.data?.error ||
+    e?.response?.data?.message ||
+    e?.message ||
+    "Something went wrong"
+  );
+}
+
+// Paystack initialize responses sometimes come back in different shapes
+function extractPaystackUrl(resp: any): string | null {
+  // Typical Paystack: { status: true, message, data: { authorization_url } }
+  const a =
+    resp?.data?.authorization_url ||
+    resp?.authorization_url ||
+    resp?.data?.data?.authorization_url ||
+    resp?.data?.authorization_url;
+
+  return typeof a === "string" ? a : null;
+}
 
 export default function WalletPanel({
   lastUpdated,
@@ -40,14 +61,26 @@ export default function WalletPanel({
 
     try {
       const w = await walletService.getWallet();
-      setBalance(Number(w?.balance ?? 0));
 
-      // NOTE: you don’t have wallet transactions endpoint yet,
-      // so keep this empty until we add it.
+      // Expecting: { id, user_id, balance, ... }
+      const b = Number(w?.balance ?? 0);
+      setBalance(Number.isFinite(b) ? b : 0);
+
+      // No tx endpoint yet — keep empty until you add one (signals/ledger)
       setTransactions([]);
     } catch (e: any) {
-      // ✅ NO demo fallback — show real state
-      setErr(e?.response?.data?.error || e?.message || "Wallet not ready yet");
+      const msg = pickErr(e);
+
+      // If backend returns the Supabase "single()" error, show clear hint
+      if (String(msg).toLowerCase().includes("cannot coerce the result to a single json object")) {
+        setErr(
+          "Wallet table returned multiple rows for this user. Fix backend: ensure wallets.user_id is UNIQUE (or change query to limit 1)."
+        );
+      } else {
+        setErr(msg);
+      }
+
+      // keep real state (no demo fallback)
       setBalance(0);
       setTransactions([]);
     } finally {
@@ -56,42 +89,70 @@ export default function WalletPanel({
   }
 
   async function fundWallet() {
-    // You already have /wallets/init (Paystack initialize)
+    setErr(null);
+
     if (!user?.email) {
       setErr("Your account email is required to fund wallet.");
       return;
     }
 
+    const raw = window.prompt("How much do you want to fund? (NGN)", "5000");
+    if (!raw) return;
+
+    const amount = Number(String(raw).replace(/,/g, ""));
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setErr("Enter a valid amount (e.g. 5000).");
+      return;
+    }
+
     try {
-      touch();
-      setErr(null);
       setLoading(true);
+      touch();
 
-      // example: ₦5,000
-      const init = await walletService.initPayment({ amount: 5000, email: user.email });
+      const initResp = await walletService.initPayment({
+        amount,
+        email: user.email,
+      });
 
-      // Paystack response typically includes authorization_url
-      const url = init?.data?.authorization_url || init?.authorization_url;
-      if (url) window.location.href = url;
-      else setErr("Paystack init returned no redirect URL.");
+      const url = extractPaystackUrl(initResp);
+      if (!url) {
+        setErr("Paystack init succeeded but no authorization_url was returned.");
+        return;
+      }
+
+      // redirect to Paystack checkout
+      window.location.href = url;
     } catch (e: any) {
-      setErr(e?.response?.data?.error || e?.message || "Funding failed");
+      setErr(pickErr(e));
     } finally {
       setLoading(false);
     }
   }
 
   async function payBills() {
-    // placeholder: you can use /wallets/debit for now as “bill payment”
-    try {
-      touch();
-      setErr(null);
-      setLoading(true);
+    setErr(null);
 
-      await walletService.debit({ amount: 1000, reason: "bills_payment_placeholder" });
+    const raw = window.prompt("How much do you want to pay? (NGN)", "1000");
+    if (!raw) return;
+
+    const amount = Number(String(raw).replace(/,/g, ""));
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setErr("Enter a valid amount (e.g. 1000).");
+      return;
+    }
+
+    const reason =
+      window.prompt("Reason (optional)", "bills_payment") || "bills_payment";
+
+    try {
+      setLoading(true);
+      touch();
+
+      // placeholder until you build real biller endpoints
+      await walletService.debit({ amount, reason });
       await load();
     } catch (e: any) {
-      setErr(e?.response?.data?.error || e?.message || "Payment failed");
+      setErr(pickErr(e));
     } finally {
       setLoading(false);
     }
@@ -105,7 +166,9 @@ export default function WalletPanel({
   return (
     <RemotePanel title="Wallet" lastUpdated={lastUpdated}>
       <div className="flex items-center justify-between mb-3">
-        <div className="text-xs text-gray-400">{loading ? "Syncing…" : "Balance"}</div>
+        <div className="text-xs text-gray-400">
+          {loading ? "Syncing…" : "Balance"}
+        </div>
 
         <button
           onClick={load}
@@ -153,7 +216,9 @@ export default function WalletPanel({
         <div className="text-xs text-gray-400 mb-2">Recent Transactions</div>
 
         {!transactions.length ? (
-          <div className="text-sm text-gray-500">No transactions yet.</div>
+          <div className="text-sm text-gray-500">
+            No transactions yet. (We’ll show this once you add a tx/ledger endpoint.)
+          </div>
         ) : (
           <div className="space-y-2">
             {transactions.map((tx) => (
@@ -171,7 +236,8 @@ export default function WalletPanel({
                     tx.type === "credit" ? "text-green-400" : "text-red-400"
                   }`}
                 >
-                  {tx.type === "credit" ? "+" : "-"}₦{tx.amount.toLocaleString()}
+                  {tx.type === "credit" ? "+" : "-"}₦
+                  {tx.amount.toLocaleString()}
                 </div>
               </div>
             ))}
