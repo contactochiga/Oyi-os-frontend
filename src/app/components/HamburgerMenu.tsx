@@ -48,11 +48,10 @@ export default function HamburgerMenu() {
     router.push(tab ? `/account?tab=${tab}` : "/account");
   };
 
-  // ✅ you can later map keys to routes; for now keeps behavior same (close only)
+  // keep behavior same (close only). map keys -> routes later if you want.
   const onMenuClick = (key: string) => {
-    // if you already have scroll-to-panel logic, call it here.
-    // Example: window.dispatchEvent(new CustomEvent("oyi:panel", { detail: key }));
-    void key; // keeps TS happy if unused
+    // Example hook:
+    // window.dispatchEvent(new CustomEvent("oyi:panel", { detail: key }));
     closeAll();
   };
 
@@ -74,30 +73,32 @@ export default function HamburgerMenu() {
         <Bars3Icon className="h-5 w-5" />
       </button>
 
-      {/* ✅ OVERLAY (dark + blur) + tap outside closes */}
+      {/* ✅ OVERLAY: darker + real blur, and tap-anywhere closes */}
       {open && (
         <div
-          className="fixed inset-0 z-40 lg:hidden bg-black/75 backdrop-blur-xl"
+          className="
+            fixed inset-0 z-40 lg:hidden
+            bg-black/70
+            backdrop-blur-xl
+            supports-[backdrop-filter]:bg-black/50
+          "
           onClick={closeAll}
+          aria-label="Close menu overlay"
         />
       )}
 
-      {/* ✅ DRAWER (facility sizing + blur feel) */}
+      {/* DRAWER (facility sizing + feel) */}
       <aside
-        onClick={(e) => e.stopPropagation()} // ✅ prevent clicks inside drawer from affecting overlay
         className={`fixed inset-y-0 left-0 z-50 w-[280px]
-          bg-zinc-950/95 backdrop-blur-xl
-          border-r border-white/10
+          bg-zinc-950 border-r border-white/10
           transform transition-transform duration-200 ease-out
           ${open ? "translate-x-0" : "-translate-x-full"}
         `}
       >
-        {/* whole drawer column */}
         <div className="flex h-[100dvh] flex-col">
           {/* HEADER ROW */}
           <div className="flex items-center justify-between p-4 border-b border-white/10">
             <div className="flex items-center gap-2 min-w-0">
-              {/* optional small logo (facility style) */}
               <div className="h-7 w-7 rounded-md overflow-hidden border border-white/10 bg-black/40">
                 <Image
                   src="/oyi-logo-transparent.png"
@@ -109,7 +110,6 @@ export default function HamburgerMenu() {
                 />
               </div>
 
-              {/* minimal title */}
               <div className="min-w-0">
                 <div className="text-sm font-medium text-zinc-200 truncate">
                   OYI
@@ -205,7 +205,7 @@ export default function HamburgerMenu() {
 
       {/* LOGOUT CONFIRM */}
       {showLogoutConfirm && (
-        <div className="fixed inset-0 z-[120] bg-black/70 backdrop-blur flex items-center justify-center px-6">
+        <div className="fixed inset-0 z-[120] bg-black/70 backdrop-blur-xl flex items-center justify-center px-6">
           <div className="bg-gray-900 p-6 rounded-2xl w-full max-w-sm border border-gray-700">
             <p className="text-white text-center font-semibold text-lg mb-6">
               Logout from Oyi OS?
