@@ -1,13 +1,19 @@
+// src/app/components/HamburgerMenu.tsx
+
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useState, useEffect } from "react";
 import Image from "next/image";
+import {
+  FiMenu,
+  FiX,
+  FiChevronDown,
+  FiChevronUp,
+  FiLogOut,
+} from "react-icons/fi";
+import { MdOutlinePerson, MdSettings } from "react-icons/md";
 import { useRouter } from "next/navigation";
 import useAuth from "@/hooks/useAuth";
-
-import { XMarkIcon, Bars3Icon } from "@heroicons/react/24/outline";
-import { FiChevronDown, FiChevronUp, FiLogOut } from "react-icons/fi";
-import { MdOutlinePerson, MdSettings } from "react-icons/md";
 
 const MENU_ITEMS = [
   { key: "rooms", label: "Rooms" },
@@ -32,15 +38,17 @@ export default function HamburgerMenu() {
     else document.body.classList.remove("sidebar-open");
   }, [open]);
 
-  const initials = useMemo(() => {
-    const name = user?.username || user?.email || "O";
-    return name.trim()?.[0]?.toUpperCase() || "O";
-  }, [user?.username, user?.email]);
-
   const closeAll = () => {
     setOpen(false);
     setProfileOpen(false);
     setShowLogoutConfirm(false);
+  };
+
+  const handleLogout = async () => {
+    closeAll();
+    await logout?.();
+    localStorage.clear();
+    router.replace("/auth/login");
   };
 
   const goToAccount = (tab?: "profile" | "settings") => {
@@ -48,162 +56,169 @@ export default function HamburgerMenu() {
     router.push(tab ? `/account?tab=${tab}` : "/account");
   };
 
-  // ✅ you can later map keys to routes; for now keeps behavior same (close only)
-  const onMenuClick = (key: string) => {
-    // if you already have scroll-to-panel logic, call it here.
-    // Example: window.dispatchEvent(new CustomEvent("oyi:panel", { detail: key }));
-    closeAll();
-  };
-
-  const handleLogout = async () => {
-    closeAll();
-    await logout?.();
-    if (typeof window !== "undefined") localStorage.clear();
-    router.replace("/auth/login");
-  };
+  const initials = user?.username ? user.username[0].toUpperCase() : "O";
 
   return (
     <>
-      {/* TOP LEFT BUTTON (facility style trigger) */}
-      <button
-        onClick={() => setOpen(true)}
-        aria-label="Open menu"
-        className="p-2 rounded-lg hover:bg-white/10 text-zinc-200"
-      >
-        <Bars3Icon className="h-5 w-5" />
-      </button>
+      {/* TOP BAR ICONS: Hamburger + Logo */}
+      <div className="flex items-center gap-2">
+        {/* HAMBURGER BUTTON */}
+        <button
+          onClick={() => setOpen((v) => !v)}
+          aria-label="Toggle menu"
+          className="p-2 rounded-md bg-black/60 text-white backdrop-blur
+                     hover:bg-black/80 transition"
+        >
+          {open ? <FiX size={22} /> : <FiMenu size={22} />}
+        </button>
 
-      {/* OVERLAY */}
+        {/* LOGO BUTTON */}
+        <button
+          onClick={() => router.push("/")}
+          aria-label="Go to Home"
+          className="h-[38px] w-[38px] rounded-md overflow-hidden
+                     bg-black/60 backdrop-blur hover:bg-black/80 transition
+                     flex items-center justify-center"
+        >
+          <Image
+            src="/oyi-logo-transparent.png"
+            alt="Oyi"
+            width={38}
+            height={38}
+            priority
+            className="h-full w-full object-cover"
+          />
+        </button>
+      </div>
+
+      {/* OVERLAY (tap outside closes ✅) */}
       {open && (
         <div
-          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+          className="fixed inset-0 z-[90] bg-black/70 backdrop-blur-xl"
           onClick={closeAll}
         />
       )}
 
-      {/* DRAWER (facility exact sizing + feel) */}
+      {/* SIDEBAR / DRAWER */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-[280px]
-          bg-zinc-950 border-r border-white/10
-          transform transition-transform duration-200 ease-out
-          ${open ? "translate-x-0" : "-translate-x-full"}
-        `}
+        className={`fixed top-0 left-0 z-[100] h-[100dvh]
+          w-[78%] max-w-[360px]
+          transform transition-transform duration-300 ease-out
+          ${open ? "translate-x-0" : "-translate-x-full"}`}
+        style={{
+          background:
+            "linear-gradient(180deg, rgba(9,10,16,0.96), rgba(5,6,12,0.98))",
+          borderRight: "1px solid rgba(255,255,255,0.08)",
+          backdropFilter: "blur(28px)",
+        }}
+        // prevent clicks inside from closing via overlay
+        onClick={(e) => e.stopPropagation()}
       >
-        {/* whole drawer column */}
-        <div className="flex h-[100dvh] flex-col">
-          {/* HEADER ROW */}
-          <div className="flex items-center justify-between p-4 border-b border-white/10">
-            <div className="flex items-center gap-2 min-w-0">
-              {/* optional small logo like your old one (but in facility style) */}
-              <div className="h-7 w-7 rounded-md overflow-hidden border border-white/10 bg-black/40">
-                <Image
-                  src="/oyi-logo-transparent.png"
-                  alt="Oyi"
-                  width={28}
-                  height={28}
-                  className="h-full w-full object-cover"
-                  priority
-                />
+        <div className="h-16" />
+
+        {/* MENU */}
+        <nav className="px-5 mt-6 space-y-2">
+          {MENU_ITEMS.map((item) => (
+            <button
+              key={item.key}
+              onClick={() => {
+                // TODO: route/scroll per item if you want
+                closeAll();
+              }}
+              className="w-full text-left py-3 px-4 rounded-xl
+                         text-lg text-white/90
+                         hover:bg-white/5 transition"
+            >
+              {item.label}
+            </button>
+          ))}
+        </nav>
+
+        {/* PROFILE FOOTER */}
+        <div
+          className="absolute bottom-0 left-0 w-full
+                     px-5 py-5 border-t border-white/10
+                     bg-black/40 backdrop-blur-xl"
+        >
+          <div className="flex items-center justify-between">
+            <button
+              onClick={() => goToAccount("profile")}
+              className="flex items-center gap-3"
+            >
+              <div
+                className="w-12 h-12 rounded-full bg-[#E11D2E]
+                           flex items-center justify-center
+                           text-white font-semibold"
+              >
+                {initials}
               </div>
 
-              {/* keep it minimal like you requested */}
-              <div className="min-w-0">
-                <div className="text-sm font-medium text-zinc-200 truncate">
-                  OYI
-                </div>
-                <div className="text-[11px] text-zinc-500 truncate">
-                  Control
-                </div>
+              <div className="text-left">
+                <p className="text-white text-sm font-semibold">
+                  {user?.username || "Resident"}
+                </p>
+                <p className="text-white/50 text-xs">{user?.email || "Account"}</p>
               </div>
-            </div>
+            </button>
 
             <button
-              onClick={closeAll}
-              className="rounded-lg p-2 hover:bg-white/10"
-              aria-label="Close menu"
+              onClick={() => setProfileOpen((v) => !v)}
+              className="text-white/70"
+              aria-label="Toggle account menu"
             >
-              <XMarkIcon className="h-5 w-5 text-zinc-300" />
+              {profileOpen ? <FiChevronUp /> : <FiChevronDown />}
             </button>
           </div>
 
-          {/* MENU */}
-          <nav className="px-4 py-4 space-y-1">
-            {MENU_ITEMS.map((item) => (
+          {profileOpen && (
+            <div
+              className="mt-3 bg-gray-900/90
+                         border border-white/10
+                         rounded-xl overflow-hidden backdrop-blur-xl"
+            >
               <button
-                key={item.key}
-                onClick={() => onMenuClick(item.key)}
-                className="w-full text-left rounded-xl px-4 py-3 text-sm transition
-                           text-zinc-300 hover:bg-white/5"
+                onClick={() => goToAccount("profile")}
+                className="w-full flex items-center gap-3
+                           px-4 py-3 hover:bg-gray-800/70 transition text-white"
               >
-                {item.label}
+                <MdOutlinePerson /> Profile
               </button>
-            ))}
-          </nav>
 
-          {/* ACCOUNT FOOTER (facility style) */}
-          <div className="mt-auto">
-            <div className="px-4 pb-5 border-t border-white/10 bg-black/30">
-              <div className="pt-5 flex items-center justify-between">
-                <button
-                  onClick={() => goToAccount("profile")}
-                  className="flex items-center gap-3"
-                >
-                  <div className="w-12 h-12 rounded-full bg-[#E11D2E] flex items-center justify-center text-white font-semibold">
-                    {initials}
-                  </div>
+              <button
+                onClick={() => goToAccount("settings")}
+                className="w-full flex items-center gap-3
+                           px-4 py-3 hover:bg-gray-800/70 transition text-white"
+              >
+                <MdSettings /> Settings
+              </button>
 
-                  <div className="text-left">
-                    <p className="text-white text-sm font-semibold">
-                      {user?.username || "Resident"}
-                    </p>
-                    <p className="text-white/50 text-xs">
-                      {user?.email || "Account"}
-                    </p>
-                  </div>
-                </button>
-
-                <button
-                  onClick={() => setProfileOpen((v) => !v)}
-                  className="text-white/70"
-                  aria-label="Toggle account menu"
-                >
-                  {profileOpen ? <FiChevronUp /> : <FiChevronDown />}
-                </button>
-              </div>
-
-              {profileOpen && (
-                <div className="mt-3 bg-gray-900 border border-white/10 rounded-xl overflow-hidden">
-                  <button
-                    onClick={() => goToAccount("profile")}
-                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-800 transition text-white"
-                  >
-                    <MdOutlinePerson /> Profile
-                  </button>
-
-                  <button
-                    onClick={() => goToAccount("settings")}
-                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-800 transition text-white"
-                  >
-                    <MdSettings /> Settings
-                  </button>
-
-                  <button
-                    onClick={() => setShowLogoutConfirm(true)}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-[#E11D2E] hover:bg-gray-800 transition"
-                  >
-                    <FiLogOut /> Logout
-                  </button>
-                </div>
-              )}
+              <button
+                onClick={() => setShowLogoutConfirm(true)}
+                className="w-full flex items-center gap-3
+                           px-4 py-3 text-[#E11D2E]
+                           hover:bg-gray-800/70 transition"
+              >
+                <FiLogOut /> Logout
+              </button>
             </div>
-          </div>
+          )}
         </div>
       </aside>
 
       {/* LOGOUT CONFIRM */}
       {showLogoutConfirm && (
-        <div className="fixed inset-0 z-[120] bg-black/70 backdrop-blur flex items-center justify-center px-6">
-          <div className="bg-gray-900 p-6 rounded-2xl w-full max-w-sm border border-gray-700">
+        <div
+          className="fixed inset-0 z-[120]
+                     bg-black/70 backdrop-blur-xl
+                     flex items-center justify-center px-6"
+          onClick={closeAll}
+        >
+          <div
+            className="bg-gray-900/95 p-6 rounded-2xl
+                       w-full max-w-sm
+                       border border-gray-700 backdrop-blur-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             <p className="text-white text-center font-semibold text-lg mb-6">
               Logout from Oyi OS?
             </p>
