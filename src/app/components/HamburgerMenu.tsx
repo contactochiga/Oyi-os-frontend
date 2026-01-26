@@ -27,11 +27,6 @@ export default function HamburgerMenu() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
-  useEffect(() => {
-    if (open) document.body.classList.add("sidebar-open");
-    else document.body.classList.remove("sidebar-open");
-  }, [open]);
-
   const initials = useMemo(() => {
     const name = user?.username || user?.email || "O";
     return name.trim()?.[0]?.toUpperCase() || "O";
@@ -48,10 +43,8 @@ export default function HamburgerMenu() {
     router.push(tab ? `/account?tab=${tab}` : "/account");
   };
 
-  // keep behavior same (close only). map keys -> routes later if you want.
   const onMenuClick = (key: string) => {
-    // Example hook:
-    // window.dispatchEvent(new CustomEvent("oyi:panel", { detail: key }));
+    // hook your navigation here later if you want
     closeAll();
   };
 
@@ -62,9 +55,26 @@ export default function HamburgerMenu() {
     router.replace("/auth/login");
   };
 
+  // ✅ LOCK SCROLL + keep your class hook
+  useEffect(() => {
+    if (!open) {
+      document.body.classList.remove("sidebar-open");
+      document.body.style.overflow = "";
+      return;
+    }
+
+    document.body.classList.add("sidebar-open");
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.classList.remove("sidebar-open");
+      document.body.style.overflow = "";
+    };
+  }, [open]);
+
   return (
     <>
-      {/* TOP LEFT BUTTON (facility style trigger) */}
+      {/* TOP LEFT BUTTON */}
       <button
         onClick={() => setOpen(true)}
         aria-label="Open menu"
@@ -73,30 +83,32 @@ export default function HamburgerMenu() {
         <Bars3Icon className="h-5 w-5" />
       </button>
 
-      {/* ✅ OVERLAY: darker + real blur, and tap-anywhere closes */}
+      {/* ✅ STRONG OVERLAY: HIGH Z + REAL BLUR (iOS-safe) + tap outside closes */}
       {open && (
         <div
-          className="
-            fixed inset-0 z-40 lg:hidden
-            bg-black/70
-            backdrop-blur-xl
-            supports-[backdrop-filter]:bg-black/50
-          "
+          className="fixed inset-0 lg:hidden"
+          style={{
+            zIndex: 9998,
+            backgroundColor: "rgba(0,0,0,0.65)", // darker cover
+            backdropFilter: "blur(18px)",
+            WebkitBackdropFilter: "blur(18px)",
+          }}
           onClick={closeAll}
           aria-label="Close menu overlay"
         />
       )}
 
-      {/* DRAWER (facility sizing + feel) */}
+      {/* DRAWER (on top of overlay) */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-[280px]
+        className={`fixed inset-y-0 left-0 w-[280px]
           bg-zinc-950 border-r border-white/10
           transform transition-transform duration-200 ease-out
           ${open ? "translate-x-0" : "-translate-x-full"}
         `}
+        style={{ zIndex: 9999 }}
       >
         <div className="flex h-[100dvh] flex-col">
-          {/* HEADER ROW */}
+          {/* HEADER */}
           <div className="flex items-center justify-between p-4 border-b border-white/10">
             <div className="flex items-center gap-2 min-w-0">
               <div className="h-7 w-7 rounded-md overflow-hidden border border-white/10 bg-black/40">
@@ -114,9 +126,7 @@ export default function HamburgerMenu() {
                 <div className="text-sm font-medium text-zinc-200 truncate">
                   OYI
                 </div>
-                <div className="text-[11px] text-zinc-500 truncate">
-                  Control
-                </div>
+                <div className="text-[11px] text-zinc-500 truncate">Control</div>
               </div>
             </div>
 
@@ -143,7 +153,7 @@ export default function HamburgerMenu() {
             ))}
           </nav>
 
-          {/* ACCOUNT FOOTER (facility style) */}
+          {/* ACCOUNT FOOTER */}
           <div className="mt-auto">
             <div className="px-4 pb-5 border-t border-white/10 bg-black/30">
               <div className="pt-5 flex items-center justify-between">
@@ -205,7 +215,15 @@ export default function HamburgerMenu() {
 
       {/* LOGOUT CONFIRM */}
       {showLogoutConfirm && (
-        <div className="fixed inset-0 z-[120] bg-black/70 backdrop-blur-xl flex items-center justify-center px-6">
+        <div
+          className="fixed inset-0 flex items-center justify-center px-6"
+          style={{
+            zIndex: 10000,
+            backgroundColor: "rgba(0,0,0,0.70)",
+            backdropFilter: "blur(18px)",
+            WebkitBackdropFilter: "blur(18px)",
+          }}
+        >
           <div className="bg-gray-900 p-6 rounded-2xl w-full max-w-sm border border-gray-700">
             <p className="text-white text-center font-semibold text-lg mb-6">
               Logout from Oyi OS?
