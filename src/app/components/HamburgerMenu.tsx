@@ -18,7 +18,23 @@ const MENU_ITEMS = [
   { key: "maintenance", label: "Maintenance & Support" },
   { key: "scenes", label: "Scenes" },
   { key: "automations", label: "Automations" },
-];
+] as const;
+
+type MenuKey = (typeof MENU_ITEMS)[number]["key"];
+
+/**
+ * ✅ Update these to match your actual consumer app routes
+ * (If some pages are not ready yet, you can temporarily point them to "/")
+ */
+const ROUTES: Record<MenuKey, string> = {
+  rooms: "/rooms",
+  devices: "/devices",
+  wallet: "/wallet",
+  community: "/community",
+  maintenance: "/maintenance",
+  scenes: "/scenes",
+  automations: "/automations",
+};
 
 export default function HamburgerMenu() {
   const router = useRouter();
@@ -42,14 +58,21 @@ export default function HamburgerMenu() {
     setShowLogoutConfirm(false);
   };
 
-  const goToAccount = (tab?: "profile" | "settings") => {
+  const pushAndClose = (href: string) => {
     closeAll();
-    router.push(tab ? `/account?tab=${tab}` : "/account");
+    router.push(href);
   };
 
-  const onMenuClick = (key: string) => {
-    // hook navigation later if you want
-    closeAll();
+  // ✅ Settings + Profile route you gave: /settings
+  // We'll use query tab so SettingsClient can switch view.
+  const goToAccount = (tab?: "profile" | "settings") => {
+    if (tab === "profile") return pushAndClose("/settings?tab=profile");
+    if (tab === "settings") return pushAndClose("/settings?tab=settings");
+    return pushAndClose("/settings");
+  };
+
+  const onMenuClick = (key: MenuKey) => {
+    pushAndClose(ROUTES[key]);
   };
 
   const handleLogout = async () => {
@@ -78,27 +101,27 @@ export default function HamburgerMenu() {
     };
   }, [open]);
 
-  const OVERLAY_Z = 2147483646; // near max
-  const DRAWER_Z = 2147483647; // max-ish
+  const OVERLAY_Z = 2147483646;
+  const DRAWER_Z = 2147483647;
 
   const portalUI =
     mounted && open
       ? createPortal(
           <>
-            {/* ✅ FULL SCREEN BLUR OVERLAY (always above everything) */}
+            {/* ✅ Overlay: strong blur + closes on outside tap */}
             <div
               onClick={closeAll}
               className="fixed inset-0"
               style={{
                 zIndex: OVERLAY_Z,
-                backgroundColor: "rgba(0,0,0,0.72)", // heavier cover
+                backgroundColor: "rgba(0,0,0,0.72)",
                 backdropFilter: "blur(22px)",
                 WebkitBackdropFilter: "blur(22px)",
               }}
               aria-label="Close menu overlay"
             />
 
-            {/* ✅ DRAWER */}
+            {/* Drawer */}
             <aside
               className={`fixed inset-y-0 left-0 w-[280px]
                 bg-zinc-950 border-r border-white/10
@@ -108,7 +131,7 @@ export default function HamburgerMenu() {
               style={{ zIndex: DRAWER_Z }}
             >
               <div className="flex h-[100dvh] flex-col">
-                {/* HEADER */}
+                {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b border-white/10">
                   <div className="flex items-center gap-2 min-w-0">
                     <div className="h-7 w-7 rounded-md overflow-hidden border border-white/10 bg-black/40">
@@ -141,7 +164,7 @@ export default function HamburgerMenu() {
                   </button>
                 </div>
 
-                {/* MENU */}
+                {/* Menu */}
                 <nav className="px-4 py-4 space-y-1">
                   {MENU_ITEMS.map((item) => (
                     <button
@@ -155,7 +178,7 @@ export default function HamburgerMenu() {
                   ))}
                 </nav>
 
-                {/* ACCOUNT FOOTER */}
+                {/* Account footer */}
                 <div className="mt-auto">
                   <div className="px-4 pb-5 border-t border-white/10 bg-black/30">
                     <div className="pt-5 flex items-center justify-between">
@@ -214,7 +237,7 @@ export default function HamburgerMenu() {
                 </div>
               </div>
 
-              {/* LOGOUT CONFIRM (also inside drawer z-layer) */}
+              {/* Logout confirm */}
               {showLogoutConfirm && (
                 <div
                   className="fixed inset-0 flex items-center justify-center px-6"
@@ -269,7 +292,6 @@ export default function HamburgerMenu() {
         <Bars3Icon className="h-5 w-5" />
       </button>
 
-      {/* Portal render */}
       {portalUI}
     </>
   );
