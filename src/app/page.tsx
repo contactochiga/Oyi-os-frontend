@@ -10,7 +10,7 @@ export default function LandingPage() {
     <main className="min-h-screen flex items-center justify-center bg-gradient-to-b from-gray-900 to-gray-950 text-white px-6">
       <div className="w-full max-w-sm text-center flex flex-col items-center gap-7">
         {/* Logo */}
-        <div className="w-20 h-20 relative mb-1">
+        <div className="w-28 h-28 relative mb-1">
           <Image
             src="/oyi-logo-transparent.png"
             alt="Oyi OS Logo"
