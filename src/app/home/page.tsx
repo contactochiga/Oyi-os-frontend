@@ -1,6 +1,11 @@
+// src/app/home/page.tsx
 "use client";
 
 import { useState } from "react";
+
+// ✅ NEW
+import { useRouter } from "next/navigation";
+import InviteSuggestionBridge from "../components/InviteSuggestionBridge";
 
 // COMPONENTS
 import LayoutWrapper from "../components/LayoutWrapper";
@@ -87,21 +92,11 @@ function inferPanel(aiPanel?: string | null, userText?: string): string | null {
   }
 
   // SECURITY
-  if (
-    src.includes("cctv") ||
-    src.includes("camera") ||
-    src.includes("surveillance")
-  ) {
+  if (src.includes("cctv") || src.includes("camera") || src.includes("surveillance")) {
     return "cctv";
   }
 
-  if (
-    src.includes("sensor") ||
-    src.includes("motion") ||
-    src.includes("smoke") ||
-    src.includes("gas") ||
-    src.includes("alert")
-  ) {
+  if (src.includes("sensor") || src.includes("motion") || src.includes("smoke") || src.includes("gas") || src.includes("alert")) {
     return "sensors";
   }
 
@@ -118,12 +113,7 @@ function inferPanel(aiPanel?: string | null, userText?: string): string | null {
   }
 
   // FINANCE & UTILITIES
-  if (
-    src.includes("wallet") ||
-    src.includes("payment") ||
-    src.includes("balance") ||
-    src.includes("fund")
-  ) {
+  if (src.includes("wallet") || src.includes("payment") || src.includes("balance") || src.includes("fund")) {
     return "wallet";
   }
 
@@ -141,12 +131,7 @@ function inferPanel(aiPanel?: string | null, userText?: string): string | null {
   }
 
   // COMMUNITY
-  if (
-    src.includes("community") ||
-    src.includes("announcement") ||
-    src.includes("estate news") ||
-    src.includes("notice")
-  ) {
+  if (src.includes("community") || src.includes("announcement") || src.includes("estate news") || src.includes("notice")) {
     return "community";
   }
 
@@ -198,6 +183,8 @@ function getSuggestionTitle(panel: string): string {
 }
 
 export default function HomePage() {
+  const router = useRouter(); // ✅ NEW
+
   const [input, setInput] = useState("");
 
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -222,6 +209,12 @@ export default function HomePage() {
   async function handleSend(text?: string) {
     const command = (text ?? input).trim();
     if (!command) return;
+
+    // ✅ INVITE SENTINEL (tap on DynamicSuggestionCard invite pill)
+    if (command === "__OPEN_INVITES__") {
+      router.push("/invites");
+      return;
+    }
 
     setInput("");
 
@@ -303,6 +296,8 @@ export default function HomePage() {
   return (
     <LayoutWrapper>
       <main className="fixed inset-0 flex flex-col">
+        {/* ✅ INVITE → SUGGESTION FEEDER */}
+        <InviteSuggestionBridge />
 
         {/* TOPBAR */}
         <div className="fixed top-0 left-0 right-0 z-[70] h-16 bg-gray-900/80 backdrop-blur border-b border-gray-800">
@@ -367,7 +362,6 @@ export default function HomePage() {
         <div className="fixed bottom-0 left-0 right-0 z-[50] p-4 bg-gray-900 border-t border-gray-700">
           <ChatFooter input={input} setInput={setInput} onSend={() => handleSend()} />
         </div>
-
       </main>
     </LayoutWrapper>
   );
