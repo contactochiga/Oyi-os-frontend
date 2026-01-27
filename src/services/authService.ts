@@ -1,27 +1,42 @@
+// src/services/authService.ts
 import API from "./api";
 
 /**
  * Backend returns:
  *  - success: { message, user, token }
- *  - error:   { error: string }
+ *  - error:   { error: string } OR { message: string }
  */
 
 function pickError(err: any, fallback: string) {
   return (
     err?.response?.data?.error ||      // ✅ your backend format
-    err?.response?.data?.message ||    // (some endpoints/middleware may use message)
+    err?.response?.data?.message ||    // (some endpoints may use message)
     err?.message ||
     fallback
   );
 }
 
+// ✅ UPDATED: otpToken is required for OTP-gated signup
 export async function signUpWithEmail(
   email: string,
   password: string,
-  full_name?: string
+  full_name?: string,
+  otpToken?: string
 ) {
   try {
-    const res = await API.post("/auth/signup", { email, password, full_name });
+    const res = await API.post(
+      "/auth/signup",
+      {
+        email,
+        password,
+        full_name,
+        otpToken, // ✅ body fallback
+      },
+      {
+        headers: otpToken ? { "x-otp-token": otpToken } : undefined, // ✅ main gate header
+      }
+    );
+
     return res.data;
   } catch (err: any) {
     console.error("Signup error:", err);
