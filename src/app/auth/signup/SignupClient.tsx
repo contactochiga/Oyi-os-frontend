@@ -3,18 +3,14 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { authService } from "@/services/authService";
+import { signUpWithEmail } from "@/services/authService"; // ✅ consumer service (now supports otpToken)
 import { decodeToken, isExpired, setCookie } from "@/lib/auth";
 import { useSessionStore } from "@/store/useSessionStore";
 
 type Step = "form" | "otp";
 
 function getApiBase() {
-  return (
-    process.env.NEXT_PUBLIC_API_URL ||
-    process.env.NEXT_PUBLIC_API_BASE_URL ||
-    ""
-  );
+  return process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "";
 }
 
 function isValidEmail(email: string) {
@@ -32,8 +28,7 @@ async function sendOtp(email: string) {
   });
 
   const data = await res.json().catch(() => ({}));
-  if (!res.ok)
-    throw new Error(data?.message || data?.error || "Failed to send OTP");
+  if (!res.ok) throw new Error(data?.message || data?.error || "Failed to send OTP");
   return data;
 }
 
@@ -48,8 +43,7 @@ async function verifyOtp(email: string, code: string) {
   });
 
   const data = await res.json().catch(() => ({}));
-  if (!res.ok)
-    throw new Error(data?.message || data?.error || "OTP verification failed");
+  if (!res.ok) throw new Error(data?.message || data?.error || "OTP verification failed");
 
   return data as { ok?: boolean; otpToken?: string; message?: string };
 }
@@ -63,14 +57,7 @@ function formatMMSS(totalSeconds: number) {
 
 function ResendIcon({ className = "" }: { className?: string }) {
   return (
-    <svg
-      className={className}
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden="true"
-    >
+    <svg className={className} width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path
         d="M20 12a8 8 0 0 1-14.3 5M4 12A8 8 0 0 1 18.3 7"
         stroke="currentColor"
@@ -96,13 +83,7 @@ function ResendIcon({ className = "" }: { className?: string }) {
 }
 
 function StatusDot({ ok }: { ok: boolean | null }) {
-  const title =
-    ok === null
-      ? "Checking connection"
-      : ok
-      ? "Backend connected"
-      : "Backend offline";
-
+  const title = ok === null ? "Checking connection" : ok ? "Backend connected" : "Backend offline";
   const cls =
     ok === null
       ? "bg-gray-500"
@@ -111,11 +92,7 @@ function StatusDot({ ok }: { ok: boolean | null }) {
       : "bg-red-400 shadow-[0_0_0_3px_rgba(248,113,113,0.12)]";
 
   return (
-    <span
-      className="inline-flex items-center"
-      title={title}
-      aria-label={title}
-    >
+    <span className="inline-flex items-center" title={title} aria-label={title}>
       <span className={`h-2.5 w-2.5 rounded-full ${cls}`} />
     </span>
   );
@@ -181,10 +158,8 @@ function Otp6({
                     setAt(i - 1, "");
                   }
                 }
-                if (e.key === "ArrowLeft" && i > 0)
-                  inputsRef.current[i - 1]?.focus();
-                if (e.key === "ArrowRight" && i < 5)
-                  inputsRef.current[i + 1]?.focus();
+                if (e.key === "ArrowLeft" && i > 0) inputsRef.current[i - 1]?.focus();
+                if (e.key === "ArrowRight" && i < 5) inputsRef.current[i + 1]?.focus();
               }}
             />
           );
@@ -199,10 +174,7 @@ export default function SignupClient() {
   const searchParams = useSearchParams();
   const { setSession } = useSessionStore();
 
-  const next = useMemo(
-    () => searchParams.get("next") || "/home",
-    [searchParams]
-  );
+  const next = useMemo(() => searchParams.get("next") || "/home", [searchParams]);
 
   const [step, setStep] = useState<Step>("form");
 
@@ -256,10 +228,7 @@ export default function SignupClient() {
   // tick expiry timer only when in otp step
   useEffect(() => {
     if (step !== "otp") return;
-    const t = setInterval(
-      () => setExpiresLeft((s) => Math.max(0, s - 1)),
-      1000
-    );
+    const t = setInterval(() => setExpiresLeft((s) => Math.max(0, s - 1)), 1000);
     return () => clearInterval(t);
   }, [step]);
 
@@ -330,13 +299,8 @@ export default function SignupClient() {
         return;
       }
 
-      // ✅ signup with otp gate
-      const res = await authService.signup(
-        cleanEmail,
-        password,
-        fullName.trim(),
-        otpToken
-      );
+      // ✅ IMPORTANT: consumer signup must pass otpToken now
+      const res = await signUpWithEmail(cleanEmail, password, fullName.trim(), otpToken);
 
       if (res?.error || !res?.token) {
         setErr(res?.error || "Signup failed");
@@ -368,10 +332,7 @@ export default function SignupClient() {
     setStep("form");
   }
 
-  const subtitle =
-    step === "form"
-      ? "Continue with email."
-      : "Enter the verification code we sent.";
+  const subtitle = step === "form" ? "Continue with email." : "Enter the verification code we sent.";
 
   return (
     <main className="min-h-screen flex items-center justify-center bg-gradient-to-b from-gray-900 to-gray-950 text-white px-6">
@@ -452,9 +413,7 @@ export default function SignupClient() {
               <Otp6 value={otp} onChange={setOtp} disabled={loading} />
 
               <div className="mt-3 flex items-center justify-between gap-3">
-                <div className="text-xs text-gray-400">
-                  Expires in {formatMMSS(expiresLeft)}
-                </div>
+                <div className="text-xs text-gray-400">Expires in {formatMMSS(expiresLeft)}</div>
 
                 <button
                   type="button"
