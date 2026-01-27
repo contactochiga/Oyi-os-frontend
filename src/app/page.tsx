@@ -9,11 +9,10 @@ export default function LandingPage() {
   return (
     <main className="min-h-screen flex items-center justify-center bg-gradient-to-b from-gray-900 to-gray-950 text-white px-6">
       <div className="w-full max-w-sm text-center flex flex-col items-center gap-7">
-
         {/* Logo */}
         <div className="w-20 h-20 relative mb-1">
           <Image
-            src="/oyi-logo.png"
+            src="/oyi-logo-transparent.png"
             alt="Oyi OS Logo"
             fill
             className="object-contain"
@@ -22,9 +21,7 @@ export default function LandingPage() {
         </div>
 
         {/* Wordmark */}
-        <div className="text-3xl font-semibold tracking-wide">
-          OYI&nbsp;OS
-        </div>
+        <div className="text-3xl font-semibold tracking-wide">OYI&nbsp;OS</div>
 
         {/* Tagline */}
         <div className="text-lg text-gray-300">
@@ -73,7 +70,6 @@ export default function LandingPage() {
         <div className="text-xs text-gray-500 mt-6 opacity-80">
           Secure · Private · Estate-native
         </div>
-
       </div>
     </main>
   );
