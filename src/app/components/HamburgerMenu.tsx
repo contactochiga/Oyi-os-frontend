@@ -39,76 +39,40 @@ function getApiBase() {
     process.env.NEXT_PUBLIC_BACKEND_URL ||
     process.env.NEXT_PUBLIC_API_URL ||
     "https://oyi-os.onrender.com"
-  );
-}
-
-async function authedGetJson(url: string) {
-  const token =
-    (typeof window !== "undefined" && localStorage.getItem("token")) || "";
-
-  const res = await fetch(url, {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    cache: "no-store",
-  });
-
-  if (!res.ok) throw new Error(`GET ${url} failed: ${res.status}`);
-  return res.json();
-}
-
-async function tryGetFirst<T = any>(paths: string[]): Promise<T | null> {
-  for (const p of paths) {
-    try {
-      const data = await authedGetJson(p);
-      return data as T;
-    } catch {
-      // try next
-    }
-  }
-  return null;
+  ).replace(/\/$/, "");
 }
 
 function buildHomeLabel(home: any): string | null {
   if (!home) return null;
-
   const block = String(home.block || "").trim();
   const unit = String(home.unit || "").trim();
-  const name = String(home.name || "").trim();
-  const desc = String(home.description || "").trim();
 
-  // prefer "Block A / Unit 4"
   if (block && unit) return `${block} / ${unit}`;
-  if (unit && !block) return unit;
-  if (block && !unit) return block;
+  if (block) return block;
+  if (unit) return unit;
 
-  // fallback to home name
+  const name = String(home.name || "").trim();
   if (name) return name;
-
-  // LAST fallback (optional): a short descriptor
-  if (desc) return desc;
 
   return null;
 }
 
 export default function HamburgerMenu() {
   const router = useRouter();
-  const { user, logout } = useAuth();
+  const { user, token, logout } = useAuth();
 
   const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
-  // estate/home display state
+  // ✅ display context (from /me/context)
   const [estateName, setEstateName] = useState<string | null>(null);
   const [homeLabel, setHomeLabel] = useState<string | null>(null);
 
   useEffect(() => setMounted(true), []);
 
-  const email = (user as any)?.email as string | undefined;
+  const email = user?.email;
 
   const initials = useMemo(() => {
     const n =
@@ -120,10 +84,8 @@ export default function HamburgerMenu() {
   }, [email]);
 
   const displayName = useMemo(() => {
-    // avoid type errors: SessionUser doesn't have username
-    const u: any = user;
-    return (u?.full_name || u?.name || u?.email || "Resident") as string;
-  }, [user]);
+    return user?.email || "Resident";
+  }, [user?.email]);
 
   const closeAll = () => {
     setOpen(false);
@@ -169,81 +131,55 @@ export default function HamburgerMenu() {
     };
   }, [open]);
 
-  // ✅ Fetch estate + home details (touch real endpoints)
+  // ✅ Fetch consumer display context from backend (ONE endpoint)
   useEffect(() => {
     let cancelled = false;
 
     async function run() {
-      const api = getApiBase();
-
-      const estateId = (user as any)?.estate_id as string | undefined;
-      const homeId = (user as any)?.home_id as string | undefined;
-
       // reset
       setEstateName(null);
       setHomeLabel(null);
 
-      // If no estate linked:
-      // Option B => show nothing unless we can build a home address label
-      if (!estateId) {
-        if (!homeId) return;
+      if (!token) return;
 
-        // try fetch home to build label
-        const home = await tryGetFirst<any>([
-          `${api}/homes/${homeId}`,
-          `${api}/residents/homes/${homeId}`,
-          `${api}/facility/homes/${homeId}`,
-        ]);
+      const api = getApiBase();
+      const res = await fetch(`${api}/me/context`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        cache: "no-store",
+      });
 
-        if (cancelled) return;
-        setHomeLabel(buildHomeLabel(home));
-        return;
-      }
+      if (!res.ok) return;
 
-      // If estate linked, show both estate and home (if exists)
-      const estate = await tryGetFirst<any>([
-        `${api}/estates/${estateId}`,
-        `${api}/estates/${estateId}/public`,
-        `${api}/facility/estates/${estateId}`,
-      ]);
-
+      const data = await res.json();
       if (cancelled) return;
-      setEstateName(
-        String(
-          estate?.name ||
-            estate?.estate?.name ||
-            estate?.data?.name ||
-            "Estate"
-        )
-      );
 
-      if (!homeId) return;
+      const estate = data?.estate || null;
+      const home = data?.home || null;
 
-      const home = await tryGetFirst<any>([
-        `${api}/homes/${homeId}`,
-        `${api}/residents/homes/${homeId}`,
-        `${api}/facility/homes/${homeId}`,
-      ]);
-
-      if (cancelled) return;
-      setHomeLabel(buildHomeLabel(home));
+      setEstateName(estate?.name ? String(estate.name) : null);
+      setHomeLabel(home ? buildHomeLabel(home) : null);
     }
 
-    run().catch(() => {
-      // keep UI clean even if fetch fails
-    });
-
+    run().catch(() => {});
     return () => {
       cancelled = true;
     };
-  }, [(user as any)?.estate_id, (user as any)?.home_id]);
+  }, [token, user?.estate_id, user?.home_id]);
 
+  /**
+   * ✅ Your Option B:
+   * - If NOT connected to an estate -> show nothing at all
+   * - If connected -> show estate + home
+   *
+   * If later you want "maybe home address", change this boolean.
+   */
   const shouldShowContext = useMemo(() => {
-    const estateId = (user as any)?.estate_id as string | undefined;
-    if (estateId) return true; // show estate/home section
-    // Option B: show ONLY home if we have a homeLabel
-    return !!homeLabel;
-  }, [user, homeLabel]);
+    return !!estateName; // only show when estate exists
+  }, [estateName]);
 
   const OVERLAY_Z = 2147483646;
   const DRAWER_Z = 2147483647;
@@ -306,40 +242,23 @@ export default function HamburgerMenu() {
                   </button>
                 </div>
 
-                {/* ✅ Estate/Home context (Option B behavior) */}
+                {/* ✅ Estate/Home badge exactly like you want */}
                 {shouldShowContext && (
                   <div className="px-4 pt-4 pb-3 border-b border-white/10">
-                    {(user as any)?.estate_id ? (
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[12px] text-zinc-200">
-                            <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                            Estate
-                          </span>
-                        </div>
-
-                        <div className="text-[13px] text-zinc-200 truncate">
-                          Estate:{" "}
-                          <span className="text-zinc-100 font-medium">
-                            {estateName || "Loading..."}
-                          </span>
-                        </div>
-
-                        {homeLabel ? (
-                          <div className="text-[12px] text-zinc-400 truncate">
-                            Home:{" "}
-                            <span className="text-zinc-300">{homeLabel}</span>
-                          </div>
-                        ) : null}
+                    <div className="space-y-1">
+                      <div className="text-[13px] text-zinc-200 truncate">
+                        Estate:{" "}
+                        <span className="text-zinc-100 font-medium">
+                          {estateName}
+                        </span>
                       </div>
-                    ) : (
-                      // Option B: no estate -> show only home label (if we have it)
-                      homeLabel ? (
+
+                      {homeLabel ? (
                         <div className="text-[12px] text-zinc-400 truncate">
                           Home: <span className="text-zinc-300">{homeLabel}</span>
                         </div>
-                      ) : null
-                    )}
+                      ) : null}
+                    </div>
                   </div>
                 )}
 
