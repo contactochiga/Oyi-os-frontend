@@ -1,3 +1,4 @@
+// src/app/components/HamburgerMenu.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -9,10 +10,6 @@ import { createPortal } from "react-dom";
 import { XMarkIcon, Bars3Icon } from "@heroicons/react/24/outline";
 import { FiChevronDown, FiChevronUp, FiLogOut } from "react-icons/fi";
 import { MdOutlinePerson, MdSettings } from "react-icons/md";
-
-// ✅ consumer API helpers (create these tiny wrappers or swap to your existing API)
-import API from "@/services/api"; // must exist already in your app
-import { listMyInvites } from "@/services/invitesService"; // you pasted this already
 
 const MENU_ITEMS = [
   { key: "rooms", label: "Rooms" },
@@ -36,38 +33,97 @@ const ROUTES: Record<MenuKey, string> = {
   automations: "/automations",
 };
 
-type LiteContext = {
-  estate?: { id: string; name: string } | null;
-  home?: { id: string; name: string; unit?: string | null; block?: string | null } | null;
-};
+function getApiBase() {
+  return (
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    process.env.NEXT_PUBLIC_BACKEND_URL ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    "https://oyi-os.onrender.com"
+  );
+}
+
+async function authedGetJson(url: string) {
+  const token =
+    (typeof window !== "undefined" && localStorage.getItem("token")) || "";
+
+  const res = await fetch(url, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    cache: "no-store",
+  });
+
+  if (!res.ok) throw new Error(`GET ${url} failed: ${res.status}`);
+  return res.json();
+}
+
+async function tryGetFirst<T = any>(paths: string[]): Promise<T | null> {
+  for (const p of paths) {
+    try {
+      const data = await authedGetJson(p);
+      return data as T;
+    } catch {
+      // try next
+    }
+  }
+  return null;
+}
+
+function buildHomeLabel(home: any): string | null {
+  if (!home) return null;
+
+  const block = String(home.block || "").trim();
+  const unit = String(home.unit || "").trim();
+  const name = String(home.name || "").trim();
+  const desc = String(home.description || "").trim();
+
+  // prefer "Block A / Unit 4"
+  if (block && unit) return `${block} / ${unit}`;
+  if (unit && !block) return unit;
+  if (block && !unit) return block;
+
+  // fallback to home name
+  if (name) return name;
+
+  // LAST fallback (optional): a short descriptor
+  if (desc) return desc;
+
+  return null;
+}
 
 export default function HamburgerMenu() {
   const router = useRouter();
   const { user, logout } = useAuth();
-
-  // ✅ avoid TS errors if SessionUser type is smaller than real payload
-  const u = (user as any) || {};
 
   const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
-  // ✅ live badges
-  const [ctx, setCtx] = useState<LiteContext>({ estate: null, home: null });
-  const [pendingInvites, setPendingInvites] = useState<number>(0);
-  const [syncing, setSyncing] = useState(false);
+  // estate/home display state
+  const [estateName, setEstateName] = useState<string | null>(null);
+  const [homeLabel, setHomeLabel] = useState<string | null>(null);
 
   useEffect(() => setMounted(true), []);
 
-  const displayName = useMemo(() => {
-    return String(u.username || u.full_name || u.email || "Resident").trim() || "Resident";
-  }, [u.username, u.full_name, u.email]);
+  const email = (user as any)?.email as string | undefined;
 
   const initials = useMemo(() => {
-    const first = displayName?.[0]?.toUpperCase() || "O";
-    return first;
-  }, [displayName]);
+    const n =
+      (email || "O")
+        .trim()
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, "") || "O";
+    return n[0] || "O";
+  }, [email]);
+
+  const displayName = useMemo(() => {
+    // avoid type errors: SessionUser doesn't have username
+    const u: any = user;
+    return (u?.full_name || u?.name || u?.email || "Resident") as string;
+  }, [user]);
 
   const closeAll = () => {
     setOpen(false);
@@ -86,9 +142,7 @@ export default function HamburgerMenu() {
     return pushAndClose("/settings");
   };
 
-  const onMenuClick = (key: MenuKey) => {
-    pushAndClose(ROUTES[key]);
-  };
+  const onMenuClick = (key: MenuKey) => pushAndClose(ROUTES[key]);
 
   const handleLogout = async () => {
     closeAll();
@@ -105,7 +159,6 @@ export default function HamburgerMenu() {
     }
 
     document.body.style.overflow = "hidden";
-
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") closeAll();
     };
@@ -116,87 +169,81 @@ export default function HamburgerMenu() {
     };
   }, [open]);
 
-  /**
-   * ✅ Live sync:
-   * - pending invites (GET /invites/mine)
-   * - estate/home display names (best effort)
-   *
-   * If you don't have the /me/context endpoint yet, this tries:
-   * - /facility/overview first (if your consumer token can access it)
-   * - fallback: just show IDs from session token
-   */
-  async function refreshBadges() {
-    try {
-      setSyncing(true);
+  // ✅ Fetch estate + home details (touch real endpoints)
+  useEffect(() => {
+    let cancelled = false;
 
-      // 1) Invites badge
-      const inv = await listMyInvites();
-      const invites = (inv as any)?.invites || [];
-      const pending = invites.filter((i: any) => (i.status || "").toLowerCase() === "pending");
-      setPendingInvites(pending.length);
+    async function run() {
+      const api = getApiBase();
 
-      // 2) Estate/Home badge (names)
-      // Try to use a lightweight endpoint if available:
-      // GET /me/context -> { estate, home }
-      try {
-        const res = await API.get("/me/context");
-        if (res?.data) {
-          setCtx({
-            estate: res.data.estate ?? null,
-            home: res.data.home ?? null,
-          });
-          return;
-        }
-      } catch {
-        // ignore and fallback below
-      }
+      const estateId = (user as any)?.estate_id as string | undefined;
+      const homeId = (user as any)?.home_id as string | undefined;
 
-      // Try facility overview (if consumer token is allowed)
-      try {
-        const res = await API.get("/facility/overview");
-        // if your overview contains estate/home names, map here
-        // We'll do best-effort extraction:
-        const estateName =
-          res?.data?.estate?.name ||
-          res?.data?.current_estate?.name ||
-          res?.data?.estate_name;
-        const homeName =
-          res?.data?.home?.name ||
-          res?.data?.current_home?.name ||
-          res?.data?.home_name;
+      // reset
+      setEstateName(null);
+      setHomeLabel(null);
 
-        setCtx({
-          estate: u.estate_id ? { id: String(u.estate_id), name: estateName || "Estate" } : null,
-          home: u.home_id ? { id: String(u.home_id), name: homeName || "Home" } : null,
-        });
+      // If no estate linked:
+      // Option B => show nothing unless we can build a home address label
+      if (!estateId) {
+        if (!homeId) return;
+
+        // try fetch home to build label
+        const home = await tryGetFirst<any>([
+          `${api}/homes/${homeId}`,
+          `${api}/residents/homes/${homeId}`,
+          `${api}/facility/homes/${homeId}`,
+        ]);
+
+        if (cancelled) return;
+        setHomeLabel(buildHomeLabel(home));
         return;
-      } catch {
-        // ignore and fallback below
       }
 
-      // Final fallback: show nothing (or just IDs if you want)
-      setCtx({
-        estate: u.estate_id ? { id: String(u.estate_id), name: "Estate" } : null,
-        home: u.home_id ? { id: String(u.home_id), name: "Home" } : null,
-      });
-    } finally {
-      setSyncing(false);
+      // If estate linked, show both estate and home (if exists)
+      const estate = await tryGetFirst<any>([
+        `${api}/estates/${estateId}`,
+        `${api}/estates/${estateId}/public`,
+        `${api}/facility/estates/${estateId}`,
+      ]);
+
+      if (cancelled) return;
+      setEstateName(
+        String(
+          estate?.name ||
+            estate?.estate?.name ||
+            estate?.data?.name ||
+            "Estate"
+        )
+      );
+
+      if (!homeId) return;
+
+      const home = await tryGetFirst<any>([
+        `${api}/homes/${homeId}`,
+        `${api}/residents/homes/${homeId}`,
+        `${api}/facility/homes/${homeId}`,
+      ]);
+
+      if (cancelled) return;
+      setHomeLabel(buildHomeLabel(home));
     }
-  }
 
-  // ✅ refresh once on mount (when user exists)
-  useEffect(() => {
-    if (!u?.id) return;
-    refreshBadges();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [u?.id]);
+    run().catch(() => {
+      // keep UI clean even if fetch fails
+    });
 
-  // ✅ refresh whenever menu opens (so after accept invite it updates)
-  useEffect(() => {
-    if (!open) return;
-    refreshBadges();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+    return () => {
+      cancelled = true;
+    };
+  }, [(user as any)?.estate_id, (user as any)?.home_id]);
+
+  const shouldShowContext = useMemo(() => {
+    const estateId = (user as any)?.estate_id as string | undefined;
+    if (estateId) return true; // show estate/home section
+    // Option B: show ONLY home if we have a homeLabel
+    return !!homeLabel;
+  }, [user, homeLabel]);
 
   const OVERLAY_Z = 2147483646;
   const DRAWER_Z = 2147483647;
@@ -227,71 +274,74 @@ export default function HamburgerMenu() {
             >
               <div className="flex h-[100dvh] flex-col">
                 {/* Header */}
-                <div className="p-4 border-b border-white/10">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className="h-7 w-7 rounded-md overflow-hidden border border-white/10 bg-black/40">
-                        <Image
-                          src="/oyi-logo-transparent.png"
-                          alt="Oyi"
-                          width={28}
-                          height={28}
-                          className="h-full w-full object-cover"
-                          priority
-                        />
-                      </div>
-
-                      <div className="min-w-0">
-                        <div className="text-sm font-medium text-zinc-200 truncate">OYI</div>
-                        <div className="text-[11px] text-zinc-500 truncate">Control</div>
-                      </div>
+                <div className="flex items-center justify-between p-4 border-b border-white/10">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="h-7 w-7 rounded-md overflow-hidden border border-white/10 bg-black/40">
+                      <Image
+                        src="/oyi-logo-transparent.png"
+                        alt="Oyi"
+                        width={28}
+                        height={28}
+                        className="h-full w-full object-cover"
+                        priority
+                      />
                     </div>
 
-                    <button
-                      onClick={closeAll}
-                      className="rounded-lg p-2 hover:bg-white/10"
-                      aria-label="Close menu"
-                    >
-                      <XMarkIcon className="h-5 w-5 text-zinc-300" />
-                    </button>
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-zinc-200 truncate">
+                        OYI
+                      </div>
+                      <div className="text-[11px] text-zinc-500 truncate">
+                        Control
+                      </div>
+                    </div>
                   </div>
 
-                  {/* ✅ Badges row */}
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {ctx.estate?.id && (
-                      <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] text-zinc-200">
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                        {ctx.estate?.name || "Estate"}
-                      </span>
-                    )}
-
-                    {ctx.home?.id && (
-                      <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] text-zinc-200">
-                        <span className="h-1.5 w-1.5 rounded-full bg-sky-400" />
-                        {ctx.home?.name || "Home"}
-                      </span>
-                    )}
-
-                    {pendingInvites > 0 && (
-                      <button
-                        onClick={() => pushAndClose("/invites")}
-                        className="inline-flex items-center gap-2 rounded-full border border-yellow-500/20 bg-yellow-500/10 px-3 py-1 text-[11px] text-yellow-200"
-                        aria-label="View pending invites"
-                      >
-                        Invites
-                        <span className="rounded-full bg-yellow-500/20 px-2 py-0.5 text-[11px]">
-                          {pendingInvites}
-                        </span>
-                      </button>
-                    )}
-
-                    {syncing && (
-                      <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] text-zinc-400">
-                        Syncing…
-                      </span>
-                    )}
-                  </div>
+                  <button
+                    onClick={closeAll}
+                    className="rounded-lg p-2 hover:bg-white/10"
+                    aria-label="Close menu"
+                  >
+                    <XMarkIcon className="h-5 w-5 text-zinc-300" />
+                  </button>
                 </div>
+
+                {/* ✅ Estate/Home context (Option B behavior) */}
+                {shouldShowContext && (
+                  <div className="px-4 pt-4 pb-3 border-b border-white/10">
+                    {(user as any)?.estate_id ? (
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[12px] text-zinc-200">
+                            <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                            Estate
+                          </span>
+                        </div>
+
+                        <div className="text-[13px] text-zinc-200 truncate">
+                          Estate:{" "}
+                          <span className="text-zinc-100 font-medium">
+                            {estateName || "Loading..."}
+                          </span>
+                        </div>
+
+                        {homeLabel ? (
+                          <div className="text-[12px] text-zinc-400 truncate">
+                            Home:{" "}
+                            <span className="text-zinc-300">{homeLabel}</span>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : (
+                      // Option B: no estate -> show only home label (if we have it)
+                      homeLabel ? (
+                        <div className="text-[12px] text-zinc-400 truncate">
+                          Home: <span className="text-zinc-300">{homeLabel}</span>
+                        </div>
+                      ) : null
+                    )}
+                  </div>
+                )}
 
                 {/* Menu */}
                 <nav className="px-4 py-4 space-y-1">
@@ -313,15 +363,19 @@ export default function HamburgerMenu() {
                     <div className="pt-5 flex items-center justify-between">
                       <button
                         onClick={() => goToAccount("profile")}
-                        className="flex items-center gap-3"
+                        className="flex items-center gap-3 min-w-0"
                       >
                         <div className="w-12 h-12 rounded-full bg-[#E11D2E] flex items-center justify-center text-white font-semibold">
                           {initials}
                         </div>
 
-                        <div className="text-left">
-                          <p className="text-white text-sm font-semibold">{displayName}</p>
-                          <p className="text-white/50 text-xs">{u?.email || "Account"}</p>
+                        <div className="text-left min-w-0">
+                          <p className="text-white text-sm font-semibold truncate">
+                            {displayName}
+                          </p>
+                          <p className="text-white/50 text-xs truncate">
+                            {email || "Account"}
+                          </p>
                         </div>
                       </button>
 
