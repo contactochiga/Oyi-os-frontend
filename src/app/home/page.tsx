@@ -6,7 +6,10 @@ import { useRouter } from "next/navigation";
 
 import InviteSuggestionBridge from "../components/InviteSuggestionBridge";
 
-// ✅ NEW: unified toolbar (Hamburger left, Bell right)
+// ✅ NEW: fetches /notifications into zustand store
+import NotificationsBridge from "../components/NotificationsBridge";
+
+// ✅ unified toolbar (Hamburger left, Bell right)
 import TopBar from "../components/TopBar";
 
 // COMPONENTS
@@ -55,14 +58,16 @@ function inferPanel(aiPanel?: string | null, userText?: string): string | null {
     src.includes("overview") ||
     src.includes("status") ||
     src.includes("what's happening")
-  ) return "home";
+  )
+    return "home";
 
   if (
     src.includes("room") ||
     src.includes("bedroom") ||
     src.includes("kitchen") ||
     src.includes("living room")
-  ) return "rooms";
+  )
+    return "rooms";
 
   if (
     src.includes("visitor") ||
@@ -71,14 +76,16 @@ function inferPanel(aiPanel?: string | null, userText?: string): string | null {
     src.includes("delivery") ||
     src.includes("access code") ||
     src.includes("gate pass")
-  ) return "visitor";
+  )
+    return "visitor";
 
   if (
     src.includes("door") ||
     src.includes("lock") ||
     src.includes("unlock") ||
     src.includes("front door")
-  ) return "door";
+  )
+    return "door";
 
   if (src.includes("cctv") || src.includes("camera") || src.includes("surveillance"))
     return "cctv";
@@ -89,7 +96,8 @@ function inferPanel(aiPanel?: string | null, userText?: string): string | null {
     src.includes("smoke") ||
     src.includes("gas") ||
     src.includes("alert")
-  ) return "sensors";
+  )
+    return "sensors";
 
   if (
     src.includes("maintenance") ||
@@ -98,9 +106,15 @@ function inferPanel(aiPanel?: string | null, userText?: string): string | null {
     src.includes("issue") ||
     src.includes("problem") ||
     src.includes("support")
-  ) return "maintenance";
+  )
+    return "maintenance";
 
-  if (src.includes("wallet") || src.includes("payment") || src.includes("balance") || src.includes("fund"))
+  if (
+    src.includes("wallet") ||
+    src.includes("payment") ||
+    src.includes("balance") ||
+    src.includes("fund")
+  )
     return "wallet";
 
   if (
@@ -112,9 +126,15 @@ function inferPanel(aiPanel?: string | null, userText?: string): string | null {
     src.includes("gas") ||
     src.includes("service charge") ||
     src.includes("rent")
-  ) return "utilities";
+  )
+    return "utilities";
 
-  if (src.includes("community") || src.includes("announcement") || src.includes("estate news") || src.includes("notice"))
+  if (
+    src.includes("community") ||
+    src.includes("announcement") ||
+    src.includes("estate news") ||
+    src.includes("notice")
+  )
     return "community";
 
   if (src.includes("light")) return "light";
@@ -235,6 +255,18 @@ export default function HomePage() {
             },
           ];
         });
+      } else {
+        // if no panel, still add assistant reply
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: createId(),
+            role: "assistant",
+            content: reply,
+            time,
+            lastUpdated: stamp,
+          },
+        ]);
       }
 
       if (panel === "devices") {
@@ -276,12 +308,15 @@ export default function HomePage() {
         {/* ✅ INVITES → injects “Home invite” pills into your suggestion row */}
         <InviteSuggestionBridge />
 
-        {/* ✅ TOPBAR (Hamburger + Notification Bell) */}
-        <div className="fixed top-0 left-0 right-0 z-[80]">
-          <div className="max-w-3xl mx-auto px-4">
+        {/* ✅ NOTIFICATIONS → loads /notifications into useNotificationStore */}
+        <NotificationsBridge />
+
+        {/* ✅ REAL TOPBAR (end-to-end background, content stays centered) */}
+        <header className="fixed top-0 left-0 right-0 z-[80] h-16 bg-gray-900/80 backdrop-blur border-b border-gray-800">
+          <div className="max-w-3xl mx-auto h-full px-4 flex items-center">
             <TopBar />
           </div>
-        </div>
+        </header>
 
         {/* CHAT */}
         <div className="flex-1 overflow-y-auto p-6 pt-24 pb-44">
