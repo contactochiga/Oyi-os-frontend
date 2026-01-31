@@ -2,16 +2,17 @@
 "use client";
 
 import { useState } from "react";
-
-// ✅ NEW
 import { useRouter } from "next/navigation";
+
 import InviteSuggestionBridge from "../components/InviteSuggestionBridge";
+
+// ✅ NEW: unified toolbar (Hamburger left, Bell right)
+import TopBar from "../components/TopBar";
 
 // COMPONENTS
 import LayoutWrapper from "../components/LayoutWrapper";
 import ChatFooter from "../components/ChatFooter";
 import DynamicSuggestionCard from "../components/DynamicSuggestionCard";
-import HamburgerMenu from "../components/HamburgerMenu";
 
 // REMOTE PANELS
 import RemotePanelRenderer from "../components/remotes/RemotePanelRenderer";
@@ -47,7 +48,6 @@ function inferPanel(aiPanel?: string | null, userText?: string): string | null {
     .toLowerCase()
     .replace(/[^\w\s]/g, "");
 
-  // HOME / SYSTEM SUMMARY
   if (
     src.includes("home") ||
     src.includes("house") ||
@@ -55,21 +55,15 @@ function inferPanel(aiPanel?: string | null, userText?: string): string | null {
     src.includes("overview") ||
     src.includes("status") ||
     src.includes("what's happening")
-  ) {
-    return "home";
-  }
+  ) return "home";
 
-  // ROOMS
   if (
     src.includes("room") ||
     src.includes("bedroom") ||
     src.includes("kitchen") ||
     src.includes("living room")
-  ) {
-    return "rooms";
-  }
+  ) return "rooms";
 
-  // VISITORS (ESTATE FLOW)
   if (
     src.includes("visitor") ||
     src.includes("guest") ||
@@ -77,30 +71,26 @@ function inferPanel(aiPanel?: string | null, userText?: string): string | null {
     src.includes("delivery") ||
     src.includes("access code") ||
     src.includes("gate pass")
-  ) {
-    return "visitor";
-  }
+  ) return "visitor";
 
-  // DOOR (PHYSICAL LOCK)
   if (
     src.includes("door") ||
     src.includes("lock") ||
     src.includes("unlock") ||
     src.includes("front door")
-  ) {
-    return "door";
-  }
+  ) return "door";
 
-  // SECURITY
-  if (src.includes("cctv") || src.includes("camera") || src.includes("surveillance")) {
+  if (src.includes("cctv") || src.includes("camera") || src.includes("surveillance"))
     return "cctv";
-  }
 
-  if (src.includes("sensor") || src.includes("motion") || src.includes("smoke") || src.includes("gas") || src.includes("alert")) {
-    return "sensors";
-  }
+  if (
+    src.includes("sensor") ||
+    src.includes("motion") ||
+    src.includes("smoke") ||
+    src.includes("gas") ||
+    src.includes("alert")
+  ) return "sensors";
 
-  // MAINTENANCE
   if (
     src.includes("maintenance") ||
     src.includes("repair") ||
@@ -108,14 +98,10 @@ function inferPanel(aiPanel?: string | null, userText?: string): string | null {
     src.includes("issue") ||
     src.includes("problem") ||
     src.includes("support")
-  ) {
-    return "maintenance";
-  }
+  ) return "maintenance";
 
-  // FINANCE & UTILITIES
-  if (src.includes("wallet") || src.includes("payment") || src.includes("balance") || src.includes("fund")) {
+  if (src.includes("wallet") || src.includes("payment") || src.includes("balance") || src.includes("fund"))
     return "wallet";
-  }
 
   if (
     src.includes("utility") ||
@@ -126,16 +112,11 @@ function inferPanel(aiPanel?: string | null, userText?: string): string | null {
     src.includes("gas") ||
     src.includes("service charge") ||
     src.includes("rent")
-  ) {
-    return "utilities";
-  }
+  ) return "utilities";
 
-  // COMMUNITY
-  if (src.includes("community") || src.includes("announcement") || src.includes("estate news") || src.includes("notice")) {
+  if (src.includes("community") || src.includes("announcement") || src.includes("estate news") || src.includes("notice"))
     return "community";
-  }
 
-  // CORE DEVICES
   if (src.includes("light")) return "light";
   if (src.includes("ac") || src.includes("air conditioner")) return "ac";
   if (src.includes("tv") || src.includes("television")) return "tv";
@@ -183,7 +164,7 @@ function getSuggestionTitle(panel: string): string {
 }
 
 export default function HomePage() {
-  const router = useRouter(); // ✅ NEW
+  const router = useRouter();
 
   const [input, setInput] = useState("");
 
@@ -192,10 +173,7 @@ export default function HomePage() {
       id: "sys-1",
       role: "assistant",
       content: "Hello! I’m Oyi — how can I help?",
-      time: new Date().toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
+      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       lastUpdated: Date.now(),
     },
   ]);
@@ -210,7 +188,7 @@ export default function HomePage() {
     const command = (text ?? input).trim();
     if (!command) return;
 
-    // ✅ INVITE SENTINEL (tap on DynamicSuggestionCard invite pill)
+    // ✅ invite sentinel: pushes to /invites only when invite pill is tapped
     if (command === "__OPEN_INVITES__") {
       router.push("/invites");
       return;
@@ -226,8 +204,7 @@ export default function HomePage() {
       const resp = await aiService.chat(command);
 
       const reply =
-        resp.reply ||
-        `Got it. ${command.charAt(0).toUpperCase()}${command.slice(1)}.`;
+        resp.reply || `Got it. ${command.charAt(0).toUpperCase()}${command.slice(1)}.`;
 
       const panel = inferPanel(resp.panel, command);
       const deviceId = resp.deviceId;
@@ -296,13 +273,13 @@ export default function HomePage() {
   return (
     <LayoutWrapper>
       <main className="fixed inset-0 flex flex-col">
-        {/* ✅ INVITE → SUGGESTION FEEDER */}
+        {/* ✅ INVITES → injects “Home invite” pills into your suggestion row */}
         <InviteSuggestionBridge />
 
-        {/* TOPBAR */}
-        <div className="fixed top-0 left-0 right-0 z-[70] h-16 bg-gray-900/80 backdrop-blur border-b border-gray-800">
-          <div className="max-w-3xl mx-auto h-full flex items-center px-4">
-            <HamburgerMenu />
+        {/* ✅ TOPBAR (Hamburger + Notification Bell) */}
+        <div className="fixed top-0 left-0 right-0 z-[80]">
+          <div className="max-w-3xl mx-auto px-4">
+            <TopBar />
           </div>
         </div>
 
@@ -352,15 +329,17 @@ export default function HomePage() {
         </div>
 
         {/* SUGGESTIONS */}
-        <div className="fixed bottom-[88px] left-0 right-0 z-[40] px-4">
+        <div className="fixed bottom-[88px] left-0 right-0 z-[50] px-4">
           <div className="max-w-3xl mx-auto">
             <DynamicSuggestionCard onSend={(t) => handleSend(t)} />
           </div>
         </div>
 
         {/* FOOTER */}
-        <div className="fixed bottom-0 left-0 right-0 z-[50] p-4 bg-gray-900 border-t border-gray-700">
-          <ChatFooter input={input} setInput={setInput} onSend={() => handleSend()} />
+        <div className="fixed bottom-0 left-0 right-0 z-[60] p-4 bg-gray-900 border-t border-gray-700">
+          <div className="max-w-3xl mx-auto">
+            <ChatFooter input={input} setInput={setInput} onSend={() => handleSend()} />
+          </div>
         </div>
       </main>
     </LayoutWrapper>
