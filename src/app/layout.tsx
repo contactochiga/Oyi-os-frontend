@@ -1,3 +1,4 @@
+// src/app/layout.tsx
 import "./globals.css";
 import ReactQueryProvider from "@/services/queryClient";
 import { AuthProvider } from "@/hooks/useAuth";
@@ -10,7 +11,7 @@ export const metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>
+      <body className="min-h-screen bg-black text-white">
         <ReactQueryProvider>
           <AuthProvider>{children}</AuthProvider>
         </ReactQueryProvider>
