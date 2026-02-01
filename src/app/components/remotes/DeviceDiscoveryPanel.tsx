@@ -1,18 +1,51 @@
+// src/app/components/remotes/DeviceDiscoveryPanel.tsx
+
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { deviceService } from "@/services/deviceService";
 
 type Device = {
-  id: string;
+  // Discovery payloads may NOT have id
+  id?: string;
+
+  // Common fields from Tuya discovery / your backend
+  externalId?: string;
+  external_id?: string;
+  adapter?: string;
+  vendor?: string;
+
   name?: string;
   type?: string;
   ip?: string;
   protocol?: string;
   status?: string;
+
+  // allow extra fields without TS complaints
+  [k: string]: any;
 };
 
 const ROOMS = ["Living Room", "Bedroom", "Kitchen", "Bathroom", "Other"];
+
+/**
+ * ✅ Stable unique key for UI selection.
+ * Tuya discovery often returns externalId/external_id, not id.
+ */
+function deviceKey(d: Device): string {
+  const stable =
+    d.id ||
+    d.externalId ||
+    d.external_id ||
+    d.dev_id ||
+    d.device_id ||
+    d.uuid ||
+    null;
+
+  if (stable) return String(stable);
+
+  // last fallback: still guarantee uniqueness across list
+  return `${d.adapter || d.vendor || "device"}:${d.name || d.type || "unknown"}:${d.ip || ""}`;
+}
 
 export default function DeviceDiscoveryPanel({
   devices: initialDevices = [],
@@ -21,8 +54,18 @@ export default function DeviceDiscoveryPanel({
 }) {
   const [devices, setDevices] = useState<Device[]>(initialDevices);
   const [loading, setLoading] = useState(false);
+
+  // selected map uses the stable key, not d.id
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [room, setRoom] = useState("");
+
+  // normalize devices with __key for rendering and selection
+  const keyedDevices = useMemo(() => {
+    return (devices || []).map((d) => ({
+      ...d,
+      __key: deviceKey(d),
+    })) as Array<Device & { __key: string }>;
+  }, [devices]);
 
   /* -----------------------------
      INITIAL LOAD / REFRESH
@@ -48,13 +91,14 @@ export default function DeviceDiscoveryPanel({
   /* -----------------------------
      ASSIGN SELECTED DEVICES
   ------------------------------ */
-  async function addDevices(ids: string[]) {
-    if (ids.length === 0) return;
+  async function addDevices(keys: string[]) {
+    if (keys.length === 0) return;
 
     setLoading(true);
     try {
+      // ✅ Send stable keys (external ids) so backend can map correctly
       await deviceService.assignDevices({
-        deviceIds: ids,
+        deviceIds: keys,
         room: room || null,
       });
 
@@ -68,19 +112,15 @@ export default function DeviceDiscoveryPanel({
     }
   }
 
-  const selectedIds = Object.keys(selected).filter((id) => selected[id]);
+  const selectedKeys = Object.keys(selected).filter((k) => selected[k]);
 
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 space-y-4">
       {/* HEADER */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-semibold text-white">
-            Device Discovery
-          </h3>
-          <p className="text-xs text-gray-400">
-            Estate & account devices
-          </p>
+          <h3 className="text-sm font-semibold text-white">Device Discovery</h3>
+          <p className="text-xs text-gray-400">Estate & account devices</p>
         </div>
 
         <button
@@ -88,9 +128,7 @@ export default function DeviceDiscoveryPanel({
           disabled={loading}
           className={`px-3 py-1.5 rounded-full text-xs font-medium
             ${
-              loading
-                ? "bg-gray-700 text-gray-400"
-                : "bg-[#E11D2E] text-white"
+              loading ? "bg-gray-700 text-gray-400" : "bg-[#E11D2E] text-white"
             }`}
         >
           {loading ? "Loading…" : "Refresh"}
@@ -107,19 +145,19 @@ export default function DeviceDiscoveryPanel({
 
       {/* DEVICE LIST */}
       <div className="space-y-2">
-        {devices.map((d) => (
+        {keyedDevices.map((d) => (
           <label
-            key={d.id}
+            key={d.__key}
             className="flex items-center justify-between bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 cursor-pointer"
           >
             <div className="flex items-center gap-3">
               <input
                 type="checkbox"
-                checked={!!selected[d.id]}
+                checked={!!selected[d.__key]}
                 onChange={() =>
                   setSelected((s) => ({
                     ...s,
-                    [d.id]: !s[d.id],
+                    [d.__key]: !s[d.__key],
                   }))
                 }
               />
@@ -129,29 +167,25 @@ export default function DeviceDiscoveryPanel({
                   {d.name || d.type || "Unknown Device"}
                 </div>
                 <div className="text-xs text-gray-400">
-                  {d.protocol || d.ip}
+                  {d.protocol || d.ip || d.adapter || d.vendor || ""}
                 </div>
               </div>
             </div>
 
-            <span className="text-xs text-gray-400">
-              {d.status || "Available"}
-            </span>
+            <span className="text-xs text-gray-400">{d.status || "Available"}</span>
           </label>
         ))}
 
-        {!loading && devices.length === 0 && (
-          <div className="text-sm text-gray-500 text-center py-6">
-            No devices found.
-          </div>
+        {!loading && keyedDevices.length === 0 && (
+          <div className="text-sm text-gray-500 text-center py-6">No devices found.</div>
         )}
       </div>
 
       {/* BULK ACTION */}
-      {selectedIds.length > 0 && (
+      {selectedKeys.length > 0 && (
         <div className="bg-black/40 border border-gray-800 rounded-xl p-3 space-y-3">
           <div className="text-xs text-gray-300">
-            {selectedIds.length} device(s) selected
+            {selectedKeys.length} device(s) selected
           </div>
 
           <select
@@ -168,7 +202,7 @@ export default function DeviceDiscoveryPanel({
           </select>
 
           <button
-            onClick={() => addDevices(selectedIds)}
+            onClick={() => addDevices(selectedKeys)}
             className="w-full py-2 rounded-xl bg-[#E11D2E] text-white text-sm font-medium active:scale-95 transition"
           >
             Add Selected Devices
