@@ -37,8 +37,7 @@ export const deviceService = {
     try {
       const res = await API.get(`/devices/${encodeURIComponent(deviceId)}/state`);
       return res.data ?? null;
-    } catch (err) {
-      // 404 = no state yet (normal early)
+    } catch {
       return null;
     }
   },
@@ -47,12 +46,19 @@ export const deviceService = {
      ASSIGN DEVICES TO ROOM / UNIT
   ---------------------------------- */
   async assignDevices(payload: AssignDevicesPayload) {
-    try {
-      const res = await API.post("/devices/assign", payload);
-      return res.data;
-    } catch (err) {
-      console.warn("deviceService.assignDevices error:", err);
-      throw err;
-    }
+    const res = await API.post("/devices/assign", payload);
+    return res.data;
+  },
+
+  /* ---------------------------------
+     ✅ SEND COMMAND (queues control-plane)
+     POST /devices/:deviceId/command
+     body: { command }
+  ---------------------------------- */
+  async sendCommand(deviceId: string, command: Record<string, any>) {
+    const res = await API.post(`/devices/${encodeURIComponent(deviceId)}/command`, {
+      command,
+    });
+    return res.data;
   },
 };
