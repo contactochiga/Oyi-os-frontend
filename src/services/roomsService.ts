@@ -49,4 +49,3 @@ export const roomsService = {
     const res = await API.post("/rooms/assign", payload);
     return res.data;
   },
-};
