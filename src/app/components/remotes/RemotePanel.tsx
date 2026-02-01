@@ -1,140 +1,288 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import RemotePanel from "./RemotePanel";
+import useAuth from "@/hooks/useAuth";
+import { roomsService, RoomDTO } from "@/services/roomsService";
+import { deviceService } from "@/services/deviceService";
 
-function safeMs(ms?: number) {
-  if (!ms || Number.isNaN(ms)) return null;
-  return ms;
+type RoomStatus = "active" | "idle" | "automated";
+
+function statusColor(status: RoomStatus) {
+  switch (status) {
+    case "active":
+      return "text-green-400";
+    case "automated":
+      return "text-blue-400";
+    default:
+      return "text-gray-400";
+  }
 }
 
-function formatAgo(ms?: number | null) {
-  if (!ms) return "--";
-
-  const diff = Date.now() - ms;
-  if (diff < 0) return "Just now";
-
-  const sec = Math.floor(diff / 1000);
-  if (sec < 10) return "Just now";
-  if (sec < 60) return `${sec}s ago`;
-
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}m ago`;
-
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-
-  const days = Math.floor(hr / 24);
-  return `${days}d ago`;
+function inferStatus(room: RoomDTO): RoomStatus {
+  const n = Array.isArray(room.devices) ? room.devices.length : 0;
+  if (n >= 4) return "active";
+  if (n >= 2) return "automated";
+  return "idle";
 }
 
-function freshness(ms?: number | null) {
-  if (!ms) return { label: "OFFLINE", dot: "bg-gray-600", text: "text-gray-500", pill: "bg-gray-800 border-gray-700 text-gray-400" };
-
-  const diff = Date.now() - ms;
-  const sec = diff / 1000;
-
-  // <10s => LIVE
-  if (sec <= 10) {
-    return {
-      label: "LIVE",
-      dot: "bg-green-400",
-      text: "text-green-300",
-      pill: "bg-green-500/10 border-green-500/20 text-green-200",
-    };
-  }
-
-  // <60s => RECENT
-  if (sec <= 60) {
-    return {
-      label: "RECENT",
-      dot: "bg-emerald-300/90",
-      text: "text-emerald-200",
-      pill: "bg-emerald-500/10 border-emerald-500/20 text-emerald-200",
-    };
-  }
-
-  // <5m => OK
-  if (sec <= 60 * 5) {
-    return {
-      label: "OK",
-      dot: "bg-yellow-300/90",
-      text: "text-yellow-200",
-      pill: "bg-yellow-500/10 border-yellow-500/20 text-yellow-200",
-    };
-  }
-
-  // >=5m => STALE
-  return {
-    label: "STALE",
-    dot: "bg-red-400/90",
-    text: "text-red-200",
-    pill: "bg-red-500/10 border-red-500/20 text-red-200",
-  };
+// 🔑 choose a stable device identifier for commands
+function commandDeviceId(d: any): string | null {
+  // your devices table has: id(uuid) and external_id(text)
+  // For command routing, we prefer external_id (Tuya devId), but fallback to uuid id.
+  return (
+    d?.external_id ||
+    d?.externalId ||
+    d?.device_id ||
+    d?.dev_id ||
+    d?.id ||
+    null
+  )?.toString() ?? null;
 }
 
-export default function RemotePanel({
-  title,
+export default function RoomsPanel({
   lastUpdated,
-  children,
+  onInteraction,
 }: {
-  title: string;
   lastUpdated?: number;
-  children: React.ReactNode;
+  onInteraction?: () => void;
 }) {
-  const ms = useMemo(() => safeMs(lastUpdated), [lastUpdated]);
+  const { user } = useAuth();
 
-  // Update "ago" + LIVE/STALE states even if lastUpdated doesn’t change
-  const [tick, setTick] = useState(0);
+  const estateId = useMemo(
+    () =>
+      (user as any)?.estate_id ??
+      (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null),
+    [user]
+  );
+
+  const homeId = useMemo(
+    () =>
+      (user as any)?.home_id ??
+      (typeof window !== "undefined" ? localStorage.getItem("ochiga_home") : null),
+    [user]
+  );
+
+  const [rooms, setRooms] = useState<RoomDTO[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  // ✅ NEW: which room is expanded for manage
+  const [openRoomId, setOpenRoomId] = useState<string | null>(null);
+
+  // ✅ NEW: simple local toggle loading map
+  const [cmdBusy, setCmdBusy] = useState<Record<string, boolean>>({});
+
+  function touch() {
+    onInteraction?.();
+  }
+
+  async function loadRooms() {
+    if (!homeId) return;
+    setLoading(true);
+    setErr(null);
+    try {
+      const list = await roomsService.getRooms(homeId);
+      setRooms(list || []);
+    } catch (e: any) {
+      setErr(e?.response?.data?.error || e?.message || "Failed to load rooms");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   useEffect(() => {
-    const t = setInterval(() => setTick((x) => x + 1), 2_000); // tighter for LIVE/STALE feel
-    return () => clearInterval(t);
-  }, []);
+    if (!homeId) return;
+    loadRooms();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [homeId]);
 
-  const exactTime = useMemo(() => {
-    if (!ms) return "--:--";
-    return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  }, [ms]);
+  async function createRoom() {
+    if (!estateId) return setErr("No estateId found for this user.");
+    if (!homeId) return setErr("No homeId found for this user.");
 
-  const ago = useMemo(() => formatAgo(ms), [ms, tick]);
-  const meta = useMemo(() => freshness(ms), [ms, tick]);
+    const name = window.prompt("Room name (e.g. Living Room)");
+    if (!name) return;
 
-  // Pulse on update
-  const [pulse, setPulse] = useState(false);
-  useEffect(() => {
-    if (!ms) return;
-    setPulse(true);
-    const t = setTimeout(() => setPulse(false), 450);
-    return () => clearTimeout(t);
-  }, [ms]);
+    setLoading(true);
+    setErr(null);
+    try {
+      await roomsService.createRoom({
+        estate_id: estateId,
+        home_id: homeId,
+        name,
+        type: null,
+        ai_profile: null,
+      });
+      await loadRooms();
+      touch();
+    } catch (e: any) {
+      setErr(e?.response?.data?.error || e?.message || "Failed to create room");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // ✅ NEW: basic command helpers (MVP)
+  async function toggleDevice(d: any) {
+    const did = commandDeviceId(d);
+    if (!did) {
+      setErr("This device has no command id (external_id / id missing).");
+      return;
+    }
+
+    // We don’t know the exact Tuya datapoint codes for every device yet.
+    // MVP: try common switch codes.
+    const key = `toggle:${did}`;
+
+    setCmdBusy((s) => ({ ...s, [key]: true }));
+    setErr(null);
+
+    try {
+      // naive: toggle based on a cached online/status
+      // You can improve later by calling getDeviceState first.
+      await deviceService.sendCommand(did, { switch_1: true });
+      touch();
+    } catch (e: any) {
+      setErr(e?.response?.data?.error || e?.message || "Failed to send command");
+    } finally {
+      setCmdBusy((s) => ({ ...s, [key]: false }));
+    }
+  }
 
   return (
-    <div className="mt-3 rounded-2xl bg-gray-900 border border-gray-800 overflow-hidden">
-      {/* HEADER */}
-      <div
-        className={`px-4 py-2 border-b border-gray-800 text-xs flex justify-between items-center transition
-          ${pulse ? "bg-white/5" : ""}`}
-      >
-        {/* LEFT: title + dot */}
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-gray-200 truncate">{title}</span>
-
-          <span className={`inline-block w-1.5 h-1.5 rounded-full ${meta.dot}`} />
-
-          {/* status pill */}
-          <span className={`px-2 py-[2px] rounded-full border text-[10px] tracking-wide ${meta.pill}`}>
-            {meta.label}
-          </span>
+    <RemotePanel title="Rooms" lastUpdated={lastUpdated}>
+      {err && (
+        <div className="mb-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+          {err}
         </div>
+      )}
 
-        {/* RIGHT: ago + exact */}
-        <div className="flex items-center gap-2">
-          <span className={`${meta.text}`}>{ago}</span>
-          <span className="text-gray-400">{exactTime}</span>
+      {!homeId && (
+        <div className="text-sm text-gray-400">
+          No home selected yet. Join/choose a home to view rooms.
         </div>
-      </div>
+      )}
 
-      {/* BODY */}
-      <div className="p-4">{children}</div>
-    </div>
+      {homeId && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="text-xs text-gray-400">
+              {loading ? "Loading…" : `${rooms.length} room(s)`}
+            </div>
+
+            <button
+              onClick={loadRooms}
+              disabled={loading}
+              className="px-3 py-1.5 rounded-full text-xs font-medium bg-gray-700 text-white disabled:opacity-50"
+            >
+              Refresh
+            </button>
+          </div>
+
+          {loading && (
+            <div className="flex items-center gap-3 text-xs text-gray-400">
+              <div className="w-4 h-4 border-2 border-gray-600 border-t-white rounded-full animate-spin" />
+              Syncing rooms…
+            </div>
+          )}
+
+          {rooms.map((room) => {
+            const devices = Array.isArray(room.devices) ? room.devices : [];
+            const devicesCount = devices.length;
+            const status = inferStatus(room);
+            const isOpen = openRoomId === room.id;
+
+            return (
+              <div
+                key={room.id}
+                className="rounded-xl bg-gray-800 border border-gray-700 p-4"
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <div className="text-sm text-white font-medium">
+                      {room.name || "Unnamed Room"}
+                    </div>
+
+                    <div className="flex items-center gap-2 text-xs text-gray-400 mt-1">
+                      <span>{devicesCount} devices</span>
+                      <span>•</span>
+                      <span className={statusColor(status)}>{status}</span>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setOpenRoomId((prev) => (prev === room.id ? null : room.id));
+                      touch();
+                    }}
+                    className="btn-tv"
+                  >
+                    {isOpen ? "Close" : "Manage"}
+                  </button>
+                </div>
+
+                {/* ✅ NEW: room-scoped devices */}
+                {isOpen && (
+                  <div className="space-y-2">
+                    {devices.length === 0 ? (
+                      <div className="text-xs text-gray-400">
+                        No devices assigned to this room yet.
+                      </div>
+                    ) : (
+                      devices.map((d: any) => {
+                        const did = commandDeviceId(d) || "unknown";
+                        const busy = !!cmdBusy[`toggle:${did}`];
+
+                        return (
+                          <div
+                            key={d.id || d.external_id || did}
+                            className="flex items-center justify-between rounded-xl bg-gray-900 border border-gray-700 px-3 py-2"
+                          >
+                            <div>
+                              <div className="text-sm text-white">
+                                {d.name || d.type || "Device"}
+                              </div>
+                              <div className="text-[11px] text-gray-400">
+                                {d.type || "device"} • {d.status || "—"}
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => toggleDevice(d)}
+                              disabled={busy}
+                              className="rounded-lg bg-gray-700 hover:bg-gray-600 px-3 py-1.5 text-xs text-white disabled:opacity-60"
+                            >
+                              {busy ? "Sending…" : "Toggle"}
+                            </button>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+
+                {/* keep your placeholder scenes but they still do nothing for now */}
+              </div>
+            );
+          })}
+
+          {!loading && rooms.length === 0 && (
+            <div className="text-sm text-gray-500 text-center py-6">
+              No rooms found for this home yet.
+            </div>
+          )}
+
+          <button
+            onClick={createRoom}
+            disabled={loading || !homeId}
+            className="w-full py-3 rounded-xl bg-[#E11D2E] text-white text-sm font-medium active:scale-95 transition disabled:opacity-50"
+          >
+            + Create New Room
+          </button>
+        </div>
+      )}
+    </RemotePanel>
   );
 }
