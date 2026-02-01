@@ -13,11 +13,6 @@ export type DeviceStateResponse = {
 };
 
 export const deviceService = {
-  /* ---------------------------------
-     GET DEVICES
-     - Estate devices if estateId exists
-     - Otherwise discovery list
-  ---------------------------------- */
   async getDevices(estateId?: string) {
     try {
       const url = estateId ? `/devices/estate/${estateId}` : `/devices/discover`;
@@ -29,10 +24,6 @@ export const deviceService = {
     }
   },
 
-  /* ---------------------------------
-     DEVICE STATE (initial fetch)
-     GET /devices/:deviceId/state
-  ---------------------------------- */
   async getDeviceState(deviceId: string): Promise<DeviceStateResponse | null> {
     try {
       const res = await API.get(`/devices/${encodeURIComponent(deviceId)}/state`);
@@ -42,23 +33,17 @@ export const deviceService = {
     }
   },
 
-  /* ---------------------------------
-     ASSIGN DEVICES TO ROOM / UNIT
-  ---------------------------------- */
   async assignDevices(payload: AssignDevicesPayload) {
     const res = await API.post("/devices/assign", payload);
     return res.data;
   },
 
-  /* ---------------------------------
-     ✅ SEND COMMAND (queues control-plane)
-     POST /devices/:deviceId/command
-     body: { command }
-  ---------------------------------- */
+  // ✅ NEW: send command
   async sendCommand(deviceId: string, command: Record<string, any>) {
-    const res = await API.post(`/devices/${encodeURIComponent(deviceId)}/command`, {
-      command,
-    });
-    return res.data;
+    const res = await API.post(
+      `/devices/${encodeURIComponent(deviceId)}/command`,
+      { command }
+    );
+    return res.data as { status: "command_queued" };
   },
 };
