@@ -54,10 +54,22 @@ export default function DeviceDiscoveryPanel({
 }) {
   const [devices, setDevices] = useState<Device[]>(initialDevices);
   const [loading, setLoading] = useState(false);
+  const [assigning, setAssigning] = useState(false);
 
   // selected map uses the stable key, not d.id
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [room, setRoom] = useState("");
+
+  // ✅ user feedback
+  const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(
+    null
+  );
+
+  function flash(type: "success" | "error", text: string) {
+    setNotice({ type, text });
+    window.clearTimeout((flash as any)._t);
+    (flash as any)._t = window.setTimeout(() => setNotice(null), 3500);
+  }
 
   // normalize devices with __key for rendering and selection
   const keyedDevices = useMemo(() => {
@@ -72,10 +84,13 @@ export default function DeviceDiscoveryPanel({
   ------------------------------ */
   async function refreshDevices() {
     setLoading(true);
+    setNotice(null);
     try {
       const result = await deviceService.getDevices();
       setDevices(result || []);
       setSelected({});
+    } catch (e: any) {
+      flash("error", e?.message || "Failed to load devices");
     } finally {
       setLoading(false);
     }
@@ -93,22 +108,43 @@ export default function DeviceDiscoveryPanel({
   ------------------------------ */
   async function addDevices(keys: string[]) {
     if (keys.length === 0) return;
+    if (assigning) return;
 
-    setLoading(true);
+    setAssigning(true);
+    setNotice(null);
+
     try {
       // ✅ Send stable keys (external ids) so backend can map correctly
-      await deviceService.assignDevices({
+      const res: any = await deviceService.assignDevices({
         deviceIds: keys,
         room: room || null,
       });
+
+      // ✅ success signal
+      const savedCount =
+        Array.isArray(res?.devices) ? res.devices.length : keys.length;
+
+      flash(
+        "success",
+        `✅ Added ${savedCount} device${savedCount === 1 ? "" : "s"}${
+          room ? ` to ${room}` : ""
+        }.`
+      );
 
       // Re-fetch devices after assignment
       const updated = await deviceService.getDevices();
       setDevices(updated || []);
       setSelected({});
       setRoom("");
+    } catch (e: any) {
+      const msg =
+        e?.response?.data?.error ||
+        e?.response?.data?.message ||
+        e?.message ||
+        "Failed to add devices";
+      flash("error", `❌ ${msg}`);
     } finally {
-      setLoading(false);
+      setAssigning(false);
     }
   }
 
@@ -125,21 +161,36 @@ export default function DeviceDiscoveryPanel({
 
         <button
           onClick={refreshDevices}
-          disabled={loading}
+          disabled={loading || assigning}
           className={`px-3 py-1.5 rounded-full text-xs font-medium
             ${
-              loading ? "bg-gray-700 text-gray-400" : "bg-[#E11D2E] text-white"
+              loading || assigning
+                ? "bg-gray-700 text-gray-400"
+                : "bg-[#E11D2E] text-white"
             }`}
         >
-          {loading ? "Loading…" : "Refresh"}
+          {loading ? "Loading…" : assigning ? "Saving…" : "Refresh"}
         </button>
       </div>
 
+      {/* NOTICE */}
+      {notice && (
+        <div
+          className={`rounded-xl px-3 py-2 text-xs border ${
+            notice.type === "success"
+              ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-200"
+              : "bg-red-500/10 border-red-500/20 text-red-200"
+          }`}
+        >
+          {notice.text}
+        </div>
+      )}
+
       {/* LOADING */}
-      {loading && (
+      {(loading || assigning) && (
         <div className="flex items-center gap-3 text-xs text-gray-400">
           <div className="w-4 h-4 border-2 border-gray-600 border-t-white rounded-full animate-spin" />
-          Syncing devices…
+          {loading ? "Syncing devices…" : "Assigning devices…"}
         </div>
       )}
 
@@ -160,6 +211,7 @@ export default function DeviceDiscoveryPanel({
                     [d.__key]: !s[d.__key],
                   }))
                 }
+                disabled={loading || assigning}
               />
 
               <div>
@@ -172,12 +224,16 @@ export default function DeviceDiscoveryPanel({
               </div>
             </div>
 
-            <span className="text-xs text-gray-400">{d.status || "Available"}</span>
+            <span className="text-xs text-gray-400">
+              {d.status || "Available"}
+            </span>
           </label>
         ))}
 
         {!loading && keyedDevices.length === 0 && (
-          <div className="text-sm text-gray-500 text-center py-6">No devices found.</div>
+          <div className="text-sm text-gray-500 text-center py-6">
+            No devices found.
+          </div>
         )}
       </div>
 
@@ -191,7 +247,8 @@ export default function DeviceDiscoveryPanel({
           <select
             value={room}
             onChange={(e) => setRoom(e.target.value)}
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+            disabled={assigning}
+            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white disabled:opacity-60"
           >
             <option value="">Assign to room (optional)</option>
             {ROOMS.map((r) => (
@@ -203,9 +260,10 @@ export default function DeviceDiscoveryPanel({
 
           <button
             onClick={() => addDevices(selectedKeys)}
-            className="w-full py-2 rounded-xl bg-[#E11D2E] text-white text-sm font-medium active:scale-95 transition"
+            disabled={assigning}
+            className="w-full py-2 rounded-xl bg-[#E11D2E] text-white text-sm font-medium active:scale-95 transition disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            Add Selected Devices
+            {assigning ? "Adding…" : "Add Selected Devices"}
           </button>
         </div>
       )}
