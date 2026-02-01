@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import RemotePanel from "./RemotePanel";
 import useAuth from "@/hooks/useAuth";
 import { roomsService, RoomDTO } from "@/services/roomsService";
+import { deviceService } from "@/services/deviceService";
 
 type RoomStatus = "active" | "idle" | "automated";
 
@@ -19,11 +20,24 @@ function statusColor(status: RoomStatus) {
 }
 
 function inferStatus(room: RoomDTO): RoomStatus {
-  // simple heuristic for now (replace later with real signals/telemetry)
   const n = Array.isArray(room.devices) ? room.devices.length : 0;
   if (n >= 4) return "active";
   if (n >= 2) return "automated";
   return "idle";
+}
+
+// 🔑 choose a stable device identifier for commands
+function commandDeviceId(d: any): string | null {
+  // your devices table has: id(uuid) and external_id(text)
+  // For command routing, we prefer external_id (Tuya devId), but fallback to uuid id.
+  return (
+    d?.external_id ||
+    d?.externalId ||
+    d?.device_id ||
+    d?.dev_id ||
+    d?.id ||
+    null
+  )?.toString() ?? null;
 }
 
 export default function RoomsPanel({
@@ -35,12 +49,11 @@ export default function RoomsPanel({
 }) {
   const { user } = useAuth();
 
-  // 🔑 Prefer real user.home_id if available. Fallback to localStorage.
   const estateId = useMemo(
     () =>
-      user?.estate_id ??
+      (user as any)?.estate_id ??
       (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null),
-    [user?.estate_id]
+    [user]
   );
 
   const homeId = useMemo(
@@ -53,6 +66,12 @@ export default function RoomsPanel({
   const [rooms, setRooms] = useState<RoomDTO[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // ✅ NEW: which room is expanded for manage
+  const [openRoomId, setOpenRoomId] = useState<string | null>(null);
+
+  // ✅ NEW: simple local toggle loading map
+  const [cmdBusy, setCmdBusy] = useState<Record<string, boolean>>({});
 
   function touch() {
     onInteraction?.();
@@ -77,12 +96,6 @@ export default function RoomsPanel({
     loadRooms();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [homeId]);
-
-  function runAction(roomId: string, action: string) {
-    // Placeholder until we create "room.scene.requested" signals
-    console.log(`ROOM ACTION → ${roomId}: ${action}`);
-    touch();
-  }
 
   async function createRoom() {
     if (!estateId) return setErr("No estateId found for this user.");
@@ -110,6 +123,33 @@ export default function RoomsPanel({
     }
   }
 
+  // ✅ NEW: basic command helpers (MVP)
+  async function toggleDevice(d: any) {
+    const did = commandDeviceId(d);
+    if (!did) {
+      setErr("This device has no command id (external_id / id missing).");
+      return;
+    }
+
+    // We don’t know the exact Tuya datapoint codes for every device yet.
+    // MVP: try common switch codes.
+    const key = `toggle:${did}`;
+
+    setCmdBusy((s) => ({ ...s, [key]: true }));
+    setErr(null);
+
+    try {
+      // naive: toggle based on a cached online/status
+      // You can improve later by calling getDeviceState first.
+      await deviceService.sendCommand(did, { switch_1: true });
+      touch();
+    } catch (e: any) {
+      setErr(e?.response?.data?.error || e?.message || "Failed to send command");
+    } finally {
+      setCmdBusy((s) => ({ ...s, [key]: false }));
+    }
+  }
+
   return (
     <RemotePanel title="Rooms" lastUpdated={lastUpdated}>
       {err && (
@@ -126,7 +166,6 @@ export default function RoomsPanel({
 
       {homeId && (
         <div className="space-y-4">
-          {/* top controls */}
           <div className="flex items-center justify-between">
             <div className="text-xs text-gray-400">
               {loading ? "Loading…" : `${rooms.length} room(s)`}
@@ -149,15 +188,16 @@ export default function RoomsPanel({
           )}
 
           {rooms.map((room) => {
-            const devicesCount = Array.isArray(room.devices) ? room.devices.length : 0;
+            const devices = Array.isArray(room.devices) ? room.devices : [];
+            const devicesCount = devices.length;
             const status = inferStatus(room);
+            const isOpen = openRoomId === room.id;
 
             return (
               <div
                 key={room.id}
                 className="rounded-xl bg-gray-800 border border-gray-700 p-4"
               >
-                {/* HEADER */}
                 <div className="flex items-start justify-between mb-3">
                   <div>
                     <div className="text-sm text-white font-medium">
@@ -172,43 +212,58 @@ export default function RoomsPanel({
                   </div>
 
                   <button
-                    onClick={() => runAction(room.id, "manage")}
+                    onClick={() => {
+                      setOpenRoomId((prev) => (prev === room.id ? null : room.id));
+                      touch();
+                    }}
                     className="btn-tv"
                   >
-                    Manage
+                    {isOpen ? "Close" : "Manage"}
                   </button>
                 </div>
 
-                {/* QUICK SCENES (placeholder for now) */}
-                <div className="grid grid-cols-3 gap-2 mb-3">
-                  <button
-                    onClick={() => runAction(room.id, "lights_off")}
-                    className="rounded-xl bg-gray-700 py-2 text-xs text-white active:scale-95 transition"
-                  >
-                    Lights Off
-                  </button>
+                {/* ✅ NEW: room-scoped devices */}
+                {isOpen && (
+                  <div className="space-y-2">
+                    {devices.length === 0 ? (
+                      <div className="text-xs text-gray-400">
+                        No devices assigned to this room yet.
+                      </div>
+                    ) : (
+                      devices.map((d: any) => {
+                        const did = commandDeviceId(d) || "unknown";
+                        const busy = !!cmdBusy[`toggle:${did}`];
 
-                  <button
-                    onClick={() => runAction(room.id, "comfort")}
-                    className="rounded-xl bg-gray-700 py-2 text-xs text-white active:scale-95 transition"
-                  >
-                    Comfort
-                  </button>
+                        return (
+                          <div
+                            key={d.id || d.external_id || did}
+                            className="flex items-center justify-between rounded-xl bg-gray-900 border border-gray-700 px-3 py-2"
+                          >
+                            <div>
+                              <div className="text-sm text-white">
+                                {d.name || d.type || "Device"}
+                              </div>
+                              <div className="text-[11px] text-gray-400">
+                                {d.type || "device"} • {d.status || "—"}
+                              </div>
+                            </div>
 
-                  <button
-                    onClick={() => runAction(room.id, "power_down")}
-                    className="rounded-xl bg-gray-700 py-2 text-xs text-white active:scale-95 transition"
-                  >
-                    Power Down
-                  </button>
-                </div>
+                            <button
+                              type="button"
+                              onClick={() => toggleDevice(d)}
+                              disabled={busy}
+                              className="rounded-lg bg-gray-700 hover:bg-gray-600 px-3 py-1.5 text-xs text-white disabled:opacity-60"
+                            >
+                              {busy ? "Sending…" : "Toggle"}
+                            </button>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
 
-                <button
-                  onClick={() => runAction(room.id, "automations")}
-                  className="w-full py-2 rounded-lg bg-gray-900 text-xs text-gray-300 border border-gray-700"
-                >
-                  View Automations
-                </button>
+                {/* keep your placeholder scenes but they still do nothing for now */}
               </div>
             );
           })}
@@ -219,7 +274,6 @@ export default function RoomsPanel({
             </div>
           )}
 
-          {/* FOOT ACTION */}
           <button
             onClick={createRoom}
             disabled={loading || !homeId}
