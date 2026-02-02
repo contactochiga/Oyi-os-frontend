@@ -15,7 +15,10 @@ export type DeviceStateResponse = {
 export const deviceService = {
   async getDevices(estateId?: string) {
     try {
-      const url = estateId ? `/devices/estate/${estateId}` : `/devices/discover`;
+      const url = estateId
+        ? `/devices/estate/${estateId}`
+        : `/devices/discover`;
+
       const res = await API.get(url);
       return res.data?.devices ?? res.data ?? [];
     } catch (err) {
@@ -26,7 +29,9 @@ export const deviceService = {
 
   async getDeviceState(deviceId: string): Promise<DeviceStateResponse | null> {
     try {
-      const res = await API.get(`/devices/${encodeURIComponent(deviceId)}/state`);
+      const res = await API.get(
+        `/devices/${encodeURIComponent(deviceId)}/state`
+      );
       return res.data ?? null;
     } catch {
       return null;
@@ -38,12 +43,16 @@ export const deviceService = {
     return res.data;
   },
 
-  // ✅ NEW: send command
-  async sendCommand(deviceId: string, command: Record<string, any>) {
+  /**
+   * 🔑 Canonical command execution
+   * Used by chat, panels, automations
+   */
+  async commandDevice(deviceId: string, command: Record<string, any>) {
     const res = await API.post(
       `/devices/${encodeURIComponent(deviceId)}/command`,
       { command }
     );
-    return res.data as { status: "command_queued" };
+
+    return res.data as { ok?: boolean; status: "command_queued" };
   },
 };
