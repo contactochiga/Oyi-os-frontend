@@ -1,3 +1,4 @@
+// src/app/components/remotes/RemotePanelRenderer.tsx
 "use client";
 
 /* =================================================
@@ -46,6 +47,10 @@ import { getSocket } from "@/services/socket";
    RENDERER
 ================================================= */
 
+function needsDeviceId(panel: string) {
+  return ["light", "ac", "tv", "door", "cctv", "sensor", "sensors"].includes(panel);
+}
+
 export default function RemotePanelRenderer({
   panel,
   deviceId,
@@ -59,32 +64,29 @@ export default function RemotePanelRenderer({
 }) {
   const { user } = useAuth();
 
-  // estateId is needed so socket can join the right estate room
   const estateId = useMemo(
     () =>
       user?.estate_id ??
-      (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null),
+      (typeof window !== "undefined"
+        ? localStorage.getItem("ochiga_estate")
+        : null),
     [user?.estate_id]
   );
 
-  // Central "control room" timestamp
   const [computedLastUpdated, setComputedLastUpdated] = useState<number>(
     lastUpdated ?? Date.now()
   );
 
-  // Keep in sync if parent sends a newer value
   useEffect(() => {
     if (!lastUpdated) return;
     setComputedLastUpdated((prev) => (lastUpdated > prev ? lastUpdated : prev));
   }, [lastUpdated]);
 
-  // Wrap interaction: bump time + call parent callback
   function handleInteraction() {
     setComputedLastUpdated(Date.now());
     onInteraction?.();
   }
 
-  // Listen for device:update and bump time when it matches current deviceId
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return;
@@ -93,11 +95,9 @@ export default function RemotePanelRenderer({
       if (estateId) socket.emit("subscribe:estate", estateId);
     };
 
+    // If backend emits device:update, bump lastUpdated for matching device
     const onUpdate = (payload: any) => {
-      // payload: { deviceId, state, topic }
       if (!payload?.deviceId) return;
-
-      // If this renderer is bound to a specific deviceId, update only when that device updates.
       if (deviceId && payload.deviceId === deviceId) {
         setComputedLastUpdated(Date.now());
       }
@@ -106,7 +106,6 @@ export default function RemotePanelRenderer({
     socket.on("connect", onConnect);
     socket.on("device:update", onUpdate);
 
-    // If already connected, join immediately
     if (socket.connected && estateId) socket.emit("subscribe:estate", estateId);
 
     return () => {
@@ -117,11 +116,19 @@ export default function RemotePanelRenderer({
 
   if (!panel) return null;
 
-  switch (panel) {
+  // Normalize panel aliases
+  const normalized = String(panel || "").toLowerCase().trim();
+
+  // ✅ HARD RULE: if panel needs a deviceId but none is provided, don’t render it
+  // This prevents “panel not bound to device” issues.
+  if (needsDeviceId(normalized) && !deviceId) {
+    return null;
+  }
+
+  switch (normalized) {
     /* -----------------------
        CORE DEVICE CONTROLS
     ------------------------ */
-
     case "light":
       return (
         <LightPanel
@@ -152,7 +159,6 @@ export default function RemotePanelRenderer({
     /* -----------------------
        SECURITY & ACCESS
     ------------------------ */
-
     case "door":
       return (
         <DoorPanel
@@ -182,9 +188,8 @@ export default function RemotePanelRenderer({
       );
 
     /* -----------------------
-       VISITORS (ESTATE FLOW)
+       VISITORS
     ------------------------ */
-
     case "visitor":
     case "visitors":
       return (
@@ -197,8 +202,18 @@ export default function RemotePanelRenderer({
     /* -----------------------
        ROOMS & STRUCTURE
     ------------------------ */
-
     case "rooms":
+      return (
+        <RoomsPanel
+          lastUpdated={computedLastUpdated}
+          onInteraction={handleInteraction}
+        />
+      );
+
+    // Aliases that should not open a “remote”
+    case "devices":
+    case "device":
+      // safest: show rooms panel (device list lives inside rooms for consumers)
       return (
         <RoomsPanel
           lastUpdated={computedLastUpdated}
@@ -209,7 +224,6 @@ export default function RemotePanelRenderer({
     /* -----------------------
        FINANCE & UTILITIES
     ------------------------ */
-
     case "wallet":
       return (
         <WalletPanel
@@ -224,7 +238,6 @@ export default function RemotePanelRenderer({
     /* -----------------------
        MAINTENANCE & SUPPORT
     ------------------------ */
-
     case "maintenance":
     case "support":
     case "issue":
@@ -239,7 +252,6 @@ export default function RemotePanelRenderer({
     /* -----------------------
        COMMUNITY
     ------------------------ */
-
     case "community":
       return (
         <CommunityPanel
@@ -251,7 +263,6 @@ export default function RemotePanelRenderer({
     /* -----------------------
        SYSTEM OVERVIEW
     ------------------------ */
-
     case "home":
     case "home_summary":
     case "summary":
