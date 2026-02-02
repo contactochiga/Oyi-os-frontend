@@ -1,40 +1,44 @@
-import API from "./api";
+// src/services/maintenanceService.ts
+import axios from "axios";
 
-export type MaintenanceTicket = {
-  id: string;
-  estate_id?: string | null;
-  home_id?: string | null;
-  user_id?: string | null;
+const API = process.env.NEXT_PUBLIC_API_URL || "https://oyi-os.onrender.com";
 
-  title: string;
-  description?: string | null;
+// If you already have a shared axios instance (recommended), use it instead.
+// The key thing: send cookies + Authorization when you have it.
+const http = axios.create({
+  baseURL: API,
+  withCredentials: true,
+});
 
-  category: "electricity" | "water" | "security" | "device" | "general";
-  priority?: "low" | "medium" | "high";
+function getToken() {
+  if (typeof window === "undefined") return null;
+  return (
+    document.cookie.match(/(?:^|; )oyi_consumer_token=([^;]*)/)?.[1] ||
+    localStorage.getItem("oyi_consumer_token") ||
+    localStorage.getItem("token") ||
+    null
+  );
+}
 
-  status: "open" | "in_progress" | "resolved";
-  created_at?: string;
-  updated_at?: string;
-};
-
-export type CreateMaintenancePayload = {
-  title: string;
-  description?: string;
-  category: MaintenanceTicket["category"];
-  priority?: "low" | "medium" | "high";
-};
+http.interceptors.request.use((config) => {
+  const t = getToken();
+  if (t) config.headers.Authorization = `Bearer ${decodeURIComponent(t)}`;
+  return config;
+});
 
 export const maintenanceService = {
-  // Resident/home app: get my maintenance requests
-  async listMine(): Promise<MaintenanceTicket[]> {
-    const res = await API.get("/maintenance");
-    // accept either { tickets: [] } or direct []
-    return res.data?.tickets ?? res.data ?? [];
+  async listMyMaintenance(params?: { status?: string }) {
+    const res = await http.get("/maintenance", { params });
+    return res.data?.requests || [];
   },
 
-  // Resident/home app: create request
-  async create(payload: CreateMaintenancePayload) {
-    const res = await API.post("/maintenance", payload);
-    return res.data;
+  async createMaintenance(payload: {
+    home_id?: string | null;
+    title: string;
+    description?: string;
+    priority?: "low" | "normal" | "high";
+  }) {
+    const res = await http.post("/maintenance", payload);
+    return res.data?.request;
   },
 };
