@@ -36,8 +36,7 @@ export default function ChatFooter({
   const barsRef = useRef<HTMLDivElement[]>([]);
   const smoothValues = useRef<number[]>(Array(BAR_COUNT).fill(0));
 
-  const canSend =
-    input.trim().length > 0 && !isSending && voiceState === "idle";
+  const canSend = input.trim().length > 0 && !isSending && voiceState === "idle";
 
   /* -----------------------------
      HAPTIC FEEDBACK
@@ -64,8 +63,7 @@ export default function ChatFooter({
   ------------------------------ */
   useEffect(() => {
     const SpeechRecognition =
-      (window as any).SpeechRecognition ||
-      (window as any).webkitSpeechRecognition;
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
     if (!SpeechRecognition) return;
 
@@ -80,10 +78,7 @@ export default function ChatFooter({
         .join("");
 
       // 🔑 Wake word
-      if (
-        voiceState === "idle" &&
-        transcript.toLowerCase().includes("hey oyi")
-      ) {
+      if (voiceState === "idle" && transcript.toLowerCase().includes("hey oyi")) {
         vibrate(30);
         startRecording();
         return;
@@ -100,7 +95,20 @@ export default function ChatFooter({
     };
 
     recognitionRef.current = recognition;
-    recognition.start();
+
+    // Start passive listening (wake word)
+    try {
+      recognition.start();
+    } catch {
+      // ignore double-start errors on some browsers
+    }
+
+    return () => {
+      try {
+        recognition.stop();
+      } catch {}
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [voiceState]);
 
   /* -----------------------------
@@ -143,13 +151,11 @@ export default function ChatFooter({
           ((i + 1) * data.length) / BAR_COUNT
         );
 
-        const avg =
-          slice.reduce((a, b) => a + Math.abs(b - 128), 0) / slice.length;
+        const avg = slice.reduce((a, b) => a + Math.abs(b - 128), 0) / slice.length;
 
         const target = Math.min(36, avg * 1.5);
         smoothValues.current[i] =
-          smoothValues.current[i] * SMOOTHING +
-          target * (1 - SMOOTHING);
+          smoothValues.current[i] * SMOOTHING + target * (1 - SMOOTHING);
 
         const bar = barsRef.current[i];
         if (bar) bar.style.height = `${smoothValues.current[i]}px`;
@@ -169,14 +175,22 @@ export default function ChatFooter({
     setIntent("default");
     setInput("");
     setVoiceState("recording");
-    recognitionRef.current?.start();
-    startAudio();
+
+    try {
+      recognitionRef.current?.start();
+    } catch {}
+
+    startAudio().catch(() => {});
   }
 
   function stopRecording() {
     vibrate(40);
     setVoiceState("processing");
-    recognitionRef.current?.stop();
+
+    try {
+      recognitionRef.current?.stop();
+    } catch {}
+
     stopAudio();
     setVoiceState("idle");
   }
@@ -194,12 +208,10 @@ export default function ChatFooter({
   return (
     <div className="max-w-3xl mx-auto">
       <div className="relative flex items-center bg-gray-800 rounded-full px-3 py-2 gap-3">
-
         {/* MIC / STOP */}
         <button
-          onClick={
-            voiceState === "recording" ? stopRecording : startRecording
-          }
+          type="button"
+          onClick={voiceState === "recording" ? stopRecording : startRecording}
           className={`w-10 h-10 rounded-full flex items-center justify-center
             ${voiceState === "recording" ? "bg-red-600" : "bg-gray-700"}
           `}
@@ -231,8 +243,17 @@ export default function ChatFooter({
         ) : (
           <input
             value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSend()}
+            onChange={(e) => {
+              const v = e.target.value;
+              setInput(v);
+              setIntent(inferIntent(v));
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault(); // ✅ stops form-submit refresh
+                handleSend();
+              }
+            }}
             placeholder="Ask Oyi…"
             className="flex-1 bg-transparent outline-none px-2 text-sm text-white placeholder-gray-400"
           />
@@ -240,6 +261,7 @@ export default function ChatFooter({
 
         {/* SEND */}
         <button
+          type="button"
           onClick={handleSend}
           disabled={!canSend}
           className={`w-10 h-10 rounded-full flex items-center justify-center
