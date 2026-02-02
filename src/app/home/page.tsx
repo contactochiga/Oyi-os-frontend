@@ -1,50 +1,69 @@
 // src/app/home/page.tsx
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import InviteSuggestionBridge from "../components/InviteSuggestionBridge";
-
-// ✅ NEW: fetches /notifications into zustand store
 import NotificationsBridge from "../components/NotificationsBridge";
-
-// ✅ unified toolbar (Hamburger left, Bell right)
 import TopBar from "../components/TopBar";
 
-// COMPONENTS
 import LayoutWrapper from "../components/LayoutWrapper";
 import ChatFooter from "../components/ChatFooter";
 import DynamicSuggestionCard from "../components/DynamicSuggestionCard";
 
-// REMOTE PANELS
 import RemotePanelRenderer from "../components/remotes/RemotePanelRenderer";
 import DeviceDiscoveryPanel from "../components/remotes/DeviceDiscoveryPanel";
 
-// SERVICES
 import { aiService } from "../../services/aiService";
 import { deviceService } from "../../services/deviceService";
 
-// HOOKS
 import useAuth from "../../hooks/useAuth";
-
-// STORES
 import { useEventStore } from "../../store/useEventStore";
+
+type ChatRole = "user" | "assistant";
 
 type ChatMessage = {
   id: string;
-  role: "assistant";
+  role: ChatRole;
   content: string;
   panel?: string | null;
   panelKey?: string;
   deviceId?: string;
   time: string;
   lastUpdated: number;
+
+  // internal helper: mark placeholder bubble we later replace
+  pending?: boolean;
 };
 
+type DeviceAction =
+  | {
+      type: "device.command";
+      deviceId: string; // internal device row id OR external id depending on your backend
+      command: Record<string, any>;
+    }
+  | {
+      type: "open.panel";
+      panel: string;
+      deviceId?: string;
+    };
+
+function nowMeta() {
+  const now = new Date();
+  return {
+    time: now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    stamp: now.getTime(),
+  };
+}
+
+function createId() {
+  return Math.random().toString(36).slice(2, 9);
+}
+
 /**
- * 🔒 Authoritative UI intent inference
- * Human-first, estate-aware, enterprise-grade
+ * 🔒 Panel inference (management panels + device panels)
+ * We still infer, but we DO NOT automatically open device panels anymore.
  */
 function inferPanel(aiPanel?: string | null, userText?: string): string | null {
   const src = `${aiPanel || ""} ${userText || ""}`
@@ -145,9 +164,6 @@ function inferPanel(aiPanel?: string | null, userText?: string): string | null {
   return null;
 }
 
-/**
- * Human-safe suggestion titles
- */
 function getSuggestionTitle(panel: string): string {
   switch (panel) {
     case "home":
@@ -183,32 +199,86 @@ function getSuggestionTitle(panel: string): string {
   }
 }
 
+/**
+ * ✅ Decide if we should open a panel
+ * - management panels => yes
+ * - device panels => only if user explicitly asked to open/manage/show the UI
+ */
+function shouldOpenPanel(userText: string, panel: string | null) {
+  if (!panel) return false;
+
+  // Always open management panels
+  const MANAGEMENT = new Set([
+    "home",
+    "rooms",
+    "visitor",
+    "wallet",
+    "utilities",
+    "maintenance",
+    "community",
+    "devices",
+    "cctv",
+    "sensors",
+  ]);
+
+  if (MANAGEMENT.has(panel)) return true;
+
+  // Device panels only on explicit UI request
+  const t = (userText || "").toLowerCase();
+  const wantsUi =
+    t.includes("open") ||
+    t.includes("show") ||
+    t.includes("manage") ||
+    t.includes("control panel") ||
+    t.includes("remote") ||
+    t.includes("panel") ||
+    t.includes("settings");
+
+  return wantsUi;
+}
+
+/**
+ * ✅ Execute actions returned by AI (device command etc.)
+ * This keeps chat “conversational” while the backend does work.
+ */
+async function executeActions(actions: DeviceAction[] | undefined) {
+  if (!actions?.length) return;
+
+  for (const a of actions) {
+    if (a.type === "device.command") {
+      // This must call your backend: POST /devices/:deviceId/command { command }
+      await deviceService.commandDevice(a.deviceId, a.command);
+    }
+  }
+}
+
 export default function HomePage() {
   const router = useRouter();
+  const { user } = useAuth();
+  const { pushEvent } = useEventStore();
 
   const [input, setInput] = useState("");
+  const [discoveredDevices, setDiscoveredDevices] = useState<any[]>([]);
 
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: "sys-1",
       role: "assistant",
       content: "Hello! I’m Oyi — how can I help?",
-      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      ...nowMeta(),
       lastUpdated: Date.now(),
     },
   ]);
 
-  const { user } = useAuth();
-  const { pushEvent } = useEventStore();
-  const [discoveredDevices, setDiscoveredDevices] = useState<any[]>([]);
-
-  const createId = () => Math.random().toString(36).slice(2, 9);
+  const estateId = useMemo(() => {
+    return user?.estate_id ?? (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null);
+  }, [user?.estate_id]);
 
   async function handleSend(text?: string) {
     const command = (text ?? input).trim();
     if (!command) return;
 
-    // ✅ invite sentinel: pushes to /invites only when invite pill is tapped
+    // ✅ invite sentinel
     if (command === "__OPEN_INVITES__") {
       router.push("/invites");
       return;
@@ -216,66 +286,103 @@ export default function HomePage() {
 
     setInput("");
 
-    const now = new Date();
-    const time = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    const stamp = now.getTime();
+    const { time, stamp } = nowMeta();
+
+    // 1) Add USER bubble
+    const userMsgId = createId();
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: userMsgId,
+        role: "user",
+        content: command,
+        time,
+        lastUpdated: stamp,
+      },
+    ]);
+
+    // 2) Add ASSISTANT placeholder bubble (“Thinking…”)
+    const pendingId = createId();
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: pendingId,
+        role: "assistant",
+        content: "Thinking…",
+        time,
+        lastUpdated: stamp,
+        pending: true,
+      },
+    ]);
 
     try {
-      const resp = await aiService.chat(command);
+      const resp: any = await aiService.chat(command);
 
+      // Backwards compatibility:
+      // - old: { reply, panel, deviceId }
+      // - new: { reply, panel, deviceId, actions: [] }
       const reply =
-        resp.reply || `Got it. ${command.charAt(0).toUpperCase()}${command.slice(1)}.`;
+        resp?.reply ||
+        `Got it. ${command.charAt(0).toUpperCase()}${command.slice(1)}.`;
 
-      const panel = inferPanel(resp.panel, command);
-      const deviceId = resp.deviceId;
-      const panelKey = panel ? `${panel}:${deviceId || "default"}` : null;
+      const inferred = inferPanel(resp?.panel, command);
+      const panel = inferred;
 
-      if (panelKey) {
-        setMessages((prev) => {
-          const existing = prev.find((m) => m.panelKey === panelKey);
+      // New schema: actions array (best)
+      const actions: DeviceAction[] | undefined = resp?.actions;
 
-          if (existing) {
-            return [
-              ...prev.filter((m) => m.id !== existing.id),
-              { ...existing, content: reply, time, lastUpdated: stamp },
-            ];
-          }
-
-          return [
-            ...prev,
-            {
-              id: createId(),
-              role: "assistant",
-              content: reply,
-              panel,
-              panelKey,
-              deviceId,
-              time,
-              lastUpdated: stamp,
-            },
-          ];
-        });
-      } else {
-        // if no panel, still add assistant reply
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: createId(),
-            role: "assistant",
-            content: reply,
-            time,
-            lastUpdated: stamp,
-          },
-        ]);
+      // If actions exist: execute them now
+      if (actions?.length) {
+        await executeActions(actions);
       }
 
-      if (panel === "devices") {
-        const estateId = user?.estate_id ?? localStorage.getItem("ochiga_estate");
+      // For device panels (light/ac/tv/door), default to NO panel unless user asked
+      const openPanel = shouldOpenPanel(command, panel);
+
+      const deviceId = resp?.deviceId;
+      const panelKey = openPanel && panel ? `${panel}:${deviceId || "default"}` : null;
+
+      // 3) Replace pending assistant bubble with final reply (+ maybe panel)
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m.id !== pendingId) return m;
+
+          if (!openPanel) {
+            return {
+              ...m,
+              pending: false,
+              content: reply,
+              panel: null,
+              panelKey: undefined,
+              deviceId: undefined,
+              time,
+              lastUpdated: stamp,
+            };
+          }
+
+          return {
+            ...m,
+            pending: false,
+            content: reply,
+            panel: panel || null,
+            panelKey: panelKey || undefined,
+            deviceId,
+            time,
+            lastUpdated: stamp,
+          };
+        })
+      );
+
+      // 4) Only fetch devices list when opening devices panel
+      if (openPanel && panel === "devices") {
+        // ⚠️ if your current deviceService.getDevices hits /devices/estate/:id and you saw 404,
+        // this is where it will still fail until we fix deviceService endpoint.
         const devices = await deviceService.getDevices(estateId ?? undefined);
         setDiscoveredDevices(devices || []);
       }
 
-      if (panel) {
+      // 5) Suggestion event (only when we opened a panel OR when management panel inferred)
+      if (panel && (openPanel || ["rooms","visitor","wallet","utilities","maintenance","community","devices"].includes(panel))) {
         pushEvent({
           id: createId(),
           type: "info",
@@ -288,30 +395,27 @@ export default function HomePage() {
           expiresAt: Date.now() + 60_000,
         });
       }
-    } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: createId(),
-          role: "assistant",
-          content: "Sorry — I couldn’t reach the system.",
-          time,
-          lastUpdated: stamp,
-        },
-      ]);
+    } catch (e) {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === pendingId
+            ? {
+                ...m,
+                pending: false,
+                content: "Sorry — I couldn’t reach the system.",
+              }
+            : m
+        )
+      );
     }
   }
 
   return (
     <LayoutWrapper>
       <main className="fixed inset-0 flex flex-col">
-        {/* ✅ INVITES → injects “Home invite” pills into your suggestion row */}
         <InviteSuggestionBridge />
-
-        {/* ✅ NOTIFICATIONS → loads /notifications into useNotificationStore */}
         <NotificationsBridge />
 
-        {/* ✅ REAL TOPBAR (end-to-end background, content stays centered) */}
         <header className="fixed top-0 left-0 right-0 z-[80] h-16 bg-gray-900/80 backdrop-blur border-b border-gray-800">
           <div className="max-w-3xl mx-auto h-full px-4 flex items-center">
             <TopBar />
@@ -322,9 +426,18 @@ export default function HomePage() {
         <div className="flex-1 overflow-y-auto p-6 pt-24 pb-44">
           <div className="max-w-3xl mx-auto flex flex-col gap-4">
             {messages.map((m) => (
-              <div key={m.id} className="flex justify-start">
+              <div
+                key={m.id}
+                className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
+              >
                 <div className="max-w-[80%]">
-                  <div className="px-4 py-2 rounded-2xl bg-gray-900 text-gray-100">
+                  <div
+                    className={`px-4 py-2 rounded-2xl ${
+                      m.role === "user"
+                        ? "bg-[#E11D2E] text-white"
+                        : "bg-gray-900 text-gray-100"
+                    }`}
+                  >
                     {m.content}
                   </div>
 
