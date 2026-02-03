@@ -1,29 +1,5 @@
-import axios from "axios";
-
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE || "https://oyi-os.onrender.com";
-
-function getToken() {
-  if (typeof window === "undefined") return null;
-
-  return (
-    localStorage.getItem("oyi_consumer_token") ||
-    localStorage.getItem("token") ||
-    localStorage.getItem("oyi_facility_token") ||
-    null
-  );
-}
-
-const http = axios.create({
-  baseURL: API_BASE,
-  withCredentials: true,
-});
-
-http.interceptors.request.use((config) => {
-  const token = getToken();
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
+// src/services/maintenanceService.ts
+import API from "./api";
 
 export type MaintenanceStatus = "open" | "in_progress" | "resolved";
 
@@ -39,30 +15,33 @@ export type MaintenanceTicket = {
   estate_id?: string;
 };
 
+function pickError(err: any, fallback: string) {
+  return (
+    err?.response?.data?.error ||
+    err?.response?.data?.message ||
+    err?.message ||
+    fallback
+  );
+}
+
 export const maintenanceService = {
-  // ✅ MATCH BACKEND: GET /maintenance?status=open
-  async listMine(params?: { status?: string }) {
-    const { data } = await http.get("/maintenance", { params });
-    return (data?.requests || []) as MaintenanceTicket[];
+  /**
+   * GET /maintenance?status=open
+   * backend returns: { requests: [...] }
+   */
+  async listMyTickets(params?: { status?: string; homeId?: string }) {
+    try {
+      const res = await API.get("/maintenance", { params });
+      return (res.data?.requests || []) as MaintenanceTicket[];
+    } catch (err: any) {
+      return { error: pickError(err, "Failed to load maintenance") } as any;
+    }
   },
 
-  // ✅ MATCH BACKEND: POST /maintenance
-  async create(payload: {
-    home_id?: string;
-    title: string;
-    description?: string;
-    category?: string;
-    priority?: string;
-  }) {
-    const { data } = await http.post("/maintenance", payload);
-    return data?.request as MaintenanceTicket;
-  },
-
-  // ✅ Backward-compat (in case some UI still calls these)
-  async listMyTickets(params?: { status?: string }) {
-    return this.listMine(params);
-  },
-
+  /**
+   * POST /maintenance
+   * backend returns: { request: {...} }
+   */
   async createTicket(payload: {
     home_id?: string;
     title: string;
@@ -70,7 +49,27 @@ export const maintenanceService = {
     category?: string;
     priority?: string;
   }) {
-    return this.create(payload);
+    try {
+      const res = await API.post("/maintenance", payload);
+      return res.data?.request as MaintenanceTicket;
+    } catch (err: any) {
+      return { error: pickError(err, "Failed to create request") } as any;
+    }
+  },
+
+  // aliases (optional)
+  listMyMaintenance(params?: { status?: string; homeId?: string }) {
+    return this.listMyTickets(params);
+  },
+
+  createMaintenance(payload: {
+    home_id?: string;
+    title: string;
+    description?: string;
+    category?: string;
+    priority?: string;
+  }) {
+    return this.createTicket(payload);
   },
 };
 
