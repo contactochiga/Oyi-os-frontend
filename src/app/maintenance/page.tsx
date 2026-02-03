@@ -1,3 +1,5 @@
+// src/app/maintenance/page.tsx
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -20,7 +22,16 @@ function nice(s?: string) {
 function when(iso?: string) {
   if (!iso) return "—";
   const d = new Date(iso);
-  return d.toLocaleString([], { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleString([], {
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function pickErr(e: any, fallback: string) {
+  return e?.response?.data?.error || e?.response?.data?.message || e?.message || fallback;
 }
 
 export default function MaintenancePage() {
@@ -44,11 +55,18 @@ export default function MaintenancePage() {
   async function load() {
     setLoading(true);
     setErr(null);
+
     try {
-      const list = await maintenanceService.listMyTickets();
-      setTickets(list || []);
+      const res: any = await maintenanceService.listMyTickets();
+
+      // ✅ if service returns {error}
+      if (res?.error) throw new Error(res.error);
+
+      // ✅ force array always
+      setTickets(Array.isArray(res) ? res : []);
     } catch (e: any) {
-      setErr(e?.response?.data?.error || e?.message || "Failed to load maintenance");
+      setTickets([]); // ✅ prevents client-side crashes
+      setErr(pickErr(e, "Failed to load maintenance"));
     } finally {
       setLoading(false);
     }
@@ -56,20 +74,25 @@ export default function MaintenancePage() {
 
   async function create() {
     if (!form.title.trim()) return;
+
     setLoading(true);
     setErr(null);
+
     try {
-      await maintenanceService.createTicket({
+      const created: any = await maintenanceService.createTicket({
         title: form.title.trim(),
         description: form.description.trim() || undefined,
         category: form.category,
         priority: form.priority,
       });
+
+      if (created?.error) throw new Error(created.error);
+
       setShowNew(false);
       setForm({ title: "", description: "", category: "general", priority: "medium" });
       await load();
     } catch (e: any) {
-      setErr(e?.response?.data?.error || e?.message || "Failed to create request");
+      setErr(pickErr(e, "Failed to create request"));
     } finally {
       setLoading(false);
     }
@@ -80,12 +103,7 @@ export default function MaintenancePage() {
   }, []);
 
   return (
-    <ConsumerShell
-      title="Maintenance"
-      subtitle="Service desk & request history"
-      showBack
-      backHref="/home"
-    >
+    <ConsumerShell title="Maintenance" subtitle="Service desk & request history" showBack backHref="/home">
       {/* Top actions */}
       <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
         <div className="text-white/70 text-sm">
@@ -93,13 +111,10 @@ export default function MaintenancePage() {
         </div>
 
         <div className="flex gap-2">
-          <button
-            onClick={load}
-            disabled={loading}
-            className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm"
-          >
+          <button onClick={load} disabled={loading} className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm">
             {loading ? "Refreshing..." : "Refresh"}
           </button>
+
           <button
             onClick={() => setShowNew(true)}
             className="px-4 py-2 rounded-xl bg-[#E11D2E] text-white text-sm font-semibold"
@@ -136,9 +151,8 @@ export default function MaintenancePage() {
               className="grid grid-cols-12 gap-2 px-4 py-3 border-b border-white/10 hover:bg-white/[0.06] transition"
             >
               <div className="col-span-5 min-w-0">
-                <div className="text-white text-sm font-semibold truncate">
-                  {t.title || "Maintenance request"}
-                </div>
+                <div className="text-white text-sm font-semibold truncate">{t.title || "Maintenance request"}</div>
+
                 {t.description ? (
                   <div className="text-white/60 text-xs mt-1 line-clamp-1">{t.description}</div>
                 ) : (
@@ -152,13 +166,9 @@ export default function MaintenancePage() {
                 </span>
               </div>
 
-              <div className="col-span-2 text-white/80 text-sm">
-                {t.category ? String(t.category).toUpperCase() : "—"}
-              </div>
+              <div className="col-span-2 text-white/80 text-sm">{t.category ? String(t.category).toUpperCase() : "—"}</div>
 
-              <div className="col-span-1 text-white/80 text-sm">
-                {t.priority ? String(t.priority).toUpperCase() : "—"}
-              </div>
+              <div className="col-span-1 text-white/80 text-sm">{t.priority ? String(t.priority).toUpperCase() : "—"}</div>
 
               <div className="col-span-2 text-white/60 text-xs">{when(t.created_at)}</div>
             </div>
@@ -223,13 +233,10 @@ export default function MaintenancePage() {
               </div>
 
               <div className="flex gap-2 mt-1">
-                <button
-                  className="flex-1 py-3 rounded-xl bg-white/10 text-white"
-                  onClick={() => setShowNew(false)}
-                  disabled={loading}
-                >
+                <button className="flex-1 py-3 rounded-xl bg-white/10 text-white" onClick={() => setShowNew(false)} disabled={loading}>
                   Cancel
                 </button>
+
                 <button
                   className="flex-1 py-3 rounded-xl bg-[#E11D2E] text-white font-semibold"
                   onClick={create}
