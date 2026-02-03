@@ -1,3 +1,5 @@
+// src/app/components/remotes/MaintenancePanel.tsx
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -43,7 +45,16 @@ function formatTime(ts?: string) {
   if (!ts) return "";
   const d = new Date(ts);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleString([], { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleString([], {
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function pickErr(e: any, fallback: string) {
+  return e?.response?.data?.error || e?.response?.data?.message || e?.message || fallback;
 }
 
 export default function MaintenancePanel({
@@ -70,11 +81,18 @@ export default function MaintenancePanel({
   async function loadTickets() {
     setErr(null);
     setLoading(true);
+
     try {
-      const res = await maintenanceService.listMine();
-      setTickets(res);
+      const res: any = await maintenanceService.listMyTickets();
+
+      // ✅ support services that return { error }
+      if (res?.error) throw new Error(res.error);
+
+      // ✅ force array always
+      setTickets(Array.isArray(res) ? res : []);
     } catch (e: any) {
-      setErr(e?.message || "Failed to load maintenance requests.");
+      setTickets([]); // ✅ prevents crashes in filter/map
+      setErr(pickErr(e, "Failed to load maintenance requests."));
     } finally {
       setLoading(false);
     }
@@ -85,7 +103,6 @@ export default function MaintenancePanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // if panel is refreshed from outside
   useEffect(() => {
     if (!lastUpdated) return;
     loadTickets();
@@ -94,15 +111,19 @@ export default function MaintenancePanel({
 
   async function submit() {
     if (!canSubmit) return;
+
     setCreating(true);
     setErr(null);
+
     try {
-      await maintenanceService.create({
+      const created: any = await maintenanceService.createTicket({
         title: title.trim(),
         category,
         priority,
         description: description.trim() || undefined,
       });
+
+      if (created?.error) throw new Error(created.error);
 
       // close + reset
       setOpenModal(false);
@@ -111,19 +132,27 @@ export default function MaintenancePanel({
       setPriority("medium");
       setDescription("");
 
-      // refresh list
       await loadTickets();
       onInteraction?.();
     } catch (e: any) {
-      setErr(e?.message || "Failed to create request.");
+      setErr(pickErr(e, "Failed to create request."));
     } finally {
       setCreating(false);
     }
   }
 
-  const openCount = useMemo(() => tickets.filter(t => t.status === "open").length, [tickets]);
-  const inProgressCount = useMemo(() => tickets.filter(t => t.status === "in_progress").length, [tickets]);
-  const resolvedCount = useMemo(() => tickets.filter(t => t.status === "resolved").length, [tickets]);
+  const openCount = useMemo(
+    () => tickets.filter((t) => String(t.status || "open") === "open").length,
+    [tickets]
+  );
+  const inProgressCount = useMemo(
+    () => tickets.filter((t) => String(t.status || "") === "in_progress").length,
+    [tickets]
+  );
+  const resolvedCount = useMemo(
+    () => tickets.filter((t) => String(t.status || "") === "resolved").length,
+    [tickets]
+  );
 
   return (
     <RemotePanel title="Maintenance" lastUpdated={lastUpdated}>
@@ -170,7 +199,7 @@ export default function MaintenancePanel({
 
         {/* tickets */}
         <div className="space-y-2">
-          {tickets.length === 0 && !loading ? (
+          {!tickets.length && !loading ? (
             <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-zinc-300">
               No maintenance requests yet. If anything breaks, report it and the control room will pick it up.
             </div>
@@ -182,23 +211,30 @@ export default function MaintenancePanel({
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-white font-semibold truncate">{t.title}</div>
+                    <div className="text-white font-semibold truncate">{t.title || "Maintenance request"}</div>
+
                     {t.description ? (
-                      <div className="text-xs text-zinc-400 mt-1 line-clamp-2">
-                        {t.description}
-                      </div>
+                      <div className="text-xs text-zinc-400 mt-1 line-clamp-2">{t.description}</div>
                     ) : null}
-                    <div className="text-[11px] text-zinc-500 mt-2">
-                      {formatTime(t.created_at)}
-                    </div>
+
+                    <div className="text-[11px] text-zinc-500 mt-2">{formatTime(t.created_at)}</div>
                   </div>
 
                   <div className="flex flex-col items-end gap-2 shrink-0">
-                    <span className={`text-[11px] px-2 py-1 rounded-full border ${statusPill(t.status)}`}>
-                      {prettyStatus(t.status)}
+                    <span
+                      className={`text-[11px] px-2 py-1 rounded-full border ${statusPill(
+                        (t.status as Status) || "open"
+                      )}`}
+                    >
+                      {prettyStatus(((t.status as Status) || "open") as Status)}
                     </span>
-                    <span className={`text-[11px] px-2 py-1 rounded-full border ${categoryPill(t.category as any)}`}>
-                      {(t.category || "general").toUpperCase()}
+
+                    <span
+                      className={`text-[11px] px-2 py-1 rounded-full border ${categoryPill(
+                        ((t.category as any) || "general") as Category
+                      )}`}
+                    >
+                      {(t.category || "general").toString().toUpperCase()}
                     </span>
                   </div>
                 </div>
@@ -218,7 +254,6 @@ export default function MaintenancePanel({
 
           <button
             onClick={() => {
-              // you can later route this to chat intent: "support"
               onInteraction?.();
               alert("Support: chat support flow coming next.");
             }}
@@ -240,10 +275,9 @@ export default function MaintenancePanel({
             <div className="flex items-start justify-between gap-4">
               <div>
                 <div className="text-lg font-semibold text-white">New maintenance request</div>
-                <div className="text-sm text-zinc-400 mt-1">
-                  The control room will receive this instantly.
-                </div>
+                <div className="text-sm text-zinc-400 mt-1">The control room will receive this instantly.</div>
               </div>
+
               <button
                 className="text-zinc-400 hover:text-zinc-200"
                 onClick={() => !creating && setOpenModal(false)}
