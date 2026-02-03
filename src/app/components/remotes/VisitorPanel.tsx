@@ -1,49 +1,59 @@
 // src/app/components/remotes/VisitorPanel.tsx
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import RemotePanel from "./RemotePanel";
-import useAuth from "@/hooks/useAuth";
+import { visitorService } from "@/services/visitorService";
 
-type VisitorDTO = {
+type VisitorStatus = "active" | "approved" | "denied" | "entered" | "exited" | string;
+
+type VisitorAccess = {
   id: string;
-  estate_id: string;
-  resident_id: string;
   visitor_name: string;
-  visitor_phone?: string | null;
+  visitor_phone: string;
   purpose?: string | null;
-  house_id?: string | null;
   access_code: string;
-  status: string; // pending|approved|entered|exited|denied (depends)
+  status: VisitorStatus;
+  created_at: string;
   expires_at?: string | null;
-  verified_at?: string | null;
-  qr_s3_url?: string | null;
 };
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL ||
-  process.env.NEXT_PUBLIC_BACKEND_URL ||
-  "https://oyi-os.onrender.com";
+function when(iso?: string | null) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString([], { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
 
-async function api<T>(
-  path: string,
-  opts: RequestInit & { token?: string | null } = {}
-): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...opts,
-    headers: {
-      "Content-Type": "application/json",
-      ...(opts.token ? { Authorization: `Bearer ${opts.token}` } : {}),
-      ...(opts.headers || {}),
-    },
-  });
+function pill(status?: string) {
+  const s = String(status || "").toLowerCase();
+  if (s === "approved") return "border-emerald-500/30 bg-emerald-500/10 text-emerald-200";
+  if (s === "entered") return "border-blue-500/30 bg-blue-500/10 text-blue-200";
+  if (s === "exited") return "border-zinc-500/30 bg-white/5 text-zinc-200";
+  if (s === "denied") return "border-red-500/30 bg-red-500/10 text-red-200";
+  return "border-yellow-500/30 bg-yellow-500/10 text-yellow-200"; // active/pending
+}
 
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const msg = json?.error || json?.message || `Request failed (${res.status})`;
-    throw new Error(msg);
-  }
-  return json as T;
+function buildInviteMessage(args: {
+  visitorName: string;
+  estateName?: string;
+  code?: string | null;
+  link?: string | null;
+  expiresAt?: string | null;
+  note?: string | null;
+}) {
+  const lines: string[] = [];
+  lines.push(`Hi ${args.visitorName}, you’ve been invited${args.estateName ? ` to ${args.estateName}` : ""}.`);
+  if (args.code) lines.push(`Gate Code: ${args.code}`);
+  if (args.link) lines.push(`Access Link: ${args.link}`);
+  if (args.expiresAt) lines.push(`Expires: ${when(args.expiresAt)}`);
+  if (args.note) lines.push(`Note: ${args.note}`);
+  lines.push(`At the gate, show the code to security.`);
+  return lines.join("\n");
+}
+
+async function copy(text: string) {
+  await navigator.clipboard.writeText(text);
 }
 
 export default function VisitorPanel({
@@ -53,72 +63,89 @@ export default function VisitorPanel({
   lastUpdated?: number;
   onInteraction?: () => void;
 }) {
-  const { user, token } = useAuth();
-
-  const estateId = useMemo(
-    () =>
-      user?.estate_id ??
-      (typeof window !== "undefined"
-        ? localStorage.getItem("ochiga_estate")
-        : null),
-    [user?.estate_id]
-  );
-
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // created visitor state
-  const [created, setCreated] = useState<{
-    id: string;
-    link?: string;
-    code?: string;
-    qr?: string;
-    status?: string;
-    expiresAt?: string;
-  } | null>(null);
-
-  // verify state
-  const [verifyCode, setVerifyCode] = useState("");
-  const [verified, setVerified] = useState<VisitorDTO | null>(null);
-
-  // create form state
+  // Minimal form (consumer)
   const [visitorName, setVisitorName] = useState("");
   const [visitorPhone, setVisitorPhone] = useState("");
-  const [purpose, setPurpose] = useState("");
+  const [note, setNote] = useState("");
 
-  function touch() {
-    onInteraction?.();
+  // created result
+  const [created, setCreated] = useState<{
+    visitor: VisitorAccess;
+    link?: string | null;
+    code?: string | null;
+  } | null>(null);
+
+  // minimal list
+  const [items, setItems] = useState<VisitorAccess[]>([]);
+  const canSubmit = visitorName.trim().length >= 2 && visitorPhone.trim().length >= 5;
+
+  const estateName = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    // optional: if you store estate name anywhere
+    return localStorage.getItem("ochiga_estate_name") || "";
+  }, []);
+
+  async function loadMine() {
+    // optional route; if not present it returns []
+    const res = await visitorService.listMine();
+    setItems(res || []);
   }
 
+  useEffect(() => {
+    loadMine();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!lastUpdated) return;
+    loadMine();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastUpdated]);
+
   async function createVisitor() {
-    if (!estateId) return setErr("No estate linked yet.");
-    if (!visitorName.trim()) return setErr("Visitor name is required.");
+    if (!canSubmit) return;
 
     setLoading(true);
     setErr(null);
+
     try {
-      const resp = await api<{
-        id: string;
-        link: string;
-        code: string;
-        qr: string;
-        status: string;
-        expiresAt: string;
-      }>("/visitors", {
-        method: "POST",
-        token,
-        body: JSON.stringify({
-          estateId,
-          visitorName: visitorName.trim(),
-          visitorPhone: visitorPhone.trim() || null,
-          purpose: purpose.trim() || null,
-        }),
+      const resp = await visitorService.create({
+        name: visitorName.trim(),
+        phone: visitorPhone.trim(),
+        purpose: note.trim() || undefined,
+        navigation_mode: "code",
       });
 
-      setCreated(resp);
-      setVerified(null);
-      setVerifyCode("");
-      touch();
+      if ((resp as any)?.error) {
+        setErr((resp as any).error);
+        return;
+      }
+
+      const visitor = (resp as any).visitor as VisitorAccess;
+
+      setCreated({
+        visitor,
+        link: (resp as any).link ?? null,
+        code: (resp as any).code ?? visitor.access_code ?? null,
+      });
+
+      // optimistic add on top
+      setItems((prev) => {
+        const next = [visitor, ...prev];
+        // de-dupe
+        const map = new Map<string, VisitorAccess>();
+        next.forEach((v) => map.set(v.id, v));
+        return Array.from(map.values());
+      });
+
+      setVisitorName("");
+      setVisitorPhone("");
+      setNote("");
+
+      onInteraction?.();
     } catch (e: any) {
       setErr(e?.message || "Failed to create visitor");
     } finally {
@@ -126,281 +153,219 @@ export default function VisitorPanel({
     }
   }
 
-  async function approveVisitor(id: string) {
-    setLoading(true);
-    setErr(null);
-    try {
-      const resp = await api<{ ok: true; visitor: VisitorDTO }>(
-        `/visitors/approve/${id}`,
-        { method: "PUT", token }
-      );
-      setVerified(resp.visitor);
-      setCreated((c) => (c ? { ...c, status: resp.visitor.status } : c));
-      touch();
-    } catch (e: any) {
-      setErr(e?.message || "Failed to approve visitor");
-    } finally {
-      setLoading(false);
+  async function shareInvite() {
+    if (!created) return;
+
+    const msg = buildInviteMessage({
+      visitorName: created.visitor.visitor_name,
+      estateName: estateName || undefined,
+      code: created.code,
+      link: created.link,
+      expiresAt: created.visitor.expires_at,
+      note: created.visitor.purpose || null,
+    });
+
+    // Use native share sheet if available
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: "Visitor Access",
+          text: msg,
+        });
+        return;
+      } catch {
+        // user cancelled share; ignore
+      }
     }
+
+    // fallback: copy
+    await copy(msg);
+    setErr("Invite copied. Paste to WhatsApp/SMS.");
   }
 
-  async function markEntry(id: string) {
-    setLoading(true);
-    setErr(null);
-    try {
-      await api(`/visitors/entry/${id}`, { method: "POST", token });
-      // fetch latest info
-      const info = await api<{ visitor: VisitorDTO }>(`/visitors/info/${id}`, {
-        method: "GET",
-        token,
-      });
-      setVerified(info.visitor);
-      setCreated((c) => (c ? { ...c, status: info.visitor.status } : c));
-      touch();
-    } catch (e: any) {
-      setErr(e?.message || "Failed to mark entry");
-    } finally {
-      setLoading(false);
-    }
+  async function copyCode() {
+    if (!created?.code) return;
+    await copy(created.code);
+    setErr("Code copied.");
   }
 
-  async function markExit(id: string) {
-    setLoading(true);
-    setErr(null);
-    try {
-      await api(`/visitors/exit/${id}`, { method: "POST", token });
-      const info = await api<{ visitor: VisitorDTO }>(`/visitors/info/${id}`, {
-        method: "GET",
-        token,
-      });
-      setVerified(info.visitor);
-      setCreated((c) => (c ? { ...c, status: info.visitor.status } : c));
-      touch();
-    } catch (e: any) {
-      setErr(e?.message || "Failed to mark exit");
-    } finally {
-      setLoading(false);
-    }
+  async function copyMessage() {
+    if (!created) return;
+
+    const msg = buildInviteMessage({
+      visitorName: created.visitor.visitor_name,
+      estateName: estateName || undefined,
+      code: created.code,
+      link: created.link,
+      expiresAt: created.visitor.expires_at,
+      note: created.visitor.purpose || null,
+    });
+
+    await copy(msg);
+    setErr("Invite message copied.");
   }
-
-  async function verify() {
-    if (!estateId) return setErr("No estate linked yet.");
-    if (!verifyCode.trim()) return setErr("Enter an access code to verify.");
-
-    setLoading(true);
-    setErr(null);
-    try {
-      const resp = await api<{ valid: true; visitor: VisitorDTO }>(
-        "/visitors/verify",
-        {
-          method: "POST",
-          token,
-          body: JSON.stringify({ code: verifyCode.trim(), estateId }),
-        }
-      );
-      setVerified(resp.visitor);
-      touch();
-    } catch (e: any) {
-      setVerified(null);
-      setErr(e?.message || "Invalid access code");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  const activeId = verified?.id || created?.id;
 
   return (
-    <RemotePanel title="Visitor Access" lastUpdated={lastUpdated}>
-      {err && (
-        <div className="mb-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-200">
-          {err}
-        </div>
-      )}
+    <RemotePanel title="Visitors" lastUpdated={lastUpdated}>
+      <div className="space-y-3">
+        {err && (
+          <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+            {err}
+          </div>
+        )}
 
-      {!estateId && (
-        <div className="text-sm text-gray-400">
-          No estate linked yet. Please onboard/select an estate.
-        </div>
-      )}
+        {/* Create visitor (minimal) */}
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+          <div className="text-sm font-semibold text-white">Create visitor pass</div>
+          <div className="text-xs text-zinc-400 mt-1">
+            Enter name + phone. We’ll generate a gate code you can share.
+          </div>
 
-      {!!estateId && (
-        <div className="space-y-4">
-          {/* CREATE VISITOR */}
-          <div className="rounded-xl bg-gray-800 border border-gray-700 p-4">
-            <div className="text-sm text-white font-medium mb-3">
-              Create Visitor
+          <div className="grid gap-2 mt-3">
+            <input
+              value={visitorName}
+              onChange={(e) => setVisitorName(e.target.value)}
+              placeholder="Visitor name"
+              className="w-full rounded-2xl bg-zinc-900/60 border border-white/10 px-4 py-3 text-sm text-white outline-none"
+            />
+
+            <input
+              value={visitorPhone}
+              onChange={(e) => setVisitorPhone(e.target.value)}
+              placeholder="Phone number"
+              className="w-full rounded-2xl bg-zinc-900/60 border border-white/10 px-4 py-3 text-sm text-white outline-none"
+            />
+
+            <input
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Note (optional) e.g. coming by 4pm"
+              className="w-full rounded-2xl bg-zinc-900/60 border border-white/10 px-4 py-3 text-sm text-white outline-none"
+            />
+
+            <button
+              onClick={createVisitor}
+              disabled={!canSubmit || loading}
+              className="w-full py-3 rounded-2xl bg-[#E11D2E] text-white text-sm font-semibold disabled:opacity-60"
+            >
+              {loading ? "Creating..." : "Create & Generate Code"}
+            </button>
+          </div>
+        </div>
+
+        {/* Created result */}
+        {created && (
+          <div className="rounded-2xl border border-white/10 bg-zinc-900/60 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-white font-semibold truncate">
+                  {created.visitor.visitor_name}
+                </div>
+                <div className="text-xs text-zinc-400 mt-1 truncate">
+                  {created.visitor.visitor_phone}
+                  {created.visitor.purpose ? ` • ${created.visitor.purpose}` : ""}
+                </div>
+                <div className="text-[11px] text-zinc-500 mt-2">
+                  Created: {when(created.visitor.created_at)}{" "}
+                  {created.visitor.expires_at ? `• Expires: ${when(created.visitor.expires_at)}` : ""}
+                </div>
+              </div>
+
+              <span
+                className={`shrink-0 text-[11px] px-2 py-1 rounded-full border ${pill(created.visitor.status)}`}
+              >
+                {String(created.visitor.status || "active").replaceAll("_", " ")}
+              </span>
             </div>
 
-            <div className="space-y-2">
-              <input
-                value={visitorName}
-                onChange={(e) => setVisitorName(e.target.value)}
-                placeholder="Visitor name"
-                className="w-full rounded-lg bg-gray-900 border border-gray-700 px-3 py-2 text-sm text-white"
-              />
-              <input
-                value={visitorPhone}
-                onChange={(e) => setVisitorPhone(e.target.value)}
-                placeholder="Phone (optional)"
-                className="w-full rounded-lg bg-gray-900 border border-gray-700 px-3 py-2 text-sm text-white"
-              />
-              <input
-                value={purpose}
-                onChange={(e) => setPurpose(e.target.value)}
-                placeholder="Purpose (optional)"
-                className="w-full rounded-lg bg-gray-900 border border-gray-700 px-3 py-2 text-sm text-white"
-              />
+            <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3">
+              <div className="text-[11px] text-zinc-400">Gate code</div>
+              <div className="mt-1 text-xl font-semibold text-white font-mono">
+                {created.code || created.visitor.access_code}
+              </div>
+            </div>
+
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              <button
+                onClick={copyCode}
+                className="py-2 rounded-xl border border-white/10 bg-white/5 text-white text-xs font-semibold hover:bg-white/10 transition"
+              >
+                Copy Code
+              </button>
 
               <button
-                onClick={createVisitor}
-                disabled={loading}
-                className="w-full py-3 rounded-xl bg-[#E11D2E] text-white text-sm font-medium disabled:opacity-50"
+                onClick={copyMessage}
+                className="py-2 rounded-xl border border-white/10 bg-white/5 text-white text-xs font-semibold hover:bg-white/10 transition"
               >
-                {loading ? "Creating…" : "Create Visitor"}
+                Copy Invite
+              </button>
+
+              <button
+                onClick={shareInvite}
+                className="py-2 rounded-xl bg-[#E11D2E] text-white text-xs font-semibold hover:opacity-95 transition"
+              >
+                Share
               </button>
             </div>
 
-            {created && (
-              <div className="mt-4 rounded-xl bg-gray-900 border border-gray-700 p-3">
-                <div className="text-xs text-gray-400">Access Code</div>
-                <div className="text-lg text-white font-semibold">
-                  {created.code}
-                </div>
+            {created.link ? (
+              <div className="mt-2 text-[11px] text-zinc-500 break-all">
+                Link: <span className="text-zinc-300">{created.link}</span>
+              </div>
+            ) : null}
+          </div>
+        )}
 
-                <div className="mt-2 text-xs text-gray-400">Status</div>
-                <div className="text-sm text-white">{created.status}</div>
+        {/* Minimal list */}
+        <div className="rounded-2xl border border-white/10 bg-white/5 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+            <div className="text-sm font-semibold text-white">Recent visitors</div>
+            <button
+              onClick={loadMine}
+              disabled={loading}
+              className="text-xs px-3 py-2 rounded-xl border border-white/10 hover:bg-white/5 transition disabled:opacity-60"
+            >
+              Refresh
+            </button>
+          </div>
 
-                {created.expiresAt && (
-                  <div className="mt-2 text-xs text-gray-400">
-                    Expires:{" "}
-                    <span className="text-gray-200">
-                      {new Date(created.expiresAt).toLocaleString()}
-                    </span>
+          {!items.length ? (
+            <div className="p-4 text-sm text-zinc-300">
+              No visitors yet. Create one and the code will appear here.
+            </div>
+          ) : (
+            <div className="divide-y divide-white/10">
+              {items.slice(0, 10).map((v) => (
+                <div key={v.id} className="px-4 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-white font-semibold truncate">{v.visitor_name}</div>
+                      <div className="text-xs text-zinc-400 truncate">{v.visitor_phone}</div>
+                      <div className="text-[11px] text-zinc-500 mt-1">
+                        {when(v.created_at)}
+                        {v.expires_at ? ` • Expires ${when(v.expires_at)}` : ""}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col items-end gap-2 shrink-0">
+                      <span className={`text-[11px] px-2 py-1 rounded-full border ${pill(v.status)}`}>
+                        {String(v.status || "active").replaceAll("_", " ")}
+                      </span>
+                      <span className="text-[11px] px-2 py-1 rounded-full border border-white/10 bg-white/5 text-white/90 font-mono">
+                        {v.access_code || "—"}
+                      </span>
+                    </div>
                   </div>
-                )}
-
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  {created.link && (
-                    <a
-                      href={created.link}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-center py-2 rounded-lg bg-gray-800 text-xs text-white"
-                    >
-                      Open Link
-                    </a>
-                  )}
-                  {created.qr && (
-                    <a
-                      href={created.qr}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-center py-2 rounded-lg bg-gray-800 text-xs text-white"
-                    >
-                      View QR
-                    </a>
-                  )}
                 </div>
-
-                <div className="mt-3 flex gap-2">
-                  <button
-                    onClick={() => approveVisitor(created.id)}
-                    disabled={loading}
-                    className="flex-1 py-2 rounded-lg bg-[#16A34A] text-white text-xs font-medium disabled:opacity-50"
-                  >
-                    Approve
-                  </button>
-                  <button
-                    onClick={() =>
-                      setErr(
-                        "Deny is not implemented on backend yet. Add /visitors/deny/:id if you want this."
-                      )
-                    }
-                    className="flex-1 py-2 rounded-lg bg-[#DC2626] text-white text-xs font-medium"
-                  >
-                    Deny
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* VERIFY VISITOR */}
-          <div className="rounded-xl bg-gray-800 border border-gray-700 p-4">
-            <div className="text-sm text-white font-medium mb-3">
-              Verify Access Code
+              ))}
             </div>
-
-            <div className="flex gap-2">
-              <input
-                value={verifyCode}
-                onChange={(e) => setVerifyCode(e.target.value)}
-                placeholder="Enter code"
-                className="flex-1 rounded-lg bg-gray-900 border border-gray-700 px-3 py-2 text-sm text-white"
-              />
-              <button
-                onClick={verify}
-                disabled={loading}
-                className="px-4 py-2 rounded-lg bg-gray-900 border border-gray-700 text-sm text-white disabled:opacity-50"
-              >
-                {loading ? "…" : "Verify"}
-              </button>
-            </div>
-
-            {verified && (
-              <div className="mt-4 rounded-xl bg-gray-900 border border-gray-700 p-3">
-                <div className="text-sm text-white font-medium">
-                  {verified.visitor_name}
-                </div>
-                <div className="text-xs text-gray-400">
-                  Purpose: {verified.purpose || "—"}
-                </div>
-                <div className="text-xs text-gray-400">
-                  Status:{" "}
-                  <span className="text-gray-200">{verified.status}</span>
-                </div>
-
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => approveVisitor(verified.id)}
-                    disabled={loading}
-                    className="py-2 rounded-lg bg-[#16A34A] text-white text-xs font-medium disabled:opacity-50"
-                  >
-                    Approve
-                  </button>
-                  <button
-                    onClick={() => markEntry(verified.id)}
-                    disabled={loading}
-                    className="py-2 rounded-lg bg-gray-800 text-white text-xs font-medium disabled:opacity-50"
-                  >
-                    Mark Entry
-                  </button>
-                  <button
-                    onClick={() => markExit(verified.id)}
-                    disabled={loading}
-                    className="py-2 rounded-lg bg-gray-800 text-white text-xs font-medium disabled:opacity-50"
-                  >
-                    Mark Exit
-                  </button>
-                  <button
-                    onClick={() => setVerified(null)}
-                    className="py-2 rounded-lg bg-gray-800 text-white text-xs font-medium"
-                  >
-                    Clear
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {!verified && !activeId && (
-              <div className="mt-3 text-xs text-gray-500">
-                Verify a code to see visitor info.
-              </div>
-            )}
-          </div>
+          )}
         </div>
-      )}
+
+        <div className="text-[11px] text-zinc-500">
+          Gate verification (approve/deny/entry/exit) happens in the Facility app — not here.
+        </div>
+      </div>
     </RemotePanel>
   );
 }
