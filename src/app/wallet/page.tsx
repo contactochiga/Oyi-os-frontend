@@ -25,9 +25,7 @@ function safeNum(v: any) {
 export default function WalletPage() {
   const { user } = useAuth();
 
-  const email = useMemo(() => {
-    return user?.email || "";
-  }, [user?.email]);
+  const email = useMemo(() => user?.email || "", [user?.email]);
 
   const [wallet, setWallet] = useState<WalletDTO | null>(null);
   const [loading, setLoading] = useState(false);
@@ -68,28 +66,24 @@ export default function WalletPage() {
 
     setFunding(true);
     try {
-      const res: any = await walletService.initPayment({
-        amount: n,
-        email,
-      });
+      const res: any = await walletService.initPayment({ amount: n, email });
 
       if (res?.error) {
         setErr(String(res.error));
         return;
       }
 
-      // Paystack initialize usually returns { data: { authorization_url } }
+      // Paystack initialize response: response.data.data.authorization_url
       const url =
         res?.data?.authorization_url ||
         res?.authorization_url ||
         res?.data?.data?.authorization_url;
 
       if (!url) {
-        setErr("Payment initialized but no Paystack URL returned (check backend route response).");
+        setErr("Payment initialized but Paystack URL missing (check backend response).");
         return;
       }
 
-      // ✅ open paystack checkout
       window.location.href = String(url);
     } catch (e: any) {
       setErr(e?.message || "Failed to start funding");
@@ -103,7 +97,7 @@ export default function WalletPage() {
 
   return (
     <ConsumerShell title="Wallet" subtitle="Fund account • pay dues">
-      {/* BALANCE CARD */}
+      {/* BALANCE */}
       <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -132,7 +126,7 @@ export default function WalletPage() {
         )}
       </div>
 
-      {/* FUND WALLET */}
+      {/* FUND */}
       <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
         <div className="text-sm font-semibold text-white">Fund wallet</div>
         <div className="text-xs text-white/40 mt-1">
@@ -157,16 +151,16 @@ export default function WalletPage() {
           </button>
 
           <div className="text-[11px] text-white/40">
-            Tip: after payment completes, wallet balance updates via webhook. If it doesn’t update immediately, tap refresh.
+            After payment completes, balance updates via webhook. If it doesn’t update immediately, tap refresh.
           </div>
         </div>
       </div>
 
-      {/* FUTURE: DUES / BILLS */}
+      {/* NEXT: DUES */}
       <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
         <div className="text-sm font-semibold text-white">Estate dues (next)</div>
         <div className="text-xs text-white/40 mt-1">
-          We’ll list bills here and let you pay directly from wallet.
+          We’ll list bills here and allow direct payments from wallet.
         </div>
       </div>
     </ConsumerShell>
