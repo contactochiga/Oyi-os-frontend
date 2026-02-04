@@ -1,3 +1,4 @@
+// src/app/settings/SettingsClient.tsx
 "use client";
 
 import { useEffect, useRef } from "react";
@@ -25,15 +26,14 @@ export default function SettingsClient() {
   useEffect(() => {
     const section = params.get("section");
     if (section === "settings") {
-      settingsRef.current?.scrollIntoView({ behavior: "smooth" });
+      settingsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     } else {
-      profileRef.current?.scrollIntoView({ behavior: "smooth" });
+      profileRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }, [params]);
 
   return (
-    <main className="max-w-2xl mx-auto px-4 py-10 space-y-10">
-
+    <div className="max-w-3xl mx-auto py-2 space-y-10">
       {/* PROFILE HEADER */}
       <section ref={profileRef} className="text-center space-y-4">
         <div
@@ -45,12 +45,10 @@ export default function SettingsClient() {
         </div>
 
         <div>
-          <div className="text-xl font-semibold">
+          <div className="text-xl font-semibold text-white">
             {user?.username ?? "Resident"}
           </div>
-          <div className="text-sm text-gray-400">
-            {user?.email}
-          </div>
+          <div className="text-sm text-gray-400">{user?.email}</div>
         </div>
 
         <button
@@ -66,8 +64,8 @@ export default function SettingsClient() {
         <h3 className="text-sm text-gray-400">Account</h3>
 
         <Row label="Email" value={user?.email} />
-        <Row label="Estate" value={user?.estate_name ?? "—"} />
-        <Row label="Unit" value={user?.unit_name ?? "—"} />
+        <Row label="Estate" value={(user as any)?.estate_name ?? "—"} />
+        <Row label="Unit" value={(user as any)?.unit_name ?? "—"} />
         <Row label="Role" value={user?.role ?? "resident"} />
       </section>
 
@@ -107,8 +105,7 @@ export default function SettingsClient() {
           Log out
         </button>
       </section>
-
-    </main>
+    </div>
   );
 }
 
@@ -124,7 +121,9 @@ function Row({ label, value }: { label: string; value?: string }) {
                  rounded-xl px-4 py-3"
     >
       <span className="text-sm text-gray-300">{label}</span>
-      <span className="text-sm text-gray-400">{value}</span>
+      <span className="text-sm text-gray-400 truncate max-w-[60%] text-right">
+        {value}
+      </span>
     </div>
   );
 }
