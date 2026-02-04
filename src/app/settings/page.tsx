@@ -1,23 +1,30 @@
+// src/app/settings/page.tsx
 import { Suspense } from "react";
-import LayoutWrapper from "../components/LayoutWrapper";
 import SettingsClient from "./SettingsClient";
+import ConsumerShell from "@/app/components/ConsumerShell";
 
 export default function SettingsPage() {
   return (
-    <LayoutWrapper>
+    <ConsumerShell title="Account" subtitle="Profile • Preferences • System">
       <Suspense fallback={<SettingsSkeleton />}>
         <SettingsClient />
       </Suspense>
-    </LayoutWrapper>
+    </ConsumerShell>
   );
 }
 
 function SettingsSkeleton() {
   return (
-    <main className="max-w-2xl mx-auto px-4 py-10 space-y-6">
+    <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
       <div className="h-20 w-20 rounded-full bg-gray-800 mx-auto" />
       <div className="h-4 bg-gray-800 rounded w-1/3 mx-auto" />
       <div className="h-4 bg-gray-800 rounded w-1/2 mx-auto" />
-    </main>
+
+      <div className="space-y-3 pt-6">
+        <div className="h-12 bg-gray-900 border border-gray-800 rounded-xl" />
+        <div className="h-12 bg-gray-900 border border-gray-800 rounded-xl" />
+        <div className="h-12 bg-gray-900 border border-gray-800 rounded-xl" />
+      </div>
+    </div>
   );
 }
