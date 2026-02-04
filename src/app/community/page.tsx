@@ -4,17 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import useAuth from "@/hooks/useAuth";
 import ConsumerShell from "@/app/components/ConsumerShell";
-import API from "@/services/api";
-
-type CommunityPost = {
-  id: string;
-  title?: string | null;
-  message?: string | null;
-  body?: string | null;
-  content?: string | null;
-  status?: string | null;
-  created_at?: string | null;
-};
+import { communityService, type CommunityPost } from "@/services/communityService";
 
 function when(iso?: string | null) {
   if (!iso) return "—";
@@ -28,29 +18,28 @@ function when(iso?: string | null) {
   });
 }
 
-function unwrapList(data: any): CommunityPost[] {
-  if (!data) return [];
-  if (Array.isArray(data)) return data;
-  if (Array.isArray(data.items)) return data.items;
-  if (Array.isArray(data.posts)) return data.posts;
-  if (Array.isArray(data.data)) return data.data;
-  return [];
-}
-
 export default function CommunityPage() {
   const { user } = useAuth();
 
   const estateId = useMemo(
     () =>
       (user as any)?.estate_id ??
-      (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null),
+      (typeof window !== "undefined"
+        ? localStorage.getItem("ochiga_estate")
+        : null),
     [user]
   );
 
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
   const [items, setItems] = useState<CommunityPost[]>([]);
   const [openPost, setOpenPost] = useState<CommunityPost | null>(null);
+
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [posting, setPosting] = useState(false);
 
   async function load() {
     if (!estateId) return;
@@ -58,13 +47,10 @@ export default function CommunityPage() {
     setLoading(true);
     setErr(null);
     try {
-      // ✅ backend pattern used in facility: listByEstate(estateId)
-      // We’ll call directly. If your route differs, change only THIS line.
-      const res = await API.get(`/community/estate/${encodeURIComponent(String(estateId))}`);
-      const list = unwrapList(res.data);
+      const list = await communityService.listByEstate(String(estateId));
       setItems(list || []);
     } catch (e: any) {
-      setErr(e?.response?.data?.error || e?.message || "Failed to load community");
+      setErr(e?.message || "Failed to load community");
       setItems([]);
     } finally {
       setLoading(false);
@@ -77,20 +63,64 @@ export default function CommunityPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [estateId]);
 
+  async function createPost() {
+    if (!title.trim()) return setErr("Title is required.");
+    if (!estateId) return setErr("No estate linked.");
+
+    setPosting(true);
+    setErr(null);
+    try {
+      const res: any = await communityService.createPost({
+        title: title.trim(),
+        body: body.trim() ? body.trim() : null,
+        estateId: String(estateId),
+      });
+
+      if (res?.error) {
+        setErr(String(res.error));
+        return;
+      }
+
+      setComposerOpen(false);
+      setTitle("");
+      setBody("");
+
+      // Optimistic insert
+      setItems((prev) => [res as CommunityPost, ...prev]);
+    } catch (e: any) {
+      setErr(e?.message || "Failed to create post");
+    } finally {
+      setPosting(false);
+    }
+  }
+
   return (
-    <ConsumerShell title="Community" subtitle="Estate broadcasts • announcements • live updates">
+    <ConsumerShell
+      title="Community"
+      subtitle="Estate broadcasts • announcements • live updates"
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="text-xs text-white/40">
           {estateId ? `Estate: ${estateId}` : "No estate linked"}
         </div>
 
-        <button
-          onClick={load}
-          disabled={!estateId || loading}
-          className="px-3 py-2 rounded-xl bg-white/10 text-white text-sm disabled:opacity-50"
-        >
-          {loading ? "Refreshing..." : "Refresh"}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={load}
+            disabled={!estateId || loading}
+            className="px-3 py-2 rounded-xl bg-white/10 text-white text-sm disabled:opacity-50"
+          >
+            {loading ? "..." : "Refresh"}
+          </button>
+
+          <button
+            onClick={() => setComposerOpen(true)}
+            disabled={!estateId}
+            className="px-3 py-2 rounded-xl bg-[#E11D2E] text-white text-sm font-semibold disabled:opacity-50"
+          >
+            + Post
+          </button>
+        </div>
       </div>
 
       {err && (
@@ -115,7 +145,7 @@ export default function CommunityPage() {
       ) : (
         <div className="mt-4 space-y-3">
           {items.map((p) => {
-            const preview = p.message || p.body || p.content || "";
+            const preview = p.body || "";
             return (
               <button
                 key={p.id}
@@ -146,7 +176,7 @@ export default function CommunityPage() {
         </div>
       )}
 
-      {/* Modal */}
+      {/* POST VIEW MODAL */}
       {openPost && (
         <div className="fixed inset-0 z-[120]">
           <div
@@ -178,10 +208,81 @@ export default function CommunityPage() {
                 </div>
 
                 <div className="p-4 text-sm text-white/80 whitespace-pre-wrap">
-                  {openPost.message ||
-                    openPost.body ||
-                    openPost.content ||
-                    "No details provided."}
+                  {openPost.body || "No details provided."}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CREATE POST MODAL */}
+      {composerOpen && (
+        <div className="fixed inset-0 z-[120]">
+          <div
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => !posting && setComposerOpen(false)}
+          />
+
+          <div className="absolute left-0 right-0 top-20 px-4">
+            <div className="max-w-3xl mx-auto">
+              <div className="rounded-2xl border border-white/10 bg-zinc-950 overflow-hidden">
+                <div className="px-4 py-3 border-b border-white/10 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-white truncate">
+                      New post
+                    </div>
+                    <div className="text-xs text-white/40 mt-1">
+                      Broadcast to your estate community
+                    </div>
+                  </div>
+
+                  <button
+                    className="rounded-lg px-2 py-1 text-white/70 hover:bg-white/5"
+                    onClick={() => !posting && setComposerOpen(false)}
+                    aria-label="Close"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="p-4 space-y-3">
+                  <input
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="Title (required)"
+                    className="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-3 text-sm text-white outline-none"
+                  />
+
+                  <textarea
+                    value={body}
+                    onChange={(e) => setBody(e.target.value)}
+                    placeholder="Message (optional)"
+                    rows={5}
+                    className="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-3 text-sm text-white outline-none resize-none"
+                  />
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setComposerOpen(false)}
+                      disabled={posting}
+                      className="flex-1 py-3 rounded-xl bg-white/10 text-white text-sm disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+
+                    <button
+                      onClick={createPost}
+                      disabled={posting || !title.trim()}
+                      className="flex-1 py-3 rounded-xl bg-[#E11D2E] text-white text-sm font-semibold disabled:opacity-50"
+                    >
+                      {posting ? "Posting..." : "Post"}
+                    </button>
+                  </div>
+
+                  <div className="text-[11px] text-white/40">
+                    Route: <span className="text-white/60">POST /community/post</span>
+                  </div>
                 </div>
               </div>
             </div>
