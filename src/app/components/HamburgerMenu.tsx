@@ -11,26 +11,33 @@ import { XMarkIcon, Bars3Icon } from "@heroicons/react/24/outline";
 import { FiChevronDown, FiChevronUp, FiLogOut } from "react-icons/fi";
 import { MdOutlinePerson, MdSettings } from "react-icons/md";
 
+/**
+ * ✅ Consumer core menu only (mobile-first)
+ * Home -> Rooms -> Devices -> Wallet -> Visitors -> Community -> Maintenance & Support
+ *
+ * Scenes/Automations removed from hamburger.
+ * Later: surface Scenes inside Rooms/Devices pages where it fits.
+ */
 const MENU_ITEMS = [
+  { key: "home", label: "Home" },
   { key: "rooms", label: "Rooms" },
   { key: "devices", label: "Devices" },
   { key: "wallet", label: "Wallet" },
+  { key: "visitors", label: "Visitors" },
   { key: "community", label: "Community" },
   { key: "maintenance", label: "Maintenance & Support" },
-  { key: "scenes", label: "Scenes" },
-  { key: "automations", label: "Automations" },
 ] as const;
 
 type MenuKey = (typeof MENU_ITEMS)[number]["key"];
 
 const ROUTES: Record<MenuKey, string> = {
+  home: "/home",
   rooms: "/rooms",
   devices: "/devices",
   wallet: "/wallet",
+  visitors: "/visitors",
   community: "/community",
   maintenance: "/maintenance",
-  scenes: "/scenes",
-  automations: "/automations",
 };
 
 function getApiBase() {
@@ -66,7 +73,7 @@ export default function HamburgerMenu() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
-  // ✅ display context (from /me/context)
+  // display context (from /me/context)
   const [estateName, setEstateName] = useState<string | null>(null);
   const [homeLabel, setHomeLabel] = useState<string | null>(null);
 
@@ -84,8 +91,9 @@ export default function HamburgerMenu() {
   }, [email]);
 
   const displayName = useMemo(() => {
-    return user?.email || "Resident";
-  }, [user?.email]);
+    // consumer: keep it simple
+    return (user as any)?.full_name || user?.email || "Resident";
+  }, [user]);
 
   const closeAll = () => {
     setOpen(false);
@@ -113,7 +121,7 @@ export default function HamburgerMenu() {
     router.replace("/auth/login");
   };
 
-  // ✅ lock scroll + ESC to close
+  // lock scroll + ESC to close (mobile UX)
   useEffect(() => {
     if (!open) {
       document.body.style.overflow = "";
@@ -129,56 +137,54 @@ export default function HamburgerMenu() {
       document.body.style.overflow = "";
       window.removeEventListener("keydown", onKeyDown);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // ✅ Fetch consumer display context from backend (ONE endpoint)
+  // Fetch consumer context from backend (ONE endpoint)
   useEffect(() => {
     let cancelled = false;
 
     async function run() {
-      // reset
       setEstateName(null);
       setHomeLabel(null);
 
       if (!token) return;
 
-      const api = getApiBase();
-      const res = await fetch(`${api}/me/context`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        cache: "no-store",
-      });
+      try {
+        const api = getApiBase();
+        const res = await fetch(`${api}/me/context`, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          cache: "no-store",
+        });
 
-      if (!res.ok) return;
+        if (!res.ok) return;
 
-      const data = await res.json();
-      if (cancelled) return;
+        const data = await res.json();
+        if (cancelled) return;
 
-      const estate = data?.estate || null;
-      const home = data?.home || null;
+        const estate = data?.estate || null;
+        const home = data?.home || null;
 
-      setEstateName(estate?.name ? String(estate.name) : null);
-      setHomeLabel(home ? buildHomeLabel(home) : null);
+        setEstateName(estate?.name ? String(estate.name) : null);
+        setHomeLabel(home ? buildHomeLabel(home) : null);
+      } catch {
+        // silent: consumer shouldn't feel “broken”
+      }
     }
 
-    run().catch(() => {});
+    run();
     return () => {
       cancelled = true;
     };
   }, [token, user?.estate_id, user?.home_id]);
 
-  /**
-   * ✅ Your Option B:
-   * - If NOT connected to an estate -> show nothing at all
-   * - If connected -> show estate + home
-   *
-   * If later you want "maybe home address", change this boolean.
-   */
+  // show context only when estate exists
   const shouldShowContext = useMemo(() => {
-    return !!estateName; // only show when estate exists
+    return !!estateName;
   }, [estateName]);
 
   const OVERLAY_Z = 2147483646;
@@ -188,6 +194,7 @@ export default function HamburgerMenu() {
     mounted && open
       ? createPortal(
           <>
+            {/* overlay */}
             <div
               onClick={closeAll}
               className="fixed inset-0"
@@ -200,6 +207,7 @@ export default function HamburgerMenu() {
               aria-label="Close menu overlay"
             />
 
+            {/* drawer */}
             <aside
               className={`fixed inset-y-0 left-0 w-[280px]
                 bg-zinc-950 border-r border-white/10
@@ -227,8 +235,9 @@ export default function HamburgerMenu() {
                       <div className="text-sm font-medium text-zinc-200 truncate">
                         OYI
                       </div>
+                      {/* ✅ removed “Control” to avoid crowding */}
                       <div className="text-[11px] text-zinc-500 truncate">
-                        Control
+                        Resident App
                       </div>
                     </div>
                   </div>
@@ -237,12 +246,13 @@ export default function HamburgerMenu() {
                     onClick={closeAll}
                     className="rounded-lg p-2 hover:bg-white/10"
                     aria-label="Close menu"
+                    type="button"
                   >
                     <XMarkIcon className="h-5 w-5 text-zinc-300" />
                   </button>
                 </div>
 
-                {/* ✅ Estate/Home badge exactly like you want */}
+                {/* Estate/Home context */}
                 {shouldShowContext && (
                   <div className="px-4 pt-4 pb-3 border-b border-white/10">
                     <div className="space-y-1">
@@ -255,21 +265,23 @@ export default function HamburgerMenu() {
 
                       {homeLabel ? (
                         <div className="text-[12px] text-zinc-400 truncate">
-                          Home: <span className="text-zinc-300">{homeLabel}</span>
+                          Home:{" "}
+                          <span className="text-zinc-300">{homeLabel}</span>
                         </div>
                       ) : null}
                     </div>
                   </div>
                 )}
 
-                {/* Menu */}
+                {/* Menu (tappable, not oversized) */}
                 <nav className="px-4 py-4 space-y-1">
                   {MENU_ITEMS.map((item) => (
                     <button
                       key={item.key}
                       onClick={() => onMenuClick(item.key)}
                       className="w-full text-left rounded-xl px-4 py-3 text-sm transition
-                                 text-zinc-300 hover:bg-white/5"
+                                 text-zinc-300 hover:bg-white/5 active:bg-white/10"
+                      type="button"
                     >
                       {item.label}
                     </button>
@@ -283,6 +295,7 @@ export default function HamburgerMenu() {
                       <button
                         onClick={() => goToAccount("profile")}
                         className="flex items-center gap-3 min-w-0"
+                        type="button"
                       >
                         <div className="w-12 h-12 rounded-full bg-[#E11D2E] flex items-center justify-center text-white font-semibold">
                           {initials}
@@ -300,8 +313,9 @@ export default function HamburgerMenu() {
 
                       <button
                         onClick={() => setProfileOpen((v) => !v)}
-                        className="text-white/70"
+                        className="text-white/70 rounded-lg p-2 hover:bg-white/5"
                         aria-label="Toggle account menu"
+                        type="button"
                       >
                         {profileOpen ? <FiChevronUp /> : <FiChevronDown />}
                       </button>
@@ -312,6 +326,7 @@ export default function HamburgerMenu() {
                         <button
                           onClick={() => goToAccount("profile")}
                           className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-800 transition text-white"
+                          type="button"
                         >
                           <MdOutlinePerson /> Profile
                         </button>
@@ -319,6 +334,7 @@ export default function HamburgerMenu() {
                         <button
                           onClick={() => goToAccount("settings")}
                           className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-800 transition text-white"
+                          type="button"
                         >
                           <MdSettings /> Settings
                         </button>
@@ -326,6 +342,7 @@ export default function HamburgerMenu() {
                         <button
                           onClick={() => setShowLogoutConfirm(true)}
                           className="w-full flex items-center gap-3 px-4 py-3 text-[#E11D2E] hover:bg-gray-800 transition"
+                          type="button"
                         >
                           <FiLogOut /> Logout
                         </button>
@@ -359,6 +376,7 @@ export default function HamburgerMenu() {
                       <button
                         onClick={() => setShowLogoutConfirm(false)}
                         className="flex-1 py-3 rounded-xl bg-gray-700 text-white"
+                        type="button"
                       >
                         Cancel
                       </button>
@@ -366,6 +384,7 @@ export default function HamburgerMenu() {
                       <button
                         onClick={handleLogout}
                         className="flex-1 py-3 rounded-xl bg-[#E11D2E] text-white"
+                        type="button"
                       >
                         Logout
                       </button>
@@ -385,6 +404,7 @@ export default function HamburgerMenu() {
         onClick={() => setOpen(true)}
         aria-label="Open menu"
         className="p-2 rounded-lg hover:bg-white/10 text-zinc-200"
+        type="button"
       >
         <Bars3Icon className="h-5 w-5" />
       </button>
