@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import useAuth from "@/hooks/useAuth";
 import { roomsService, RoomDTO } from "@/services/roomsService";
 import API from "@/services/api";
+import ConsumerShell from "@/app/components/ConsumerShell";
 
 type CommandPayload = Record<string, any>;
 
@@ -57,8 +58,6 @@ export default function RoomDetailPage() {
   const devices = Array.isArray(room?.devices) ? room!.devices! : [];
 
   async function toggleSwitch(device: any, on: boolean) {
-    // Tuya commonly uses command: { switch: true/false } or { switch_1: true } etc.
-    // We'll attempt best-effort based on metadata if present.
     const deviceId = device.external_id || device.externalId || device.id;
     if (!deviceId) return;
 
@@ -66,21 +65,14 @@ export default function RoomDetailPage() {
     setErr(null);
 
     try {
-      // Pick a likely switch code
       const meta = device.metadata || device.meta || {};
       const raw = meta?.raw || meta || {};
 
-      // If you stored Tuya "functions" later, you'd pick from that.
-      // For now, try common ones.
-      const code =
-        raw?.switch_code ||
-        raw?.switch ||
-        "switch";
+      const code = raw?.switch_code || raw?.switch || "switch";
 
       await sendCommand(String(deviceId), { [code]: on });
 
-      // Optional: optimistic UI (update local status)
-      // Later you’ll replace this with real state polling/websocket updates.
+      // Optional: optimistic UI hook (no fake data)
     } catch (e: any) {
       setErr(e?.response?.data?.error || e?.message || "Command failed");
     } finally {
@@ -89,50 +81,43 @@ export default function RoomDetailPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 py-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <button
-          onClick={() => router.push("/rooms")}
-          className="px-3 py-2 rounded-xl bg-gray-800 text-sm text-white border border-gray-700"
-        >
-          ← Back
-        </button>
-
+    <ConsumerShell
+      title={room?.name || "Room"}
+      subtitle={`${devices.length} device(s)`}
+      showBack
+      backHref="/rooms"
+    >
+      {/* actions row */}
+      <div className="flex items-center justify-end gap-2">
         <button
           onClick={load}
           disabled={loading}
           className="px-3 py-2 rounded-xl bg-gray-800 text-sm text-white border border-gray-700 disabled:opacity-50"
         >
-          Refresh
+          {loading ? "Refreshing..." : "Refresh"}
         </button>
       </div>
 
-      <div className="rounded-2xl border border-gray-800 bg-gray-900 p-4">
-        <div className="text-lg font-semibold text-white">
-          {room?.name || "Room"}
-        </div>
-        <div className="text-sm text-gray-400">
-          {devices.length} device(s)
-        </div>
-      </div>
-
       {err && (
-        <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+        <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-200">
           {err}
         </div>
       )}
 
       {loading && (
-        <div className="flex items-center gap-3 text-sm text-gray-400">
+        <div className="mt-4 flex items-center gap-3 text-sm text-gray-400">
           <div className="w-4 h-4 border-2 border-gray-600 border-t-white rounded-full animate-spin" />
           Loading…
         </div>
       )}
 
-      <div className="space-y-3">
+      {/* devices */}
+      <div className="mt-4 space-y-3">
         {devices.map((d: any) => {
           const deviceId = d.external_id || d.externalId || d.id;
           const label = d.name || d.type || "Device";
+
+          const isBusy = busyId === String(deviceId);
 
           return (
             <div
@@ -151,14 +136,14 @@ export default function RoomDetailPage() {
 
                 <div className="flex gap-2">
                   <button
-                    disabled={busyId === String(deviceId)}
+                    disabled={isBusy}
                     onClick={() => toggleSwitch(d, true)}
                     className="px-3 py-2 rounded-xl bg-[#E11D2E] text-sm text-white disabled:opacity-50"
                   >
                     On
                   </button>
                   <button
-                    disabled={busyId === String(deviceId)}
+                    disabled={isBusy}
                     onClick={() => toggleSwitch(d, false)}
                     className="px-3 py-2 rounded-xl bg-gray-800 text-sm text-white border border-gray-700 disabled:opacity-50"
                   >
@@ -176,6 +161,6 @@ export default function RoomDetailPage() {
           </div>
         )}
       </div>
-    </div>
+    </ConsumerShell>
   );
 }
