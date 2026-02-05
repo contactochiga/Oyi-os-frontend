@@ -10,6 +10,14 @@ import ConsumerShell from "@/app/components/ConsumerShell";
 
 type CommandPayload = Record<string, any>;
 
+/**
+ * ✅ Required for `output: "export"` when you have dynamic routes.
+ * We return an empty array because rooms are user/home-specific and are loaded at runtime.
+ */
+export async function generateStaticParams(): Promise<{ roomId: string }[]> {
+  return [];
+}
+
 async function sendCommand(deviceId: string, command: CommandPayload) {
   // Your backend route should exist: POST /devices/:deviceId/command
   return API.post(`/devices/${encodeURIComponent(deviceId)}/command`, { command });
