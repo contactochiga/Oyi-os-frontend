@@ -328,8 +328,7 @@ export default function HomePage() {
       const openPanel = shouldOpenPanel(command, panel);
 
       const deviceId = resp?.deviceId;
-      const panelKey =
-        openPanel && panel ? `${panel}:${deviceId || "default"}` : null;
+      const panelKey = openPanel && panel ? `${panel}:${deviceId || "default"}` : null;
 
       // 3) Replace pending bubble
       setMessages((prev) =>
@@ -388,15 +387,11 @@ export default function HomePage() {
           expiresAt: Date.now() + 60_000,
         } as any);
       }
-    } catch (e) {
+    } catch {
       setMessages((prev) =>
         prev.map((m) =>
           m.id === pendingId
-            ? {
-                ...m,
-                pending: false,
-                content: "Sorry — I couldn’t reach the system.",
-              }
+            ? { ...m, pending: false, content: "Sorry — I couldn’t reach the system." }
             : m
         )
       );
@@ -405,30 +400,29 @@ export default function HomePage() {
 
   return (
     <LayoutWrapper>
-      <main className="fixed inset-0 flex flex-col">
+      {/* ✅ app-shell stabilizes iOS sizing (from globals.css) */}
+      <main className="app-shell fixed inset-0 flex flex-col">
         <InviteSuggestionBridge />
         <NotificationsBridge />
 
-        {/* ✅ Use TopBar directly (it is already fixed + safe-area aware) */}
+        {/* ✅ TopBar is already fixed */}
         <TopBar />
 
         {/* CHAT */}
         <div
-          className="flex-1 overflow-y-auto p-6"
+          className="flex-1 overflow-y-auto px-6"
           style={{
-            // ✅ top padding = (TopBar height 64px) + safe-area + extra spacing
-            paddingTop: "calc(64px + env(safe-area-inset-top) + 24px)",
-            // ✅ bottom padding to avoid footer overlap
-            paddingBottom: "calc(160px + env(safe-area-inset-bottom))",
+            // ✅ below notch + below TopBar (64px) + breathing space
+            paddingTop: "calc(env(safe-area-inset-top) + 64px + 16px)",
+            // ✅ above footer area + above home bar
+            paddingBottom: "calc(env(safe-area-inset-bottom) + 88px + 64px)",
           }}
         >
           <div className="max-w-3xl mx-auto flex flex-col gap-4">
             {messages.map((m) => (
               <div
                 key={m.id}
-                className={`flex ${
-                  m.role === "user" ? "justify-end" : "justify-start"
-                }`}
+                className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
               >
                 <div className="max-w-[80%]">
                   <div
@@ -478,9 +472,10 @@ export default function HomePage() {
 
         {/* SUGGESTIONS */}
         <div
-          className="fixed left-0 right-0 z-[50] px-4 chat-suggestions"
+          className="chat-suggestions fixed left-0 right-0 z-[50] px-4"
           style={{
-            bottom: "calc(88px + env(safe-area-inset-bottom))",
+            // ✅ sit above footer + home bar
+            bottom: "calc(env(safe-area-inset-bottom) + 88px + 12px)",
           }}
         >
           <div className="max-w-3xl mx-auto">
@@ -490,12 +485,13 @@ export default function HomePage() {
 
         {/* FOOTER */}
         <div
-          className="fixed bottom-0 left-0 right-0 z-[60] bg-gray-900 border-t border-gray-700 chat-footer"
+          className="chat-footer fixed left-0 right-0 z-[60] bg-gray-900 border-t border-gray-700"
           style={{
-            paddingBottom: "calc(16px + env(safe-area-inset-bottom))",
-            paddingTop: 16,
-            paddingLeft: 16,
-            paddingRight: 16,
+            // ✅ push footer above home indicator
+            paddingBottom: "calc(env(safe-area-inset-bottom) + 14px)",
+            paddingTop: 14,
+            paddingLeft: 14,
+            paddingRight: 14,
           }}
         >
           <div className="max-w-3xl mx-auto">
