@@ -1,6 +1,7 @@
+// src/app/components/NotificationBell.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { FiBell } from "react-icons/fi";
 import { markNotificationRead } from "@/services/notificationsService";
@@ -30,10 +31,34 @@ export default function NotificationBell() {
   const unreadCount = useNotificationStore((s) => s.unreadCount);
   const upsert = useNotificationStore((s) => s.upsert);
 
-  // ✅ correct mount-safe portal
+  // swipe-to-close
+  const dragStartX = useRef<number | null>(null);
+  const dragDelta = useRef<number>(0);
+
+  useEffect(() => setMounted(true), []);
+
+  // ✅ lock scroll + reuse sidebar-open class to hide chat footer/suggestions
   useEffect(() => {
-    setMounted(true);
-  }, []);
+    if (!open) {
+      document.body.style.overflow = "";
+      document.body.classList.remove("sidebar-open");
+      return;
+    }
+
+    document.body.style.overflow = "hidden";
+    document.body.classList.add("sidebar-open");
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.body.style.overflow = "";
+      document.body.classList.remove("sidebar-open");
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
 
   const visible = useMemo(() => items.slice(0, 30), [items]);
 
@@ -49,11 +74,12 @@ export default function NotificationBell() {
     mounted && open
       ? createPortal(
           <>
+            {/* overlay */}
             <div
               className="fixed inset-0"
               style={{
                 zIndex: OVERLAY_Z,
-                backgroundColor: "rgba(0,0,0,0.72)",
+                backgroundColor: "rgba(0,0,0,0.62)",
                 backdropFilter: "blur(18px)",
                 WebkitBackdropFilter: "blur(18px)",
               }}
@@ -61,36 +87,78 @@ export default function NotificationBell() {
               aria-label="Close notifications overlay"
             />
 
+            {/* drawer */}
             <aside
-              className="fixed right-0 top-0 bottom-0 w-[360px] max-w-[92vw] bg-zinc-950 border-l border-white/10"
+              className="fixed right-0 top-0 bottom-0 w-[380px] max-w-[92vw]
+                         border-l border-white/10 bg-zinc-950/95"
               style={{
                 zIndex: DRAWER_Z,
-                paddingTop: "calc(env(safe-area-inset-top) + 8px)",
-                paddingBottom: "calc(env(safe-area-inset-bottom) + 8px)",
+                paddingTop: "var(--sat)",
+                paddingRight: "var(--sar)",
+              }}
+              onTouchStart={(e) => {
+                dragStartX.current = e.touches[0]?.clientX ?? null;
+                dragDelta.current = 0;
+              }}
+              onTouchMove={(e) => {
+                if (dragStartX.current === null) return;
+                const x = e.touches[0]?.clientX ?? 0;
+                dragDelta.current = x - dragStartX.current; // right = positive
+              }}
+              onTouchEnd={() => {
+                // swipe right to close (since drawer is on the right)
+                if (dragDelta.current > 55) setOpen(false);
+                dragStartX.current = null;
+                dragDelta.current = 0;
               }}
             >
-              <div className="flex h-[100dvh] flex-col">
-                <div className="flex items-center justify-between px-4 py-4 border-b border-white/10">
-                  <div className="text-white font-semibold">Notifications</div>
-                  <button
-                    onClick={() => setOpen(false)}
-                    className="rounded-lg px-3 py-2 text-sm text-white/70 hover:bg-white/10"
-                    type="button"
-                  >
-                    Close
-                  </button>
+              {/* frame */}
+              <div
+                className="flex flex-col"
+                style={{
+                  height: "calc(100dvh - var(--sat) - var(--kb))",
+                  paddingBottom: "calc(var(--sab) + var(--kb))",
+                }}
+              >
+                {/* Header */}
+                <div className="px-4 pt-4 pb-3 border-b border-white/10">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-semibold text-white truncate">
+                        Notifications
+                      </div>
+                      <div className="text-[11px] text-white/45 truncate">
+                        Updates • invites • estate activity
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => setOpen(false)}
+                      className="rounded-xl px-3 py-2 text-[13px] text-white/70 hover:bg-white/10"
+                      type="button"
+                    >
+                      Close
+                    </button>
+                  </div>
                 </div>
 
+                {/* Body */}
                 <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
                   {visible.length === 0 ? (
-                    <div className="text-sm text-white/60">No notifications yet.</div>
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/60">
+                      No notifications yet.
+                    </div>
                   ) : (
                     visible.map((n: any) => {
                       const isInvite = n.type === "invite" || n.payload?.inviteId;
 
                       if (isInvite) {
                         const invite = {
-                          id: n.payload?.inviteId || n.payload?.invite_id || n.payload?.id || n.id,
+                          id:
+                            n.payload?.inviteId ||
+                            n.payload?.invite_id ||
+                            n.payload?.id ||
+                            n.id,
                           estate_id: n.payload?.estate_id || n.payload?.estateId,
                           home_id: n.payload?.home_id || n.payload?.homeId,
                           role: n.payload?.role || "member",
@@ -124,23 +192,28 @@ export default function NotificationBell() {
                         );
                       }
 
+                      const unread = n.status !== "read";
+
                       return (
                         <button
                           key={n.id}
                           type="button"
                           onClick={() => handleMarkRead(n.id)}
-                          className={`w-full text-left rounded-2xl border px-4 py-3 transition ${
-                            n.status !== "read"
-                              ? "border-white/15 bg-white/7 hover:bg-white/10"
-                              : "border-white/10 bg-white/5 hover:bg-white/7"
-                          }`}
+                          className={`w-full text-left rounded-2xl border px-4 py-3 transition
+                            ${
+                              unread
+                                ? "border-white/15 bg-white/10 hover:bg-white/12"
+                                : "border-white/10 bg-white/5 hover:bg-white/7"
+                            }`}
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                              <div className="text-sm font-semibold text-white truncate">
+                              <div className="text-[13px] font-semibold text-white truncate">
                                 {n.title || "Update"}
                               </div>
-                              <div className="mt-1 text-xs text-white/70">{n.message || ""}</div>
+                              <div className="mt-1 text-[12px] text-white/70">
+                                {n.message || ""}
+                              </div>
                             </div>
                             <div className="text-[11px] text-white/40 whitespace-nowrap">
                               {timeAgo(n.created_at)}
@@ -150,6 +223,13 @@ export default function NotificationBell() {
                       );
                     })
                   )}
+                </div>
+
+                {/* Footer */}
+                <div className="px-4 py-3 border-t border-white/10 bg-black/20">
+                  <div className="text-[11px] text-white/40">
+                    Tip: tap a card to mark it read.
+                  </div>
                 </div>
               </div>
             </aside>
@@ -163,12 +243,12 @@ export default function NotificationBell() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="relative p-2 rounded-lg hover:bg-white/10 text-zinc-200"
+        className="relative p-2 rounded-xl hover:bg-white/10 text-white/80"
         aria-label="Open notifications"
       >
         <FiBell className="h-5 w-5" />
         {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-[#E11D2E] text-white text-[11px] flex items-center justify-center">
+          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-white text-black text-[11px] flex items-center justify-center">
             {unreadCount > 99 ? "99+" : unreadCount}
           </span>
         )}
