@@ -58,9 +58,7 @@ function createId() {
 }
 
 function inferPanel(aiPanel?: string | null, userText?: string): string | null {
-  const src = `${aiPanel || ""} ${userText || ""}`
-    .toLowerCase()
-    .replace(/[^\w\s]/g, "");
+  const src = `${aiPanel || ""} ${userText || ""}`.toLowerCase().replace(/[^\w\s]/g, "");
 
   if (
     src.includes("home") ||
@@ -70,126 +68,59 @@ function inferPanel(aiPanel?: string | null, userText?: string): string | null {
     src.includes("status") ||
     src.includes("whats happening") ||
     src.includes("what's happening")
-  )
-    return "home";
+  ) return "home";
 
-  if (
-    src.includes("room") ||
-    src.includes("bedroom") ||
-    src.includes("kitchen") ||
-    src.includes("living room")
-  )
+  if (src.includes("room") || src.includes("bedroom") || src.includes("kitchen") || src.includes("living room"))
     return "rooms";
 
-  if (
-    src.includes("visitor") ||
-    src.includes("guest") ||
-    src.includes("expecting") ||
-    src.includes("delivery") ||
-    src.includes("access code") ||
-    src.includes("gate pass")
-  )
+  if (src.includes("visitor") || src.includes("guest") || src.includes("expecting") || src.includes("delivery") || src.includes("gate pass"))
     return "visitor";
 
-  if (
-    src.includes("door") ||
-    src.includes("lock") ||
-    src.includes("unlock") ||
-    src.includes("front door")
-  )
+  if (src.includes("door") || src.includes("lock") || src.includes("unlock") || src.includes("front door"))
     return "door";
 
-  if (src.includes("cctv") || src.includes("camera") || src.includes("surveillance"))
-    return "cctv";
+  if (src.includes("cctv") || src.includes("camera") || src.includes("surveillance")) return "cctv";
 
-  if (
-    src.includes("sensor") ||
-    src.includes("motion") ||
-    src.includes("smoke") ||
-    src.includes("gas") ||
-    src.includes("alert")
-  )
+  if (src.includes("sensor") || src.includes("motion") || src.includes("smoke") || src.includes("gas") || src.includes("alert"))
     return "sensors";
 
-  if (
-    src.includes("maintenance") ||
-    src.includes("repair") ||
-    src.includes("fix") ||
-    src.includes("issue") ||
-    src.includes("problem") ||
-    src.includes("support")
-  )
+  if (src.includes("maintenance") || src.includes("repair") || src.includes("fix") || src.includes("issue") || src.includes("support"))
     return "maintenance";
 
-  if (
-    src.includes("wallet") ||
-    src.includes("payment") ||
-    src.includes("balance") ||
-    src.includes("fund")
-  )
+  if (src.includes("wallet") || src.includes("payment") || src.includes("balance") || src.includes("fund"))
     return "wallet";
 
-  if (
-    src.includes("utility") ||
-    src.includes("electric") ||
-    src.includes("power") ||
-    src.includes("water") ||
-    src.includes("internet") ||
-    src.includes("gas") ||
-    src.includes("service charge") ||
-    src.includes("rent")
-  )
+  if (src.includes("utility") || src.includes("electric") || src.includes("power") || src.includes("water") || src.includes("internet") || src.includes("rent"))
     return "utilities";
 
-  if (
-    src.includes("community") ||
-    src.includes("announcement") ||
-    src.includes("estate news") ||
-    src.includes("notice")
-  )
+  if (src.includes("community") || src.includes("announcement") || src.includes("estate news") || src.includes("notice"))
     return "community";
 
   if (src.includes("light")) return "light";
-  if (src.includes("ac") || src.includes("air conditioner")) return "ac";
+  if (src.includes("ac") || src.includes("air conditioner") || src.includes("air")) return "ac";
   if (src.includes("tv") || src.includes("television")) return "tv";
-  if (src.includes("device") || src.includes("appliance") || src.includes("discover"))
-    return "devices";
+  if (src.includes("device") || src.includes("appliance") || src.includes("discover")) return "devices";
 
   return null;
 }
 
 function getSuggestionTitle(panel: string): string {
   switch (panel) {
-    case "home":
-      return "View home summary";
-    case "rooms":
-      return "Manage rooms";
-    case "visitor":
-      return "Manage visitors";
-    case "door":
-      return "Door access";
-    case "wallet":
-      return "Open wallet";
-    case "utilities":
-      return "View utilities";
-    case "maintenance":
-      return "Report maintenance issue";
-    case "community":
-      return "Community updates";
-    case "light":
-      return "Control lights";
-    case "ac":
-      return "Adjust air conditioner";
-    case "tv":
-      return "Control TV";
-    case "cctv":
-      return "View CCTV";
-    case "sensors":
-      return "View sensors";
-    case "devices":
-      return "View devices";
-    default:
-      return "Continue";
+    case "home": return "View home summary";
+    case "rooms": return "Manage rooms";
+    case "visitor": return "Manage visitors";
+    case "door": return "Door access";
+    case "wallet": return "Open wallet";
+    case "utilities": return "View utilities";
+    case "maintenance": return "Report maintenance issue";
+    case "community": return "Community updates";
+    case "light": return "Control lights";
+    case "ac": return "Adjust air conditioner";
+    case "tv": return "Control TV";
+    case "cctv": return "View CCTV";
+    case "sensors": return "View sensors";
+    case "devices": return "View devices";
+    default: return "Continue";
   }
 }
 
@@ -212,29 +143,26 @@ function shouldOpenPanel(userText: string, panel: string | null) {
   if (MANAGEMENT.has(panel)) return true;
 
   const t = (userText || "").toLowerCase();
-  const wantsUi =
+  return (
     t.includes("open") ||
     t.includes("show") ||
     t.includes("manage") ||
-    t.includes("control panel") ||
-    t.includes("remote") ||
+    t.includes("control") ||
     t.includes("panel") ||
-    t.includes("settings");
-
-  return wantsUi;
+    t.includes("settings")
+  );
 }
 
 async function executeActions(actions: DeviceAction[] | undefined) {
   if (!actions?.length) return;
 
-  // ✅ isolate failures so one device error doesn't kill the chat response
   for (const a of actions) {
     try {
       if (a.type === "device.command") {
         await deviceService.commandDevice(a.deviceId, a.command);
       }
     } catch {
-      // swallow: we still allow the AI reply + panels to show
+      // swallow: still show reply + panels
     }
   }
 }
@@ -360,7 +288,7 @@ export default function HomePage() {
           expiresAt: Date.now() + 60_000,
         } as any);
       }
-    } catch (e) {
+    } catch {
       setMessages((prev) =>
         prev.map((m) =>
           m.id === pendingId
@@ -373,15 +301,17 @@ export default function HomePage() {
 
   return (
     <LayoutWrapper>
-      <main className="fixed inset-0 flex flex-col min-h-0">
+      <main className="fixed inset-0 flex flex-col min-h-0 relative">
+        {/* ✅ WhatsApp-style wallpaper but for estate */}
+        <div className="estate-wallpaper" />
+
         <InviteSuggestionBridge />
         <NotificationsBridge />
-
         <TopBar />
 
-        {/* ✅ CHAT SCROLLER: must be min-h-0 inside flex for iOS */}
+        {/* ✅ CHAT SCROLLER */}
         <div
-          className="flex-1 min-h-0 overflow-y-auto p-6"
+          className="flex-1 min-h-0 overflow-y-auto p-6 relative"
           style={{
             paddingTop: "calc(64px + var(--sat) + 24px)",
             paddingBottom: "calc(160px + var(--sab) + var(--kb))",
@@ -395,24 +325,23 @@ export default function HomePage() {
                 className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
               >
                 <div className="max-w-[80%]">
-                  {/* MESSAGE BUBBLE */}
+                  {/* ✅ MESSAGE BUBBLE: NO RED */}
                   <div
-                    className={`px-4 py-2 rounded-2xl border ${
-                      m.role === "user"
-                        ? "text-white border-white/10"
-                        : "text-gray-100 border-white/10 bg-white/5"
-                    }`}
+                    className="px-4 py-2 rounded-2xl border border-white/10"
                     style={
                       m.role === "user"
                         ? {
                             background:
-                              "linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(0,0,0,0.10) 100%), var(--brand)",
-                            boxShadow:
-                              "0 10px 26px rgba(0,0,0,0.22), 0 0 0 1px rgba(255,255,255,0.10) inset",
+                              "linear-gradient(180deg, rgba(255,255,255,0.12) 0%, rgba(0,0,0,0.18) 100%), var(--brand)",
+                            color: "white",
+                            boxShadow: "0 10px 26px rgba(0,0,0,0.22), 0 0 0 1px rgba(255,255,255,0.10) inset",
                           }
                         : {
+                            background: "rgba(255,255,255,0.06)",
+                            color: "rgba(255,255,255,0.92)",
                             backdropFilter: "blur(14px)",
                             WebkitBackdropFilter: "blur(14px)",
+                            boxShadow: "0 10px 26px rgba(0,0,0,0.18)",
                           }
                     }
                   >
