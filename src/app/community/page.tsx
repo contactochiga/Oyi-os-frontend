@@ -1,4 +1,3 @@
-// src/app/community/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -24,9 +23,7 @@ export default function CommunityPage() {
   const estateId = useMemo(
     () =>
       (user as any)?.estate_id ??
-      (typeof window !== "undefined"
-        ? localStorage.getItem("ochiga_estate")
-        : null),
+      (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null),
     [user]
   );
 
@@ -94,32 +91,76 @@ export default function CommunityPage() {
     }
   }
 
+  function openComposer() {
+    if (!estateId) {
+      setErr("No estate linked yet. Join/choose an estate to post.");
+      return;
+    }
+    setErr(null);
+    setComposerOpen(true);
+  }
+
   return (
     <ConsumerShell
       title="Community"
       subtitle="Estate broadcasts • announcements • live updates"
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="text-xs text-white/40">
-          {estateId ? `Estate: ${estateId}` : "No estate linked"}
+      {/* Top row: context + refresh */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="text-xs text-white/40">
+            {estateId ? "Estate linked" : "No estate linked"}
+          </div>
+
+          {estateId && (
+            <div className="text-[11px] px-2 py-1 rounded-full border border-white/10 bg-white/5 text-white/60 truncate">
+              {String(estateId)}
+            </div>
+          )}
         </div>
 
-        <div className="flex gap-2">
+        <button
+          onClick={load}
+          disabled={!estateId || loading}
+          className="px-3 py-2 rounded-xl bg-white/10 text-white text-sm disabled:opacity-50"
+        >
+          {loading ? "..." : "Refresh"}
+        </button>
+      </div>
+
+      {/* Composer card (replaces +Post button) */}
+      <div className="mt-4">
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
           <button
-            onClick={load}
-            disabled={!estateId || loading}
-            className="px-3 py-2 rounded-xl bg-white/10 text-white text-sm disabled:opacity-50"
+            type="button"
+            onClick={openComposer}
+            disabled={!estateId}
+            className="w-full text-left rounded-xl bg-black/20 hover:bg-black/30 transition px-4 py-3 border border-white/10 disabled:opacity-60"
           >
-            {loading ? "..." : "Refresh"}
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-sm text-white/70">Share an update…</div>
+                <div className="text-[11px] text-white/35 mt-1">
+                  Announcements, quick updates, estate info
+                </div>
+              </div>
+
+              <div className="shrink-0">
+                <div className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm">
+                  Post
+                </div>
+              </div>
+            </div>
           </button>
 
-          <button
-            onClick={() => setComposerOpen(true)}
-            disabled={!estateId}
-            className="px-3 py-2 rounded-xl bg-[#E11D2E] text-white text-sm font-semibold disabled:opacity-50"
-          >
-            + Post
-          </button>
+          <div className="mt-2 flex items-center justify-between text-[11px] text-white/40 px-1">
+            <span>
+              {items.length ? `${items.length} updates` : "No updates yet"}
+            </span>
+            <span className="text-white/30">
+              Tap to write
+            </span>
+          </div>
         </div>
       </div>
 
@@ -202,6 +243,7 @@ export default function CommunityPage() {
                     className="rounded-lg px-2 py-1 text-white/70 hover:bg-white/5"
                     onClick={() => setOpenPost(null)}
                     aria-label="Close"
+                    type="button"
                   >
                     ✕
                   </button>
@@ -241,6 +283,7 @@ export default function CommunityPage() {
                     className="rounded-lg px-2 py-1 text-white/70 hover:bg-white/5"
                     onClick={() => !posting && setComposerOpen(false)}
                     aria-label="Close"
+                    type="button"
                   >
                     ✕
                   </button>
@@ -267,6 +310,7 @@ export default function CommunityPage() {
                       onClick={() => setComposerOpen(false)}
                       disabled={posting}
                       className="flex-1 py-3 rounded-xl bg-white/10 text-white text-sm disabled:opacity-50"
+                      type="button"
                     >
                       Cancel
                     </button>
@@ -275,6 +319,7 @@ export default function CommunityPage() {
                       onClick={createPost}
                       disabled={posting || !title.trim()}
                       className="flex-1 py-3 rounded-xl bg-[#E11D2E] text-white text-sm font-semibold disabled:opacity-50"
+                      type="button"
                     >
                       {posting ? "Posting..." : "Post"}
                     </button>
