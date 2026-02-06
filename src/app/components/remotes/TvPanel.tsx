@@ -6,7 +6,7 @@ import { signalService } from "@/services/signalService";
 import useAuth from "@/hooks/useAuth";
 import { useDeviceLiveState } from "@/hooks/useDeviceLiveState";
 
-type Mode = "trackpad" | "numbers";
+type Mode = "pad" | "numbers";
 
 function pickBool(state: any, keys: string[], fallback: boolean) {
   for (const k of keys) {
@@ -37,10 +37,9 @@ export default function TvPanel({
   );
 
   const { state, loading } = useDeviceLiveState(deviceId, estateId);
-
   const tvOn = useMemo(() => pickBool(state, ["power", "on", "tvOn"], true), [state]);
 
-  const [mode, setMode] = useState<Mode>("trackpad");
+  const [mode, setMode] = useState<Mode>("pad");
   const [pending, setPending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -51,17 +50,14 @@ export default function TvPanel({
   }
 
   async function sendAction(action: string) {
-    if (!deviceId) {
-      setErr("No TV device selected.");
-      return;
-    }
+    if (!deviceId) return setErr("No TV linked.");
 
     setErr(null);
     touch();
     setPending(true);
 
     if (pendingTimer.current) clearTimeout(pendingTimer.current);
-    pendingTimer.current = setTimeout(() => setPending(false), 1200);
+    pendingTimer.current = setTimeout(() => setPending(false), 900);
 
     try {
       const resp = await signalService.sendDeviceCommand({
@@ -72,7 +68,6 @@ export default function TvPanel({
       });
 
       if (resp?.status !== "accepted") throw new Error("Command not accepted");
-      // keep it brief; no fake “confirmed”
       setTimeout(() => setPending(false), 200);
     } catch (e: any) {
       setErr(e?.response?.data?.error || e?.message || "Command failed");
@@ -88,111 +83,143 @@ export default function TvPanel({
 
   const disabled = pending || !deviceId;
 
+  const Btn = ({
+    children,
+    onClick,
+    variant = "ghost",
+    className = "",
+    disabled: d,
+  }: {
+    children: any;
+    onClick: () => void;
+    variant?: "ghost" | "solid";
+    className?: string;
+    disabled?: boolean;
+  }) => (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!!d}
+      className={`rounded-2xl px-4 py-3 text-sm font-semibold border transition active:scale-[0.99] disabled:opacity-50
+        ${
+          variant === "solid"
+            ? "bg-white text-black border-white/20"
+            : "bg-white/5 text-white border-white/10 hover:bg-white/10"
+        } ${className}`}
+    >
+      {children}
+    </button>
+  );
+
+  const Square = ({
+    children,
+    onClick,
+    disabled: d,
+    solid,
+  }: {
+    children: any;
+    onClick: () => void;
+    disabled?: boolean;
+    solid?: boolean;
+  }) => (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!!d}
+      className={`h-12 w-12 rounded-2xl border text-sm font-semibold transition active:scale-[0.99] disabled:opacity-50
+        ${
+          solid
+            ? "bg-white text-black border-white/20"
+            : "bg-white/5 text-white border-white/10 hover:bg-white/10"
+        }`}
+    >
+      {children}
+    </button>
+  );
+
   return (
-    <RemotePanel title="Living Room TV" lastUpdated={lastUpdated}>
+    <RemotePanel title="TV" lastUpdated={lastUpdated}>
       {err && (
-        <div className="mb-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+        <div className="mb-3 rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-200">
           {err}
         </div>
       )}
 
-      {/* POWER */}
-      <div className="flex justify-between mb-4">
-        <button
-          onClick={() => sendAction("power")}
-          disabled={disabled}
-          className={`px-4 py-2 rounded-full text-sm font-medium disabled:opacity-50
-            ${tvOn ? "bg-[#E11D2E]" : "bg-gray-700"}`}
-        >
-          {tvOn ? "Turn off" : "Turn on"}{" "}
-          {(pending || loading) && <span className="text-xs text-gray-200/70">…</span>}
-        </button>
-
-        <button
-          onClick={() => sendAction("mute")}
-          disabled={disabled}
-          className="px-4 py-2 rounded-full bg-gray-700 text-sm disabled:opacity-50"
-        >
-          Mute
-        </button>
-      </div>
-
-      {/* VOL / CH */}
-      <div className="flex justify-between mb-6">
-        <div className="flex flex-col gap-2">
-          <button onClick={() => sendAction("vol_up")} disabled={disabled} className="btn-tv disabled:opacity-50">
-            Vol +
-          </button>
-          <button onClick={() => sendAction("vol_down")} disabled={disabled} className="btn-tv disabled:opacity-50">
-            Vol -
-          </button>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <button onClick={() => sendAction("ch_up")} disabled={disabled} className="btn-tv disabled:opacity-50">
-            Ch ↑
-          </button>
-          <button onClick={() => sendAction("ch_down")} disabled={disabled} className="btn-tv disabled:opacity-50">
-            Ch ↓
-          </button>
-        </div>
-      </div>
-
-      {/* CENTER CONTROL */}
-      {mode === "trackpad" ? (
-        <div className="flex flex-col items-center gap-2 mb-6">
-          <button onClick={() => sendAction("up")} disabled={disabled} className="btn-dir disabled:opacity-50">
-            ↑
-          </button>
-
-          <div className="flex gap-2">
-            <button onClick={() => sendAction("left")} disabled={disabled} className="btn-dir disabled:opacity-50">
-              ←
-            </button>
-            <button onClick={() => sendAction("ok")} disabled={disabled} className="btn-ok disabled:opacity-50">
-              OK
-            </button>
-            <button onClick={() => sendAction("right")} disabled={disabled} className="btn-dir disabled:opacity-50">
-              →
-            </button>
-          </div>
-
-          <button onClick={() => sendAction("down")} disabled={disabled} className="btn-dir disabled:opacity-50">
-            ↓
-          </button>
+      {!deviceId ? (
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/60">
+          No TV linked yet.
         </div>
       ) : (
-        <div className="grid grid-cols-3 gap-2 mb-6">
-          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 0].map((n) => (
-            <button
-              key={n}
-              onClick={() => sendAction(`num_${n}`)}
+        <div className="space-y-4">
+          {/* top strip */}
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-sm text-white/80">
+              {tvOn ? "On" : "Off"}
+              {(pending || loading) ? <span className="text-xs text-white/40"> • sending…</span> : null}
+            </div>
+
+            <div className="flex gap-2">
+              <Btn onClick={() => sendAction("power")} disabled={disabled} variant="solid">
+                Power
+              </Btn>
+              <Btn onClick={() => sendAction("mute")} disabled={disabled}>
+                Mute
+              </Btn>
+            </div>
+          </div>
+
+          {/* vol / ch */}
+          <div className="grid grid-cols-2 gap-2">
+            <Btn onClick={() => sendAction("vol_up")} disabled={disabled}>Vol +</Btn>
+            <Btn onClick={() => sendAction("ch_up")} disabled={disabled}>Ch +</Btn>
+            <Btn onClick={() => sendAction("vol_down")} disabled={disabled}>Vol -</Btn>
+            <Btn onClick={() => sendAction("ch_down")} disabled={disabled}>Ch -</Btn>
+          </div>
+
+          {/* center */}
+          {mode === "pad" ? (
+            <div className="flex flex-col items-center gap-2">
+              <Square onClick={() => sendAction("up")} disabled={disabled}>↑</Square>
+
+              <div className="flex items-center gap-2">
+                <Square onClick={() => sendAction("left")} disabled={disabled}>←</Square>
+                <Square onClick={() => sendAction("ok")} disabled={disabled} solid>
+                  OK
+                </Square>
+                <Square onClick={() => sendAction("right")} disabled={disabled}>→</Square>
+              </div>
+
+              <Square onClick={() => sendAction("down")} disabled={disabled}>↓</Square>
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 gap-2">
+              {[1,2,3,4,5,6,7,8,9,0].map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => sendAction(`num_${n}`)}
+                  disabled={disabled}
+                  className="py-3 rounded-2xl bg-white/5 text-white border border-white/10 hover:bg-white/10 transition font-semibold disabled:opacity-50"
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* bottom */}
+          <div className="flex gap-2">
+            <Btn onClick={() => sendAction("home")} disabled={disabled} className="flex-1">
+              Home
+            </Btn>
+            <Btn
+              onClick={() => setMode(mode === "pad" ? "numbers" : "pad")}
               disabled={disabled}
-              className="btn-num disabled:opacity-50"
+              className="w-[110px]"
             >
-              {n}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* BOTTOM */}
-      <div className="flex justify-between items-center">
-        <button onClick={() => sendAction("home")} disabled={disabled} className="btn-tv disabled:opacity-50">
-          Home
-        </button>
-
-        <button
-          onClick={() => setMode(mode === "trackpad" ? "numbers" : "trackpad")}
-          className="btn-tv"
-        >
-          {mode === "trackpad" ? "123" : "Pad"}
-        </button>
-      </div>
-
-      {!deviceId && (
-        <div className="mt-3 text-[11px] text-gray-500">
-          No TV device bound yet. Bind a TV device to enable commands.
+              {mode === "pad" ? "123" : "Pad"}
+            </Btn>
+          </div>
         </div>
       )}
     </RemotePanel>
