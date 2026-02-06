@@ -1,4 +1,3 @@
-// src/app/home/page.tsx
 "use client";
 
 import { useMemo, useState } from "react";
@@ -178,18 +177,18 @@ function getSuggestionTitle(panel: string): string {
       return "Report maintenance issue";
     case "community":
       return "Community updates";
-    case "devices":
-      return "View devices";
-    case "cctv":
-      return "View CCTV";
-    case "sensors":
-      return "View sensors";
     case "light":
       return "Control lights";
     case "ac":
       return "Adjust air conditioner";
     case "tv":
       return "Control TV";
+    case "cctv":
+      return "View CCTV";
+    case "sensors":
+      return "View sensors";
+    case "devices":
+      return "View devices";
     default:
       return "Continue";
   }
@@ -296,8 +295,7 @@ export default function HomePage() {
       const resp: any = await aiService.chat(command);
 
       const reply =
-        resp?.reply ||
-        `Got it. ${command.charAt(0).toUpperCase()}${command.slice(1)}.`;
+        resp?.reply || `Got it. ${command.charAt(0).toUpperCase()}${command.slice(1)}.`;
 
       const panel = inferPanel(resp?.panel, command);
 
@@ -374,19 +372,19 @@ export default function HomePage() {
 
   return (
     <LayoutWrapper>
-      <main className="min-h-[100dvh] flex flex-col">
+      <main className="fixed inset-0 flex flex-col min-h-0">
         <InviteSuggestionBridge />
         <NotificationsBridge />
 
-        {/* ✅ Top bar now includes safe-area padding internally */}
         <TopBar />
 
-        {/* CHAT */}
+        {/* ✅ CHAT SCROLLER: must be min-h-0 inside flex for iOS */}
         <div
-          className="flex-1 overflow-y-auto px-6"
+          className="flex-1 min-h-0 overflow-y-auto p-6"
           style={{
-            paddingTop: "calc(64px + var(--sat) + 16px)",
-            paddingBottom: "calc(120px + var(--sab) + 40px)",
+            paddingTop: "calc(64px + var(--sat) + 24px)",
+            paddingBottom: "calc(160px + var(--sab) + var(--kb))",
+            WebkitOverflowScrolling: "touch",
           }}
         >
           <div className="max-w-3xl mx-auto flex flex-col gap-4">
@@ -440,29 +438,15 @@ export default function HomePage() {
         </div>
 
         {/* SUGGESTIONS */}
-        <div
-          className="fixed left-0 right-0 z-[50] px-4 chat-suggestions"
-          style={{
-            bottom: "calc(84px + var(--sab))",
-          }}
-        >
+        <div className="fixed left-0 right-0 z-[50] px-4 chat-suggestions">
           <div className="max-w-3xl mx-auto">
             <DynamicSuggestionCard onSend={(t) => handleSend(t)} />
           </div>
         </div>
 
         {/* FOOTER */}
-        <div
-          className="fixed left-0 right-0 z-[60] bg-gray-900 border-t border-gray-700 chat-footer"
-          style={{
-            bottom: 0,
-            paddingLeft: 16,
-            paddingRight: 16,
-            paddingTop: 12,
-            paddingBottom: "calc(12px + var(--sab))",
-          }}
-        >
-          <div className="max-w-3xl mx-auto">
+        <div className="fixed bottom-0 left-0 right-0 z-[60] bg-gray-900 border-t border-gray-700 chat-footer">
+          <div className="max-w-3xl mx-auto px-4 pt-4">
             <ChatFooter input={input} setInput={setInput} onSend={() => handleSend()} />
           </div>
         </div>
