@@ -1,3 +1,4 @@
+// src/app/wallet/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -24,7 +25,6 @@ function safeNum(v: any) {
 
 export default function WalletPage() {
   const { user } = useAuth();
-
   const email = useMemo(() => user?.email || "", [user?.email]);
 
   const [wallet, setWallet] = useState<WalletDTO | null>(null);
@@ -73,7 +73,6 @@ export default function WalletPage() {
         return;
       }
 
-      // Paystack initialize response: response.data.data.authorization_url
       const url =
         res?.data?.authorization_url ||
         res?.authorization_url ||
@@ -95,17 +94,27 @@ export default function WalletPage() {
   const currency = wallet?.currency || "NGN";
   const balance = safeNum(wallet?.balance);
 
+  const quickAmounts = [1000, 5000, 10000, 20000];
+
   return (
     <ConsumerShell title="Wallet" subtitle="Fund account • pay dues">
-      {/* BALANCE */}
-      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <div className="text-xs text-white/40">Available balance</div>
-            <div className="text-2xl font-semibold text-white mt-1">
+      {/* ✅ Error (quiet but clear) */}
+      {err && (
+        <div className="mb-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+          {err}
+        </div>
+      )}
+
+      {/* ✅ Balance hero */}
+      <div className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="text-xs text-white/50">Available balance</div>
+            <div className="mt-2 text-[28px] leading-tight font-semibold text-white tracking-tight">
               {formatMoney(balance, currency)}
             </div>
-            <div className="text-xs text-white/40 mt-2">
+
+            <div className="mt-2 text-xs text-white/40">
               Currency: <span className="text-white/70">{currency}</span>
             </div>
           </div>
@@ -113,54 +122,78 @@ export default function WalletPage() {
           <button
             onClick={load}
             disabled={loading}
-            className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm disabled:opacity-50"
+            className="shrink-0 rounded-xl px-3 py-2 text-sm text-white/80 bg-white/10 hover:bg-white/15 border border-white/10 disabled:opacity-50 transition"
+            type="button"
           >
-            {loading ? "..." : "Refresh"}
+            {loading ? "Refreshing…" : "Refresh"}
           </button>
         </div>
 
-        {err && (
-          <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-200">
-            {err}
+        {/* subtle divider */}
+        <div className="mt-5 border-t border-white/10" />
+
+        {/* ✅ Funding composer row */}
+        <div className="mt-4">
+          <div className="text-sm font-medium text-white">Fund wallet</div>
+          <div className="mt-1 text-xs text-white/40">
+            Payments run through Paystack. You’ll be redirected to complete payment.
           </div>
-        )}
+
+          {/* Quick picks */}
+          <div className="mt-4 flex flex-wrap gap-2">
+            {quickAmounts.map((q) => (
+              <button
+                key={q}
+                type="button"
+                onClick={() => setAmount(String(q))}
+                className="rounded-full px-3 py-2 text-xs bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 transition"
+              >
+                ₦{q.toLocaleString("en-NG")}
+              </button>
+            ))}
+          </div>
+
+          {/* Input + action */}
+          <div className="mt-4 flex items-center gap-2 rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+            <div className="text-xs text-white/40 pl-1">₦</div>
+
+            <input
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              inputMode="numeric"
+              placeholder="Amount"
+              className="flex-1 bg-transparent outline-none text-sm text-white placeholder-white/30"
+            />
+
+            <button
+              onClick={fund}
+              disabled={funding || !amount}
+              type="button"
+              className="rounded-xl px-4 py-2 text-sm font-medium
+                         bg-white text-black hover:opacity-90
+                         disabled:opacity-40 transition"
+            >
+              {funding ? "Starting…" : "Fund"}
+            </button>
+          </div>
+
+          <div className="mt-3 text-[11px] text-white/35">
+            Balance updates via webhook. If it doesn’t reflect instantly, tap refresh.
+          </div>
+        </div>
       </div>
 
-      {/* FUND */}
-      <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
-        <div className="text-sm font-semibold text-white">Fund wallet</div>
-        <div className="text-xs text-white/40 mt-1">
-          Payments are processed via Paystack.
-        </div>
-
-        <div className="mt-4 grid gap-3">
-          <input
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            inputMode="numeric"
-            placeholder="Amount (e.g. 5000)"
-            className="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-3 text-sm text-white outline-none"
-          />
-
-          <button
-            onClick={fund}
-            disabled={funding || !amount}
-            className="w-full py-3 rounded-xl bg-[#E11D2E] text-white text-sm font-semibold disabled:opacity-50"
-          >
-            {funding ? "Starting..." : "Fund with Paystack"}
-          </button>
-
-          <div className="text-[11px] text-white/40">
-            After payment completes, balance updates via webhook. If it doesn’t update immediately, tap refresh.
+      {/* ✅ Dues section (stub, but styled premium) */}
+      <div className="mt-4 rounded-3xl border border-white/10 bg-white/5 p-5">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-medium text-white">Estate dues</div>
+            <div className="text-xs text-white/40 mt-1">
+              Bills will appear here for direct payment from wallet.
+            </div>
           </div>
-        </div>
-      </div>
 
-      {/* NEXT: DUES */}
-      <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
-        <div className="text-sm font-semibold text-white">Estate dues (next)</div>
-        <div className="text-xs text-white/40 mt-1">
-          We’ll list bills here and allow direct payments from wallet.
+          <div className="text-xs text-white/40">Coming soon</div>
         </div>
       </div>
     </ConsumerShell>
