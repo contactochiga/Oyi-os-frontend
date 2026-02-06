@@ -59,10 +59,6 @@ function createId() {
   return Math.random().toString(36).slice(2, 9);
 }
 
-/**
- * 🔒 Panel inference (management panels + device panels)
- * We still infer, but we DO NOT automatically open device panels anymore.
- */
 function inferPanel(aiPanel?: string | null, userText?: string): string | null {
   const src = `${aiPanel || ""} ${userText || ""}`
     .toLowerCase()
@@ -182,28 +178,23 @@ function getSuggestionTitle(panel: string): string {
       return "Report maintenance issue";
     case "community":
       return "Community updates";
+    case "devices":
+      return "View devices";
+    case "cctv":
+      return "View CCTV";
+    case "sensors":
+      return "View sensors";
     case "light":
       return "Control lights";
     case "ac":
       return "Adjust air conditioner";
     case "tv":
       return "Control TV";
-    case "cctv":
-      return "View CCTV";
-    case "sensors":
-      return "View sensors";
-    case "devices":
-      return "View devices";
     default:
       return "Continue";
   }
 }
 
-/**
- * ✅ Decide if we should open a panel
- * - management panels => yes
- * - device panels => only if user explicitly asked to open/manage/show the UI
- */
 function shouldOpenPanel(userText: string, panel: string | null) {
   if (!panel) return false;
 
@@ -235,12 +226,8 @@ function shouldOpenPanel(userText: string, panel: string | null) {
   return wantsUi;
 }
 
-/**
- * ✅ Execute actions returned by AI (device command etc.)
- */
 async function executeActions(actions: DeviceAction[] | undefined) {
   if (!actions?.length) return;
-
   for (const a of actions) {
     if (a.type === "device.command") {
       await deviceService.commandDevice(a.deviceId, a.command);
@@ -286,20 +273,12 @@ export default function HomePage() {
 
     const { time, stamp } = nowMeta();
 
-    // 1) Add USER bubble
     const userMsgId = createId();
     setMessages((prev) => [
       ...prev,
-      {
-        id: userMsgId,
-        role: "user",
-        content: command,
-        time,
-        lastUpdated: stamp,
-      },
+      { id: userMsgId, role: "user", content: command, time, lastUpdated: stamp },
     ]);
 
-    // 2) Add ASSISTANT placeholder bubble
     const pendingId = createId();
     setMessages((prev) => [
       ...prev,
@@ -330,7 +309,6 @@ export default function HomePage() {
       const deviceId = resp?.deviceId;
       const panelKey = openPanel && panel ? `${panel}:${deviceId || "default"}` : null;
 
-      // 3) Replace pending bubble
       setMessages((prev) =>
         prev.map((m) => {
           if (m.id !== pendingId) return m;
@@ -361,19 +339,15 @@ export default function HomePage() {
         })
       );
 
-      // 4) Fetch devices list when opening devices panel
       if (openPanel && panel === "devices") {
         const devices = await deviceService.getDevices(estateId ?? undefined);
         setDiscoveredDevices(devices || []);
       }
 
-      // 5) Suggestion event
       if (
         panel &&
         (openPanel ||
-          ["rooms", "visitor", "wallet", "utilities", "maintenance", "community", "devices"].includes(
-            panel
-          ))
+          ["rooms", "visitor", "wallet", "utilities", "maintenance", "community", "devices"].includes(panel))
       ) {
         pushEvent({
           id: createId(),
@@ -387,7 +361,7 @@ export default function HomePage() {
           expiresAt: Date.now() + 60_000,
         } as any);
       }
-    } catch {
+    } catch (e) {
       setMessages((prev) =>
         prev.map((m) =>
           m.id === pendingId
@@ -400,22 +374,19 @@ export default function HomePage() {
 
   return (
     <LayoutWrapper>
-      {/* ✅ app-shell stabilizes iOS sizing (from globals.css) */}
-      <main className="app-shell fixed inset-0 flex flex-col">
+      <main className="min-h-[100dvh] flex flex-col">
         <InviteSuggestionBridge />
         <NotificationsBridge />
 
-        {/* ✅ TopBar is already fixed */}
+        {/* ✅ Top bar now includes safe-area padding internally */}
         <TopBar />
 
         {/* CHAT */}
         <div
           className="flex-1 overflow-y-auto px-6"
           style={{
-            // ✅ below notch + below TopBar (64px) + breathing space
-            paddingTop: "calc(env(safe-area-inset-top) + 64px + 16px)",
-            // ✅ above footer area + above home bar
-            paddingBottom: "calc(env(safe-area-inset-bottom) + 88px + 64px)",
+            paddingTop: "calc(64px + var(--sat) + 16px)",
+            paddingBottom: "calc(120px + var(--sab) + 40px)",
           }}
         >
           <div className="max-w-3xl mx-auto flex flex-col gap-4">
@@ -427,9 +398,7 @@ export default function HomePage() {
                 <div className="max-w-[80%]">
                   <div
                     className={`px-4 py-2 rounded-2xl ${
-                      m.role === "user"
-                        ? "bg-[#E11D2E] text-white"
-                        : "bg-gray-900 text-gray-100"
+                      m.role === "user" ? "bg-[#E11D2E] text-white" : "bg-gray-900 text-gray-100"
                     }`}
                   >
                     {m.content}
@@ -472,10 +441,9 @@ export default function HomePage() {
 
         {/* SUGGESTIONS */}
         <div
-          className="chat-suggestions fixed left-0 right-0 z-[50] px-4"
+          className="fixed left-0 right-0 z-[50] px-4 chat-suggestions"
           style={{
-            // ✅ sit above footer + home bar
-            bottom: "calc(env(safe-area-inset-bottom) + 88px + 12px)",
+            bottom: "calc(84px + var(--sab))",
           }}
         >
           <div className="max-w-3xl mx-auto">
@@ -485,13 +453,13 @@ export default function HomePage() {
 
         {/* FOOTER */}
         <div
-          className="chat-footer fixed left-0 right-0 z-[60] bg-gray-900 border-t border-gray-700"
+          className="fixed left-0 right-0 z-[60] bg-gray-900 border-t border-gray-700 chat-footer"
           style={{
-            // ✅ push footer above home indicator
-            paddingBottom: "calc(env(safe-area-inset-bottom) + 14px)",
-            paddingTop: 14,
-            paddingLeft: 14,
-            paddingRight: 14,
+            bottom: 0,
+            paddingLeft: 16,
+            paddingRight: 16,
+            paddingTop: 12,
+            paddingBottom: "calc(12px + var(--sab))",
           }}
         >
           <div className="max-w-3xl mx-auto">
