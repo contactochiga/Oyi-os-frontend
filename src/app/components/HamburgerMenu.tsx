@@ -111,24 +111,25 @@ export default function HamburgerMenu() {
     router.replace("/auth/login");
   };
 
-  // ✅ lock scroll + add body class (your global CSS already uses this)
+  // ✅ lock scroll + add sidebar-open class (hides chat footer/suggestions)
   useEffect(() => {
     if (!open) {
-      document.body.classList.remove("sidebar-open");
       document.body.style.overflow = "";
+      document.body.classList.remove("sidebar-open");
       return;
     }
 
-    document.body.classList.add("sidebar-open");
     document.body.style.overflow = "hidden";
+    document.body.classList.add("sidebar-open");
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") closeAll();
     };
     window.addEventListener("keydown", onKeyDown);
+
     return () => {
-      document.body.classList.remove("sidebar-open");
       document.body.style.overflow = "";
+      document.body.classList.remove("sidebar-open");
       window.removeEventListener("keydown", onKeyDown);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -141,7 +142,6 @@ export default function HamburgerMenu() {
     async function run() {
       setEstateName(null);
       setHomeLabel(null);
-
       if (!token) return;
 
       try {
@@ -165,7 +165,9 @@ export default function HamburgerMenu() {
 
         setEstateName(estate?.name ? String(estate.name) : null);
         setHomeLabel(home ? buildHomeLabel(home) : null);
-      } catch {}
+      } catch {
+        // silent
+      }
     }
 
     run();
@@ -198,20 +200,23 @@ export default function HamburgerMenu() {
 
             {/* drawer */}
             <aside
-              className={`fixed left-0 top-0 bottom-0 w-[280px] max-w-[86vw]
+              className={`fixed inset-y-0 left-0 w-[280px]
                 bg-zinc-950 border-r border-white/10
                 transform transition-transform duration-200 ease-out
                 ${open ? "translate-x-0" : "-translate-x-full"}
               `}
               style={{
                 zIndex: DRAWER_Z,
-                paddingTop: "calc(env(safe-area-inset-top) + 8px)",
-                paddingBottom: "calc(env(safe-area-inset-bottom) + 8px)",
+                paddingTop: "var(--sat)", // ✅ below notch/status bar
               }}
             >
-              <div className="flex h-[100dvh] flex-col">
+              {/* ✅ height uses safe-area top so footer isn't pushed under */}
+              <div
+                className="flex flex-col"
+                style={{ height: "calc(100dvh - var(--sat))" }}
+              >
                 {/* Header */}
-                <div className="flex items-center justify-between px-4 py-4 border-b border-white/10">
+                <div className="flex items-center justify-between p-4 border-b border-white/10">
                   <div className="flex items-center gap-2 min-w-0">
                     <div className="h-7 w-7 rounded-md overflow-hidden border border-white/10 bg-black/40">
                       <Image
@@ -225,8 +230,12 @@ export default function HamburgerMenu() {
                     </div>
 
                     <div className="min-w-0">
-                      <div className="text-sm font-medium text-zinc-200 truncate">OYI</div>
-                      <div className="text-[11px] text-zinc-500 truncate">Resident App</div>
+                      <div className="text-sm font-medium text-zinc-200 truncate">
+                        OYI
+                      </div>
+                      <div className="text-[11px] text-zinc-500 truncate">
+                        Resident App
+                      </div>
                     </div>
                   </div>
 
@@ -245,20 +254,24 @@ export default function HamburgerMenu() {
                   <div className="px-4 pt-4 pb-3 border-b border-white/10">
                     <div className="space-y-1">
                       <div className="text-[13px] text-zinc-200 truncate">
-                        Estate: <span className="text-zinc-100 font-medium">{estateName}</span>
+                        Estate:{" "}
+                        <span className="text-zinc-100 font-medium">
+                          {estateName}
+                        </span>
                       </div>
 
                       {homeLabel ? (
                         <div className="text-[12px] text-zinc-400 truncate">
-                          Home: <span className="text-zinc-300">{homeLabel}</span>
+                          Home:{" "}
+                          <span className="text-zinc-300">{homeLabel}</span>
                         </div>
                       ) : null}
                     </div>
                   </div>
                 )}
 
-                {/* Menu */}
-                <nav className="px-4 py-4 space-y-1 overflow-y-auto">
+                {/* ✅ Menu becomes scrollable, footer stays visible */}
+                <nav className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
                   {MENU_ITEMS.map((item) => (
                     <button
                       key={item.key}
@@ -273,13 +286,13 @@ export default function HamburgerMenu() {
                 </nav>
 
                 {/* Account footer */}
-                <div className="mt-auto">
-                  <div
-                    className="px-4 pt-4 border-t border-white/10 bg-black/30"
-                    style={{
-                      paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)",
-                    }}
-                  >
+                <div
+                  className="border-t border-white/10 bg-black/30"
+                  style={{
+                    paddingBottom: "calc(16px + var(--sab))", // ✅ above home indicator
+                  }}
+                >
+                  <div className="px-4 pt-5 pb-4">
                     <div className="flex items-center justify-between">
                       <button
                         onClick={() => goToAccount("profile")}
@@ -291,8 +304,12 @@ export default function HamburgerMenu() {
                         </div>
 
                         <div className="text-left min-w-0">
-                          <p className="text-white text-sm font-semibold truncate">{displayName}</p>
-                          <p className="text-white/50 text-xs truncate">{email || "Account"}</p>
+                          <p className="text-white text-sm font-semibold truncate">
+                            {displayName}
+                          </p>
+                          <p className="text-white/50 text-xs truncate">
+                            {email || "Account"}
+                          </p>
                         </div>
                       </button>
 
@@ -346,8 +363,8 @@ export default function HamburgerMenu() {
                     backgroundColor: "rgba(0,0,0,0.75)",
                     backdropFilter: "blur(22px)",
                     WebkitBackdropFilter: "blur(22px)",
-                    paddingTop: "env(safe-area-inset-top)",
-                    paddingBottom: "env(safe-area-inset-bottom)",
+                    paddingTop: "var(--sat)",
+                    paddingBottom: "var(--sab)",
                   }}
                   onClick={() => setShowLogoutConfirm(false)}
                 >
