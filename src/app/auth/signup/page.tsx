@@ -1,12 +1,13 @@
+// src/app/auth/login/page.tsx
 "use client";
 
 import { Suspense } from "react";
-import SignupClient from "./SignupClient";
+import LoginClient from "./LoginClient";
 
-export default function SignupPage() {
+export default function LoginPage() {
   return (
     <Suspense fallback={<div className="min-h-screen bg-zinc-950 text-white" />}>
-      <SignupClient />
+      <LoginClient />
     </Suspense>
   );
 }
