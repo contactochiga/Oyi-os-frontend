@@ -1,3 +1,4 @@
+// src/app/components/TopBar.tsx
 "use client";
 
 import Image from "next/image";
@@ -9,18 +10,15 @@ export default function TopBar() {
   return (
     <header
       className="
+        topbar-safe
         fixed top-0 left-0 right-0 z-[80]
         w-full
         border-b border-white/10
         bg-[#0B1220]/95
         backdrop-blur-xl
       "
-      style={{
-        paddingTop: "env(safe-area-inset-top)",
-      }}
     >
-      {/* Total bar height = safe-area + 64px */}
-      <div className="h-16 w-full px-4 flex items-center">
+      <div className="h-[64px] w-full px-4 flex items-center">
         <div className="flex items-center gap-3">
           <HamburgerMenu />
 
@@ -40,7 +38,6 @@ export default function TopBar() {
 
         <div className="flex items-center gap-2">
           <NotificationBell />
-
           <button
             type="button"
             className="rounded-lg p-2 hover:bg-white/10 transition"
