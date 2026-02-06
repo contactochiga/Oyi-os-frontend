@@ -1,4 +1,3 @@
-// src/app/components/HamburgerMenu.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -72,7 +71,7 @@ export default function HamburgerMenu() {
   const [estateName, setEstateName] = useState<string | null>(null);
   const [homeLabel, setHomeLabel] = useState<string | null>(null);
 
-  // swipe-to-close (drawer drag)
+  // swipe-to-close
   const dragStartX = useRef<number | null>(null);
   const dragDelta = useRef<number>(0);
 
@@ -119,7 +118,7 @@ export default function HamburgerMenu() {
     router.replace("/auth/login");
   };
 
-  // ✅ lock scroll + add sidebar-open class (hides chat footer/suggestions)
+  // lock scroll + sidebar-open class
   useEffect(() => {
     if (!open) {
       document.body.style.overflow = "";
@@ -140,7 +139,6 @@ export default function HamburgerMenu() {
       document.body.classList.remove("sidebar-open");
       window.removeEventListener("keydown", onKeyDown);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   // Fetch consumer context
@@ -164,7 +162,6 @@ export default function HamburgerMenu() {
         });
 
         if (!res.ok) return;
-
         const data = await res.json();
         if (cancelled) return;
 
@@ -173,9 +170,7 @@ export default function HamburgerMenu() {
 
         setEstateName(estate?.name ? String(estate.name) : null);
         setHomeLabel(home ? buildHomeLabel(home) : null);
-      } catch {
-        // silent
-      }
+      } catch {}
     }
 
     run();
@@ -193,24 +188,24 @@ export default function HamburgerMenu() {
     mounted && open
       ? createPortal(
           <>
-            {/* overlay */}
+            {/* overlay (slightly lighter so it blends) */}
             <div
               onClick={closeAll}
               className="fixed inset-0"
               style={{
                 zIndex: OVERLAY_Z,
-                backgroundColor: "rgba(0,0,0,0.62)",
+                backgroundColor: "rgba(0,0,0,0.52)",
                 backdropFilter: "blur(18px)",
                 WebkitBackdropFilter: "blur(18px)",
               }}
               aria-label="Close menu overlay"
             />
 
-            {/* drawer */}
+            {/* drawer (MATCH APP BASE) */}
             <aside
               className={`fixed inset-y-0 left-0 w-[300px] max-w-[86vw]
                 border-r border-white/10
-                bg-zinc-950/95
+                bg-[#06080e]/96
                 transform transition-transform duration-200 ease-out
                 ${open ? "translate-x-0" : "-translate-x-full"}
               `}
@@ -226,16 +221,14 @@ export default function HamburgerMenu() {
               onTouchMove={(e) => {
                 if (dragStartX.current === null) return;
                 const x = e.touches[0]?.clientX ?? 0;
-                dragDelta.current = x - dragStartX.current; // right = positive
+                dragDelta.current = x - dragStartX.current;
               }}
               onTouchEnd={() => {
-                // swipe left to close
                 if (dragDelta.current < -55) closeAll();
                 dragStartX.current = null;
                 dragDelta.current = 0;
               }}
             >
-              {/* main frame */}
               <div
                 className="flex flex-col"
                 style={{
@@ -247,7 +240,7 @@ export default function HamburgerMenu() {
                 <div className="px-4 pt-4 pb-3 border-b border-white/10">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="h-9 w-9 rounded-xl overflow-hidden border border-white/10 bg-black/30">
+                      <div className="h-9 w-9 rounded-2xl overflow-hidden border border-white/10 bg-white/5">
                         <Image
                           src="/oyi-logo-transparent.png"
                           alt="Oyi"
@@ -294,7 +287,7 @@ export default function HamburgerMenu() {
                   ) : null}
                 </div>
 
-                {/* Menu (scrollable) */}
+                {/* Menu */}
                 <nav className="flex-1 overflow-y-auto px-2 py-3">
                   <div className="px-2 pb-2 text-[11px] text-white/35">
                     Navigation
@@ -312,8 +305,8 @@ export default function HamburgerMenu() {
                           className={`w-full text-left rounded-2xl px-4 py-3 text-[14px] transition border
                             ${
                               active
-                                ? "bg-white text-black border-white/10"
-                                : "bg-transparent text-white/70 border-transparent hover:bg-white/5 hover:border-white/10"
+                                ? "bg-white/10 text-white border-white/10"
+                                : "bg-transparent text-white/75 border-transparent hover:bg-white/5 hover:border-white/10"
                             }
                           `}
                           type="button"
@@ -321,7 +314,9 @@ export default function HamburgerMenu() {
                           <div className="flex items-center justify-between">
                             <span className="font-medium">{item.label}</span>
                             {active ? (
-                              <span className="text-[11px] opacity-70">Active</span>
+                              <span className="text-[11px] text-white/50">
+                                Active
+                              </span>
                             ) : null}
                           </div>
                         </button>
@@ -330,16 +325,15 @@ export default function HamburgerMenu() {
                   </div>
                 </nav>
 
-                {/* Account footer (pinned) */}
-                <div className="border-t border-white/10 bg-black/20 px-4 pt-4">
+                {/* Account footer */}
+                <div className="border-t border-white/10 bg-white/[0.03] px-4 pt-4">
                   <div className="flex items-center justify-between gap-3">
                     <button
                       onClick={() => goToAccount("profile")}
                       className="flex items-center gap-3 min-w-0"
                       type="button"
                     >
-                      {/* quieter avatar (no loud red) */}
-                      <div className="w-11 h-11 rounded-2xl bg-white/10 border border-white/10 flex items-center justify-center text-white font-semibold">
+                      <div className="w-11 h-11 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-white font-semibold">
                         {initials}
                       </div>
 
@@ -364,7 +358,7 @@ export default function HamburgerMenu() {
                   </div>
 
                   {profileOpen && (
-                    <div className="mt-3 rounded-2xl border border-white/10 bg-zinc-950 overflow-hidden">
+                    <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 overflow-hidden">
                       <button
                         onClick={() => goToAccount("profile")}
                         className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition text-white"
@@ -401,7 +395,7 @@ export default function HamburgerMenu() {
                   className="fixed inset-0 flex items-center justify-center px-6"
                   style={{
                     zIndex: DRAWER_Z,
-                    backgroundColor: "rgba(0,0,0,0.70)",
+                    backgroundColor: "rgba(0,0,0,0.56)",
                     backdropFilter: "blur(18px)",
                     WebkitBackdropFilter: "blur(18px)",
                     paddingTop: "var(--sat)",
@@ -410,7 +404,7 @@ export default function HamburgerMenu() {
                   onClick={() => setShowLogoutConfirm(false)}
                 >
                   <div
-                    className="bg-zinc-950 p-6 rounded-3xl w-full max-w-sm border border-white/10"
+                    className="bg-[#06080e] p-6 rounded-3xl w-full max-w-sm border border-white/10"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <p className="text-white text-center font-semibold text-lg mb-2">
