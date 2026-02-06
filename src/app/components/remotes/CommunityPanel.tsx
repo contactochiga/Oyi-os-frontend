@@ -1,17 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import RemotePanel from "./RemotePanel";
 import useAuth from "@/hooks/useAuth";
-import { communityService } from "@/services/estateOpsService";
+import { communityService, type CommunityPost } from "@/services/communityService";
 
-type CommunityItem = {
-  id: string;
-  title: string;
-  content?: string;
-  created_at?: string;
-  poll?: any;
-};
+function when(iso?: string | null) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString([], { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
 
 export default function CommunityPanel({
   lastUpdated,
@@ -20,36 +20,33 @@ export default function CommunityPanel({
   lastUpdated?: number;
   onInteraction?: () => void;
 }) {
+  const router = useRouter();
   const { user } = useAuth();
 
   const estateId = useMemo(
     () =>
-      user?.estate_id ??
+      (user as any)?.estate_id ??
       (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null),
-    [user?.estate_id]
+    [user]
   );
 
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [items, setItems] = useState<CommunityItem[]>([]);
+  const [items, setItems] = useState<CommunityPost[]>([]);
 
   function touch() {
     onInteraction?.();
   }
 
   async function load() {
-    if (!estateId) {
-      setErr("No estate linked yet.");
-      return;
-    }
-
+    if (!estateId) return setErr("No estate linked yet.");
     setLoading(true);
     setErr(null);
     try {
-      const posts = await communityService.listPostsForEstate(estateId);
-      setItems(posts || []);
+      const list = await communityService.listByEstate(String(estateId));
+      setItems(Array.isArray(list) ? list : []);
     } catch (e: any) {
-      setErr(e?.response?.data?.error || e?.message || "Failed to load community posts");
+      setErr(e?.message || "Failed to load community");
       setItems([]);
     } finally {
       setLoading(false);
@@ -61,19 +58,36 @@ export default function CommunityPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [estateId]);
 
+  const top = useMemo(() => items.slice(0, 3), [items]);
+
   return (
     <RemotePanel title="Community" lastUpdated={lastUpdated}>
-      <div className="flex items-center justify-between mb-3">
-        <div className="text-xs text-gray-400">{loading ? "Syncing…" : "Estate posts"}</div>
-        <button
-          onClick={load}
-          disabled={loading}
-          className={`px-3 py-1.5 rounded-full text-xs font-medium ${
-            loading ? "bg-gray-700 text-gray-400" : "bg-[#E11D2E] text-white"
-          }`}
-        >
-          {loading ? "..." : "Refresh"}
-        </button>
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div className="text-xs text-white/45">
+          {loading ? "Syncing…" : top.length ? `${items.length} updates` : "No updates"}
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={load}
+            disabled={loading}
+            className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-xs text-white/80 border border-white/10 disabled:opacity-50"
+          >
+            Refresh
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              touch();
+              router.push("/community");
+            }}
+            className="px-3 py-2 rounded-xl bg-white text-black text-xs font-semibold border border-white/20"
+          >
+            View all
+          </button>
+        </div>
       </div>
 
       {err && (
@@ -82,35 +96,40 @@ export default function CommunityPanel({
         </div>
       )}
 
-      <div className="space-y-3">
-        {items.map((p) => (
-          <div key={p.id} className="rounded-xl border border-gray-800 bg-gray-800 p-4">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-xs px-2 py-0.5 rounded-full bg-gray-700 text-gray-200">
-                POST
-              </span>
-              <span className="text-xs text-gray-400">
-                {p.created_at ? new Date(p.created_at).toLocaleString() : ""}
-              </span>
+      <div className="space-y-2">
+        {top.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            onClick={() => {
+              touch();
+              router.push("/community");
+            }}
+            className="w-full text-left rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 transition p-3"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-[13px] font-semibold text-white/90 truncate">
+                  {p.title || "Announcement"}
+                </div>
+                <div className="text-[11px] text-white/45 mt-1">
+                  {when(p.created_at)} {p.status ? `• ${p.status}` : ""}
+                </div>
+              </div>
+              <div className="text-[11px] text-white/35 shrink-0">→</div>
             </div>
 
-            <div className="text-sm text-white font-medium mb-1">{p.title}</div>
-            <div className="text-sm text-gray-300">{p.content || ""}</div>
-
-            {p.poll && (
-              <button
-                onClick={touch}
-                className="mt-3 w-full py-2 rounded-lg bg-gray-700 text-sm text-white"
-              >
-                View Poll
-              </button>
-            )}
-          </div>
+            {p.body ? (
+              <div className="text-[12px] text-white/65 mt-2 line-clamp-2">
+                {p.body}
+              </div>
+            ) : null}
+          </button>
         ))}
 
-        {!loading && !items.length && (
-          <div className="text-sm text-gray-500 text-center py-6">
-            No community posts yet.
+        {!loading && estateId && !items.length && (
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/60">
+            No posts yet.
           </div>
         )}
       </div>
