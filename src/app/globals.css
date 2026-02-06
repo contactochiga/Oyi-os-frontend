@@ -1,3 +1,4 @@
+/* src/app/globals.css */
 @import "tailwindcss";
 
 /* -------------------------------------------------
@@ -38,6 +39,12 @@ body {
   /* ✅ Keyboard + VisualViewport helpers */
   --kb: 0px;
   --vvh: 100vh;
+
+  /* ✅ Brand tokens (ONE source of truth)
+     Change --brand once and your UI follows.
+  */
+  --brand: #2563eb;        /* <-- replace with your chosen brand color */
+  --brand-press: #1d4ed8;  /* optional: darker press state */
 }
 
 /* ✅ iOS: prevent focus-zoom by ensuring inputs are >= 16px */
@@ -124,10 +131,15 @@ a {
            active:scale-95 transition;
   }
 
+  /* ✅ NO MORE RED: OK uses brand token */
   .btn-ok {
-    @apply w-16 h-16 rounded-full bg-[#E11D2E] text-white
-           font-semibold
-           active:scale-95 transition;
+    background: var(--brand);
+    color: #fff;
+    @apply w-16 h-16 rounded-full font-semibold active:scale-95 transition;
+  }
+
+  .btn-ok:active {
+    background: var(--brand-press);
   }
 
   .btn-num {
