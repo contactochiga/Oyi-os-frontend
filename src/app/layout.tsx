@@ -8,12 +8,11 @@ export const metadata = {
   description: "Oyi operating system — resident + estate management",
 };
 
-// ✅ CRITICAL for iOS safe-area (notch + home indicator)
+// ✅ CRITICAL: makes env(safe-area-inset-*) work on iOS
 export const viewport = {
   width: "device-width",
   initialScale: 1,
-  viewportFit: "cover",
-  userScalable: false,
+  viewportFit: "cover" as const,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
