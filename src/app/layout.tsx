@@ -1,14 +1,13 @@
-// src/app/layout.tsx
 import "./globals.css";
 import ReactQueryProvider from "@/services/queryClient";
 import { AuthProvider } from "@/hooks/useAuth";
+import CapacitorBoot from "@/app/components/CapacitorBoot";
 
 export const metadata = {
   title: "Oyi OS",
   description: "Oyi operating system — resident + estate management",
 };
 
-// ✅ CRITICAL: makes env(safe-area-inset-*) work on iOS
 export const viewport = {
   width: "device-width",
   initialScale: 1,
@@ -19,6 +18,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className="min-h-screen bg-black text-white">
+        <CapacitorBoot />
         <ReactQueryProvider>
           <AuthProvider>{children}</AuthProvider>
         </ReactQueryProvider>
