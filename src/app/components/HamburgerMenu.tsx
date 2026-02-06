@@ -1,4 +1,3 @@
-// src/app/components/HamburgerMenu.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -11,10 +10,6 @@ import { XMarkIcon, Bars3Icon } from "@heroicons/react/24/outline";
 import { FiChevronDown, FiChevronUp, FiLogOut } from "react-icons/fi";
 import { MdOutlinePerson, MdSettings } from "react-icons/md";
 
-/**
- * ✅ Consumer core menu only (mobile-first)
- * Home -> Rooms -> Devices -> Wallet -> Visitors -> Community -> Maintenance & Support
- */
 const MENU_ITEMS = [
   { key: "home", label: "Home" },
   { key: "rooms", label: "Rooms" },
@@ -70,7 +65,6 @@ export default function HamburgerMenu() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
-  // display context (from /me/context)
   const [estateName, setEstateName] = useState<string | null>(null);
   const [homeLabel, setHomeLabel] = useState<string | null>(null);
 
@@ -117,26 +111,30 @@ export default function HamburgerMenu() {
     router.replace("/auth/login");
   };
 
-  // lock scroll + ESC to close (mobile UX)
+  // ✅ lock scroll + add body class (your global CSS already uses this)
   useEffect(() => {
     if (!open) {
+      document.body.classList.remove("sidebar-open");
       document.body.style.overflow = "";
       return;
     }
 
+    document.body.classList.add("sidebar-open");
     document.body.style.overflow = "hidden";
+
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") closeAll();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => {
+      document.body.classList.remove("sidebar-open");
       document.body.style.overflow = "";
       window.removeEventListener("keydown", onKeyDown);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // Fetch consumer context from backend (ONE endpoint)
+  // Fetch consumer context
   useEffect(() => {
     let cancelled = false;
 
@@ -167,9 +165,7 @@ export default function HamburgerMenu() {
 
         setEstateName(estate?.name ? String(estate.name) : null);
         setHomeLabel(home ? buildHomeLabel(home) : null);
-      } catch {
-        // silent
-      }
+      } catch {}
     }
 
     run();
@@ -178,9 +174,7 @@ export default function HamburgerMenu() {
     };
   }, [token, user?.estate_id, user?.home_id]);
 
-  const shouldShowContext = useMemo(() => {
-    return !!estateName;
-  }, [estateName]);
+  const shouldShowContext = useMemo(() => !!estateName, [estateName]);
 
   const OVERLAY_Z = 2147483646;
   const DRAWER_Z = 2147483647;
@@ -204,21 +198,20 @@ export default function HamburgerMenu() {
 
             {/* drawer */}
             <aside
-              className={`fixed inset-y-0 left-0 w-[280px]
+              className={`fixed left-0 top-0 bottom-0 w-[280px] max-w-[86vw]
                 bg-zinc-950 border-r border-white/10
                 transform transition-transform duration-200 ease-out
                 ${open ? "translate-x-0" : "-translate-x-full"}
               `}
               style={{
                 zIndex: DRAWER_Z,
-                // ✅ safe-area padding for the whole drawer
-                paddingTop: "env(safe-area-inset-top)",
-                paddingBottom: "env(safe-area-inset-bottom)",
+                paddingTop: "calc(env(safe-area-inset-top) + 8px)",
+                paddingBottom: "calc(env(safe-area-inset-bottom) + 8px)",
               }}
             >
               <div className="flex h-[100dvh] flex-col">
                 {/* Header */}
-                <div className="flex items-center justify-between p-4 border-b border-white/10">
+                <div className="flex items-center justify-between px-4 py-4 border-b border-white/10">
                   <div className="flex items-center gap-2 min-w-0">
                     <div className="h-7 w-7 rounded-md overflow-hidden border border-white/10 bg-black/40">
                       <Image
@@ -232,12 +225,8 @@ export default function HamburgerMenu() {
                     </div>
 
                     <div className="min-w-0">
-                      <div className="text-sm font-medium text-zinc-200 truncate">
-                        OYI
-                      </div>
-                      <div className="text-[11px] text-zinc-500 truncate">
-                        Resident App
-                      </div>
+                      <div className="text-sm font-medium text-zinc-200 truncate">OYI</div>
+                      <div className="text-[11px] text-zinc-500 truncate">Resident App</div>
                     </div>
                   </div>
 
@@ -251,154 +240,145 @@ export default function HamburgerMenu() {
                   </button>
                 </div>
 
-                {/* ✅ Scrollable middle area (so sidebar always fits) */}
-                <div className="flex-1 min-h-0 overflow-y-auto">
-                  {/* Estate/Home context */}
-                  {shouldShowContext && (
-                    <div className="px-4 pt-4 pb-3 border-b border-white/10">
-                      <div className="space-y-1">
-                        <div className="text-[13px] text-zinc-200 truncate">
-                          Estate:{" "}
-                          <span className="text-zinc-100 font-medium">
-                            {estateName}
-                          </span>
+                {/* Estate/Home context */}
+                {shouldShowContext && (
+                  <div className="px-4 pt-4 pb-3 border-b border-white/10">
+                    <div className="space-y-1">
+                      <div className="text-[13px] text-zinc-200 truncate">
+                        Estate: <span className="text-zinc-100 font-medium">{estateName}</span>
+                      </div>
+
+                      {homeLabel ? (
+                        <div className="text-[12px] text-zinc-400 truncate">
+                          Home: <span className="text-zinc-300">{homeLabel}</span>
                         </div>
-
-                        {homeLabel ? (
-                          <div className="text-[12px] text-zinc-400 truncate">
-                            Home:{" "}
-                            <span className="text-zinc-300">{homeLabel}</span>
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Menu */}
-                  <nav className="px-4 py-4 space-y-1">
-                    {MENU_ITEMS.map((item) => (
-                      <button
-                        key={item.key}
-                        onClick={() => onMenuClick(item.key)}
-                        className="w-full text-left rounded-xl px-4 py-3 text-sm transition
-                                   text-zinc-300 hover:bg-white/5 active:bg-white/10"
-                        type="button"
-                      >
-                        {item.label}
-                      </button>
-                    ))}
-                  </nav>
-                </div>
-
-                {/* Account footer */}
-                <div
-                  className="border-t border-white/10 bg-black/30 px-4"
-                  style={{
-                    // ✅ keep account area above home indicator
-                    paddingBottom: "calc(20px + env(safe-area-inset-bottom))",
-                    paddingTop: 20,
-                  }}
-                >
-                  <div className="flex items-center justify-between">
-                    <button
-                      onClick={() => goToAccount("profile")}
-                      className="flex items-center gap-3 min-w-0"
-                      type="button"
-                    >
-                      <div className="w-12 h-12 rounded-full bg-[#E11D2E] flex items-center justify-center text-white font-semibold">
-                        {initials}
-                      </div>
-
-                      <div className="text-left min-w-0">
-                        <p className="text-white text-sm font-semibold truncate">
-                          {displayName}
-                        </p>
-                        <p className="text-white/50 text-xs truncate">
-                          {email || "Account"}
-                        </p>
-                      </div>
-                    </button>
-
-                    <button
-                      onClick={() => setProfileOpen((v) => !v)}
-                      className="text-white/70 rounded-lg p-2 hover:bg-white/5"
-                      aria-label="Toggle account menu"
-                      type="button"
-                    >
-                      {profileOpen ? <FiChevronUp /> : <FiChevronDown />}
-                    </button>
-                  </div>
-
-                  {profileOpen && (
-                    <div className="mt-3 bg-gray-900 border border-white/10 rounded-xl overflow-hidden">
-                      <button
-                        onClick={() => goToAccount("profile")}
-                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-800 transition text-white"
-                        type="button"
-                      >
-                        <MdOutlinePerson /> Profile
-                      </button>
-
-                      <button
-                        onClick={() => goToAccount("settings")}
-                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-800 transition text-white"
-                        type="button"
-                      >
-                        <MdSettings /> Settings
-                      </button>
-
-                      <button
-                        onClick={() => setShowLogoutConfirm(true)}
-                        className="w-full flex items-center gap-3 px-4 py-3 text-[#E11D2E] hover:bg-gray-800 transition"
-                        type="button"
-                      >
-                        <FiLogOut /> Logout
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {/* Logout confirm */}
-                {showLogoutConfirm && (
-                  <div
-                    className="fixed inset-0 flex items-center justify-center px-6"
-                    style={{
-                      zIndex: DRAWER_Z,
-                      backgroundColor: "rgba(0,0,0,0.75)",
-                      backdropFilter: "blur(22px)",
-                      WebkitBackdropFilter: "blur(22px)",
-                    }}
-                    onClick={() => setShowLogoutConfirm(false)}
-                  >
-                    <div
-                      className="bg-gray-900 p-6 rounded-2xl w-full max-w-sm border border-gray-700"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <p className="text-white text-center font-semibold text-lg mb-6">
-                        Logout from Oyi OS?
-                      </p>
-
-                      <div className="flex gap-4">
-                        <button
-                          onClick={() => setShowLogoutConfirm(false)}
-                          className="flex-1 py-3 rounded-xl bg-gray-700 text-white"
-                          type="button"
-                        >
-                          Cancel
-                        </button>
-
-                        <button
-                          onClick={handleLogout}
-                          className="flex-1 py-3 rounded-xl bg-[#E11D2E] text-white"
-                          type="button"
-                        >
-                          Logout
-                        </button>
-                      </div>
+                      ) : null}
                     </div>
                   </div>
                 )}
+
+                {/* Menu */}
+                <nav className="px-4 py-4 space-y-1 overflow-y-auto">
+                  {MENU_ITEMS.map((item) => (
+                    <button
+                      key={item.key}
+                      onClick={() => onMenuClick(item.key)}
+                      className="w-full text-left rounded-xl px-4 py-3 text-sm transition
+                                 text-zinc-300 hover:bg-white/5 active:bg-white/10"
+                      type="button"
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </nav>
+
+                {/* Account footer */}
+                <div className="mt-auto">
+                  <div
+                    className="px-4 pt-4 border-t border-white/10 bg-black/30"
+                    style={{
+                      paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)",
+                    }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <button
+                        onClick={() => goToAccount("profile")}
+                        className="flex items-center gap-3 min-w-0"
+                        type="button"
+                      >
+                        <div className="w-12 h-12 rounded-full bg-[#E11D2E] flex items-center justify-center text-white font-semibold">
+                          {initials}
+                        </div>
+
+                        <div className="text-left min-w-0">
+                          <p className="text-white text-sm font-semibold truncate">{displayName}</p>
+                          <p className="text-white/50 text-xs truncate">{email || "Account"}</p>
+                        </div>
+                      </button>
+
+                      <button
+                        onClick={() => setProfileOpen((v) => !v)}
+                        className="text-white/70 rounded-lg p-2 hover:bg-white/5"
+                        aria-label="Toggle account menu"
+                        type="button"
+                      >
+                        {profileOpen ? <FiChevronUp /> : <FiChevronDown />}
+                      </button>
+                    </div>
+
+                    {profileOpen && (
+                      <div className="mt-3 bg-gray-900 border border-white/10 rounded-xl overflow-hidden">
+                        <button
+                          onClick={() => goToAccount("profile")}
+                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-800 transition text-white"
+                          type="button"
+                        >
+                          <MdOutlinePerson /> Profile
+                        </button>
+
+                        <button
+                          onClick={() => goToAccount("settings")}
+                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-800 transition text-white"
+                          type="button"
+                        >
+                          <MdSettings /> Settings
+                        </button>
+
+                        <button
+                          onClick={() => setShowLogoutConfirm(true)}
+                          className="w-full flex items-center gap-3 px-4 py-3 text-[#E11D2E] hover:bg-gray-800 transition"
+                          type="button"
+                        >
+                          <FiLogOut /> Logout
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
+
+              {/* Logout confirm */}
+              {showLogoutConfirm && (
+                <div
+                  className="fixed inset-0 flex items-center justify-center px-6"
+                  style={{
+                    zIndex: DRAWER_Z,
+                    backgroundColor: "rgba(0,0,0,0.75)",
+                    backdropFilter: "blur(22px)",
+                    WebkitBackdropFilter: "blur(22px)",
+                    paddingTop: "env(safe-area-inset-top)",
+                    paddingBottom: "env(safe-area-inset-bottom)",
+                  }}
+                  onClick={() => setShowLogoutConfirm(false)}
+                >
+                  <div
+                    className="bg-gray-900 p-6 rounded-2xl w-full max-w-sm border border-gray-700"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <p className="text-white text-center font-semibold text-lg mb-6">
+                      Logout from Oyi OS?
+                    </p>
+
+                    <div className="flex gap-4">
+                      <button
+                        onClick={() => setShowLogoutConfirm(false)}
+                        className="flex-1 py-3 rounded-xl bg-gray-700 text-white"
+                        type="button"
+                      >
+                        Cancel
+                      </button>
+
+                      <button
+                        onClick={handleLogout}
+                        className="flex-1 py-3 rounded-xl bg-[#E11D2E] text-white"
+                        type="button"
+                      >
+                        Logout
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </aside>
           </>,
           document.body
