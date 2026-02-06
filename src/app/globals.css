@@ -21,12 +21,16 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ✅ Safe-area CSS variables (works once viewport-fit=cover is enabled) */
+/* ✅ Safe-area CSS variables (belt + suspenders)
+   - env() for modern iOS
+   - constant() for older iOS
+   - final fallback to 0px
+*/
 :root {
-  --sat: env(safe-area-inset-top, 0px);
-  --sar: env(safe-area-inset-right, 0px);
-  --sab: env(safe-area-inset-bottom, 0px);
-  --sal: env(safe-area-inset-left, 0px);
+  --sat: env(safe-area-inset-top, constant(safe-area-inset-top, 0px));
+  --sar: env(safe-area-inset-right, constant(safe-area-inset-right, 0px));
+  --sab: env(safe-area-inset-bottom, constant(safe-area-inset-bottom, 0px));
+  --sal: env(safe-area-inset-left, constant(safe-area-inset-left, 0px));
 }
 
 /* Prevent background scroll when sidebar is open */
