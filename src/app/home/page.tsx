@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import InviteSuggestionBridge from "../components/InviteSuggestionBridge";
@@ -27,7 +27,6 @@ type ChatMessage = {
   role: ChatRole;
   content: string;
   panel?: string | null;
-  panelKey?: string;
   deviceId?: string;
   time: string;
   lastUpdated: number;
@@ -227,9 +226,15 @@ function shouldOpenPanel(userText: string, panel: string | null) {
 
 async function executeActions(actions: DeviceAction[] | undefined) {
   if (!actions?.length) return;
+
+  // ✅ isolate failures so one device error doesn't kill the chat response
   for (const a of actions) {
-    if (a.type === "device.command") {
-      await deviceService.commandDevice(a.deviceId, a.command);
+    try {
+      if (a.type === "device.command") {
+        await deviceService.commandDevice(a.deviceId, a.command);
+      }
+    } catch {
+      // swallow: we still allow the AI reply + panels to show
     }
   }
 }
@@ -303,9 +308,7 @@ export default function HomePage() {
       if (actions?.length) await executeActions(actions);
 
       const openPanel = shouldOpenPanel(command, panel);
-
       const deviceId = resp?.deviceId;
-      const panelKey = openPanel && panel ? `${panel}:${deviceId || "default"}` : null;
 
       setMessages((prev) =>
         prev.map((m) => {
@@ -317,7 +320,6 @@ export default function HomePage() {
               pending: false,
               content: reply,
               panel: null,
-              panelKey: undefined,
               deviceId: undefined,
               time,
               lastUpdated: stamp,
@@ -329,7 +331,6 @@ export default function HomePage() {
             pending: false,
             content: reply,
             panel: panel || null,
-            panelKey: panelKey || undefined,
             deviceId,
             time,
             lastUpdated: stamp,
@@ -394,14 +395,31 @@ export default function HomePage() {
                 className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
               >
                 <div className="max-w-[80%]">
+                  {/* MESSAGE BUBBLE */}
                   <div
-                    className={`px-4 py-2 rounded-2xl ${
-                      m.role === "user" ? "bg-[#E11D2E] text-white" : "bg-gray-900 text-gray-100"
+                    className={`px-4 py-2 rounded-2xl border ${
+                      m.role === "user"
+                        ? "text-white border-white/10"
+                        : "text-gray-100 border-white/10 bg-white/5"
                     }`}
+                    style={
+                      m.role === "user"
+                        ? {
+                            background:
+                              "linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(0,0,0,0.10) 100%), var(--brand)",
+                            boxShadow:
+                              "0 10px 26px rgba(0,0,0,0.22), 0 0 0 1px rgba(255,255,255,0.10) inset",
+                          }
+                        : {
+                            backdropFilter: "blur(14px)",
+                            WebkitBackdropFilter: "blur(14px)",
+                          }
+                    }
                   >
                     {m.content}
                   </div>
 
+                  {/* PANEL */}
                   {m.panel && (
                     <div className="mt-3">
                       {m.panel === "devices" ? (
@@ -445,7 +463,14 @@ export default function HomePage() {
         </div>
 
         {/* FOOTER */}
-        <div className="fixed bottom-0 left-0 right-0 z-[60] bg-gray-900 border-t border-gray-700 chat-footer">
+        <div
+          className="fixed bottom-0 left-0 right-0 z-[60] border-t border-white/10 chat-footer"
+          style={{
+            background: "rgba(10,12,18,0.72)",
+            backdropFilter: "blur(18px)",
+            WebkitBackdropFilter: "blur(18px)",
+          }}
+        >
           <div className="max-w-3xl mx-auto px-4 pt-4">
             <ChatFooter input={input} setInput={setInput} onSend={() => handleSend()} />
           </div>
