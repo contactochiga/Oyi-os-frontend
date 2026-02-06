@@ -1,11 +1,12 @@
+// src/app/components/NotificationBell.tsx
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { FiBell } from "react-icons/fi";
 import { markNotificationRead } from "@/services/notificationsService";
 import { useNotificationStore } from "@/store/useNotificationStore";
-import InviteRequestCard from "@/app/components/InviteRequestCard"; // you already have this
+import InviteRequestCard from "@/app/components/InviteRequestCard";
 
 function timeAgo(ts?: string) {
   if (!ts) return "";
@@ -30,13 +31,12 @@ export default function NotificationBell() {
   const unreadCount = useNotificationStore((s) => s.unreadCount);
   const upsert = useNotificationStore((s) => s.upsert);
 
-  // mount-safe for portal
-  useState(() => {
-    if (typeof window !== "undefined") setMounted(true);
-  });
+  // ✅ mount-safe for portal
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const visible = useMemo(() => {
-    // show latest first, keep max 30 in UI
     return items.slice(0, 30);
   }, [items]);
 
@@ -52,6 +52,7 @@ export default function NotificationBell() {
     mounted && open
       ? createPortal(
           <>
+            {/* overlay */}
             <div
               className="fixed inset-0"
               style={{
@@ -64,22 +65,31 @@ export default function NotificationBell() {
               aria-label="Close notifications overlay"
             />
 
+            {/* drawer */}
             <aside
               className="fixed inset-y-0 right-0 w-[360px] max-w-[92vw] bg-zinc-950 border-l border-white/10"
-              style={{ zIndex: DRAWER_Z }}
+              style={{
+                zIndex: DRAWER_Z,
+                // ✅ safe-area padding (NOTCH + HOME BAR)
+                paddingTop: "env(safe-area-inset-top)",
+                paddingBottom: "env(safe-area-inset-bottom)",
+              }}
             >
               <div className="flex h-[100dvh] flex-col">
+                {/* Header */}
                 <div className="flex items-center justify-between px-4 py-4 border-b border-white/10">
                   <div className="text-white font-semibold">Notifications</div>
                   <button
                     onClick={() => setOpen(false)}
                     className="rounded-lg px-3 py-2 text-sm text-white/70 hover:bg-white/10"
+                    type="button"
                   >
                     Close
                   </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+                {/* ✅ Scrollable body (critical) */}
+                <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-3">
                   {visible.length === 0 ? (
                     <div className="text-sm text-white/60">
                       No notifications yet.
@@ -88,10 +98,13 @@ export default function NotificationBell() {
                     visible.map((n: any) => {
                       const isInvite = n.type === "invite" || n.payload?.inviteId;
 
-                      // ✅ invite notification becomes action card (accept/decline)
                       if (isInvite) {
                         const invite = {
-                          id: n.payload?.inviteId || n.payload?.invite_id || n.payload?.id || n.id,
+                          id:
+                            n.payload?.inviteId ||
+                            n.payload?.invite_id ||
+                            n.payload?.id ||
+                            n.id,
                           estate_id: n.payload?.estate_id || n.payload?.estateId,
                           home_id: n.payload?.home_id || n.payload?.homeId,
                           role: n.payload?.role || "member",
@@ -104,16 +117,17 @@ export default function NotificationBell() {
                             <InviteRequestCard
                               invite={invite as any}
                               onDone={async () => {
-                                // mark notification as read when action done
                                 await handleMarkRead(n.id);
                               }}
                             />
+
                             <div className="flex items-center justify-between text-[11px] text-white/40 px-1">
                               <span>{timeAgo(n.created_at)}</span>
                               {n.status !== "read" ? (
                                 <button
                                   onClick={() => handleMarkRead(n.id)}
                                   className="hover:text-white/70"
+                                  type="button"
                                 >
                                   Mark read
                                 </button>
@@ -125,7 +139,6 @@ export default function NotificationBell() {
                         );
                       }
 
-                      // ✅ normal notification card
                       return (
                         <button
                           key={n.id}
