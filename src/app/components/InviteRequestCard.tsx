@@ -1,106 +1,177 @@
-// src/app/components/InviteRequestCard.tsx
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { acceptInvite, declineInvite, HomeInvite } from "@/services/invitesService";
 import useAuth from "@/hooks/useAuth";
-import { setCookie } from "@/lib/auth"; // ✅ assuming you have setCookie helper
+import { setCookie } from "@/lib/auth";
+
+type ActionState =
+  | { status: "idle" }
+  | { status: "loading"; action: "accept" | "decline" }
+  | { status: "success"; action: "accept" | "decline" }
+  | { status: "error"; message: string };
 
 export default function InviteRequestCard({
   invite,
   onDone,
+  autoCloseMs = 1200,
 }: {
   invite: HomeInvite;
   onDone?: () => void;
+  autoCloseMs?: number;
 }) {
-  const [loading, setLoading] = useState<"accept" | "decline" | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  const [state, setState] = useState<ActionState>({ status: "idle" });
 
   const { setSession } = useAuth();
 
+  const estateName = useMemo(
+    () => invite.estate?.name || invite.estate_id || "—",
+    [invite]
+  );
+
+  const homeName = useMemo(
+    () => invite.home_label || invite.home_id || "—",
+    [invite]
+  );
+
+  const busy = state.status === "loading";
+  const isSuccess = state.status === "success";
+
+  // Auto close after success (so the notification list clears cleanly)
+  useEffect(() => {
+    if (!isSuccess) return;
+    const t = setTimeout(() => onDone?.(), autoCloseMs);
+    return () => clearTimeout(t);
+  }, [isSuccess, onDone, autoCloseMs]);
+
   async function onAccept() {
-    setErr(null);
-    setLoading("accept");
+    if (busy) return;
+    setState({ status: "loading", action: "accept" });
 
-    const res: any = await acceptInvite(invite.id);
-    setLoading(null);
+    try {
+      const res: any = await acceptInvite(invite.id);
 
-    if (res?.error) return setErr(res.error);
+      if (res?.error) {
+        setState({ status: "error", message: String(res.error) });
+        return;
+      }
 
-    // ✅ IMPORTANT: backend returns fresh token + user (estate_id/home_id updated)
-    if (res?.token) {
-      // persist cookie for next reload
-      try {
-        setCookie("oyi_consumer_token", res.token, 30); // 30 days
-      } catch {}
+      // ✅ persist session if backend returns token+user
+      if (res?.token) {
+        try {
+          setCookie("oyi_consumer_token", res.token, 30);
+        } catch {}
+        setSession(res.token, res.user || null);
+      }
 
-      // update zustand session immediately
-      setSession(res.token, res.user || null);
+      setState({ status: "success", action: "accept" });
+      // onDone() will be called by autoClose effect
+    } catch (e: any) {
+      setState({ status: "error", message: e?.message || "Failed to accept invite" });
     }
-
-    onDone?.();
   }
 
   async function onDecline() {
-    setErr(null);
-    setLoading("decline");
+    if (busy) return;
+    setState({ status: "loading", action: "decline" });
 
-    const res: any = await declineInvite(invite.id);
-    setLoading(null);
+    try {
+      const res: any = await declineInvite(invite.id);
 
-    if (res?.error) return setErr(res.error);
-    onDone?.();
+      if (res?.error) {
+        setState({ status: "error", message: String(res.error) });
+        return;
+      }
+
+      setState({ status: "success", action: "decline" });
+      // onDone() will be called by autoClose effect
+    } catch (e: any) {
+      setState({ status: "error", message: e?.message || "Failed to decline invite" });
+    }
   }
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-      <div className="text-sm font-semibold text-white">Home invite</div>
-      <div className="mt-1 text-xs text-gray-300">
-        You’ve been invited to join a home as{" "}
-        <span className="text-white">{invite.role}</span>
+    <div
+      className={`rounded-2xl border p-4 transition ${
+        isSuccess
+          ? "border-emerald-500/20 bg-emerald-500/10"
+          : "border-white/10 bg-white/5"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-sm font-semibold text-white">
+            {isSuccess ? "Invite updated" : "Home invite"}
+          </div>
+
+          <div className="mt-1 text-xs text-white/60">
+            You’ve been invited to join a home as{" "}
+            <span className="text-white/85">{invite.role}</span>
+          </div>
+        </div>
+
+        {isSuccess ? (
+          <div className="shrink-0 text-emerald-200 text-sm font-semibold">✓</div>
+        ) : null}
       </div>
 
-      {/* ✅ Use enriched display names if present */}
-      <div className="mt-3 text-xs text-gray-400 space-y-1">
+      <div className="mt-3 text-xs text-white/55 space-y-1">
         <div>
-          Estate:{" "}
-          <span className="text-gray-200">
-            {invite.estate?.name || invite.estate_id || "—"}
-          </span>
+          Estate: <span className="text-white/80">{estateName}</span>
         </div>
         <div>
-          Home:{" "}
-          <span className="text-gray-200">
-            {invite.home_label || invite.home_id || "—"}
-          </span>
+          Home: <span className="text-white/80">{homeName}</span>
         </div>
       </div>
 
-      {err && (
+      {state.status === "error" && (
         <div className="mt-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-200">
-          {err}
+          {state.message}
         </div>
       )}
 
+      {/* Actions */}
       <div className="mt-4 flex gap-2">
+        {/* Accept */}
         <button
           type="button"
           onClick={onAccept}
-          disabled={!!loading}
-          className="flex-1 rounded-xl bg-emerald-600 hover:bg-emerald-500 transition py-2 text-sm font-medium disabled:opacity-60"
+          disabled={busy || isSuccess}
+          className={`flex-1 rounded-xl py-2 text-sm font-semibold transition disabled:opacity-60
+            ${
+              isSuccess
+                ? "bg-white/10 text-white/60"
+                : "bg-white text-black hover:bg-white/90"
+            }`}
         >
-          {loading === "accept" ? "Accepting..." : "Accept"}
+          {state.status === "loading" && state.action === "accept"
+            ? "Accepting…"
+            : state.status === "success" && state.action === "accept"
+            ? "Joined ✓"
+            : "Accept"}
         </button>
 
+        {/* Decline */}
         <button
           type="button"
           onClick={onDecline}
-          disabled={!!loading}
-          className="flex-1 rounded-xl bg-gray-800 hover:bg-gray-700 transition py-2 text-sm font-medium disabled:opacity-60"
+          disabled={busy || isSuccess}
+          className="flex-1 rounded-xl bg-white/10 hover:bg-white/15 transition py-2 text-sm font-medium text-white disabled:opacity-60"
         >
-          {loading === "decline" ? "Declining..." : "Decline"}
+          {state.status === "loading" && state.action === "decline"
+            ? "Declining…"
+            : state.status === "success" && state.action === "decline"
+            ? "Declined ✓"
+            : "Decline"}
         </button>
       </div>
+
+      {/* success hint (optional) */}
+      {isSuccess && (
+        <div className="mt-3 text-[11px] text-emerald-200/80">
+          Updated. Closing…
+        </div>
+      )}
     </div>
   );
 }
