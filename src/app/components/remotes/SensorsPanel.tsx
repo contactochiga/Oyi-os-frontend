@@ -21,6 +21,18 @@ function toStatus(v: any): SensorStatus {
   return "normal";
 }
 
+function statusPill(status: SensorStatus) {
+  if (status === "critical") return "border-red-500/20 bg-red-500/10 text-red-200";
+  if (status === "warning") return "border-yellow-500/20 bg-yellow-500/10 text-yellow-200";
+  return "border-emerald-500/20 bg-emerald-500/10 text-emerald-200";
+}
+
+function prettyName(k: string) {
+  return String(k)
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (m) => m.toUpperCase());
+}
+
 export default function SensorsPanel({
   deviceId,
   lastUpdated,
@@ -38,74 +50,65 @@ export default function SensorsPanel({
 
   const { state, loading } = useDeviceLiveState(deviceId, estateId);
 
-  const sensorsFromState: Sensor[] | null = useMemo(() => {
+  const sensors: Sensor[] = useMemo(() => {
     const list = state?.sensors || state?.readings || null;
-    if (!list) return null;
+
+    if (!list) return [];
 
     if (Array.isArray(list)) {
-      return list.map((x: any, idx: number) => ({
-        id: x?.id || `s${idx}`,
-        name: x?.name || x?.type || `Sensor ${idx + 1}`,
-        value: String(x?.value ?? x?.reading ?? ""),
-        status: toStatus(x?.status ?? x?.level ?? x?.value),
-      }));
+      return list
+        .map((x: any, idx: number) => ({
+          id: String(x?.id ?? `s${idx}`),
+          name: String(x?.name ?? x?.type ?? `Sensor ${idx + 1}`),
+          value: String(x?.value ?? x?.reading ?? ""),
+          status: toStatus(x?.status ?? x?.level ?? x?.value),
+        }))
+        .filter((s) => s.name || s.value);
     }
 
     if (typeof list === "object") {
       return Object.keys(list).map((k) => ({
         id: k,
-        name: k.replace(/_/g, " "),
+        name: prettyName(k),
         value: String(list[k]),
         status: toStatus(list[k]),
       }));
     }
 
-    return null;
+    return [];
   }, [state]);
-
-  const sensors: Sensor[] = sensorsFromState ?? [
-    { id: "motion", name: "Motion Sensor", value: "No movement", status: "normal" },
-    { id: "smoke", name: "Smoke Detector", value: "Clear", status: "normal" },
-    { id: "gas", name: "Gas Sensor", value: "Leak detected", status: "warning" },
-    { id: "water", name: "Water Leak", value: "Dry", status: "normal" },
-  ];
-
-  function color(status: SensorStatus) {
-    switch (status) {
-      case "critical":
-        return "text-red-500";
-      case "warning":
-        return "text-yellow-400";
-      default:
-        return "text-green-400";
-    }
-  }
 
   return (
     <RemotePanel title="Sensors" lastUpdated={lastUpdated}>
-      {loading && <div className="mb-3 text-xs text-gray-400">Syncing sensor state…</div>}
+      {loading ? (
+        <div className="mb-3 text-xs text-white/45">Syncing…</div>
+      ) : null}
 
-      <div className="space-y-3">
-        {sensors.map((s) => (
-          <div
-            key={s.id}
-            className="flex items-center justify-between bg-gray-800 rounded-xl px-4 py-3 border border-gray-700"
-          >
-            <div>
-              <div className="text-sm text-white">{s.name}</div>
-              <div className="text-xs text-gray-400">{s.value}</div>
+      {!deviceId ? (
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/60">
+          No sensor hub linked yet.
+        </div>
+      ) : sensors.length === 0 ? (
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/60">
+          No readings yet.
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {sensors.map((s) => (
+            <div
+              key={s.id}
+              className="flex items-start justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3"
+            >
+              <div className="min-w-0">
+                <div className="text-[13px] font-semibold text-white/90 truncate">{s.name}</div>
+                <div className="text-[12px] text-white/60 break-words">{s.value || "—"}</div>
+              </div>
+
+              <span className={`shrink-0 text-[11px] px-2 py-1 rounded-full border ${statusPill(s.status)}`}>
+                {s.status.toUpperCase()}
+              </span>
             </div>
-
-            <div className={`text-xs font-medium ${color(s.status)}`}>
-              {s.status.toUpperCase()}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {!deviceId && (
-        <div className="mt-3 text-[11px] text-gray-500">
-          No Sensors device bound yet. Bind a sensors hub to enable live readings.
+          ))}
         </div>
       )}
     </RemotePanel>
