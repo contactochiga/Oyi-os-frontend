@@ -8,17 +8,16 @@ export const metadata = {
   description: "Oyi operating system — resident + estate management",
 };
 
+// ✅ Important for iOS notch/home-indicator safe-area
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover" as const,
+};
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <head>
-        {/* ✅ Critical for iOS notch + safe-area */}
-        <meta
-          name="viewport"
-          content="width=device-width, initial-scale=1, viewport-fit=cover"
-        />
-      </head>
-
       <body className="min-h-screen bg-black text-white">
         <ReactQueryProvider>
           <AuthProvider>{children}</AuthProvider>
