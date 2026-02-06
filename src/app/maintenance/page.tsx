@@ -1,5 +1,4 @@
 // src/app/maintenance/page.tsx
-
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -8,10 +7,12 @@ import { maintenanceService, type MaintenanceTicket } from "@/services/maintenan
 
 function pill(status?: string) {
   const s = String(status || "open").toLowerCase();
-  if (s === "resolved") return "bg-emerald-500/15 text-emerald-200 border-emerald-500/20";
+  const base = "inline-flex text-[11px] px-2 py-1 rounded-full border";
+
+  if (s === "resolved") return `${base} bg-emerald-500/10 text-emerald-200 border-emerald-500/20`;
   if (s === "in_progress" || s === "in progress")
-    return "bg-yellow-500/15 text-yellow-200 border-yellow-500/20";
-  return "bg-red-500/15 text-red-200 border-red-500/20";
+    return `${base} bg-amber-500/10 text-amber-200 border-amber-500/20`;
+  return `${base} bg-white/5 text-white/70 border-white/10`;
 }
 
 function nice(s?: string) {
@@ -58,14 +59,10 @@ export default function MaintenancePage() {
 
     try {
       const res: any = await maintenanceService.listMyTickets();
-
-      // ✅ if service returns {error}
       if (res?.error) throw new Error(res.error);
-
-      // ✅ force array always
       setTickets(Array.isArray(res) ? res : []);
     } catch (e: any) {
-      setTickets([]); // ✅ prevents client-side crashes
+      setTickets([]);
       setErr(pickErr(e, "Failed to load maintenance"));
     } finally {
       setLoading(false);
@@ -103,147 +100,200 @@ export default function MaintenancePage() {
   }, []);
 
   return (
-    <ConsumerShell title="Maintenance" subtitle="Service desk & request history" showBack backHref="/home">
-      {/* Top actions */}
-      <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
-        <div className="text-white/70 text-sm">
-          Open requests: <span className="text-white font-semibold">{openCount}</span>
-        </div>
-
-        <div className="flex gap-2">
-          <button onClick={load} disabled={loading} className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm">
-            {loading ? "Refreshing..." : "Refresh"}
-          </button>
-
-          <button
-            onClick={() => setShowNew(true)}
-            className="px-4 py-2 rounded-xl bg-[#E11D2E] text-white text-sm font-semibold"
-          >
-            New Request
-          </button>
-        </div>
-      </div>
-
-      {err && (
-        <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200 mb-4">
-          {err}
-        </div>
-      )}
-
-      {/* Sweet table */}
-      <div className="rounded-2xl border border-white/10 bg-white/5 overflow-hidden">
-        <div className="grid grid-cols-12 gap-2 px-4 py-3 text-[11px] text-white/60 border-b border-white/10">
-          <div className="col-span-5">Issue</div>
-          <div className="col-span-2">Status</div>
-          <div className="col-span-2">Category</div>
-          <div className="col-span-1">Priority</div>
-          <div className="col-span-2">Created</div>
-        </div>
-
-        {!tickets.length && !loading ? (
-          <div className="p-5 text-sm text-white/70">
-            No requests yet. Create one — it will appear here and also reflect on Facility Overview (open maintenance).
-          </div>
-        ) : (
-          tickets.map((t) => (
-            <div
-              key={t.id}
-              className="grid grid-cols-12 gap-2 px-4 py-3 border-b border-white/10 hover:bg-white/[0.06] transition"
-            >
-              <div className="col-span-5 min-w-0">
-                <div className="text-white text-sm font-semibold truncate">{t.title || "Maintenance request"}</div>
-
-                {t.description ? (
-                  <div className="text-white/60 text-xs mt-1 line-clamp-1">{t.description}</div>
-                ) : (
-                  <div className="text-white/40 text-xs mt-1">—</div>
-                )}
-              </div>
-
-              <div className="col-span-2">
-                <span className={`inline-flex text-[11px] px-2 py-1 rounded-full border ${pill(t.status)}`}>
-                  {nice(t.status)}
-                </span>
-              </div>
-
-              <div className="col-span-2 text-white/80 text-sm">{t.category ? String(t.category).toUpperCase() : "—"}</div>
-
-              <div className="col-span-1 text-white/80 text-sm">{t.priority ? String(t.priority).toUpperCase() : "—"}</div>
-
-              <div className="col-span-2 text-white/60 text-xs">{when(t.created_at)}</div>
+    <ConsumerShell
+      title="Maintenance"
+      subtitle="Service desk • request history"
+      showBack
+      backHref="/home"
+    >
+      {/* Top summary + actions (neutral) */}
+      <div className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-xs text-white/40">Open requests</div>
+            <div className="text-2xl font-semibold text-white mt-1">{openCount}</div>
+            <div className="text-xs text-white/40 mt-2">
+              Create a request and track updates from facility ops.
             </div>
-          ))
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              onClick={load}
+              disabled={loading}
+              className="rounded-2xl px-3 py-2 text-sm text-white/80 bg-white/10 hover:bg-white/15 border border-white/10 disabled:opacity-50 transition"
+              type="button"
+            >
+              {loading ? "Refreshing…" : "Refresh"}
+            </button>
+
+            <button
+              onClick={() => setShowNew(true)}
+              className="rounded-2xl px-4 py-2 text-sm font-medium bg-white text-black hover:opacity-90 transition"
+              type="button"
+            >
+              New request
+            </button>
+          </div>
+        </div>
+
+        {err && (
+          <div className="mt-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+            {err}
+          </div>
         )}
       </div>
 
-      {/* Create modal */}
-      {showNew && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center px-6">
-          <div className="absolute inset-0 bg-black/70" onClick={() => !loading && setShowNew(false)} />
-          <div className="relative w-full max-w-lg rounded-2xl bg-zinc-900 border border-white/10 p-5">
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="text-white font-semibold">New Maintenance Request</div>
-                <div className="text-xs text-white/60 mt-1">
-                  This will notify estate facility ops and you’ll get updates.
-                </div>
-              </div>
-              <button className="text-white/60 hover:text-white" onClick={() => !loading && setShowNew(false)}>
-                ✕
-              </button>
+      {/* Tickets list (cards, mobile-first) */}
+      <div className="mt-5">
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <div className="text-sm font-medium text-white">Requests</div>
+            <div className="text-xs text-white/40 mt-1">
+              Latest first • tap any card (later we can add details view)
             </div>
+          </div>
+        </div>
 
-            <div className="grid gap-3 mt-4">
-              <input
-                className="bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-white outline-none"
-                placeholder="Title (e.g. Water leak in kitchen)"
-                value={form.title}
-                onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
-              />
+        {!tickets.length && !loading ? (
+          <div className="mt-4 rounded-3xl border border-white/10 bg-white/5 p-5 text-sm text-white/70">
+            No requests yet. Create one — it will appear here and reflect on Facility Overview.
+          </div>
+        ) : (
+          <div className="mt-4 space-y-3">
+            {tickets.map((t) => (
+              <div
+                key={t.id}
+                className="rounded-3xl border border-white/10 bg-white/5 hover:bg-white/7 transition p-4"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-white truncate">
+                      {t.title || "Maintenance request"}
+                    </div>
+                    <div className="text-xs text-white/40 mt-1">
+                      {when(t.created_at)} •{" "}
+                      <span className="text-white/60">
+                        {t.category ? String(t.category).toUpperCase() : "—"}
+                      </span>{" "}
+                      •{" "}
+                      <span className="text-white/60">
+                        {t.priority ? String(t.priority).toUpperCase() : "—"}
+                      </span>
+                    </div>
+                  </div>
 
-              <textarea
-                className="bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-white outline-none min-h-[96px]"
-                placeholder="Describe the issue (optional)"
-                value={form.description}
-                onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
-              />
+                  <span className={pill(t.status)}>{nice(t.status)}</span>
+                </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <select
-                  className="bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-white outline-none"
-                  value={form.category}
-                  onChange={(e) => setForm((p) => ({ ...p, category: e.target.value }))}
-                >
-                  <option value="general">General</option>
-                  <option value="electricity">Electricity</option>
-                  <option value="water">Water</option>
-                  <option value="security">Security</option>
-                  <option value="device">Device</option>
-                </select>
-
-                <select
-                  className="bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-white outline-none"
-                  value={form.priority}
-                  onChange={(e) => setForm((p) => ({ ...p, priority: e.target.value }))}
-                >
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                </select>
+                {t.description ? (
+                  <div className="mt-3 text-sm text-white/70 line-clamp-2">
+                    {t.description}
+                  </div>
+                ) : (
+                  <div className="mt-3 text-sm text-white/40">—</div>
+                )}
               </div>
+            ))}
+          </div>
+        )}
+      </div>
 
-              <div className="flex gap-2 mt-1">
-                <button className="flex-1 py-3 rounded-xl bg-white/10 text-white" onClick={() => setShowNew(false)} disabled={loading}>
-                  Cancel
-                </button>
+      {/* Create modal (composer style) */}
+      {showNew && (
+        <div className="fixed inset-0 z-[120]">
+          <div
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => !loading && setShowNew(false)}
+          />
 
-                <button
-                  className="flex-1 py-3 rounded-xl bg-[#E11D2E] text-white font-semibold"
-                  onClick={create}
-                  disabled={loading || !form.title.trim()}
-                >
-                  {loading ? "Submitting..." : "Submit Request"}
-                </button>
+          <div className="absolute left-0 right-0 top-20 px-4">
+            <div className="max-w-3xl mx-auto">
+              <div className="rounded-3xl border border-white/10 bg-zinc-950 overflow-hidden">
+                <div className="px-4 py-3 border-b border-white/10 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-white truncate">
+                      New request
+                    </div>
+                    <div className="text-xs text-white/40 mt-1">
+                      Facility ops will be notified and you’ll get updates.
+                    </div>
+                  </div>
+
+                  <button
+                    className="rounded-xl px-2 py-1 text-white/70 hover:bg-white/5"
+                    onClick={() => !loading && setShowNew(false)}
+                    aria-label="Close"
+                    type="button"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="p-4 space-y-3">
+                  <input
+                    className="w-full rounded-2xl bg-black/20 border border-white/10 px-4 py-3 text-sm text-white placeholder-white/30 outline-none"
+                    placeholder="Title (e.g. Water leak in kitchen)"
+                    value={form.title}
+                    onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
+                  />
+
+                  <textarea
+                    className="w-full rounded-2xl bg-black/20 border border-white/10 px-4 py-3 text-sm text-white placeholder-white/30 outline-none min-h-[110px] resize-none"
+                    placeholder="Describe the issue (optional)"
+                    value={form.description}
+                    onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
+                  />
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <select
+                      className="w-full rounded-2xl bg-black/20 border border-white/10 px-4 py-3 text-sm text-white outline-none"
+                      value={form.category}
+                      onChange={(e) => setForm((p) => ({ ...p, category: e.target.value }))}
+                    >
+                      <option value="general">General</option>
+                      <option value="electricity">Electricity</option>
+                      <option value="water">Water</option>
+                      <option value="security">Security</option>
+                      <option value="device">Device</option>
+                    </select>
+
+                    <select
+                      className="w-full rounded-2xl bg-black/20 border border-white/10 px-4 py-3 text-sm text-white outline-none"
+                      value={form.priority}
+                      onChange={(e) => setForm((p) => ({ ...p, priority: e.target.value }))}
+                    >
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                    </select>
+                  </div>
+
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      className="flex-1 py-3 rounded-2xl bg-white/10 text-white text-sm border border-white/10 hover:bg-white/15 transition disabled:opacity-50"
+                      onClick={() => setShowNew(false)}
+                      disabled={loading}
+                      type="button"
+                    >
+                      Cancel
+                    </button>
+
+                    <button
+                      className="flex-1 py-3 rounded-2xl bg-white text-black text-sm font-medium hover:opacity-90 transition disabled:opacity-40"
+                      onClick={create}
+                      disabled={loading || !form.title.trim()}
+                      type="button"
+                    >
+                      {loading ? "Submitting…" : "Submit"}
+                    </button>
+                  </div>
+
+                  <div className="text-[11px] text-white/35">
+                    This page uses <span className="text-white/55">GET /maintenance/mine</span> and{" "}
+                    <span className="text-white/55">POST /maintenance/ticket</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
