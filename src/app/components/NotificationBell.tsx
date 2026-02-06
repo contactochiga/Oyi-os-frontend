@@ -1,4 +1,3 @@
-// src/app/components/NotificationBell.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -31,13 +30,11 @@ export default function NotificationBell() {
   const unreadCount = useNotificationStore((s) => s.unreadCount);
   const upsert = useNotificationStore((s) => s.upsert);
 
-  // swipe-to-close
   const dragStartX = useRef<number | null>(null);
   const dragDelta = useRef<number>(0);
 
   useEffect(() => setMounted(true), []);
 
-  // ✅ lock scroll + reuse sidebar-open class to hide chat footer/suggestions
   useEffect(() => {
     if (!open) {
       document.body.style.overflow = "";
@@ -74,12 +71,11 @@ export default function NotificationBell() {
     mounted && open
       ? createPortal(
           <>
-            {/* overlay */}
             <div
               className="fixed inset-0"
               style={{
                 zIndex: OVERLAY_Z,
-                backgroundColor: "rgba(0,0,0,0.62)",
+                backgroundColor: "rgba(0,0,0,0.52)",
                 backdropFilter: "blur(18px)",
                 WebkitBackdropFilter: "blur(18px)",
               }}
@@ -87,10 +83,9 @@ export default function NotificationBell() {
               aria-label="Close notifications overlay"
             />
 
-            {/* drawer */}
             <aside
               className="fixed right-0 top-0 bottom-0 w-[380px] max-w-[92vw]
-                         border-l border-white/10 bg-zinc-950/95"
+                         border-l border-white/10 bg-[#06080e]/96"
               style={{
                 zIndex: DRAWER_Z,
                 paddingTop: "var(--sat)",
@@ -103,16 +98,14 @@ export default function NotificationBell() {
               onTouchMove={(e) => {
                 if (dragStartX.current === null) return;
                 const x = e.touches[0]?.clientX ?? 0;
-                dragDelta.current = x - dragStartX.current; // right = positive
+                dragDelta.current = x - dragStartX.current;
               }}
               onTouchEnd={() => {
-                // swipe right to close (since drawer is on the right)
                 if (dragDelta.current > 55) setOpen(false);
                 dragStartX.current = null;
                 dragDelta.current = 0;
               }}
             >
-              {/* frame */}
               <div
                 className="flex flex-col"
                 style={{
@@ -120,7 +113,6 @@ export default function NotificationBell() {
                   paddingBottom: "calc(var(--sab) + var(--kb))",
                 }}
               >
-                {/* Header */}
                 <div className="px-4 pt-4 pb-3 border-b border-white/10">
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
@@ -142,7 +134,6 @@ export default function NotificationBell() {
                   </div>
                 </div>
 
-                {/* Body */}
                 <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
                   {visible.length === 0 ? (
                     <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/60">
@@ -225,8 +216,7 @@ export default function NotificationBell() {
                   )}
                 </div>
 
-                {/* Footer */}
-                <div className="px-4 py-3 border-t border-white/10 bg-black/20">
+                <div className="px-4 py-3 border-t border-white/10 bg-white/[0.03]">
                   <div className="text-[11px] text-white/40">
                     Tip: tap a card to mark it read.
                   </div>
