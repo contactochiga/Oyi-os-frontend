@@ -1,3 +1,4 @@
+// src/app/community/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -45,7 +46,7 @@ export default function CommunityPage() {
     setErr(null);
     try {
       const list = await communityService.listByEstate(String(estateId));
-      setItems(list || []);
+      setItems(Array.isArray(list) ? list : []);
     } catch (e: any) {
       setErr(e?.message || "Failed to load community");
       setItems([]);
@@ -101,14 +102,11 @@ export default function CommunityPage() {
   }
 
   return (
-    <ConsumerShell
-      title="Community"
-      subtitle="Estate broadcasts • announcements • live updates"
-    >
+    <ConsumerShell title="Community" subtitle="Estate broadcasts • announcements • live updates">
       {/* Top row: context + refresh */}
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
-          <div className="text-xs text-white/40">
+          <div className="text-xs text-white/45">
             {estateId ? "Estate linked" : "No estate linked"}
           </div>
 
@@ -123,44 +121,39 @@ export default function CommunityPage() {
           onClick={load}
           disabled={!estateId || loading}
           className="px-3 py-2 rounded-xl bg-white/10 text-white text-sm disabled:opacity-50"
+          type="button"
         >
           {loading ? "..." : "Refresh"}
         </button>
       </div>
 
-      {/* Composer card (replaces +Post button) */}
-      <div className="mt-4">
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
-          <button
-            type="button"
-            onClick={openComposer}
-            disabled={!estateId}
-            className="w-full text-left rounded-xl bg-black/20 hover:bg-black/30 transition px-4 py-3 border border-white/10 disabled:opacity-60"
-          >
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="text-sm text-white/70">Share an update…</div>
-                <div className="text-[11px] text-white/35 mt-1">
-                  Announcements, quick updates, estate info
-                </div>
-              </div>
-
-              <div className="shrink-0">
-                <div className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm">
-                  Post
-                </div>
+      {/* Composer dashboard bar */}
+      <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-3">
+        <button
+          type="button"
+          onClick={openComposer}
+          disabled={!estateId}
+          className="w-full text-left rounded-2xl px-4 py-3 border border-white/10 bg-black/20 hover:bg-black/30 transition disabled:opacity-60"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-sm text-white/75">Share an update…</div>
+              <div className="text-[11px] text-white/35 mt-1">
+                Announcements, quick updates, facility info
               </div>
             </div>
-          </button>
 
-          <div className="mt-2 flex items-center justify-between text-[11px] text-white/40 px-1">
-            <span>
-              {items.length ? `${items.length} updates` : "No updates yet"}
-            </span>
-            <span className="text-white/30">
-              Tap to write
-            </span>
+            <div className="shrink-0">
+              <div className="px-4 py-2 rounded-xl bg-white text-black text-sm font-semibold">
+                Post
+              </div>
+            </div>
           </div>
+        </button>
+
+        <div className="mt-2 flex items-center justify-between text-[11px] text-white/40 px-1">
+          <span>{items.length ? `${items.length} updates` : "No updates yet"}</span>
+          <span className="text-white/30">Tap to write</span>
         </div>
       </div>
 
@@ -192,6 +185,7 @@ export default function CommunityPage() {
                 key={p.id}
                 onClick={() => setOpenPost(p)}
                 className="w-full text-left rounded-2xl border border-white/10 bg-black/20 p-4 hover:bg-white/5 transition"
+                type="button"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -271,9 +265,7 @@ export default function CommunityPage() {
               <div className="rounded-2xl border border-white/10 bg-zinc-950 overflow-hidden">
                 <div className="px-4 py-3 border-b border-white/10 flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-sm font-semibold text-white truncate">
-                      New post
-                    </div>
+                    <div className="text-sm font-semibold text-white truncate">New post</div>
                     <div className="text-xs text-white/40 mt-1">
                       Broadcast to your estate community
                     </div>
@@ -318,7 +310,7 @@ export default function CommunityPage() {
                     <button
                       onClick={createPost}
                       disabled={posting || !title.trim()}
-                      className="flex-1 py-3 rounded-xl bg-[#E11D2E] text-white text-sm font-semibold disabled:opacity-50"
+                      className="flex-1 py-3 rounded-xl bg-white text-black text-sm font-semibold disabled:opacity-50"
                       type="button"
                     >
                       {posting ? "Posting..." : "Post"}
