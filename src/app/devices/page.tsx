@@ -1,3 +1,4 @@
+// src/app/devices/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -36,7 +37,7 @@ function isOnline(d: AnyDevice): boolean | null {
 
 function statusDot(online: boolean | null) {
   if (online === null) return "bg-white/20";
-  return online ? "bg-emerald-500" : "bg-red-500";
+  return online ? "bg-emerald-500" : "bg-white/25";
 }
 
 function prettyState(state: any) {
@@ -47,15 +48,33 @@ function prettyState(state: any) {
   }
 }
 
+function guessIsOn(state: any): boolean | null {
+  // best-effort: common Tuya / adapter patterns
+  if (!state) return null;
+
+  if (typeof state.on === "boolean") return state.on;
+  if (typeof state.power === "boolean") return state.power;
+  if (typeof state.switch === "boolean") return state.switch;
+
+  // Tuya often returns { dps: { "1": true } } or { switch: true } etc.
+  const dps = state.dps || state?.raw?.dps || null;
+  if (dps && typeof dps === "object") {
+    const candidates = ["1", "switch", "switch_1", "power"];
+    for (const k of candidates) {
+      if (typeof dps[k] === "boolean") return dps[k];
+    }
+  }
+
+  return null;
+}
+
 export default function DevicesPage() {
   const { user } = useAuth();
 
   const estateId = useMemo(
     () =>
       (user as any)?.estate_id ??
-      (typeof window !== "undefined"
-        ? localStorage.getItem("ochiga_estate")
-        : null),
+      (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null),
     [user]
   );
 
@@ -66,16 +85,43 @@ export default function DevicesPage() {
 
   // state modal
   const [stateOpen, setStateOpen] = useState(false);
-  const [stateTitle, setStateTitle] = useState<string>("Device State");
+  const [stateTitle, setStateTitle] = useState<string>("Device");
+  const [stateMeta, setStateMeta] = useState<{ id?: string; vendor?: string } | null>(null);
   const [stateBody, setStateBody] = useState<string>("{}");
   const [stateLoading, setStateLoading] = useState(false);
+
+  // local on/off cache (so UI feels instant even if state endpoint is slow)
+  const [onMap, setOnMap] = useState<Record<string, boolean | null>>({});
 
   async function load() {
     setLoading(true);
     setErr(null);
     try {
       const list = await deviceService.getDevices(estateId || undefined);
-      setItems(Array.isArray(list) ? list : []);
+      const arr = Array.isArray(list) ? list : [];
+      setItems(arr);
+
+      // optional: warm UI toggle states with whatever the list provides
+      const next: Record<string, boolean | null> = {};
+      for (const d of arr) {
+        const id = pickId(d);
+        if (!id) continue;
+
+        // try common list fields
+        const listOn =
+          typeof d.on === "boolean"
+            ? d.on
+            : typeof d.power === "boolean"
+            ? d.power
+            : typeof d.switch === "boolean"
+            ? d.switch
+            : null;
+
+        if (listOn !== null) next[String(id)] = listOn;
+      }
+      if (Object.keys(next).length) {
+        setOnMap((prev) => ({ ...prev, ...next }));
+      }
     } catch (e: any) {
       setErr(e?.response?.data?.error || e?.message || "Failed to load devices");
       setItems([]);
@@ -89,15 +135,17 @@ export default function DevicesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [estateId]);
 
-  async function quickToggle(device: AnyDevice, on: boolean) {
+  async function commandSwitch(device: AnyDevice, on: boolean) {
     const id = pickId(device);
     if (!id) return;
 
     setBusyId(String(id));
     setErr(null);
 
+    // optimistic
+    setOnMap((p) => ({ ...p, [String(id)]: on }));
+
     try {
-      // best-effort switch code for Tuya/others
       const meta = device.metadata || device.meta || {};
       const raw = meta?.raw || meta || {};
 
@@ -108,14 +156,10 @@ export default function DevicesPage() {
         "switch";
 
       await deviceService.commandDevice(String(id), { [code]: on });
-
-      // Optional: you can optimistically flip local online/status later
     } catch (e: any) {
-      setErr(
-        e?.response?.data?.error ||
-          e?.message ||
-          "Command failed (device may be offline)"
-      );
+      // revert optimistic on failure
+      setOnMap((p) => ({ ...p, [String(id)]: p[String(id)] ?? null }));
+      setErr(e?.response?.data?.error || e?.message || "Command failed (device may be offline)");
     } finally {
       setBusyId(null);
     }
@@ -126,6 +170,7 @@ export default function DevicesPage() {
     if (!id) return;
 
     setStateTitle(pickName(device));
+    setStateMeta({ id: String(id), vendor: pickVendor(device) });
     setStateBody("{}");
     setStateOpen(true);
     setStateLoading(true);
@@ -134,13 +179,15 @@ export default function DevicesPage() {
       const res = await deviceService.getDeviceState(String(id));
       const state = res?.state ?? res ?? {};
       setStateBody(prettyState(state));
+
+      const guessed = guessIsOn(state);
+      if (guessed !== null) {
+        setOnMap((p) => ({ ...p, [String(id)]: guessed }));
+      }
     } catch (e: any) {
       setStateBody(
         prettyState({
-          error:
-            e?.response?.data?.error ||
-            e?.message ||
-            "Failed to load device state",
+          error: e?.response?.data?.error || e?.message || "Failed to load device state",
         })
       );
     } finally {
@@ -148,40 +195,48 @@ export default function DevicesPage() {
     }
   }
 
+  function copy(text?: string | null) {
+    if (!text) return;
+    try {
+      navigator.clipboard.writeText(text);
+    } catch {}
+  }
+
   const title = estateId ? "Devices" : "Devices (Discovery)";
-  const subtitle = estateId
-    ? "Estate device registry"
-    : "Scanning devices available to connect";
+  const subtitle = estateId ? "Estate device registry" : "Scanning devices available to connect";
 
   return (
-    <ConsumerShell title={title} subtitle={subtitle}>
-      <div className="flex items-center justify-between gap-3">
-        <div className="text-xs text-white/40 truncate">
-          {estateId ? `Estate: ${estateId}` : "No estate linked • using discovery"}
+    <ConsumerShell title={title} subtitle={subtitle} showBack backHref="/home">
+      {/* top row */}
+      <div className="rounded-3xl border border-white/10 bg-white/5 p-4 flex items-center justify-between gap-3">
+        <div className="text-xs text-white/45 truncate">
+          {estateId ? `Estate linked` : "No estate linked • using discovery"}
         </div>
 
         <button
           onClick={load}
           disabled={loading}
-          className="px-3 py-2 rounded-xl bg-white/10 text-white text-sm disabled:opacity-50"
+          className="rounded-2xl px-3 py-2 text-sm bg-white text-black hover:opacity-90 disabled:opacity-50 transition"
+          type="button"
         >
-          {loading ? "Refreshing..." : "Refresh"}
+          {loading ? "Refreshing…" : "Refresh"}
         </button>
       </div>
 
       {err && (
-        <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+        <div className="mt-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
           {err}
         </div>
       )}
 
+      {/* list */}
       {loading && items.length === 0 ? (
         <div className="mt-4 flex items-center gap-3 text-sm text-white/60">
           <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
           Loading devices…
         </div>
       ) : items.length === 0 ? (
-        <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/60">
+        <div className="mt-4 rounded-3xl border border-white/10 bg-white/5 p-5 text-sm text-white/60">
           No devices found yet.
         </div>
       ) : (
@@ -192,66 +247,71 @@ export default function DevicesPage() {
             const vendor = pickVendor(d);
             const online = isOnline(d);
 
+            const sid = id ? String(id) : "";
+            const isBusy = id && busyId === sid;
+            const isOn = id ? onMap[sid] ?? null : null;
+
             return (
               <div
                 key={String(id || name)}
-                className="rounded-2xl border border-white/10 bg-black/20 p-4"
+                className="rounded-3xl border border-white/10 bg-white/5 hover:bg-white/7 transition p-4"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <span
-                        className={`h-2 w-2 rounded-full ${statusDot(online)}`}
-                        aria-hidden="true"
-                      />
-                      <div className="text-sm text-white font-semibold truncate">
-                        {name}
-                      </div>
+                      <span className={`h-2 w-2 rounded-full ${statusDot(online)}`} aria-hidden="true" />
+                      <div className="text-sm text-white font-medium truncate">{name}</div>
                     </div>
 
                     <div className="text-xs text-white/40 mt-1 truncate">
                       {vendor}
-                      {id ? ` • ${String(id)}` : ""}
+                      {online === null ? "" : online ? " • online" : " • offline"}
                     </div>
+
+                    {Array.isArray(d.capabilities) && d.capabilities.length > 0 ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {d.capabilities.slice(0, 6).map((c: any) => (
+                          <span
+                            key={String(c)}
+                            className="text-[11px] px-2 py-1 rounded-full border border-white/10 bg-black/20 text-white/60"
+                          >
+                            {String(c)}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
 
-                  <div className="flex gap-2 shrink-0">
+                  <div className="flex items-center gap-2 shrink-0">
+                    {/* details */}
                     <button
                       onClick={() => viewState(d)}
-                      className="px-3 py-2 rounded-xl bg-white/10 text-white text-sm"
+                      className="rounded-2xl px-3 py-2 text-sm bg-white/10 text-white hover:bg-white/15 border border-white/10 transition"
+                      type="button"
                     >
-                      State
+                      Details
                     </button>
 
+                    {/* toggle */}
                     <button
-                      disabled={!id || busyId === String(id)}
-                      onClick={() => quickToggle(d, true)}
-                      className="px-3 py-2 rounded-xl bg-[#E11D2E] text-white text-sm disabled:opacity-50"
+                      disabled={!id || !!isBusy}
+                      onClick={() => commandSwitch(d, !(isOn === true))}
+                      className={`rounded-2xl px-4 py-2 text-sm border transition disabled:opacity-50 ${
+                        isOn === true
+                          ? "bg-white text-black border-white/10 hover:opacity-90"
+                          : "bg-black/20 text-white border-white/10 hover:bg-white/10"
+                      }`}
+                      type="button"
+                      aria-label={isOn === true ? "Turn off" : "Turn on"}
                     >
-                      On
-                    </button>
-
-                    <button
-                      disabled={!id || busyId === String(id)}
-                      onClick={() => quickToggle(d, false)}
-                      className="px-3 py-2 rounded-xl bg-white/10 text-white text-sm disabled:opacity-50"
-                    >
-                      Off
+                      {isBusy ? "…" : isOn === true ? "On" : "Off"}
                     </button>
                   </div>
                 </div>
 
-                {/* Optional capabilities */}
-                {Array.isArray(d.capabilities) && d.capabilities.length > 0 ? (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {d.capabilities.slice(0, 6).map((c: any) => (
-                      <span
-                        key={String(c)}
-                        className="text-[11px] px-2 py-1 rounded-full border border-white/10 bg-white/5 text-white/60"
-                      >
-                        {String(c)}
-                      </span>
-                    ))}
+                {id ? (
+                  <div className="mt-3 text-[11px] text-white/35">
+                    Device ID hidden (view in Details)
                   </div>
                 ) : null}
               </div>
@@ -269,21 +329,36 @@ export default function DevicesPage() {
           />
           <div className="absolute left-0 right-0 top-20 px-4">
             <div className="max-w-3xl mx-auto">
-              <div className="rounded-2xl border border-white/10 bg-zinc-950 overflow-hidden">
+              <div className="rounded-3xl border border-white/10 bg-zinc-950 overflow-hidden">
                 <div className="px-4 py-3 border-b border-white/10 flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-sm font-semibold text-white truncate">
-                      {stateTitle}
+                    <div className="text-sm font-medium text-white truncate">{stateTitle}</div>
+                    <div className="text-xs text-white/40 mt-1 truncate">
+                      {stateMeta?.vendor ? `${stateMeta.vendor} • ` : ""}Live state snapshot
                     </div>
-                    <div className="text-xs text-white/40 mt-1">
-                      Live state snapshot
-                    </div>
+
+                    {stateMeta?.id ? (
+                      <div className="mt-2 flex items-center gap-2">
+                        <span className="text-[11px] text-white/35">ID:</span>
+                        <span className="text-[11px] text-white/70 font-mono truncate">
+                          {stateMeta.id}
+                        </span>
+                        <button
+                          onClick={() => copy(stateMeta.id)}
+                          className="text-[11px] text-white/60 hover:text-white underline"
+                          type="button"
+                        >
+                          Copy
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
 
                   <button
-                    className="rounded-lg px-2 py-1 text-white/70 hover:bg-white/5"
+                    className="rounded-xl px-2 py-1 text-white/70 hover:bg-white/5"
                     onClick={() => setStateOpen(false)}
                     aria-label="Close"
+                    type="button"
                   >
                     ✕
                   </button>
@@ -296,17 +371,26 @@ export default function DevicesPage() {
                       Fetching state…
                     </div>
                   ) : (
-                    <pre className="text-xs text-white/80 whitespace-pre-wrap break-words">
-                      {stateBody}
-                    </pre>
+                    <>
+                      <div className="flex justify-end mb-2">
+                        <button
+                          onClick={() => copy(stateBody)}
+                          className="rounded-2xl px-3 py-2 text-sm bg-white/10 text-white hover:bg-white/15 border border-white/10 transition"
+                          type="button"
+                        >
+                          Copy JSON
+                        </button>
+                      </div>
+
+                      <pre className="text-xs text-white/80 whitespace-pre-wrap break-words font-mono">
+                        {stateBody}
+                      </pre>
+                    </>
                   )}
                 </div>
 
                 <div className="px-4 py-3 border-t border-white/10 text-[11px] text-white/40">
-                  Source:{" "}
-                  <span className="text-white/70">
-                    GET /devices/:deviceId/state
-                  </span>
+                  Source: <span className="text-white/70">GET /devices/:deviceId/state</span>
                 </div>
               </div>
             </div>
