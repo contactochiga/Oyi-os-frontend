@@ -1,36 +1,25 @@
-// src/app/components/remotes/DeviceDiscoveryPanel.tsx
-
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import RemotePanel from "./RemotePanel";
 import { deviceService } from "@/services/deviceService";
 
 type Device = {
-  // Discovery payloads may NOT have id
   id?: string;
-
-  // Common fields from Tuya discovery / your backend
   externalId?: string;
   external_id?: string;
   adapter?: string;
   vendor?: string;
-
   name?: string;
   type?: string;
   ip?: string;
   protocol?: string;
   status?: string;
-
-  // allow extra fields without TS complaints
   [k: string]: any;
 };
 
 const ROOMS = ["Living Room", "Bedroom", "Kitchen", "Bathroom", "Other"];
 
-/**
- * ✅ Stable unique key for UI selection.
- * Tuya discovery often returns externalId/external_id, not id.
- */
 function deviceKey(d: Device): string {
   const stable =
     d.id ||
@@ -43,52 +32,59 @@ function deviceKey(d: Device): string {
 
   if (stable) return String(stable);
 
-  // last fallback: still guarantee uniqueness across list
   return `${d.adapter || d.vendor || "device"}:${d.name || d.type || "unknown"}:${d.ip || ""}`;
+}
+
+function pickLabel(d: Device) {
+  return d.name || d.type || "Device";
+}
+
+function pickMeta(d: Device) {
+  return d.protocol || d.ip || d.adapter || d.vendor || "";
 }
 
 export default function DeviceDiscoveryPanel({
   devices: initialDevices = [],
+  lastUpdated,
+  onInteraction,
 }: {
   devices?: Device[];
+  lastUpdated?: number;
+  onInteraction?: () => void;
 }) {
   const [devices, setDevices] = useState<Device[]>(initialDevices);
   const [loading, setLoading] = useState(false);
   const [assigning, setAssigning] = useState(false);
 
-  // selected map uses the stable key, not d.id
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [room, setRoom] = useState("");
 
-  // ✅ user feedback
-  const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(
-    null
-  );
+  const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  function touch() {
+    onInteraction?.();
+  }
 
   function flash(type: "success" | "error", text: string) {
     setNotice({ type, text });
     window.clearTimeout((flash as any)._t);
-    (flash as any)._t = window.setTimeout(() => setNotice(null), 3500);
+    (flash as any)._t = window.setTimeout(() => setNotice(null), 3200);
   }
 
-  // normalize devices with __key for rendering and selection
   const keyedDevices = useMemo(() => {
-    return (devices || []).map((d) => ({
-      ...d,
-      __key: deviceKey(d),
-    })) as Array<Device & { __key: string }>;
+    return (devices || []).map((d) => ({ ...d, __key: deviceKey(d) })) as Array<Device & { __key: string }>;
   }, [devices]);
 
-  /* -----------------------------
-     INITIAL LOAD / REFRESH
-  ------------------------------ */
+  const selectedKeys = useMemo(() => Object.keys(selected).filter((k) => selected[k]), [selected]);
+
   async function refreshDevices() {
     setLoading(true);
     setNotice(null);
     try {
       const result = await deviceService.getDevices();
-      setDevices(result || []);
+      setDevices(Array.isArray(result) ? result : []);
       setSelected({});
+      touch();
     } catch (e: any) {
       flash("error", e?.message || "Failed to load devices");
     } finally {
@@ -97,86 +93,66 @@ export default function DeviceDiscoveryPanel({
   }
 
   useEffect(() => {
-    if (initialDevices.length === 0) {
-      refreshDevices();
-    }
+    if (!initialDevices.length) refreshDevices();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* -----------------------------
-     ASSIGN SELECTED DEVICES
-  ------------------------------ */
   async function addDevices(keys: string[]) {
-    if (keys.length === 0) return;
-    if (assigning) return;
+    if (!keys.length || assigning) return;
 
     setAssigning(true);
     setNotice(null);
 
     try {
-      // ✅ Send stable keys (external ids) so backend can map correctly
       const res: any = await deviceService.assignDevices({
         deviceIds: keys,
         room: room || null,
       });
 
-      // ✅ success signal
-      const savedCount =
-        Array.isArray(res?.devices) ? res.devices.length : keys.length;
+      const savedCount = Array.isArray(res?.devices) ? res.devices.length : keys.length;
 
       flash(
         "success",
-        `✅ Added ${savedCount} device${savedCount === 1 ? "" : "s"}${
-          room ? ` to ${room}` : ""
-        }.`
+        `Added ${savedCount} device${savedCount === 1 ? "" : "s"}${room ? ` to ${room}` : ""}.`
       );
 
-      // Re-fetch devices after assignment
       const updated = await deviceService.getDevices();
-      setDevices(updated || []);
+      setDevices(Array.isArray(updated) ? updated : []);
       setSelected({});
       setRoom("");
+      touch();
     } catch (e: any) {
       const msg =
         e?.response?.data?.error ||
         e?.response?.data?.message ||
         e?.message ||
         "Failed to add devices";
-      flash("error", `❌ ${msg}`);
+      flash("error", msg);
     } finally {
       setAssigning(false);
     }
   }
 
-  const selectedKeys = Object.keys(selected).filter((k) => selected[k]);
-
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 space-y-4">
-      {/* HEADER */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-sm font-semibold text-white">Device Discovery</h3>
-          <p className="text-xs text-gray-400">Estate & account devices</p>
+    <RemotePanel title="Discovery" lastUpdated={lastUpdated}>
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div className="text-xs text-white/45">
+          {loading ? "Syncing…" : keyedDevices.length ? `${keyedDevices.length} found` : "No devices"}
         </div>
 
         <button
+          type="button"
           onClick={refreshDevices}
           disabled={loading || assigning}
-          className={`px-3 py-1.5 rounded-full text-xs font-medium
-            ${
-              loading || assigning
-                ? "bg-gray-700 text-gray-400"
-                : "bg-[#E11D2E] text-white"
-            }`}
+          className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-xs text-white/80 border border-white/10 disabled:opacity-50"
         >
           {loading ? "Loading…" : assigning ? "Saving…" : "Refresh"}
         </button>
       </div>
 
-      {/* NOTICE */}
       {notice && (
         <div
-          className={`rounded-xl px-3 py-2 text-xs border ${
+          className={`mb-3 rounded-xl px-3 py-2 text-xs border ${
             notice.type === "success"
               ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-200"
               : "bg-red-500/10 border-red-500/20 text-red-200"
@@ -186,87 +162,94 @@ export default function DeviceDiscoveryPanel({
         </div>
       )}
 
-      {/* LOADING */}
       {(loading || assigning) && (
-        <div className="flex items-center gap-3 text-xs text-gray-400">
-          <div className="w-4 h-4 border-2 border-gray-600 border-t-white rounded-full animate-spin" />
-          {loading ? "Syncing devices…" : "Assigning devices…"}
+        <div className="mb-3 flex items-center gap-3 text-xs text-white/45">
+          <div className="w-4 h-4 border-2 border-white/15 border-t-white/70 rounded-full animate-spin" />
+          {loading ? "Syncing devices…" : "Assigning…"}
         </div>
       )}
 
-      {/* DEVICE LIST */}
+      {/* List */}
       <div className="space-y-2">
         {keyedDevices.map((d) => (
           <label
             key={d.__key}
-            className="flex items-center justify-between bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 cursor-pointer"
+            className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 transition px-3 py-2 cursor-pointer"
           >
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 min-w-0">
               <input
                 type="checkbox"
                 checked={!!selected[d.__key]}
-                onChange={() =>
-                  setSelected((s) => ({
-                    ...s,
-                    [d.__key]: !s[d.__key],
-                  }))
-                }
+                onChange={() => setSelected((s) => ({ ...s, [d.__key]: !s[d.__key] }))}
                 disabled={loading || assigning}
+                className="accent-white"
               />
 
-              <div>
-                <div className="text-sm text-white">
-                  {d.name || d.type || "Unknown Device"}
+              <div className="min-w-0">
+                <div className="text-[13px] text-white/90 font-semibold truncate">
+                  {pickLabel(d)}
                 </div>
-                <div className="text-xs text-gray-400">
-                  {d.protocol || d.ip || d.adapter || d.vendor || ""}
-                </div>
+                {pickMeta(d) ? (
+                  <div className="text-[11px] text-white/45 truncate">{pickMeta(d)}</div>
+                ) : null}
               </div>
             </div>
 
-            <span className="text-xs text-gray-400">
-              {d.status || "Available"}
-            </span>
+            <div className="text-[11px] text-white/40 shrink-0">
+              {d.status ? String(d.status) : "Available"}
+            </div>
           </label>
         ))}
 
         {!loading && keyedDevices.length === 0 && (
-          <div className="text-sm text-gray-500 text-center py-6">
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/60">
             No devices found.
           </div>
         )}
       </div>
 
-      {/* BULK ACTION */}
+      {/* Bottom assign bar */}
       {selectedKeys.length > 0 && (
-        <div className="bg-black/40 border border-gray-800 rounded-xl p-3 space-y-3">
-          <div className="text-xs text-gray-300">
-            {selectedKeys.length} device(s) selected
+        <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-3">
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <div className="text-xs text-white/60">
+              {selectedKeys.length} selected
+            </div>
+            <button
+              type="button"
+              onClick={() => setSelected({})}
+              className="text-xs text-white/50 hover:text-white/70"
+            >
+              Clear
+            </button>
           </div>
 
-          <select
-            value={room}
-            onChange={(e) => setRoom(e.target.value)}
-            disabled={assigning}
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white disabled:opacity-60"
-          >
-            <option value="">Assign to room (optional)</option>
-            {ROOMS.map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
-          </select>
+          <div className="grid gap-2">
+            <select
+              value={room}
+              onChange={(e) => setRoom(e.target.value)}
+              disabled={assigning}
+              className="w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-white/85 outline-none disabled:opacity-60"
+            >
+              <option value="">Assign room (optional)</option>
+              {ROOMS.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
 
-          <button
-            onClick={() => addDevices(selectedKeys)}
-            disabled={assigning}
-            className="w-full py-2 rounded-xl bg-[#E11D2E] text-white text-sm font-medium active:scale-95 transition disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            {assigning ? "Adding…" : "Add Selected Devices"}
-          </button>
+            <button
+              type="button"
+              onClick={() => addDevices(selectedKeys)}
+              disabled={assigning}
+              className="w-full py-2.5 rounded-xl bg-white text-black text-sm font-semibold border border-white/20 disabled:opacity-60"
+            >
+              {assigning ? "Adding…" : "Add selected"}
+            </button>
+          </div>
         </div>
       )}
-    </div>
+    </RemotePanel>
   );
 }
