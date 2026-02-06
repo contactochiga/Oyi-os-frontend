@@ -1,4 +1,3 @@
-// src/app/components/remotes/AcPanel.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -30,17 +29,40 @@ function pickNumber(state: any, keys: string[], fallback: number) {
   return fallback;
 }
 
-function pickEnum<T extends string>(
-  state: any,
-  keys: string[],
-  allowed: T[],
-  fallback: T
-) {
+function pickEnum<T extends string>(state: any, keys: string[], allowed: T[], fallback: T) {
   for (const k of keys) {
     const v = String(state?.[k] ?? "").toLowerCase();
     if (allowed.includes(v as T)) return v as T;
   }
   return fallback;
+}
+
+function Chip({
+  active,
+  children,
+  onClick,
+  disabled,
+}: {
+  active?: boolean;
+  children: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`px-3 py-1.5 rounded-full text-[12px] border transition disabled:opacity-50
+        ${
+          active
+            ? "bg-white text-black border-white/20"
+            : "bg-white/5 text-white/70 border-white/10 hover:bg-white/10"
+        }`}
+    >
+      {children}
+    </button>
+  );
 }
 
 export default function AcPanel({
@@ -56,70 +78,35 @@ export default function AcPanel({
   const estateId = useMemo(
     () =>
       user?.estate_id ??
-      (typeof window !== "undefined"
-        ? localStorage.getItem("ochiga_estate")
-        : null),
+      (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null),
     [user?.estate_id]
   );
 
   const { state, loading, refresh } = useDeviceLiveState(deviceId, estateId);
 
-  // ✅ Authoritative values from backend state
-  const power = useMemo(
-    () => pickBool(state, ["power", "on", "acOn", "switch"], false),
-    [state]
-  );
-
-  const temperature = useMemo(
-    () => pickNumber(state, ["temperature", "temp", "setpoint"], 24),
-    [state]
-  );
+  const power = useMemo(() => pickBool(state, ["power", "on", "acOn", "switch"], false), [state]);
+  const temperature = useMemo(() => pickNumber(state, ["temperature", "temp", "setpoint"], 24), [state]);
 
   const mode = useMemo(
-    () =>
-      pickEnum<AcMode>(
-        state,
-        ["mode", "acMode"],
-        ["cool", "heat", "fan", "dry"],
-        "cool"
-      ),
+    () => pickEnum<AcMode>(state, ["mode", "acMode"], ["cool", "heat", "fan", "dry"], "cool"),
     [state]
   );
 
   const fanSpeed = useMemo(
-    () =>
-      pickEnum<FanSpeed>(
-        state,
-        ["fanSpeed", "fan_speed", "fan"],
-        ["low", "medium", "high", "auto"],
-        "auto"
-      ),
+    () => pickEnum<FanSpeed>(state, ["fanSpeed", "fan_speed", "fan"], ["low", "medium", "high", "auto"], "auto"),
     [state]
   );
 
-  const swing = useMemo(
-    () => pickBool(state, ["swing", "oscillate"], false),
-    [state]
-  );
+  const swing = useMemo(() => pickBool(state, ["swing", "oscillate"], false), [state]);
 
-  // ✅ Local draft (only for slider UX)
   const [tempDraft, setTempDraft] = useState<number>(temperature);
-
-  // Keep draft aligned with authoritative state when backend updates
-  useEffect(() => {
-    setTempDraft(temperature);
-  }, [temperature]);
+  useEffect(() => setTempDraft(temperature), [temperature]);
 
   const [pending, setPending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const tempTimer = useRef<any>(null);
   const pendingTimer = useRef<any>(null);
-
-  // Track last known state snapshot to detect confirmation
-  const lastStateRef = useRef<any>(null);
-
-  // Track what we are waiting to be confirmed
   const expectedRef = useRef<{ key: string; value: any } | null>(null);
 
   function touch() {
@@ -132,53 +119,31 @@ export default function AcPanel({
 
     if (pendingTimer.current) clearTimeout(pendingTimer.current);
     pendingTimer.current = setTimeout(() => {
-      // fallback: stop pending even if device never reported back
       expectedRef.current = null;
       setPending(false);
-    }, 3500);
+    }, 3000);
   }
 
-  // ✅ Clear pending when we see state reflect the command (confirmation)
   useEffect(() => {
     const expected = expectedRef.current;
-    if (!expected) {
-      lastStateRef.current = state;
-      return;
-    }
+    if (!expected || !state) return;
 
-    // If no state, nothing to confirm
-    if (!state) return;
-
-    // We confirm by checking if the derived value now matches what we requested
-    const derived: Record<string, any> = {
-      power,
-      temperature,
-      mode,
-      fanSpeed,
-      swing,
-    };
-
+    const derived: Record<string, any> = { power, temperature, mode, fanSpeed, swing };
     if (derived[expected.key] === expected.value) {
       expectedRef.current = null;
       if (pendingTimer.current) clearTimeout(pendingTimer.current);
       setPending(false);
     }
-
-    lastStateRef.current = state;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, power, temperature, mode, fanSpeed, swing]);
 
   async function send(capability: string, value: any) {
-    if (!deviceId) {
-      setErr("No AC device selected.");
-      return;
-    }
-
+    if (!deviceId) return setErr("No AC device selected.");
     setErr(null);
     touch();
 
-    // Start pending until confirmed (or timeout fallback)
-    startPending({ key: capability === "fanSpeed" ? "fanSpeed" : capability, value });
+    const key = capability === "fanSpeed" ? "fanSpeed" : capability;
+    startPending({ key, value });
 
     try {
       const resp = await signalService.sendDeviceCommand({
@@ -189,8 +154,6 @@ export default function AcPanel({
       });
 
       if (resp?.status !== "accepted") throw new Error("Command not accepted");
-
-      // Backup pull (if socket missed)
       setTimeout(() => refresh(), 450);
     } catch (e: any) {
       setErr(e?.response?.data?.error || e?.message || "Command failed");
@@ -208,39 +171,40 @@ export default function AcPanel({
   }, []);
 
   const disabled = pending || !deviceId;
+  const locked = !power || disabled;
 
   return (
-    <RemotePanel title="Air Conditioner" lastUpdated={lastUpdated}>
+    <RemotePanel title="AC" lastUpdated={lastUpdated}>
       {err && (
         <div className="mb-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-200">
           {err}
         </div>
       )}
 
-      {/* POWER */}
-      <div className="flex items-center justify-between mb-4">
-        <span className="text-sm text-white">
-          Status: {power ? "On" : "Off"}{" "}
-          {(pending || loading) && (
-            <span className="text-xs text-gray-400">• syncing…</span>
-          )}
-        </span>
+      {/* Header row */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-sm text-white/80">
+          {power ? "On" : "Off"}
+          {(pending || loading) ? <span className="text-xs text-white/40"> • syncing…</span> : null}
+        </div>
 
         <button
+          type="button"
           onClick={() => send("power", !power)}
           disabled={disabled}
-          className={`px-4 py-2 rounded-full text-sm font-medium transition disabled:opacity-50
-            ${power ? "bg-[#E11D2E]" : "bg-gray-700"}`}
+          className={`px-4 py-2 rounded-full text-sm font-semibold border transition disabled:opacity-50
+            ${power ? "bg-white text-black border-white/20" : "bg-white/5 text-white border-white/10 hover:bg-white/10"}`}
         >
           {power ? "Turn off" : "Turn on"}
         </button>
       </div>
 
-      {/* TEMPERATURE (responsive UI + debounced send) */}
-      <div className={`mb-4 ${(!power || disabled) && "opacity-40 pointer-events-none"}`}>
-        <label className="block text-xs text-gray-400 mb-2">
-          Temperature ({tempDraft}°C)
-        </label>
+      {/* Temperature */}
+      <div className={`mt-4 ${locked ? "opacity-40 pointer-events-none" : ""}`}>
+        <div className="flex items-center justify-between">
+          <div className="text-xs text-white/45">Temperature</div>
+          <div className="text-sm text-white/85 font-semibold">{tempDraft}°C</div>
+        </div>
 
         <input
           type="range"
@@ -250,68 +214,55 @@ export default function AcPanel({
           onChange={(e) => {
             const val = Number(e.target.value);
             setTempDraft(val);
-
             if (tempTimer.current) clearTimeout(tempTimer.current);
-            tempTimer.current = setTimeout(() => {
-              send("temperature", val);
-            }, 250);
+            tempTimer.current = setTimeout(() => send("temperature", val), 260);
           }}
-          className="w-full accent-[#E11D2E]"
+          className="w-full mt-2 accent-white"
         />
       </div>
 
-      {/* MODE */}
-      <div className={`mb-4 ${(!power || disabled) && "opacity-40 pointer-events-none"}`}>
-        <label className="block text-xs text-gray-400 mb-2">Mode</label>
-        <div className="flex gap-2 flex-wrap">
-          {(["cool", "heat", "fan", "dry"] as AcMode[]).map((m) => (
-            <button
-              key={m}
-              onClick={() => send("mode", m)}
-              disabled={disabled}
-              className={`px-3 py-1 rounded-full text-xs capitalize disabled:opacity-50
-                ${mode === m ? "bg-[#E11D2E] text-white" : "bg-gray-700 text-gray-300"}`}
-            >
-              {m}
-            </button>
-          ))}
+      {/* Mode + Fan */}
+      <div className={`mt-4 space-y-3 ${locked ? "opacity-40 pointer-events-none" : ""}`}>
+        <div>
+          <div className="text-xs text-white/45 mb-2">Mode</div>
+          <div className="flex gap-2 flex-wrap">
+            {(["cool", "heat", "fan", "dry"] as AcMode[]).map((m) => (
+              <Chip key={m} active={mode === m} onClick={() => send("mode", m)} disabled={disabled}>
+                {m.toUpperCase()}
+              </Chip>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <div className="text-xs text-white/45 mb-2">Fan</div>
+          <div className="flex gap-2 flex-wrap">
+            {(["low", "medium", "high", "auto"] as FanSpeed[]).map((f) => (
+              <Chip key={f} active={fanSpeed === f} onClick={() => send("fanSpeed", f)} disabled={disabled}>
+                {f.toUpperCase()}
+              </Chip>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* FAN SPEED */}
-      <div className={`mb-4 ${(!power || disabled) && "opacity-40 pointer-events-none"}`}>
-        <label className="block text-xs text-gray-400 mb-2">Fan Speed</label>
-        <div className="flex gap-2 flex-wrap">
-          {(["low", "medium", "high", "auto"] as FanSpeed[]).map((f) => (
-            <button
-              key={f}
-              onClick={() => send("fanSpeed", f)}
-              disabled={disabled}
-              className={`px-3 py-1 rounded-full text-xs capitalize disabled:opacity-50
-                ${fanSpeed === f ? "bg-[#E11D2E] text-white" : "bg-gray-700 text-gray-300"}`}
-            >
-              {f}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* SWING */}
-      <div className={`flex items-center justify-between ${(!power || disabled) && "opacity-40 pointer-events-none"}`}>
-        <span className="text-xs text-gray-400">Swing</span>
+      {/* Swing */}
+      <div className={`mt-4 flex items-center justify-between ${locked ? "opacity-40 pointer-events-none" : ""}`}>
+        <div className="text-xs text-white/45">Swing</div>
         <button
+          type="button"
           onClick={() => send("swing", !swing)}
           disabled={disabled}
-          className={`px-3 py-1 rounded-full text-xs disabled:opacity-50
-            ${swing ? "bg-[#E11D2E] text-white" : "bg-gray-700 text-gray-300"}`}
+          className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition disabled:opacity-50
+            ${swing ? "bg-white text-black border-white/20" : "bg-white/5 text-white/70 border-white/10 hover:bg-white/10"}`}
         >
-          {swing ? "On" : "Off"}
+          {swing ? "ON" : "OFF"}
         </button>
       </div>
 
       {!deviceId && (
-        <div className="mt-3 text-[11px] text-gray-500">
-          No AC device bound yet. Bind an AC device to enable commands.
+        <div className="mt-3 text-[11px] text-white/40">
+          No AC device linked yet.
         </div>
       )}
     </RemotePanel>
