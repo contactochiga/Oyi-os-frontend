@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /* -------------------------------------------------
-   Base reset & iOS-safe viewport behavior
+   Base reset & mobile-safe defaults
 -------------------------------------------------- */
 
 html,
@@ -9,77 +9,42 @@ body {
   margin: 0;
   padding: 0;
   height: 100%;
+  width: 100%;
   background: #06080e;
   color-scheme: dark;
-
-  /* iOS scroll/zoom hygiene */
-  -webkit-text-size-adjust: 100%;
-  text-size-adjust: 100%;
-  overscroll-behavior: none;
 }
 
-body {
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-
-  /* Prevent the “desktop zoom” feel on iOS */
-  touch-action: manipulation;
-}
-
-/* Make the app use the *dynamic* viewport height (fix keyboard jump) */
+/* iOS safe-area helpers */
 :root {
   --safe-top: env(safe-area-inset-top);
   --safe-bottom: env(safe-area-inset-bottom);
-  --footer-h: 88px;      /* your footer wrapper height approx */
-  --suggest-h: 52px;     /* suggestion strip approx */
 }
 
 /* Prevent background scroll when sidebar is open */
 body.sidebar-open {
-  overflow: hidden !important;
+  overflow: hidden;
   touch-action: none;
 }
 
-/* Hide chat footer & suggestions when menu is open (covers footer overlap) */
+/* Hide chat footer & suggestions when menu is open */
 body.sidebar-open .chat-footer,
 body.sidebar-open .chat-suggestions {
   display: none !important;
 }
 
-/* -------------------------------------------------
-   Layout helpers for iOS
--------------------------------------------------- */
+/* Improve text rendering */
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 
-/* Use dvh (dynamic viewport height) everywhere you need full height */
-.h-dvh {
-  height: 100dvh;
-}
-.min-h-dvh {
-  min-height: 100dvh;
-}
-
-/* iOS safe-area padding helpers */
-.safe-top {
-  padding-top: var(--safe-top);
-}
-.safe-bottom {
-  padding-bottom: var(--safe-bottom);
-}
-
-/* -------------------------------------------------
-   Scrollbar hide utility (for suggestion row)
--------------------------------------------------- */
-.scrollbar-hide::-webkit-scrollbar {
-  display: none;
-}
-.scrollbar-hide {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
+  /* Prevent rubber-band scrolling issues */
+  overscroll-behavior: none;
 }
 
 /* -------------------------------------------------
    Slide-up animation (Settings / panels)
 -------------------------------------------------- */
+
 @keyframes slide-up {
   from {
     transform: translateY(100%);
@@ -98,17 +63,33 @@ body.sidebar-open .chat-suggestions {
 /* -------------------------------------------------
    Mobile interaction hygiene
 -------------------------------------------------- */
+
 button,
 a {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* DON’T force smooth scroll globally on iOS (it can feel laggy + weird) */
-/* * { scroll-behavior: smooth; } */
+/* Optional: smooth scrolling inside panels */
+* {
+  scroll-behavior: smooth;
+}
+
+/* -------------------------------------------------
+   Safe-area utility classes (used by TopBar/Footer)
+-------------------------------------------------- */
+
+.safe-top {
+  padding-top: var(--safe-top);
+}
+
+.safe-bottom {
+  padding-bottom: var(--safe-bottom);
+}
 
 /* -------------------------------------------------
    Remote control button system (TV / AC / Devices)
 -------------------------------------------------- */
+
 @layer components {
   .btn-tv {
     @apply px-4 py-2 rounded-full bg-gray-700 text-sm text-white
@@ -132,25 +113,4 @@ a {
            flex items-center justify-center
            active:scale-95 transition;
   }
-}
-
-/* -------------------------------------------------
-   Footer + suggestions safe-area behavior
-   (prevents footer from floating weird on iPhone)
--------------------------------------------------- */
-
-.chat-footer {
-  padding-bottom: calc(16px + var(--safe-bottom)) !important;
-}
-
-.chat-suggestions {
-  padding-bottom: calc(8px + var(--safe-bottom)) !important;
-}
-
-/* -------------------------------------------------
-   Optional: prevent elastic bounce that makes layouts feel “bigger”
--------------------------------------------------- */
-body {
-  position: relative;
-  overflow-x: hidden;
 }
