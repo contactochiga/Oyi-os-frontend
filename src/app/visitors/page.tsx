@@ -1,13 +1,9 @@
+// src/app/visitors/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import ConsumerShell from "@/app/components/ConsumerShell";
-import Button from "@/components/ui/Button"; // if you don't have this in consumer repo, replace with <button> (see note below)
-import {
-  visitorService,
-  type VisitorAccess,
-  type VisitorStatus,
-} from "@/services/visitorService";
+import { visitorService, type VisitorAccess, type VisitorStatus } from "@/services/visitorService";
 
 function when(iso?: string | null) {
   if (!iso) return "—";
@@ -23,15 +19,14 @@ function when(iso?: string | null) {
 
 function pill(status: VisitorStatus) {
   const s = String(status || "").toLowerCase();
-  const base =
-    "text-[11px] px-2 py-1 rounded-full border inline-flex items-center";
+  const base = "text-[11px] px-2 py-1 rounded-full border inline-flex items-center";
 
   if (s === "approved" || s === "active")
     return `${base} border-emerald-500/20 bg-emerald-500/10 text-emerald-200`;
   if (s === "denied")
     return `${base} border-red-500/20 bg-red-500/10 text-red-200`;
   if (s === "entered")
-    return `${base} border-blue-500/20 bg-blue-500/10 text-blue-200`;
+    return `${base} border-sky-500/20 bg-sky-500/10 text-sky-200`;
   if (s === "exited")
     return `${base} border-white/10 bg-white/5 text-white/70`;
 
@@ -52,9 +47,10 @@ export default function VisitorsPage() {
   const [mode, setMode] = useState<"code" | "link">("code");
   const [expiresHours, setExpiresHours] = useState<number>(6);
 
-  const canCreate = useMemo(() => {
-    return name.trim().length >= 2 && phone.trim().length >= 7;
-  }, [name, phone]);
+  const canCreate = useMemo(() => name.trim().length >= 2 && phone.trim().length >= 7, [
+    name,
+    phone,
+  ]);
 
   // create response
   const [created, setCreated] = useState<{
@@ -116,6 +112,7 @@ export default function VisitorsPage() {
       }
 
       const v: VisitorAccess | undefined = res?.visitor;
+
       setCreated({
         id: v?.id,
         code: res?.code ?? v?.access_code ?? null,
@@ -128,7 +125,6 @@ export default function VisitorsPage() {
       setPhone("");
       setPurpose("");
 
-      // refresh list
       await loadMine();
     } catch (e: any) {
       setErr(e?.message || "Failed to create visitor");
@@ -168,40 +164,60 @@ export default function VisitorsPage() {
 
   return (
     <ConsumerShell title="Visitors" subtitle="Create access • track entries">
-      {/* CREATE PANEL */}
-      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-        <div className="text-sm font-semibold text-white">Create visitor access</div>
-        <div className="text-xs text-white/40 mt-1">
-          Generate a code (or link) for gate entry.
+      {/* ✅ Error (calm, consistent) */}
+      {err && (
+        <div className="mb-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+          {err}
+        </div>
+      )}
+
+      {/* ✅ Create (premium composer card) */}
+      <div className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-sm font-medium text-white">Create visitor access</div>
+            <div className="text-xs text-white/40 mt-1">
+              Generate a code or link for gate entry.
+            </div>
+          </div>
+
+          <button
+            onClick={loadMine}
+            disabled={loading}
+            className="shrink-0 rounded-xl px-3 py-2 text-sm text-white/80 bg-white/10 hover:bg-white/15 border border-white/10 disabled:opacity-50 transition"
+            type="button"
+          >
+            {loading ? "Refreshing…" : "Refresh"}
+          </button>
         </div>
 
-        <div className="mt-4 grid gap-3">
+        <div className="mt-5 grid gap-3">
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Visitor name (e.g. James)"
-            className="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-3 text-sm text-white outline-none"
+            placeholder="Visitor name"
+            className="w-full rounded-2xl bg-black/20 border border-white/10 px-4 py-3 text-sm text-white placeholder-white/30 outline-none"
           />
 
           <input
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             placeholder="Phone (e.g. 08012345678)"
-            className="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-3 text-sm text-white outline-none"
+            className="w-full rounded-2xl bg-black/20 border border-white/10 px-4 py-3 text-sm text-white placeholder-white/30 outline-none"
           />
 
           <input
             value={purpose}
             onChange={(e) => setPurpose(e.target.value)}
             placeholder="Purpose (optional)"
-            className="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-3 text-sm text-white outline-none"
+            className="w-full rounded-2xl bg-black/20 border border-white/10 px-4 py-3 text-sm text-white placeholder-white/30 outline-none"
           />
 
           <div className="grid grid-cols-2 gap-3">
             <select
               value={mode}
               onChange={(e) => setMode(e.target.value as any)}
-              className="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-3 text-sm text-white outline-none"
+              className="w-full rounded-2xl bg-black/20 border border-white/10 px-4 py-3 text-sm text-white outline-none"
             >
               <option value="code">Access Code</option>
               <option value="link">Access Link</option>
@@ -210,7 +226,7 @@ export default function VisitorsPage() {
             <select
               value={expiresHours}
               onChange={(e) => setExpiresHours(Number(e.target.value))}
-              className="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-3 text-sm text-white outline-none"
+              className="w-full rounded-2xl bg-black/20 border border-white/10 px-4 py-3 text-sm text-white outline-none"
             >
               <option value={1}>1 hour</option>
               <option value={3}>3 hours</option>
@@ -220,80 +236,82 @@ export default function VisitorsPage() {
             </select>
           </div>
 
+          {/* ✅ Primary action (neutral) */}
           <div className="flex gap-2">
             <button
               onClick={createVisitor}
               disabled={!canCreate || creating}
-              className="flex-1 py-3 rounded-xl bg-[#E11D2E] text-white text-sm font-semibold disabled:opacity-50"
+              className="flex-1 py-3 rounded-2xl bg-white text-black text-sm font-medium hover:opacity-90 disabled:opacity-40 transition"
+              type="button"
             >
-              {creating ? "Creating..." : "Create Access"}
+              {creating ? "Creating…" : "Create access"}
             </button>
 
             <button
-              onClick={loadMine}
-              disabled={loading}
-              className="px-4 py-3 rounded-xl bg-white/10 text-white text-sm disabled:opacity-50"
+              onClick={() => {
+                setName("");
+                setPhone("");
+                setPurpose("");
+                setCreated(null);
+                setErr(null);
+              }}
+              className="px-4 py-3 rounded-2xl bg-white/10 text-white/80 text-sm border border-white/10 hover:bg-white/15 transition"
+              type="button"
             >
-              {loading ? "..." : "Refresh"}
+              Clear
             </button>
           </div>
         </div>
 
-        {err && (
-          <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-200">
-            {err}
-          </div>
-        )}
-
-        {/* CREATED RESULT */}
+        {/* ✅ Created result (copy-first, calm) */}
         {created && (
-          <div className="mt-4 rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3">
-            <div className="text-sm text-emerald-200 font-semibold">
-              Visitor access created
+          <div className="mt-5 rounded-3xl border border-emerald-500/20 bg-emerald-500/10 p-4">
+            <div className="text-sm font-medium text-emerald-100">Access created</div>
+            <div className="text-xs text-emerald-100/70 mt-1">
+              Share the code with security/gate.
             </div>
 
-            <div className="mt-2 grid gap-2">
-              <div className="flex items-center justify-between gap-3">
-                <div className="text-xs text-emerald-100/80">Code</div>
-                <button
-                  onClick={() => copy(created.code)}
-                  className="text-xs text-emerald-200 underline"
-                >
-                  Copy
-                </button>
-              </div>
-
-              <div className="rounded-xl border border-emerald-500/20 bg-black/20 px-3 py-2 text-sm text-white font-mono">
-                {created.code || "—"}
+            <div className="mt-4 grid gap-3">
+              <div className="rounded-2xl border border-emerald-500/20 bg-black/20 px-4 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-[11px] text-emerald-100/70">Access code</div>
+                  <button
+                    onClick={() => copy(created.code)}
+                    className="text-[11px] text-emerald-100 underline"
+                    type="button"
+                  >
+                    Copy
+                  </button>
+                </div>
+                <div className="mt-1 text-sm text-white font-mono">
+                  {created.code || "—"}
+                </div>
               </div>
 
               {created.link ? (
-                <div className="mt-2">
+                <div className="rounded-2xl border border-emerald-500/20 bg-black/20 px-4 py-3">
                   <div className="flex items-center justify-between gap-3">
-                    <div className="text-xs text-emerald-100/80">Link</div>
+                    <div className="text-[11px] text-emerald-100/70">Access link</div>
                     <button
                       onClick={() => copy(created.link)}
-                      className="text-xs text-emerald-200 underline"
+                      className="text-[11px] text-emerald-100 underline"
+                      type="button"
                     >
                       Copy
                     </button>
                   </div>
-
-                  <div className="rounded-xl border border-emerald-500/20 bg-black/20 px-3 py-2 text-xs text-white break-all">
-                    {created.link}
-                  </div>
+                  <div className="mt-2 text-xs text-white/90 break-all">{created.link}</div>
                 </div>
               ) : null}
 
               {created.qr ? (
-                <div className="mt-3">
-                  <div className="text-xs text-emerald-100/80 mb-2">QR</div>
-                  {/* If backend returns base64 dataUrl or url, show it */}
+                <div className="rounded-2xl border border-emerald-500/20 bg-black/20 px-4 py-3">
+                  <div className="text-[11px] text-emerald-100/70 mb-2">QR</div>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={created.qr}
                     alt="Visitor QR"
-                    className="w-40 h-40 rounded-xl border border-emerald-500/20 bg-black/30"
+                    className="w-40 h-40 rounded-2xl border border-emerald-500/20 bg-black/30"
                   />
                 </div>
               ) : null}
@@ -302,15 +320,12 @@ export default function VisitorsPage() {
         )}
       </div>
 
-      {/* LIST */}
-      <div className="mt-4">
+      {/* ✅ Recent visitors */}
+      <div className="mt-5">
         <div className="flex items-end justify-between gap-3">
           <div>
-            <div className="text-sm font-semibold text-white">Recent visitors</div>
-            <div className="text-xs text-white/40 mt-1">
-              This uses <span className="text-white/70">GET /visitors/mine</span>{" "}
-              (safe if not enabled).
-            </div>
+            <div className="text-sm font-medium text-white">Recent visitors</div>
+            <div className="text-xs text-white/40 mt-1">Tap any visitor to view details.</div>
           </div>
         </div>
 
@@ -320,7 +335,7 @@ export default function VisitorsPage() {
             Loading…
           </div>
         ) : items.length === 0 ? (
-          <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/60">
+          <div className="mt-4 rounded-3xl border border-white/10 bg-white/5 p-5 text-sm text-white/60">
             No visitors yet.
           </div>
         ) : (
@@ -329,11 +344,12 @@ export default function VisitorsPage() {
               <button
                 key={v.id}
                 onClick={() => openVisitorInfo(v.id)}
-                className="w-full text-left rounded-2xl border border-white/10 bg-black/20 p-4 hover:bg-white/5 transition"
+                className="w-full text-left rounded-3xl border border-white/10 bg-white/5 hover:bg-white/7 transition p-4"
+                type="button"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-sm text-white font-semibold truncate">
+                    <div className="text-sm text-white font-medium truncate">
                       {v.visitor_name || "Visitor"}
                     </div>
                     <div className="text-xs text-white/40 mt-1 truncate">
@@ -347,13 +363,10 @@ export default function VisitorsPage() {
                   </div>
                 </div>
 
-                <div className="mt-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/70">
+                <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/70">
                   Code: <span className="text-white font-mono">{v.access_code}</span>
                   {v.expires_at ? (
-                    <span className="text-white/40">
-                      {" "}
-                      • expires {when(v.expires_at)}
-                    </span>
+                    <span className="text-white/40"> • expires {when(v.expires_at)}</span>
                   ) : null}
                 </div>
               </button>
@@ -362,7 +375,7 @@ export default function VisitorsPage() {
         )}
       </div>
 
-      {/* INFO MODAL */}
+      {/* ✅ Info modal */}
       {openInfo && (
         <div className="fixed inset-0 z-[120]">
           <div
@@ -371,21 +384,18 @@ export default function VisitorsPage() {
           />
           <div className="absolute left-0 right-0 top-20 px-4">
             <div className="max-w-3xl mx-auto">
-              <div className="rounded-2xl border border-white/10 bg-zinc-950 overflow-hidden">
+              <div className="rounded-3xl border border-white/10 bg-zinc-950 overflow-hidden">
                 <div className="px-4 py-3 border-b border-white/10 flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-sm font-semibold text-white truncate">
-                      Visitor details
-                    </div>
-                    <div className="text-xs text-white/40 mt-1">
-                      GET /visitors/info/:id
-                    </div>
+                    <div className="text-sm font-medium text-white truncate">Visitor</div>
+                    <div className="text-xs text-white/40 mt-1">Details & access info</div>
                   </div>
 
                   <button
-                    className="rounded-lg px-2 py-1 text-white/70 hover:bg-white/5"
+                    className="rounded-xl px-2 py-1 text-white/70 hover:bg-white/5"
                     onClick={() => setOpenInfo(false)}
                     aria-label="Close"
+                    type="button"
                   >
                     ✕
                   </button>
@@ -398,42 +408,34 @@ export default function VisitorsPage() {
                       Loading…
                     </div>
                   ) : infoErr ? (
-                    <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+                    <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
                       {infoErr}
                     </div>
                   ) : infoItem ? (
                     <div className="space-y-3">
-                      <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+                      <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                         <div className="text-[11px] text-white/40">Name</div>
-                        <div className="text-sm text-white mt-1">
-                          {infoItem.visitor_name}
-                        </div>
+                        <div className="text-sm text-white mt-1">{infoItem.visitor_name}</div>
                       </div>
 
                       <div className="grid grid-cols-2 gap-3">
-                        <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+                        <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                           <div className="text-[11px] text-white/40">Phone</div>
-                          <div className="text-sm text-white mt-1">
-                            {infoItem.visitor_phone}
-                          </div>
+                          <div className="text-sm text-white mt-1">{infoItem.visitor_phone}</div>
                         </div>
 
-                        <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+                        <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                           <div className="text-[11px] text-white/40">Status</div>
-                          <div className="text-sm text-white mt-1">
-                            {String(infoItem.status)}
-                          </div>
+                          <div className="text-sm text-white mt-1">{String(infoItem.status)}</div>
                         </div>
                       </div>
 
-                      <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+                      <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                         <div className="text-[11px] text-white/40">Purpose</div>
-                        <div className="text-sm text-white mt-1">
-                          {infoItem.purpose || "—"}
-                        </div>
+                        <div className="text-sm text-white mt-1">{infoItem.purpose || "—"}</div>
                       </div>
 
-                      <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+                      <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                         <div className="text-[11px] text-white/40">Access code</div>
                         <div className="text-sm text-white mt-1 font-mono">
                           {infoItem.access_code}
@@ -441,32 +443,30 @@ export default function VisitorsPage() {
                       </div>
 
                       <div className="grid grid-cols-2 gap-3">
-                        <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+                        <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                           <div className="text-[11px] text-white/40">Created</div>
-                          <div className="text-sm text-white mt-1">
-                            {when(infoItem.created_at)}
-                          </div>
+                          <div className="text-sm text-white mt-1">{when(infoItem.created_at)}</div>
                         </div>
 
-                        <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+                        <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                           <div className="text-[11px] text-white/40">Expires</div>
-                          <div className="text-sm text-white mt-1">
-                            {when(infoItem.expires_at)}
-                          </div>
+                          <div className="text-sm text-white mt-1">{when(infoItem.expires_at)}</div>
                         </div>
                       </div>
 
                       <div className="flex gap-2">
                         <button
                           onClick={() => copy(infoItem.access_code)}
-                          className="flex-1 py-3 rounded-xl bg-white/10 text-white text-sm"
+                          className="flex-1 py-3 rounded-2xl bg-white/10 text-white text-sm border border-white/10 hover:bg-white/15 transition"
+                          type="button"
                         >
-                          Copy Code
+                          Copy code
                         </button>
 
                         <button
                           onClick={() => setOpenInfo(false)}
-                          className="flex-1 py-3 rounded-xl bg-[#E11D2E] text-white text-sm font-semibold"
+                          className="flex-1 py-3 rounded-2xl bg-white text-black text-sm font-medium hover:opacity-90 transition"
+                          type="button"
                         >
                           Done
                         </button>
