@@ -1,44 +1,174 @@
-// src/app/components/remotes/HomeSummaryPanel.tsx
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import RemotePanel from "./RemotePanel";
+import useAuth from "@/hooks/useAuth";
+import { deviceService } from "@/services/deviceService";
+import { maintenanceService } from "@/services/maintenanceService";
+import { useNotificationStore } from "@/store/useNotificationStore";
+
+function getApiBase() {
+  return (
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    process.env.NEXT_PUBLIC_BACKEND_URL ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    "https://oyi-os.onrender.com"
+  ).replace(/\/$/, "");
+}
+
+function buildHomeLabel(home: any): string | null {
+  if (!home) return null;
+  const block = String(home.block || "").trim();
+  const unit = String(home.unit || "").trim();
+  if (block && unit) return `${block} / ${unit}`;
+  if (block) return block;
+  if (unit) return unit;
+  const name = String(home.name || "").trim();
+  return name || null;
+}
+
+function Tile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+      <div className="text-[11px] text-white/45">{label}</div>
+      <div className="text-[13px] text-white/90 font-semibold mt-1">{value}</div>
+    </div>
+  );
+}
 
 export default function HomeSummaryPanel({
   lastUpdated,
 }: {
   lastUpdated?: number;
 }) {
+  const { user, token } = useAuth();
+
+  const unreadCount = useNotificationStore((s) => s.unreadCount);
+
+  const [estateName, setEstateName] = useState<string | null>(null);
+  const [homeLabel, setHomeLabel] = useState<string | null>(null);
+
+  const [deviceCount, setDeviceCount] = useState<number | null>(null);
+  const [openMaintenance, setOpenMaintenance] = useState<number | null>(null);
+
+  const estateId = useMemo(
+    () =>
+      (user as any)?.estate_id ??
+      (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null),
+    [user]
+  );
+
+  // Context: reuse the same /me/context idea
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      setEstateName(null);
+      setHomeLabel(null);
+      if (!token) return;
+
+      try {
+        const api = getApiBase();
+        const res = await fetch(`${api}/me/context`, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          cache: "no-store",
+        });
+
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+
+        const estate = data?.estate || null;
+        const home = data?.home || null;
+
+        setEstateName(estate?.name ? String(estate.name) : null);
+        setHomeLabel(home ? buildHomeLabel(home) : null);
+      } catch {
+        // silent
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  // Devices count
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const list = await deviceService.getDevices(estateId ?? undefined);
+        if (cancelled) return;
+        setDeviceCount(Array.isArray(list) ? list.length : 0);
+      } catch {
+        if (cancelled) return;
+        setDeviceCount(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [estateId]);
+
+  // Maintenance open count (only if service exists)
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res: any = await maintenanceService.listMyTickets();
+        const arr = Array.isArray(res) ? res : [];
+        const open = arr.filter((t: any) => String(t.status || "open").toLowerCase() !== "resolved").length;
+        if (cancelled) return;
+        setOpenMaintenance(open);
+      } catch {
+        if (cancelled) return;
+        setOpenMaintenance(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const tiles = useMemo(() => {
+    const out: Array<{ label: string; value: string }> = [];
+
+    if (estateName) out.push({ label: "Estate", value: estateName });
+    if (homeLabel) out.push({ label: "Home", value: homeLabel });
+
+    if (deviceCount !== null) out.push({ label: "Devices", value: String(deviceCount) });
+
+    if (openMaintenance !== null) {
+      out.push({ label: "Maintenance", value: openMaintenance ? `${openMaintenance} open` : "0 open" });
+    }
+
+    out.push({ label: "Notifications", value: unreadCount ? `${unreadCount} unread` : "0 unread" });
+
+    return out;
+  }, [estateName, homeLabel, deviceCount, openMaintenance, unreadCount]);
+
   return (
-    <RemotePanel title="Home Summary" lastUpdated={lastUpdated}>
-      <div className="space-y-4">
-        {/* STATUS BLOCKS */}
+    <RemotePanel title="Summary" lastUpdated={lastUpdated}>
+      {tiles.length ? (
         <div className="grid grid-cols-2 gap-3">
-          <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-            <div className="text-xs text-gray-400">Power</div>
-            <div className="text-white font-medium">Active</div>
-          </div>
-
-          <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-            <div className="text-xs text-gray-400">Water</div>
-            <div className="text-white font-medium">Available</div>
-          </div>
-
-          <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-            <div className="text-xs text-gray-400">Security</div>
-            <div className="text-white font-medium">All doors locked</div>
-          </div>
-
-          <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-            <div className="text-xs text-gray-400">Active Devices</div>
-            <div className="text-white font-medium">3 running</div>
-          </div>
+          {tiles.slice(0, 4).map((t) => (
+            <Tile key={t.label} label={t.label} value={t.value} />
+          ))}
         </div>
-
-        {/* QUICK INSIGHT */}
-        <div className="rounded-xl bg-gray-900 border border-gray-700 p-4 text-sm text-gray-300">
-          No security alerts. Last visitor was approved 2 hours ago.
+      ) : (
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/60">
+          No home context yet.
         </div>
-      </div>
+      )}
     </RemotePanel>
   );
 }
