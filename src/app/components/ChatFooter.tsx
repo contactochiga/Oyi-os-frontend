@@ -11,11 +11,11 @@ const BAR_COUNT = 32;
 const SMOOTHING = 0.85;
 
 const INTENT_COLORS: Record<Intent, string> = {
-  default: "#E11D2E",
-  light: "#E11D2E",
-  ac: "#3B82F6",
-  security: "#10B981",
-  tv: "#8B5CF6",
+  default: "#FFFFFF",
+  light: "#FFFFFF",
+  ac: "#60A5FA",
+  security: "#34D399",
+  tv: "#A78BFA",
 };
 
 export default function ChatFooter({
@@ -32,8 +32,11 @@ export default function ChatFooter({
   const [intent, setIntent] = useState<Intent>("default");
 
   const recognitionRef = useRef<any>(null);
+
   const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
   const barsRef = useRef<HTMLDivElement[]>([]);
   const smoothValues = useRef<number[]>(Array(BAR_COUNT).fill(0));
 
@@ -101,6 +104,8 @@ export default function ChatFooter({
 
   async function startAudio() {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    streamRef.current = stream;
+
     const audioCtx = new AudioContext();
     const analyser = audioCtx.createAnalyser();
 
@@ -117,9 +122,17 @@ export default function ChatFooter({
   }
 
   function stopAudio() {
-    audioCtxRef.current?.close();
+    try {
+      audioCtxRef.current?.close();
+    } catch {}
+
     audioCtxRef.current = null;
     analyserRef.current = null;
+
+    try {
+      streamRef.current?.getTracks()?.forEach((t) => t.stop());
+    } catch {}
+    streamRef.current = null;
   }
 
   function animate() {
@@ -137,8 +150,8 @@ export default function ChatFooter({
         );
 
         const avg = slice.reduce((a, b) => a + Math.abs(b - 128), 0) / slice.length;
+        const target = Math.min(34, avg * 1.5);
 
-        const target = Math.min(36, avg * 1.5);
         smoothValues.current[i] =
           smoothValues.current[i] * SMOOTHING + target * (1 - SMOOTHING);
 
@@ -189,36 +202,75 @@ export default function ChatFooter({
 
   return (
     <div className="max-w-3xl mx-auto">
-      <div className="relative flex items-center bg-gray-800 rounded-full px-3 py-2 gap-3">
+      <div
+        className="
+          relative flex items-center gap-3
+          rounded-3xl px-3 py-2
+          border border-white/10 bg-white/5
+          backdrop-blur-xl
+          overflow-hidden
+        "
+      >
+        {/* glass sheen */}
+        <div
+          className="
+            pointer-events-none absolute inset-0
+            bg-gradient-to-b from-white/10 via-white/5 to-transparent
+          "
+        />
+        {/* subtle inner highlight */}
+        <div className="pointer-events-none absolute inset-0 ring-1 ring-white/5 rounded-3xl" />
+
+        {/* mic */}
         <button
           type="button"
           onClick={voiceState === "recording" ? stopRecording : startRecording}
-          className={`w-10 h-10 rounded-full flex items-center justify-center
-            ${voiceState === "recording" ? "bg-red-600" : "bg-gray-700"}
+          className={`
+            relative z-[1]
+            w-10 h-10 rounded-2xl flex items-center justify-center
+            border transition active:scale-[0.99]
+            ${
+              voiceState === "recording"
+                ? "bg-white text-black border-white/20"
+                : "bg-white/5 text-white border-white/10 hover:bg-white/10"
+            }
           `}
+          aria-label={voiceState === "recording" ? "Stop recording" : "Start recording"}
         >
           {voiceState === "recording" ? (
-            <FaStop className="text-white text-[14px]" />
+            <FaStop className="text-[14px]" />
           ) : (
-            <FaMicrophone className="text-white text-[14px]" />
+            <FaMicrophone className="text-[14px]" />
           )}
         </button>
 
+        {/* middle */}
         {voiceState === "recording" ? (
-          <div className="flex-1 flex items-end gap-[2px] h-9">
-            {Array.from({ length: BAR_COUNT }).map((_, i) => (
-              <div
-                key={i}
-                ref={(el) => {
-                  if (el) barsRef.current[i] = el;
-                }}
-                className="flex-1 rounded-full transition-[height]"
-                style={{
-                  height: 6,
-                  backgroundColor: INTENT_COLORS[intent],
-                }}
-              />
-            ))}
+          <div className="relative z-[1] flex-1 h-9">
+            {/* bar bed (glass) */}
+            <div className="absolute inset-0 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl" />
+            <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-white/10 via-transparent to-transparent opacity-70" />
+
+            {/* bars */}
+            <div className="relative h-9 flex items-end gap-[3px] px-3">
+              {Array.from({ length: BAR_COUNT }).map((_, i) => (
+                <div
+                  key={i}
+                  ref={(el) => {
+                    if (el) barsRef.current[i] = el;
+                  }}
+                  className="rounded-full transition-[height]"
+                  style={{
+                    // ✅ thinner bars, same rhythm
+                    width: 2,
+                    height: 6,
+                    backgroundColor: INTENT_COLORS[intent],
+                    opacity: intent === "default" ? 0.55 : 0.85,
+                    boxShadow: "0 0 10px rgba(255,255,255,0.10)",
+                  }}
+                />
+              ))}
+            </div>
           </div>
         ) : (
           <input
@@ -235,20 +287,28 @@ export default function ChatFooter({
               }
             }}
             placeholder="Ask Oyi…"
-            // ✅ iOS fix: >= 16px font prevents focus-zoom “screen expansion”
-            className="flex-1 bg-transparent outline-none px-2 text-[16px] leading-[20px] text-white placeholder-gray-400"
+            className="relative z-[1] flex-1 bg-transparent outline-none px-2 text-[16px] leading-[20px] text-white/90 placeholder-white/35"
           />
         )}
 
+        {/* send */}
         <button
           type="button"
           onClick={handleSend}
           disabled={!canSend}
-          className={`w-10 h-10 rounded-full flex items-center justify-center
-            ${canSend ? "bg-[#E11D2E]" : "bg-gray-700 opacity-50"}
+          className={`
+            relative z-[1]
+            w-10 h-10 rounded-2xl flex items-center justify-center
+            border transition active:scale-[0.99]
+            ${
+              canSend
+                ? "bg-white text-black border-white/20"
+                : "bg-white/5 text-white/40 border-white/10 opacity-60"
+            }
           `}
+          aria-label="Send"
         >
-          <FaPaperPlane className="text-white text-[13px]" />
+          <FaPaperPlane className="text-[13px]" />
         </button>
       </div>
     </div>
