@@ -1,5 +1,3 @@
-// src/app/components/remotes/WalletPanel.tsx
-
 "use client";
 
 import { useEffect, useState } from "react";
@@ -16,17 +14,10 @@ type Transaction = {
 };
 
 function pickErr(e: any) {
-  return (
-    e?.response?.data?.error ||
-    e?.response?.data?.message ||
-    e?.message ||
-    "Something went wrong"
-  );
+  return e?.response?.data?.error || e?.response?.data?.message || e?.message || "Something went wrong";
 }
 
-// Paystack initialize responses sometimes come back in different shapes
 function extractPaystackUrl(resp: any): string | null {
-  // Typical Paystack: { status: true, message, data: { authorization_url } }
   const a =
     resp?.data?.authorization_url ||
     resp?.authorization_url ||
@@ -61,26 +52,18 @@ export default function WalletPanel({
 
     try {
       const w = await walletService.getWallet();
-
-      // Expecting: { id, user_id, balance, ... }
       const b = Number(w?.balance ?? 0);
       setBalance(Number.isFinite(b) ? b : 0);
 
-      // No tx endpoint yet — keep empty until you add one (signals/ledger)
+      // keep empty until your backend provides tx list
       setTransactions([]);
     } catch (e: any) {
       const msg = pickErr(e);
-
-      // If backend returns the Supabase "single()" error, show clear hint
       if (String(msg).toLowerCase().includes("cannot coerce the result to a single json object")) {
-        setErr(
-          "Wallet table returned multiple rows for this user. Fix backend: ensure wallets.user_id is UNIQUE (or change query to limit 1)."
-        );
+        setErr("Wallet returned multiple rows for this user. Ensure wallets.user_id is UNIQUE (or query limit 1).");
       } else {
         setErr(msg);
       }
-
-      // keep real state (no demo fallback)
       setBalance(0);
       setTransactions([]);
     } finally {
@@ -90,37 +73,22 @@ export default function WalletPanel({
 
   async function fundWallet() {
     setErr(null);
-
-    if (!user?.email) {
-      setErr("Your account email is required to fund wallet.");
-      return;
-    }
+    if (!user?.email) return setErr("Your account email is required to fund wallet.");
 
     const raw = window.prompt("How much do you want to fund? (NGN)", "5000");
     if (!raw) return;
 
     const amount = Number(String(raw).replace(/,/g, ""));
-    if (!Number.isFinite(amount) || amount <= 0) {
-      setErr("Enter a valid amount (e.g. 5000).");
-      return;
-    }
+    if (!Number.isFinite(amount) || amount <= 0) return setErr("Enter a valid amount (e.g. 5000).");
 
     try {
       setLoading(true);
       touch();
 
-      const initResp = await walletService.initPayment({
-        amount,
-        email: user.email,
-      });
-
+      const initResp = await walletService.initPayment({ amount, email: user.email });
       const url = extractPaystackUrl(initResp);
-      if (!url) {
-        setErr("Paystack init succeeded but no authorization_url was returned.");
-        return;
-      }
+      if (!url) return setErr("No authorization_url returned from Paystack init.");
 
-      // redirect to Paystack checkout
       window.location.href = url;
     } catch (e: any) {
       setErr(pickErr(e));
@@ -136,19 +104,14 @@ export default function WalletPanel({
     if (!raw) return;
 
     const amount = Number(String(raw).replace(/,/g, ""));
-    if (!Number.isFinite(amount) || amount <= 0) {
-      setErr("Enter a valid amount (e.g. 1000).");
-      return;
-    }
+    if (!Number.isFinite(amount) || amount <= 0) return setErr("Enter a valid amount (e.g. 1000).");
 
-    const reason =
-      window.prompt("Reason (optional)", "bills_payment") || "bills_payment";
+    const reason = window.prompt("Reason (optional)", "bills_payment") || "bills_payment";
 
     try {
       setLoading(true);
       touch();
 
-      // placeholder until you build real biller endpoints
       await walletService.debit({ amount, reason });
       await load();
     } catch (e: any) {
@@ -164,80 +127,69 @@ export default function WalletPanel({
   }, []);
 
   return (
-    <RemotePanel title="Wallet" lastUpdated={lastUpdated}>
-      <div className="flex items-center justify-between mb-3">
-        <div className="text-xs text-gray-400">
-          {loading ? "Syncing…" : "Balance"}
-        </div>
-
+    <RemotePanel
+      title="Wallet"
+      lastUpdated={lastUpdated}
+      right={
         <button
           onClick={load}
           disabled={loading}
-          className={`px-3 py-1.5 rounded-full text-xs font-medium ${
-            loading ? "bg-gray-700 text-gray-400" : "bg-[#E11D2E] text-white"
-          }`}
+          className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-xs text-white/80 border border-white/10 disabled:opacity-50"
+          type="button"
         >
-          {loading ? "..." : "Refresh"}
+          {loading ? "Syncing…" : "Refresh"}
         </button>
-      </div>
-
+      }
+    >
       {err && (
-        <div className="mb-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+        <div className="mb-3 rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-200">
           {err}
         </div>
       )}
 
-      <div className="mb-4 rounded-xl bg-gray-800 border border-gray-700 p-4">
-        <div className="text-xs text-gray-400 mb-1">Available Balance</div>
-        <div className="text-2xl font-semibold text-white">
-          ₦{Number(balance).toLocaleString()}
-        </div>
+      <div className="mb-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+        <div className="text-xs text-white/45 mb-1">Available balance</div>
+        <div className="text-2xl font-semibold text-white/90">₦{Number(balance).toLocaleString()}</div>
       </div>
 
-      <div className="flex gap-3 mb-5">
+      <div className="flex gap-2 mb-5">
         <button
           onClick={fundWallet}
           disabled={loading}
-          className="flex-1 py-3 rounded-xl bg-[#E11D2E] text-white text-sm font-medium disabled:opacity-50"
+          className="flex-1 py-3 rounded-2xl bg-white text-black text-sm font-semibold border border-white/20 disabled:opacity-50"
+          type="button"
         >
-          Fund Wallet
+          Fund
         </button>
 
         <button
           onClick={payBills}
           disabled={loading}
-          className="flex-1 py-3 rounded-xl bg-gray-700 text-white text-sm font-medium disabled:opacity-50"
+          className="flex-1 py-3 rounded-2xl bg-white/10 text-white text-sm font-semibold border border-white/10 hover:bg-white/15 disabled:opacity-50"
+          type="button"
         >
-          Pay Bills
+          Pay
         </button>
       </div>
 
       <div>
-        <div className="text-xs text-gray-400 mb-2">Recent Transactions</div>
+        <div className="text-xs text-white/45 mb-2">Transactions</div>
 
         {!transactions.length ? (
-          <div className="text-sm text-gray-500">
-            No transactions yet. (We’ll show this once you add a tx/ledger endpoint.)
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/60">
+            No transactions yet.
           </div>
         ) : (
           <div className="space-y-2">
             {transactions.map((tx) => (
-              <div
-                key={tx.id}
-                className="flex items-center justify-between bg-gray-800 rounded-lg px-4 py-3 border border-gray-700"
-              >
-                <div>
-                  <div className="text-sm text-white">{tx.title}</div>
-                  <div className="text-xs text-gray-400">{tx.time}</div>
+              <div key={tx.id} className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                <div className="min-w-0">
+                  <div className="text-sm text-white/90 truncate">{tx.title}</div>
+                  <div className="text-xs text-white/45">{tx.time}</div>
                 </div>
 
-                <div
-                  className={`text-sm font-medium ${
-                    tx.type === "credit" ? "text-green-400" : "text-red-400"
-                  }`}
-                >
-                  {tx.type === "credit" ? "+" : "-"}₦
-                  {tx.amount.toLocaleString()}
+                <div className={`text-sm font-semibold ${tx.type === "credit" ? "text-emerald-300" : "text-red-300"}`}>
+                  {tx.type === "credit" ? "+" : "-"}₦{tx.amount.toLocaleString()}
                 </div>
               </div>
             ))}
