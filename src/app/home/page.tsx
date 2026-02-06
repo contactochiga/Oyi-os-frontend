@@ -32,15 +32,13 @@ type ChatMessage = {
   deviceId?: string;
   time: string;
   lastUpdated: number;
-
-  // internal helper: mark placeholder bubble we later replace
   pending?: boolean;
 };
 
 type DeviceAction =
   | {
       type: "device.command";
-      deviceId: string; // internal device row id OR external id depending on your backend
+      deviceId: string;
       command: Record<string, any>;
     }
   | {
@@ -76,6 +74,7 @@ function inferPanel(aiPanel?: string | null, userText?: string): string | null {
     src.includes("summary") ||
     src.includes("overview") ||
     src.includes("status") ||
+    src.includes("whats happening") ||
     src.includes("what's happening")
   )
     return "home";
@@ -159,7 +158,8 @@ function inferPanel(aiPanel?: string | null, userText?: string): string | null {
   if (src.includes("light")) return "light";
   if (src.includes("ac") || src.includes("air conditioner")) return "ac";
   if (src.includes("tv") || src.includes("television")) return "tv";
-  if (src.includes("device") || src.includes("appliance")) return "devices";
+  if (src.includes("device") || src.includes("appliance") || src.includes("discover"))
+    return "devices";
 
   return null;
 }
@@ -207,7 +207,6 @@ function getSuggestionTitle(panel: string): string {
 function shouldOpenPanel(userText: string, panel: string | null) {
   if (!panel) return false;
 
-  // Always open management panels
   const MANAGEMENT = new Set([
     "home",
     "rooms",
@@ -223,7 +222,6 @@ function shouldOpenPanel(userText: string, panel: string | null) {
 
   if (MANAGEMENT.has(panel)) return true;
 
-  // Device panels only on explicit UI request
   const t = (userText || "").toLowerCase();
   const wantsUi =
     t.includes("open") ||
@@ -239,14 +237,12 @@ function shouldOpenPanel(userText: string, panel: string | null) {
 
 /**
  * ✅ Execute actions returned by AI (device command etc.)
- * This keeps chat “conversational” while the backend does work.
  */
 async function executeActions(actions: DeviceAction[] | undefined) {
   if (!actions?.length) return;
 
   for (const a of actions) {
     if (a.type === "device.command") {
-      // This must call your backend: POST /devices/:deviceId/command { command }
       await deviceService.commandDevice(a.deviceId, a.command);
     }
   }
@@ -271,14 +267,16 @@ export default function HomePage() {
   ]);
 
   const estateId = useMemo(() => {
-    return user?.estate_id ?? (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null);
+    return (
+      user?.estate_id ??
+      (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null)
+    );
   }, [user?.estate_id]);
 
   async function handleSend(text?: string) {
     const command = (text ?? input).trim();
     if (!command) return;
 
-    // ✅ invite sentinel
     if (command === "__OPEN_INVITES__") {
       router.push("/invites");
       return;
@@ -301,7 +299,7 @@ export default function HomePage() {
       },
     ]);
 
-    // 2) Add ASSISTANT placeholder bubble (“Thinking…”)
+    // 2) Add ASSISTANT placeholder bubble
     const pendingId = createId();
     setMessages((prev) => [
       ...prev,
@@ -318,31 +316,22 @@ export default function HomePage() {
     try {
       const resp: any = await aiService.chat(command);
 
-      // Backwards compatibility:
-      // - old: { reply, panel, deviceId }
-      // - new: { reply, panel, deviceId, actions: [] }
       const reply =
         resp?.reply ||
         `Got it. ${command.charAt(0).toUpperCase()}${command.slice(1)}.`;
 
-      const inferred = inferPanel(resp?.panel, command);
-      const panel = inferred;
+      const panel = inferPanel(resp?.panel, command);
 
-      // New schema: actions array (best)
       const actions: DeviceAction[] | undefined = resp?.actions;
+      if (actions?.length) await executeActions(actions);
 
-      // If actions exist: execute them now
-      if (actions?.length) {
-        await executeActions(actions);
-      }
-
-      // For device panels (light/ac/tv/door), default to NO panel unless user asked
       const openPanel = shouldOpenPanel(command, panel);
 
       const deviceId = resp?.deviceId;
-      const panelKey = openPanel && panel ? `${panel}:${deviceId || "default"}` : null;
+      const panelKey =
+        openPanel && panel ? `${panel}:${deviceId || "default"}` : null;
 
-      // 3) Replace pending assistant bubble with final reply (+ maybe panel)
+      // 3) Replace pending bubble
       setMessages((prev) =>
         prev.map((m) => {
           if (m.id !== pendingId) return m;
@@ -373,16 +362,20 @@ export default function HomePage() {
         })
       );
 
-      // 4) Only fetch devices list when opening devices panel
+      // 4) Fetch devices list when opening devices panel
       if (openPanel && panel === "devices") {
-        // ⚠️ if your current deviceService.getDevices hits /devices/estate/:id and you saw 404,
-        // this is where it will still fail until we fix deviceService endpoint.
         const devices = await deviceService.getDevices(estateId ?? undefined);
         setDiscoveredDevices(devices || []);
       }
 
-      // 5) Suggestion event (only when we opened a panel OR when management panel inferred)
-      if (panel && (openPanel || ["rooms","visitor","wallet","utilities","maintenance","community","devices"].includes(panel))) {
+      // 5) Suggestion event
+      if (
+        panel &&
+        (openPanel ||
+          ["rooms", "visitor", "wallet", "utilities", "maintenance", "community", "devices"].includes(
+            panel
+          ))
+      ) {
         pushEvent({
           id: createId(),
           type: "info",
@@ -393,7 +386,7 @@ export default function HomePage() {
           message: command,
           timestamp: stamp,
           expiresAt: Date.now() + 60_000,
-        });
+        } as any);
       }
     } catch (e) {
       setMessages((prev) =>
@@ -416,19 +409,26 @@ export default function HomePage() {
         <InviteSuggestionBridge />
         <NotificationsBridge />
 
-        <header className="fixed top-0 left-0 right-0 z-[80] h-16 bg-gray-900/80 backdrop-blur border-b border-gray-800">
-          <div className="max-w-3xl mx-auto h-full px-4 flex items-center">
-            <TopBar />
-          </div>
-        </header>
+        {/* ✅ Use TopBar directly (it is already fixed + safe-area aware) */}
+        <TopBar />
 
         {/* CHAT */}
-        <div className="flex-1 overflow-y-auto p-6 pt-24 pb-44">
+        <div
+          className="flex-1 overflow-y-auto p-6"
+          style={{
+            // ✅ top padding = (TopBar height 64px) + safe-area + extra spacing
+            paddingTop: "calc(64px + env(safe-area-inset-top) + 24px)",
+            // ✅ bottom padding to avoid footer overlap
+            paddingBottom: "calc(160px + env(safe-area-inset-bottom))",
+          }}
+        >
           <div className="max-w-3xl mx-auto flex flex-col gap-4">
             {messages.map((m) => (
               <div
                 key={m.id}
-                className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
+                className={`flex ${
+                  m.role === "user" ? "justify-end" : "justify-start"
+                }`}
               >
                 <div className="max-w-[80%]">
                   <div
@@ -477,14 +477,27 @@ export default function HomePage() {
         </div>
 
         {/* SUGGESTIONS */}
-        <div className="fixed bottom-[88px] left-0 right-0 z-[50] px-4">
+        <div
+          className="fixed left-0 right-0 z-[50] px-4 chat-suggestions"
+          style={{
+            bottom: "calc(88px + env(safe-area-inset-bottom))",
+          }}
+        >
           <div className="max-w-3xl mx-auto">
             <DynamicSuggestionCard onSend={(t) => handleSend(t)} />
           </div>
         </div>
 
         {/* FOOTER */}
-        <div className="fixed bottom-0 left-0 right-0 z-[60] p-4 bg-gray-900 border-t border-gray-700">
+        <div
+          className="fixed bottom-0 left-0 right-0 z-[60] bg-gray-900 border-t border-gray-700 chat-footer"
+          style={{
+            paddingBottom: "calc(16px + env(safe-area-inset-bottom))",
+            paddingTop: 16,
+            paddingLeft: 16,
+            paddingRight: 16,
+          }}
+        >
           <div className="max-w-3xl mx-auto">
             <ChatFooter input={input} setInput={setInput} onSend={() => handleSend()} />
           </div>
