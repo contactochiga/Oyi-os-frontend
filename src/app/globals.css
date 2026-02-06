@@ -4,20 +4,47 @@
    Base reset & mobile-safe defaults
 -------------------------------------------------- */
 
+:root {
+  /* fallback values (non-iOS / browsers that don't support env()) */
+  --safe-top: 0px;
+  --safe-bottom: 0px;
+
+  /* Your fixed TopBar height */
+  --topbar-h: 64px;
+
+  /* Your fixed footer height “zone” (approx) */
+  --footer-h: 88px;
+}
+
+@supports (padding: env(safe-area-inset-top)) {
+  :root {
+    --safe-top: env(safe-area-inset-top);
+    --safe-bottom: env(safe-area-inset-bottom);
+  }
+}
+
 html,
 body {
   margin: 0;
   padding: 0;
-  height: 100%;
   width: 100%;
+  /* ✅ Use dynamic viewport height to prevent iOS resize jump */
+  height: 100%;
   background: #06080e;
   color-scheme: dark;
+  overflow-x: hidden;
 }
 
-/* iOS safe-area helpers */
-:root {
-  --safe-top: env(safe-area-inset-top);
-  --safe-bottom: env(safe-area-inset-bottom);
+/* ✅ Prevent iOS “desktop scale” vibes */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* Improve text rendering */
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* Prevent background scroll when sidebar is open */
@@ -32,13 +59,32 @@ body.sidebar-open .chat-suggestions {
   display: none !important;
 }
 
-/* Improve text rendering */
-body {
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+/* -------------------------------------------------
+   Safe-area helpers
+-------------------------------------------------- */
 
-  /* Prevent rubber-band scrolling issues */
-  overscroll-behavior: none;
+.safe-top {
+  padding-top: var(--safe-top);
+}
+
+.safe-bottom {
+  padding-bottom: var(--safe-bottom);
+}
+
+/* -------------------------------------------------
+   App-shell sizing (prevents weird expansion)
+-------------------------------------------------- */
+
+/* Use dvh when available (iOS Safari/Capacitor) */
+@supports (height: 100dvh) {
+  .app-shell {
+    height: 100dvh;
+  }
+}
+@supports not (height: 100dvh) {
+  .app-shell {
+    height: 100vh;
+  }
 }
 
 /* -------------------------------------------------
@@ -69,21 +115,9 @@ a {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Optional: smooth scrolling inside panels */
+/* Optional */
 * {
   scroll-behavior: smooth;
-}
-
-/* -------------------------------------------------
-   Safe-area utility classes (used by TopBar/Footer)
--------------------------------------------------- */
-
-.safe-top {
-  padding-top: var(--safe-top);
-}
-
-.safe-bottom {
-  padding-bottom: var(--safe-bottom);
 }
 
 /* -------------------------------------------------
