@@ -30,10 +30,12 @@ export default function LightPanel({
   deviceId,
   lastUpdated,
   onInteraction,
+  title = "Light",
 }: {
   deviceId?: string;
   lastUpdated?: number;
   onInteraction?: () => void;
+  title?: string;
 }) {
   const { user } = useAuth();
   const estateId = useMemo(
@@ -45,11 +47,9 @@ export default function LightPanel({
 
   const { state, loading, refresh } = useDeviceLiveState(deviceId, estateId);
 
-  // Authoritative
   const isOn = useMemo(() => pickBool(state, ["power", "on", "switch"], false), [state]);
   const brightness = useMemo(() => pickNumber(state, ["brightness", "dimmer", "level"], 70), [state]);
 
-  // Draft for slider UX
   const [brightDraft, setBrightDraft] = useState<number>(brightness);
   useEffect(() => setBrightDraft(brightness), [brightness]);
 
@@ -73,19 +73,14 @@ export default function LightPanel({
     pendingTimer.current = setTimeout(() => {
       expectedRef.current = null;
       setPending(false);
-    }, 3500);
+    }, 3000);
   }
 
-  // Confirm by live state
   useEffect(() => {
     const expected = expectedRef.current;
     if (!expected) return;
 
-    const derived = {
-      power: isOn,
-      brightness,
-    };
-
+    const derived = { power: isOn, brightness };
     if (derived[expected.key] === expected.value) {
       expectedRef.current = null;
       if (pendingTimer.current) clearTimeout(pendingTimer.current);
@@ -94,7 +89,7 @@ export default function LightPanel({
   }, [isOn, brightness]);
 
   async function sendPower(next: boolean) {
-    if (!deviceId) return setErr("No light device selected.");
+    if (!deviceId) return setErr("No light linked.");
     setErr(null);
     touch();
     startPending("power", next);
@@ -117,7 +112,7 @@ export default function LightPanel({
   }
 
   async function sendBrightness(val: number) {
-    if (!deviceId) return setErr("No light device selected.");
+    if (!deviceId) return setErr("No light linked.");
     setErr(null);
     touch();
     startPending("brightness", val);
@@ -147,35 +142,42 @@ export default function LightPanel({
   }, []);
 
   const disabled = pending || !deviceId;
+  const mutedControls = !isOn || disabled;
 
   return (
-    <RemotePanel title="Living Room Light" lastUpdated={lastUpdated}>
+    <RemotePanel title={title} lastUpdated={lastUpdated}>
       {err && (
-        <div className="mb-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+        <div className="mb-3 rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-200">
           {err}
         </div>
       )}
 
-      <div className="flex items-center justify-between mb-4">
-        <span className="text-sm text-gray-300">
-          Status: <span className="text-white">{isOn ? "On" : "Off"}</span>{" "}
-          {(pending || loading) && <span className="text-xs text-gray-400">• syncing…</span>}
-        </span>
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-sm text-white/80">
+          {isOn ? "On" : "Off"}
+          {(pending || loading) ? <span className="text-xs text-white/40"> • syncing…</span> : null}
+        </div>
 
         <button
+          type="button"
           onClick={() => sendPower(!isOn)}
           disabled={disabled}
-          className={`px-4 py-2 rounded-full text-sm font-medium transition disabled:opacity-50
-            ${isOn ? "bg-[#E11D2E]" : "bg-gray-700 hover:bg-gray-600"}`}
+          className={`px-4 py-2 rounded-full text-sm font-semibold border transition disabled:opacity-50
+            ${
+              isOn
+                ? "bg-white text-black border-white/20"
+                : "bg-white/5 text-white border-white/10 hover:bg-white/10"
+            }`}
         >
           {isOn ? "Turn off" : "Turn on"}
         </button>
       </div>
 
-      <div className={`${(!isOn || disabled) ? "opacity-40 pointer-events-none" : ""}`}>
-        <label className="block text-xs text-gray-400 mb-2">
-          Brightness ({brightDraft}%)
-        </label>
+      <div className={`mt-4 ${mutedControls ? "opacity-40 pointer-events-none" : ""}`}>
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-xs text-white/45">Brightness</label>
+          <div className="text-xs text-white/60">{brightDraft}%</div>
+        </div>
 
         <input
           type="range"
@@ -187,19 +189,13 @@ export default function LightPanel({
             setBrightDraft(val);
 
             if (brightTimer.current) clearTimeout(brightTimer.current);
-            brightTimer.current = setTimeout(() => {
-              sendBrightness(val);
-            }, 250);
+            brightTimer.current = setTimeout(() => sendBrightness(val), 250);
           }}
-          className="w-full accent-[#E11D2E]"
+          className="w-full accent-white"
         />
       </div>
 
-      {!deviceId && (
-        <div className="mt-3 text-[11px] text-gray-500">
-          No Light device bound yet. Bind a Light device to enable commands.
-        </div>
-      )}
+      {!deviceId && <div className="mt-3 text-[11px] text-white/40">No light linked yet.</div>}
     </RemotePanel>
   );
 }
