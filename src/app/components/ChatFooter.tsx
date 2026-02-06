@@ -1,3 +1,4 @@
+// src/app/components/ChatFooter.tsx
 "use client";
 
 import { FaMicrophone, FaPaperPlane, FaStop } from "react-icons/fa";
@@ -38,16 +39,10 @@ export default function ChatFooter({
 
   const canSend = input.trim().length > 0 && !isSending && voiceState === "idle";
 
-  /* -----------------------------
-     HAPTIC FEEDBACK
-  ------------------------------ */
   function vibrate(ms: number) {
     navigator.vibrate?.(ms);
   }
 
-  /* -----------------------------
-     LIVE INTENT INFERENCE
-  ------------------------------ */
   function inferIntent(text: string): Intent {
     const t = text.toLowerCase();
     if (t.includes("light")) return "light";
@@ -58,9 +53,6 @@ export default function ChatFooter({
     return "default";
   }
 
-  /* -----------------------------
-     SPEECH RECOGNITION + WAKE WORD
-  ------------------------------ */
   useEffect(() => {
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -77,7 +69,6 @@ export default function ChatFooter({
         .map((r: any) => r[0].transcript)
         .join("");
 
-      // 🔑 Wake word
       if (voiceState === "idle" && transcript.toLowerCase().includes("hey oyi")) {
         vibrate(30);
         startRecording();
@@ -96,12 +87,9 @@ export default function ChatFooter({
 
     recognitionRef.current = recognition;
 
-    // Start passive listening (wake word)
     try {
       recognition.start();
-    } catch {
-      // ignore double-start errors on some browsers
-    }
+    } catch {}
 
     return () => {
       try {
@@ -111,9 +99,6 @@ export default function ChatFooter({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [voiceState]);
 
-  /* -----------------------------
-     AUDIO VISUALIZER
-  ------------------------------ */
   async function startAudio() {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     const audioCtx = new AudioContext();
@@ -167,9 +152,6 @@ export default function ChatFooter({
     loop();
   }
 
-  /* -----------------------------
-     CONTROLS
-  ------------------------------ */
   function startRecording() {
     vibrate(20);
     setIntent("default");
@@ -208,7 +190,6 @@ export default function ChatFooter({
   return (
     <div className="max-w-3xl mx-auto">
       <div className="relative flex items-center bg-gray-800 rounded-full px-3 py-2 gap-3">
-        {/* MIC / STOP */}
         <button
           type="button"
           onClick={voiceState === "recording" ? stopRecording : startRecording}
@@ -223,7 +204,6 @@ export default function ChatFooter({
           )}
         </button>
 
-        {/* INPUT / VISUALIZER */}
         {voiceState === "recording" ? (
           <div className="flex-1 flex items-end gap-[2px] h-9">
             {Array.from({ length: BAR_COUNT }).map((_, i) => (
@@ -250,16 +230,16 @@ export default function ChatFooter({
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
-                e.preventDefault(); // ✅ stops form-submit refresh
+                e.preventDefault();
                 handleSend();
               }
             }}
             placeholder="Ask Oyi…"
-            className="flex-1 bg-transparent outline-none px-2 text-sm text-white placeholder-gray-400"
+            // ✅ iOS fix: >= 16px font prevents focus-zoom “screen expansion”
+            className="flex-1 bg-transparent outline-none px-2 text-[16px] leading-[20px] text-white placeholder-gray-400"
           />
         )}
 
-        {/* SEND */}
         <button
           type="button"
           onClick={handleSend}
