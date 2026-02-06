@@ -1,4 +1,3 @@
-// src/app/components/NotificationBell.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -31,14 +30,12 @@ export default function NotificationBell() {
   const unreadCount = useNotificationStore((s) => s.unreadCount);
   const upsert = useNotificationStore((s) => s.upsert);
 
-  // ✅ mount-safe for portal
+  // ✅ correct mount-safe portal
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  const visible = useMemo(() => {
-    return items.slice(0, 30);
-  }, [items]);
+  const visible = useMemo(() => items.slice(0, 30), [items]);
 
   async function handleMarkRead(id: string) {
     const res: any = await markNotificationRead(id);
@@ -52,7 +49,6 @@ export default function NotificationBell() {
     mounted && open
       ? createPortal(
           <>
-            {/* overlay */}
             <div
               className="fixed inset-0"
               style={{
@@ -65,18 +61,15 @@ export default function NotificationBell() {
               aria-label="Close notifications overlay"
             />
 
-            {/* drawer */}
             <aside
-              className="fixed inset-y-0 right-0 w-[360px] max-w-[92vw] bg-zinc-950 border-l border-white/10"
+              className="fixed right-0 top-0 bottom-0 w-[360px] max-w-[92vw] bg-zinc-950 border-l border-white/10"
               style={{
                 zIndex: DRAWER_Z,
-                // ✅ safe-area padding (NOTCH + HOME BAR)
-                paddingTop: "env(safe-area-inset-top)",
-                paddingBottom: "env(safe-area-inset-bottom)",
+                paddingTop: "calc(env(safe-area-inset-top) + 8px)",
+                paddingBottom: "calc(env(safe-area-inset-bottom) + 8px)",
               }}
             >
               <div className="flex h-[100dvh] flex-col">
-                {/* Header */}
                 <div className="flex items-center justify-between px-4 py-4 border-b border-white/10">
                   <div className="text-white font-semibold">Notifications</div>
                   <button
@@ -88,23 +81,16 @@ export default function NotificationBell() {
                   </button>
                 </div>
 
-                {/* ✅ Scrollable body (critical) */}
-                <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-3">
+                <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
                   {visible.length === 0 ? (
-                    <div className="text-sm text-white/60">
-                      No notifications yet.
-                    </div>
+                    <div className="text-sm text-white/60">No notifications yet.</div>
                   ) : (
                     visible.map((n: any) => {
                       const isInvite = n.type === "invite" || n.payload?.inviteId;
 
                       if (isInvite) {
                         const invite = {
-                          id:
-                            n.payload?.inviteId ||
-                            n.payload?.invite_id ||
-                            n.payload?.id ||
-                            n.id,
+                          id: n.payload?.inviteId || n.payload?.invite_id || n.payload?.id || n.id,
                           estate_id: n.payload?.estate_id || n.payload?.estateId,
                           home_id: n.payload?.home_id || n.payload?.homeId,
                           role: n.payload?.role || "member",
@@ -120,7 +106,6 @@ export default function NotificationBell() {
                                 await handleMarkRead(n.id);
                               }}
                             />
-
                             <div className="flex items-center justify-between text-[11px] text-white/40 px-1">
                               <span>{timeAgo(n.created_at)}</span>
                               {n.status !== "read" ? (
@@ -155,9 +140,7 @@ export default function NotificationBell() {
                               <div className="text-sm font-semibold text-white truncate">
                                 {n.title || "Update"}
                               </div>
-                              <div className="mt-1 text-xs text-white/70">
-                                {n.message || ""}
-                              </div>
+                              <div className="mt-1 text-xs text-white/70">{n.message || ""}</div>
                             </div>
                             <div className="text-[11px] text-white/40 whitespace-nowrap">
                               {timeAgo(n.created_at)}
@@ -184,7 +167,6 @@ export default function NotificationBell() {
         aria-label="Open notifications"
       >
         <FiBell className="h-5 w-5" />
-
         {unreadCount > 0 && (
           <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-[#E11D2E] text-white text-[11px] flex items-center justify-center">
             {unreadCount > 99 ? "99+" : unreadCount}
