@@ -8,22 +8,22 @@ import ConsumerShell from "@/app/components/ConsumerShell";
 
 type RoomStatus = "active" | "idle" | "automated";
 
-function statusColor(status: RoomStatus) {
-  switch (status) {
-    case "active":
-      return "text-green-400";
-    case "automated":
-      return "text-blue-400";
-    default:
-      return "text-gray-400";
-  }
-}
-
 function inferStatus(room: RoomDTO): RoomStatus {
   const n = Array.isArray(room.devices) ? room.devices.length : 0;
   if (n >= 4) return "active";
   if (n >= 2) return "automated";
   return "idle";
+}
+
+function statusBadge(status: RoomStatus) {
+  switch (status) {
+    case "active":
+      return "bg-emerald-500/10 text-emerald-300 border-emerald-500/15";
+    case "automated":
+      return "bg-sky-500/10 text-sky-300 border-sky-500/15";
+    default:
+      return "bg-zinc-500/10 text-zinc-300 border-white/10";
+  }
 }
 
 export default function RoomsClient() {
@@ -95,46 +95,66 @@ export default function RoomsClient() {
 
   return (
     <ConsumerShell title="Rooms" subtitle="All rooms in this home">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex gap-2">
+      {/* Actions row */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
           <button
+            type="button"
             onClick={loadRooms}
             disabled={loading}
-            className="px-3 py-2 rounded-xl bg-gray-800 text-sm text-white border border-gray-700 disabled:opacity-50"
+            className="
+              rounded-xl px-3 py-2 text-sm
+              border border-white/10
+              bg-white/5 hover:bg-white/8
+              text-white/90
+              active:scale-[0.99] transition
+              disabled:opacity-50
+            "
           >
             Refresh
           </button>
 
           <button
+            type="button"
             onClick={createRoom}
             disabled={loading || !homeId}
-            className="px-3 py-2 rounded-xl bg-[#E11D2E] text-sm text-white disabled:opacity-50"
+            className="
+              rounded-xl px-3 py-2 text-sm font-medium
+              bg-white text-black
+              hover:bg-white/90
+              active:scale-[0.99] transition
+              disabled:opacity-50
+            "
           >
             + Create
           </button>
         </div>
       </div>
 
+      {/* Error */}
       {err && (
         <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-200">
           {err}
         </div>
       )}
 
+      {/* Missing home */}
       {!homeId && (
-        <div className="mt-4 rounded-xl border border-gray-800 bg-gray-900 p-4 text-gray-400">
+        <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/70">
           No home selected yet. Join/choose a home to view rooms.
         </div>
       )}
 
+      {/* Loading */}
       {loading && (
-        <div className="mt-4 flex items-center gap-3 text-sm text-gray-400">
-          <div className="w-4 h-4 border-2 border-gray-600 border-t-white rounded-full animate-spin" />
+        <div className="mt-4 flex items-center gap-3 text-sm text-white/60">
+          <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
           Loading rooms…
         </div>
       )}
 
-      <div className="mt-4 space-y-3">
+      {/* Rooms list */}
+      <div className="mt-4 space-y-2">
         {rooms.map((room) => {
           const devicesCount = Array.isArray(room.devices) ? room.devices.length : 0;
           const status = inferStatus(room);
@@ -142,29 +162,49 @@ export default function RoomsClient() {
           return (
             <button
               key={room.id}
+              type="button"
               onClick={() => router.push(`/room?roomId=${room.id}`)}
-              className="w-full text-left rounded-2xl bg-gray-900 border border-gray-800 p-4 hover:bg-gray-800/60 transition"
+              className="
+                w-full text-left rounded-2xl
+                border border-white/10
+                bg-white/5 hover:bg-white/8
+                px-4 py-4
+                transition
+              "
             >
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="text-sm text-white font-medium">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="text-[15px] text-white font-medium truncate">
                     {room.name || "Unnamed Room"}
                   </div>
-                  <div className="flex items-center gap-2 text-xs text-gray-400 mt-1">
+
+                  <div className="mt-2 flex items-center gap-2 text-xs text-white/55">
                     <span>{devicesCount} devices</span>
-                    <span>•</span>
-                    <span className={statusColor(status)}>{status}</span>
+                    <span className="text-white/25">•</span>
+
+                    <span
+                      className={`
+                        inline-flex items-center
+                        rounded-full px-2 py-0.5
+                        border
+                        ${statusBadge(status)}
+                      `}
+                    >
+                      {status}
+                    </span>
                   </div>
                 </div>
 
-                <span className="text-xs text-gray-400">Open →</span>
+                <span className="text-xs text-white/45 whitespace-nowrap">
+                  Open →
+                </span>
               </div>
             </button>
           );
         })}
 
         {!loading && rooms.length === 0 && homeId && (
-          <div className="text-sm text-gray-500 text-center py-10">
+          <div className="text-sm text-white/45 text-center py-10">
             No rooms found for this home yet.
           </div>
         )}
