@@ -6,9 +6,16 @@ type EventState = {
   pushEvent: (e: EstateEvent) => void;
   dismissEvent: (id: string) => void;
   clearExpired: () => void;
+  clearAll: () => void;
 };
 
-export const useEventStore = create<EventState>((set) => ({
+const priorityScore: Record<EventPriority, number> = {
+  high: 3,
+  medium: 2,
+  low: 1,
+};
+
+export const useEventStore = create<EventState>((set, get) => ({
   events: [],
 
   pushEvent: (e) =>
@@ -16,44 +23,45 @@ export const useEventStore = create<EventState>((set) => ({
       const next: EstateEvent[] = [
         {
           ...e,
-          dismissed: false,
+          dismissed: e.dismissed ?? false,
           actionable: e.actionable ?? true,
+          category: e.category ?? "assistant",
           priority: e.priority ?? "low",
         },
         ...s.events,
       ];
 
-      // Priority sort: high → medium → low
-      const weight: Record<EventPriority, number> = {
-        high: 3,
-        medium: 2,
-        low: 1,
-      };
+      // remove duplicates by id (keep latest)
+      const byId = new Map<string, EstateEvent>();
+      for (const ev of next) byId.set(ev.id, ev);
+      const deduped = Array.from(byId.values());
 
-      next.sort(
-        (a, b) =>
-          weight[b.priority ?? "low"] - weight[a.priority ?? "low"]
-      );
+      // sort by priority then timestamp
+      deduped.sort((a, b) => {
+        const pa = priorityScore[a.priority ?? "low"] ?? 0;
+        const pb = priorityScore[b.priority ?? "low"] ?? 0;
+        if (pb !== pa) return pb - pa;
+        return (b.timestamp ?? 0) - (a.timestamp ?? 0);
+      });
 
-      return { events: next.slice(0, 6) };
+      return { events: deduped.slice(0, 6) };
     }),
 
   dismissEvent: (id) =>
     set((s) => ({
-      events: s.events.map((e) =>
-        e.id === id ? { ...e, dismissed: true } : e
-      ),
+      events: s.events.map((e) => (e.id === id ? { ...e, dismissed: true } : e)),
     })),
 
-  clearExpired: () =>
-    set((s) => {
-      const now = Date.now();
-      return {
-        events: s.events.filter(
-          (e) =>
-            !e.dismissed &&
-            (!e.expiresAt || e.expiresAt > now)
-        ),
-      };
-    }),
+  clearExpired: () => {
+    const now = Date.now();
+    set((s) => ({
+      events: s.events.filter((e) => {
+        if (e.dismissed) return false;
+        if (typeof e.expiresAt === "number" && e.expiresAt <= now) return false;
+        return true;
+      }),
+    }));
+  },
+
+  clearAll: () => set({ events: [] }),
 }));
