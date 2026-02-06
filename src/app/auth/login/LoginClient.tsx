@@ -51,29 +51,23 @@ export default function LoginClient() {
   return (
     <main className="min-h-screen text-white">
       <div className="relative min-h-screen flex items-center justify-center px-6 py-10 overflow-hidden bg-[#070A12]">
-        {/* Moderate mixed background */}
+        {/* ✅ Moderate mixed background (neutral, not shouty) */}
         <div className="pointer-events-none absolute inset-0">
-          <div
-            className="absolute -top-56 -left-56 h-[680px] w-[680px] rounded-full blur-3xl opacity-30"
-            style={{
-              background:
-                "radial-gradient(circle at center, var(--brand) 0%, transparent 60%)",
-            }}
-          />
-          <div
-            className="absolute top-1/4 -right-56 h-[720px] w-[720px] rounded-full blur-3xl opacity-25"
-            style={{
-              background:
-                "radial-gradient(circle at center, rgba(148,163,184,0.55) 0%, transparent 62%)",
-            }}
-          />
+          {/* soft white glow */}
+          <div className="absolute -top-56 -left-56 h-[680px] w-[680px] rounded-full bg-white/6 blur-3xl" />
+          <div className="absolute top-1/4 -right-56 h-[720px] w-[720px] rounded-full bg-white/5 blur-3xl" />
+          <div className="absolute -bottom-56 left-1/3 h-[760px] w-[760px] rounded-full bg-white/4 blur-3xl" />
+
+          {/* deep vignette */}
           <div
             className="absolute inset-0"
             style={{
               background:
-                "radial-gradient(circle at 50% 30%, rgba(255,255,255,0.06) 0%, rgba(7,10,18,0.65) 45%, rgba(7,10,18,0.95) 100%)",
+                "radial-gradient(circle at 50% 30%, rgba(255,255,255,0.06) 0%, rgba(7,10,18,0.72) 45%, rgba(7,10,18,0.97) 100%)",
             }}
           />
+
+          {/* subtle grid (same vibe as your other screens) */}
           <div
             className="absolute inset-0 opacity-[0.10]"
             style={{
@@ -88,90 +82,81 @@ export default function LoginClient() {
           />
         </div>
 
-        {/* Card */}
+        {/* ✅ Card (Visitors language) */}
         <div className="relative w-full max-w-sm">
-          <div className="rounded-3xl border border-white/10 bg-white/[0.06] backdrop-blur-2xl shadow-[0_20px_90px_rgba(0,0,0,0.60)] overflow-hidden">
+          <div className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur shadow-[0_20px_90px_rgba(0,0,0,0.60)] overflow-hidden">
+            {/* glass sheen */}
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/10 via-white/5 to-transparent" />
 
-            <div
-              className="pointer-events-none absolute inset-x-0 top-0 h-[2px]"
-              style={{
-                background:
-                  "linear-gradient(90deg, transparent 0%, var(--brand) 35%, rgba(255,255,255,0.35) 50%, var(--brand) 65%, transparent 100%)",
-                opacity: 0.65,
-              }}
-            />
-
             <div className="relative p-6">
+              {/* Logo + minimal text */}
               <div className="flex flex-col items-center text-center">
                 <div className="h-12 w-12 rounded-2xl border border-white/10 bg-white/5 grid place-items-center">
+                  {/* swap with real logo later */}
                   <span className="text-sm font-semibold tracking-wide text-white/90">
                     OYI
                   </span>
                 </div>
 
-                <div className="mt-4 text-lg font-semibold text-white/95">
+                <div className="mt-4 text-lg font-semibold text-white">
                   Sign in
                 </div>
-                <div className="mt-1 text-xs text-white/45">
-                  Continue to your estate dashboard
+                <div className="mt-1 text-xs text-white/40">
+                  Continue to your dashboard
                 </div>
               </div>
 
+              {/* Inputs */}
               <div className="mt-6 space-y-3">
-                <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 focus-within:border-white/20">
-                  <input
-                    type="email"
-                    placeholder="Email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    autoComplete="email"
-                    className="w-full bg-transparent outline-none text-[16px] leading-[20px] text-white/90 placeholder-white/35"
-                  />
-                </div>
+                <input
+                  type="email"
+                  placeholder="Email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="email"
+                  disabled={loading}
+                  className="w-full rounded-2xl bg-black/20 border border-white/10 px-4 py-3 text-sm text-white placeholder-white/30 outline-none focus:border-white/20 disabled:opacity-60"
+                />
 
-                <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 focus-within:border-white/20">
-                  <input
-                    type="password"
-                    placeholder="Password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    autoComplete="current-password"
-                    className="w-full bg-transparent outline-none text-[16px] leading-[20px] text-white/90 placeholder-white/35"
-                  />
-                </div>
+                <input
+                  type="password"
+                  placeholder="Password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
+                  disabled={loading}
+                  className="w-full rounded-2xl bg-black/20 border border-white/10 px-4 py-3 text-sm text-white placeholder-white/30 outline-none focus:border-white/20 disabled:opacity-60"
+                />
 
+                {/* Error (same calm styling pattern) */}
                 {err && (
-                  <div className="rounded-2xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                  <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
                     {err}
                   </div>
                 )}
 
+                {/* ✅ Primary action = neutral white (NO brand, NO red) */}
                 <button
                   onClick={submit}
                   disabled={!canSubmit}
                   type="button"
-                  className="w-full py-3 rounded-2xl font-semibold text-sm transition active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-white/10"
-                  style={{
-                    backgroundColor: canSubmit
-                      ? "var(--brand)"
-                      : "rgba(255,255,255,0.10)",
-                    backgroundImage: canSubmit
-                      ? "linear-gradient(180deg, rgba(255,255,255,0.14) 0%, rgba(0,0,0,0.18) 100%)"
-                      : "none",
-                    color: canSubmit ? "#fff" : "rgba(255,255,255,0.45)",
-                  }}
+                  className="w-full py-3 rounded-2xl bg-white text-black text-sm font-medium hover:opacity-90 disabled:opacity-40 transition active:scale-[0.99]"
                 >
-                  {loading ? "Signing in..." : "Continue"}
+                  {loading ? "Signing in…" : "Continue"}
                 </button>
 
+                {/* Secondary */}
                 <button
                   onClick={() => router.push("/auth/signup")}
-                  className="w-full py-3 rounded-2xl border border-white/10 bg-white/5 text-white/80 text-sm font-semibold hover:bg-white/10 transition active:scale-[0.99]"
+                  className="w-full py-3 rounded-2xl bg-white/10 text-white/80 text-sm border border-white/10 hover:bg-white/15 transition active:scale-[0.99]"
                   type="button"
                 >
                   Create account
                 </button>
+
+                <div className="pt-1 text-center text-[11px] text-white/35">
+                  Secure access • Minimal UI
+                </div>
               </div>
             </div>
           </div>
