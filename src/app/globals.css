@@ -5,44 +5,31 @@
 -------------------------------------------------- */
 
 :root {
-  /* fallback values (non-iOS / browsers that don't support env()) */
-  --safe-top: 0px;
-  --safe-bottom: 0px;
+  /* ✅ fallbacks help when env() returns 0 in some webviews */
+  --safe-top: env(safe-area-inset-top, 20px);
+  --safe-bottom: env(safe-area-inset-bottom, 16px);
 
-  /* Your fixed TopBar height */
-  --topbar-h: 64px;
-
-  /* Your fixed footer height “zone” (approx) */
-  --footer-h: 88px;
-}
-
-@supports (padding: env(safe-area-inset-top)) {
-  :root {
-    --safe-top: env(safe-area-inset-top);
-    --safe-bottom: env(safe-area-inset-bottom);
-  }
+  /* app constants */
+  --topbar-h: 64px;   /* your TopBar “content” height */
+  --footer-pad: 16px; /* footer inner padding */
 }
 
 html,
 body {
   margin: 0;
   padding: 0;
-  width: 100%;
-  /* ✅ Use dynamic viewport height to prevent iOS resize jump */
   height: 100%;
   background: #06080e;
   color-scheme: dark;
+
+  /* ✅ stops weird zoom/layout */
+  width: 100%;
   overflow-x: hidden;
 }
 
-/* ✅ Prevent iOS “desktop scale” vibes */
-html {
-  -webkit-text-size-adjust: 100%;
-  text-size-adjust: 100%;
-}
-
-/* Improve text rendering */
+/* ✅ Use modern viewport height on mobile */
 body {
+  min-height: 100dvh;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -60,31 +47,29 @@ body.sidebar-open .chat-suggestions {
 }
 
 /* -------------------------------------------------
-   Safe-area helpers
+   SAFE-AREA HELPERS (THIS FIXES YOUR HEADER/FOOTER)
 -------------------------------------------------- */
 
-.safe-top {
-  padding-top: var(--safe-top);
+/* Top bar sits BELOW notch */
+.topbar-safe {
+  padding-top: var(--safe-top) !important;
+  height: calc(var(--topbar-h) + var(--safe-top)) !important;
 }
 
-.safe-bottom {
-  padding-bottom: var(--safe-bottom);
+/* Footer sits ABOVE home indicator */
+.footer-safe {
+  padding-bottom: calc(var(--footer-pad) + var(--safe-bottom)) !important;
 }
 
-/* -------------------------------------------------
-   App-shell sizing (prevents weird expansion)
--------------------------------------------------- */
-
-/* Use dvh when available (iOS Safari/Capacitor) */
-@supports (height: 100dvh) {
-  .app-shell {
-    height: 100dvh;
-  }
+/* Chat scroll area avoids topbar + footer */
+.chat-scroll {
+  padding-top: calc(var(--topbar-h) + var(--safe-top) + 24px) !important;
+  padding-bottom: calc(160px + var(--safe-bottom)) !important;
 }
-@supports not (height: 100dvh) {
-  .app-shell {
-    height: 100vh;
-  }
+
+/* Suggestions sit above footer + home indicator */
+.chat-suggestions-safe {
+  bottom: calc(88px + var(--safe-bottom)) !important;
 }
 
 /* -------------------------------------------------
@@ -106,16 +91,12 @@ body.sidebar-open .chat-suggestions {
   animation: slide-up 0.25s ease-out forwards;
 }
 
-/* -------------------------------------------------
-   Mobile interaction hygiene
--------------------------------------------------- */
-
+/* Mobile interaction hygiene */
 button,
 a {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Optional */
 * {
   scroll-behavior: smooth;
 }
@@ -126,25 +107,18 @@ a {
 
 @layer components {
   .btn-tv {
-    @apply px-4 py-2 rounded-full bg-gray-700 text-sm text-white
-           active:scale-95 transition;
+    @apply px-4 py-2 rounded-full bg-gray-700 text-sm text-white active:scale-95 transition;
   }
 
   .btn-dir {
-    @apply w-12 h-12 rounded-full bg-gray-700 text-white
-           flex items-center justify-center
-           active:scale-95 transition;
+    @apply w-12 h-12 rounded-full bg-gray-700 text-white flex items-center justify-center active:scale-95 transition;
   }
 
   .btn-ok {
-    @apply w-16 h-16 rounded-full bg-[#E11D2E] text-white
-           font-semibold
-           active:scale-95 transition;
+    @apply w-16 h-16 rounded-full bg-[#E11D2E] text-white font-semibold active:scale-95 transition;
   }
 
   .btn-num {
-    @apply h-12 rounded-xl bg-gray-700 text-white text-sm
-           flex items-center justify-center
-           active:scale-95 transition;
+    @apply h-12 rounded-xl bg-gray-700 text-white text-sm flex items-center justify-center active:scale-95 transition;
   }
 }
