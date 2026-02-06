@@ -31,6 +31,10 @@ body {
   --sar: env(safe-area-inset-right, constant(safe-area-inset-right, 0px));
   --sab: env(safe-area-inset-bottom, constant(safe-area-inset-bottom, 0px));
   --sal: env(safe-area-inset-left, constant(safe-area-inset-left, 0px));
+
+  /* ✅ Keyboard + VisualViewport helpers */
+  --kb: 0px; /* keyboard offset */
+  --vvh: 100vh; /* visual viewport height (optional) */
 }
 
 /* Prevent background scroll when sidebar is open */
@@ -47,6 +51,19 @@ body.sidebar-open {
 body.sidebar-open .chat-footer,
 body.sidebar-open .chat-suggestions {
   display: none !important;
+}
+
+/* -------------------------------------------------
+   ✅ Keyboard / iOS fixed-bottom “rise above keyboard”
+   Works with ViewportKeyboardFix.tsx which sets --kb
+-------------------------------------------------- */
+
+.chat-footer {
+  padding-bottom: calc(16px + var(--sab) + var(--kb)) !important;
+}
+
+.chat-suggestions {
+  bottom: calc(88px + var(--sab) + var(--kb)) !important;
 }
 
 /* -------------------------------------------------
