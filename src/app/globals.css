@@ -40,11 +40,9 @@ body {
   --kb: 0px;
   --vvh: 100vh;
 
-  /* ✅ Brand tokens (ONE source of truth)
-     Change --brand once and your UI follows.
-  */
-  --brand: #2563eb;        /* <-- replace with your chosen brand color */
-  --brand-press: #1d4ed8;  /* optional: darker press state */
+  /* ✅ Brand tokens (ONE source of truth) */
+  --brand: #2563eb;        /* Blue Brand */
+  --brand-press: #1d4ed8;  /* Press state */
 }
 
 /* ✅ iOS: prevent focus-zoom by ensuring inputs are >= 16px */
@@ -63,7 +61,7 @@ body.sidebar-open {
 }
 
 /* -------------------------------------------------
-   Sidebar-open state control (CRITICAL FIX)
+   Sidebar-open state control
 -------------------------------------------------- */
 
 body.sidebar-open .chat-footer,
@@ -113,6 +111,44 @@ a {
 
 * {
   scroll-behavior: smooth;
+}
+
+/* -------------------------------------------------
+   ✅ OYI WhatsApp-style wallpaper background
+   - subtle repeating SVG icons (estate + devices)
+   - sits behind the entire home screen
+-------------------------------------------------- */
+
+.estate-wallpaper {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+
+  /* Base premium dark */
+  background-color: #06080e;
+
+  /* 3-layer gradient + repeating SVG pattern */
+  background-image:
+    radial-gradient(circle at 20% 10%, rgba(255,255,255,0.06) 0%, transparent 55%),
+    radial-gradient(circle at 80% 20%, rgba(148,163,184,0.10) 0%, transparent 60%),
+    radial-gradient(circle at 50% 90%, rgba(255,255,255,0.04) 0%, transparent 55%),
+    url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20width%3D%27520%27%20height%3D%27520%27%20viewBox%3D%270%200%20520%20520%27%3E%3Cg%20fill%3D%27none%27%20stroke%3D%27rgba(255%2C255%2C255%2C0.18)%27%20stroke-width%3D%272%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cpath%20d%3D%27M70%20120l40-32%2040%2032v52H70z%27/%3E%3Cpath%20d%3D%27M95%20172v-26h30v26%27/%3E%3Cpath%20d%3D%27M220%20120h60v64h-60z%27/%3E%3Cpath%20d%3D%27M235%20120v-14a15%2015%200%200%201%2030%200v14%27/%3E%3Cpath%20d%3D%27M250%20150v10%27/%3E%3Cpath%20d%3D%27M360%20110h80v62h-80z%27/%3E%3Cpath%20d%3D%27M388%20110l10-16h24l10%2016%27/%3E%3Ccircle%20cx%3D%27400%27%20cy%3D%27141%27%20r%3D%2714%27/%3E%3Cpath%20d%3D%27M110%20290a30%2030%200%201%201%2040%200c-8%208-10%2014-10%2024h-20c0-10-2-16-10-24z%27/%3E%3Cpath%20d%3D%27M122%20318h36%27/%3E%3Cpath%20d%3D%27M126%20330h28%27/%3E%3Cpath%20d%3D%27M250%20280c22-20%2058-20%2080%200%27/%3E%3Cpath%20d%3D%27M262%20296c14-12%2038-12%2052%200%27/%3E%3Cpath%20d%3D%27M276%20312c6-6%2018-6%2024%200%27/%3E%3Ccircle%20cx%3D%27288%27%20cy%3D%27325%27%20r%3D%272.5%27%20fill%3D%27rgba(255%2C255%2C255%2C0.18)%27/%3E%3Cpath%20d%3D%27M370%20284v34%27/%3E%3Cpath%20d%3D%27M404%20284v34%27/%3E%3Cpath%20d%3D%27M358%20308h58c6%200%2010%204%2010%2010v18c0%206-4%2010-10%2010h-58c-6%200-10-4-10-10v-18c0-6%204-10%2010-10z%27/%3E%3Cpath%20d%3D%27M150%20420c0%2018-14%2032-32%2032s-32-14-32-32c0-22%2032-54%2032-54s32%2032%2032%2054z%27/%3E%3Cpath%20d%3D%27M260%20438l26-44h-18l24-44-54%2062h18l-26%2044z%27/%3E%3Cpath%20d%3D%27M420%20420c-16-16-44-16-60%200%27/%3E%3Cpath%20d%3D%27M408%20434c-10-10-28-10-38%200%27/%3E%3Ccircle%20cx%3D%27389%27%20cy%3D%27446%27%20r%3D%273%27%20fill%3D%27rgba(255%2C255%2C255%2C0.18)%27/%3E%3C/g%3E%3Cg%20fill%3D%27rgba(255%2C255%2C255%2C0.08)%27%3E%3Crect%20x%3D%2736%27%20y%3D%27240%27%20width%3D%2710%27%20height%3D%2710%27%20rx%3D%272%27/%3E%3Crect%20x%3D%27478%27%20y%3D%27210%27%20width%3D%2710%27%20height%3D%2710%27%20rx%3D%272%27/%3E%3Crect%20x%3D%27320%27%20y%3D%27470%27%20width%3D%2710%27%20height%3D%2710%27%20rx%3D%272%27/%3E%3Crect%20x%3D%27210%27%20y%3D%2722%27%20width%3D%2710%27%20height%3D%2710%27%20rx%3D%272%27/%3E%3C/g%3E%3C/svg%3E");
+
+  background-repeat: no-repeat, no-repeat, no-repeat, repeat;
+  background-size: 900px 900px, 1000px 1000px, 900px 900px, 520px 520px;
+  background-position: left top, right top, center bottom, center;
+
+  /* Soft vignette so chats remain readable */
+  -webkit-mask-image: radial-gradient(circle at 50% 25%, black 0%, black 55%, transparent 100%);
+  mask-image: radial-gradient(circle at 50% 25%, black 0%, black 55%, transparent 100%);
+  opacity: 1;
+}
+
+/* IMPORTANT: keep all page content above wallpaper */
+main.relative > *:not(.estate-wallpaper) {
+  position: relative;
+  z-index: 1;
 }
 
 /* -------------------------------------------------
