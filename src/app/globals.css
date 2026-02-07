@@ -1,4 +1,3 @@
-/* src/app/globals.css */
 @import "tailwindcss";
 
 /* -------------------------------------------------
@@ -13,7 +12,7 @@ body {
   background: #06080e;
   color-scheme: dark;
 
-  /* Page itself never scrolls */
+  /* Page itself must not scroll */
   overflow: hidden;
 }
 
@@ -26,7 +25,7 @@ body {
 }
 
 /* -------------------------------------------------
-   Safe-area + keyboard variables
+   Safe-area + keyboard helpers
 -------------------------------------------------- */
 
 :root {
@@ -38,12 +37,12 @@ body {
   --kb: 0px;
   --vvh: 100vh;
 
-  /* Brand tokens */
+  /* Brand */
   --brand: #2563eb;
   --brand-press: #1d4ed8;
 }
 
-/* Prevent iOS zoom on input */
+/* Prevent iOS zoom on inputs */
 @supports (-webkit-touch-callout: none) {
   input,
   textarea,
@@ -53,7 +52,7 @@ body {
 }
 
 /* -------------------------------------------------
-   Sidebar-open state
+   Sidebar-open behavior
 -------------------------------------------------- */
 
 body.sidebar-open {
@@ -67,7 +66,7 @@ body.sidebar-open .chat-suggestions {
 }
 
 /* -------------------------------------------------
-   Keyboard-aware fixed elements
+   Keyboard-aware bottom spacing
 -------------------------------------------------- */
 
 .chat-footer {
@@ -79,7 +78,7 @@ body.sidebar-open .chat-suggestions {
 }
 
 /* -------------------------------------------------
-   Animations
+   Slide-up animation
 -------------------------------------------------- */
 
 @keyframes slide-up {
@@ -98,7 +97,7 @@ body.sidebar-open .chat-suggestions {
 }
 
 /* -------------------------------------------------
-   Interaction hygiene
+   Mobile interaction hygiene
 -------------------------------------------------- */
 
 button,
@@ -111,7 +110,10 @@ a {
 }
 
 /* -------------------------------------------------
-   ✅ OYI Premium WhatsApp-style wallpaper
+   ✅ OYI WhatsApp-style estate wallpaper
+   - subtle
+   - dense
+   - DOES NOT affect layout or footer
 -------------------------------------------------- */
 
 .estate-wallpaper {
@@ -119,53 +121,31 @@ a {
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  width: 100%;
-  height: 100%;
-
-  /* Fix Safari partial rendering */
-  transform: translateZ(0);
 
   background-color: #06080e;
 
   background-image:
-    radial-gradient(circle at 20% 10%, rgba(255,255,255,0.07) 0%, transparent 55%),
-    radial-gradient(circle at 78% 18%, rgba(37,99,235,0.10) 0%, transparent 62%),
-    radial-gradient(circle at 50% 92%, rgba(255,255,255,0.05) 0%, transparent 60%),
+    radial-gradient(circle at 18% 12%, rgba(255,255,255,0.04) 0%, transparent 60%),
+    radial-gradient(circle at 82% 18%, rgba(148,163,184,0.06) 0%, transparent 62%),
+    radial-gradient(circle at 50% 92%, rgba(255,255,255,0.035) 0%, transparent 60%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220' viewBox='0 0 520 520'%3E%3Cg fill='none' stroke='rgba(255,255,255,0.08)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M70 120l40-32 40 32v52H70z'/%3E%3Cpath d='M95 172v-26h30v26'/%3E%3Cpath d='M220 120h60v64h-60z'/%3E%3Cpath d='M235 120v-14a15 15 0 0 1 30 0v14'/%3E%3Cpath d='M360 110h80v62h-80z'/%3E%3Ccircle cx='400' cy='141' r='14'/%3E%3Cpath d='M110 290a30 30 0 1 1 40 0'/%3E%3Cpath d='M250 280c22-20 58-20 80 0'/%3E%3Cpath d='M370 284v34'/%3E%3Cpath d='M404 284v34'/%3E%3Cpath d='M150 420c0 18-14 32-32 32s-32-14-32-32'/%3E%3Cpath d='M260 438l26-44h-18l24-44'/%3E%3Cpath d='M420 420c-16-16-44-16-60 0'/%3E%3C/g%3E%3Cg fill='rgba(255,255,255,0.05)'%3E%3Ccircle cx='100' cy='40' r='6'/%3E%3Ccircle cx='470' cy='210' r='6'/%3E%3Crect x='30' y='240' width='12' height='12' rx='3'/%3E%3Crect x='310' y='470' width='12' height='12' rx='3'/%3E%3C/g%3E%3C/svg%3E");
 
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240' viewBox='0 0 240 240'%3E%3Cg fill='none' stroke='rgba(255,255,255,0.14)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M34 84l38-30 38 30v50H34z'/%3E%3Cpath d='M62 134v-24h20v24'/%3E%3Cpath d='M142 82h52v56h-52z'/%3E%3Cpath d='M156 82v-10a12 12 0 0 1 24 0v10'/%3E%3Cpath d='M142 174h56'/%3E%3Cpath d='M150 174c2-18 18-32 40-32s38 14 40 32'/%3E%3Cpath d='M120 190l18-30h-14l16-28-34 38h14l-18 30z'/%3E%3Cpath d='M70 162a18 18 0 1 1 24 0'/%3E%3C/g%3E%3C/svg%3E"),
-
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180' viewBox='0 0 180 180'%3E%3Cg fill='none' stroke='rgba(255,255,255,0.08)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M30 56h36v34H30z'/%3E%3Cpath d='M44 56v-8a10 10 0 0 1 20 0v8'/%3E%3Cpath d='M108 54h42v32h-42z'/%3E%3Ccircle cx='128' cy='70' r='9'/%3E%3C/g%3E%3C/svg%3E");
-
-  background-repeat:
-    no-repeat,
-    no-repeat,
-    no-repeat,
-    repeat,
-    repeat;
-
+  background-repeat: no-repeat, no-repeat, no-repeat, repeat;
   background-size:
-    1100px 1100px,
-    1100px 1100px,
-    1100px 1100px,
-    240px 240px,
-    180px 180px;
+    900px 900px,
+    1000px 1000px,
+    900px 900px,
+    220px 220px;
 
   background-position:
     left top,
     right top,
     center bottom,
-    center,
-    60px 80px;
-}
-
-/* Ensure content sits above wallpaper */
-main.relative > *:not(.estate-wallpaper) {
-  position: relative;
-  z-index: 1;
+    center;
 }
 
 /* -------------------------------------------------
-   Remote control buttons
+   Remote control button system
 -------------------------------------------------- */
 
 @layer components {
