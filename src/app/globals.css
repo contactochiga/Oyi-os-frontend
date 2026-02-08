@@ -28,6 +28,10 @@ body {
   min-height: -webkit-fill-available;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+
+  /* ✅ Create stable stacking context for Safari */
+  position: relative;
+  isolation: isolate;
 }
 
 /* -------------------------------------------------
@@ -117,20 +121,15 @@ a {
 
 /* -------------------------------------------------
    ✅ OYI WhatsApp-style estate wallpaper
-   - subtle
-   - dense
-   - DOES NOT affect layout or footer
+   Fixes:
+   - Always full-screen
+   - Never overlays content (Safari layering bug)
 -------------------------------------------------- */
 
 .estate-wallpaper {
-  position: absolute;
+  position: fixed; /* ✅ full viewport always */
   inset: 0;
-
-  /* ✅ guarantee full coverage even when viewport shifts */
-  height: 100%;
-  min-height: 100%;
-
-  z-index: 0;
+  z-index: -1; /* ✅ forced behind all UI */
   pointer-events: none;
 
   background-color: #06080e;
