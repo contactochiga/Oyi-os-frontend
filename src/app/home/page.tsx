@@ -263,13 +263,11 @@ export default function HomePage() {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
-  // ✅ Always keep latest message visible (stable, no footer shake)
+  // ✅ Keep latest message visible (no footer shake)
   useEffect(() => {
-    // next tick so DOM layout is updated (panels/charts can be tall)
     const t = setTimeout(() => {
       bottomRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
     }, 0);
-
     return () => clearTimeout(t);
   }, [messages.length]);
 
@@ -382,13 +380,10 @@ export default function HomePage() {
 
   return (
     <LayoutWrapper>
-      {/* ✅ Not flex-based anymore. Absolute scroll region = guaranteed height */}
+      {/* ✅ Absolute scroll region = guaranteed height */}
       <main className="fixed inset-0 relative min-h-0">
-        {/* ✅ Wallpaper must be FIXED so it always covers the whole screen */}
-        <div
-          className="estate-wallpaper"
-          style={{ position: "fixed", inset: 0, zIndex: 0 }}
-        />
+        {/* ✅ Wallpaper: fixed, behind everything */}
+        <div className="estate-wallpaper" />
 
         <InviteSuggestionBridge />
         <NotificationsBridge />
@@ -414,6 +409,7 @@ export default function HomePage() {
                 className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
               >
                 <div className="max-w-[80%]">
+                  {/* ✅ MESSAGE BUBBLE */}
                   <div
                     className="px-4 py-2 rounded-2xl border border-white/10"
                     style={
@@ -437,6 +433,7 @@ export default function HomePage() {
                     {m.content}
                   </div>
 
+                  {/* PANEL */}
                   {m.panel && (
                     <div className="mt-3">
                       {m.panel === "devices" ? (
