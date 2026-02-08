@@ -1,3 +1,4 @@
+/* src/app/globals.css */
 @import "tailwindcss";
 
 /* -------------------------------------------------
@@ -12,8 +13,13 @@ body {
   background: #06080e;
   color-scheme: dark;
 
-  /* Page itself must not scroll */
+  /* ✅ Keep body locked so footer doesn't shake */
   overflow: hidden;
+}
+
+/* ✅ Ensure Next.js root can size correctly */
+#__next {
+  height: 100%;
 }
 
 /* iOS viewport stability */
@@ -119,6 +125,11 @@ a {
 .estate-wallpaper {
   position: absolute;
   inset: 0;
+
+  /* ✅ guarantee full coverage even when viewport shifts */
+  height: 100%;
+  min-height: 100%;
+
   z-index: 0;
   pointer-events: none;
 
