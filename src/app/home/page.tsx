@@ -120,7 +120,12 @@ function inferPanel(aiPanel?: string | null, userText?: string): string | null {
   )
     return "maintenance";
 
-  if (src.includes("wallet") || src.includes("payment") || src.includes("balance") || src.includes("fund"))
+  if (
+    src.includes("wallet") ||
+    src.includes("payment") ||
+    src.includes("balance") ||
+    src.includes("fund")
+  )
     return "wallet";
 
   if (
@@ -142,7 +147,8 @@ function inferPanel(aiPanel?: string | null, userText?: string): string | null {
     return "community";
 
   if (src.includes("light")) return "light";
-  if (src.includes("ac") || src.includes("air conditioner") || src.includes("air")) return "ac";
+  if (src.includes("ac") || src.includes("air conditioner") || src.includes("air"))
+    return "ac";
   if (src.includes("tv") || src.includes("television")) return "tv";
   if (src.includes("device") || src.includes("appliance") || src.includes("discover"))
     return "devices";
@@ -188,6 +194,7 @@ function getSuggestionTitle(panel: string): string {
 function shouldOpenPanel(userText: string, panel: string | null) {
   if (!panel) return false;
 
+  // ✅ Your rule: panels only open when user intent is clearly management-ish
   const MANAGEMENT = new Set([
     "home",
     "rooms",
@@ -201,17 +208,22 @@ function shouldOpenPanel(userText: string, panel: string | null) {
     "sensors",
   ]);
 
-  if (MANAGEMENT.has(panel)) return true;
-
   const t = (userText || "").toLowerCase();
-  return (
+
+  // explicit request words → open panel
+  const explicit =
     t.includes("open") ||
     t.includes("show") ||
     t.includes("manage") ||
-    t.includes("control") ||
     t.includes("panel") ||
-    t.includes("settings")
-  );
+    t.includes("settings") ||
+    t.includes("list") ||
+    t.includes("view");
+
+  if (explicit && MANAGEMENT.has(panel)) return true;
+
+  // For command-type stuff like “turn on light”, do NOT auto-open panel
+  return false;
 }
 
 async function executeActions(actions: DeviceAction[] | undefined) {
@@ -222,7 +234,9 @@ async function executeActions(actions: DeviceAction[] | undefined) {
       if (a.type === "device.command") {
         await deviceService.commandDevice(a.deviceId, a.command);
       }
-    } catch {}
+    } catch {
+      // swallow errors
+    }
   }
 }
 
@@ -251,18 +265,18 @@ export default function HomePage() {
     );
   }, [user?.estate_id]);
 
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
-  // ✅ jump to latest without shaking footer
+  // ✅ Jump to latest message without moving footer
   useEffect(() => {
-    const t1 = requestAnimationFrame(() => {
-      const t2 = requestAnimationFrame(() => {
+    const a = requestAnimationFrame(() => {
+      const b = requestAnimationFrame(() => {
         bottomRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
       });
-      // @ts-ignore
-      return () => cancelAnimationFrame(t2);
+      return () => cancelAnimationFrame(b);
     });
-    return () => cancelAnimationFrame(t1);
+    return () => cancelAnimationFrame(a);
   }, [messages.length]);
 
   async function handleSend(text?: string) {
@@ -344,11 +358,7 @@ export default function HomePage() {
         setDiscoveredDevices(devices || []);
       }
 
-      if (
-        panel &&
-        (openPanel ||
-          ["rooms", "visitor", "wallet", "utilities", "maintenance", "community", "devices"].includes(panel))
-      ) {
+      if (openPanel && panel) {
         pushEvent({
           id: createId(),
           type: "info",
@@ -373,115 +383,122 @@ export default function HomePage() {
   }
 
   return (
-  <LayoutWrapper>
-    <main className="fixed inset-0 relative min-h-0 isolate">
-      {/* ✅ Wallpaper stays behind, but not negative z */}
-      <div className="estate-wallpaper" />
+    <LayoutWrapper>
+      <main className="fixed inset-0 relative min-h-0 isolate">
+        {/* ✅ Wallpaper: always behind (z-index 0 in CSS) */}
+        <div className="estate-wallpaper" />
 
-      <InviteSuggestionBridge />
-      <NotificationsBridge />
-      <TopBar />
+        <InviteSuggestionBridge />
+        <NotificationsBridge />
+        <TopBar />
 
-      {/* ✅ CHAT SCROLL REGION MUST BE ABOVE WALLPAPER */}
-      <div
-        className="absolute left-0 right-0 overflow-y-auto"
-        style={{
-          zIndex: 10,
-          top: "calc(64px + var(--sat))",
-          bottom: "calc(152px + var(--sab) + var(--kb))",
-          WebkitOverflowScrolling: "touch",
-        }}
-      >
-        <div className="p-6 relative z-[10]">
-          <div className="max-w-3xl mx-auto flex flex-col gap-4">
-            {messages.map((m) => (
-              <div
-                key={m.id}
-                className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
-              >
-                <div className="max-w-[80%] relative z-[10]">
-                  {/* bubble */}
-                  <div
-                    className="px-4 py-2 rounded-2xl border border-white/10 relative z-[10]"
-                    style={
-                      m.role === "user"
-                        ? {
-                            background:
-                              "linear-gradient(180deg, rgba(255,255,255,0.12) 0%, rgba(0,0,0,0.18) 100%), var(--brand)",
-                            color: "white",
-                            boxShadow:
-                              "0 10px 26px rgba(0,0,0,0.22), 0 0 0 1px rgba(255,255,255,0.10) inset",
-                          }
-                        : {
-                            background: "rgba(255,255,255,0.06)",
-                            color: "rgba(255,255,255,0.92)",
-                            backdropFilter: "blur(14px)",
-                            WebkitBackdropFilter: "blur(14px)",
-                            boxShadow: "0 10px 26px rgba(0,0,0,0.18)",
-                          }
-                    }
-                  >
-                    {m.content}
-                  </div>
+        {/* ✅ SCROLL REGION: bounded between TopBar and Footer */}
+        <div
+          ref={scrollerRef}
+          className="absolute left-0 right-0 overflow-y-auto"
+          style={{
+            zIndex: 10,
 
-                  {/* panel */}
-                  {m.panel && (
-                    <div className="mt-3 relative z-[10]">
-                      {m.panel === "devices" ? (
-                        <DeviceDiscoveryPanel devices={discoveredDevices} />
-                      ) : (
-                        <RemotePanelRenderer
-                          panel={m.panel}
-                          deviceId={m.deviceId}
-                          lastUpdated={m.lastUpdated}
-                          onInteraction={() =>
-                            setMessages((prev) =>
-                              prev.map((x) =>
-                                x.id === m.id
-                                  ? {
-                                      ...x,
-                                      time: new Date().toLocaleTimeString([], {
-                                        hour: "2-digit",
-                                        minute: "2-digit",
-                                      }),
-                                      lastUpdated: Date.now(),
-                                    }
-                                  : x
-                              )
-                            )
-                          }
-                        />
-                      )}
+            /* below topbar */
+            top: "calc(64px + var(--sat))",
+
+            /* reserve space for suggestions + footer + keyboard */
+            bottom: "calc(152px + var(--sab) + var(--kb))",
+
+            WebkitOverflowScrolling: "touch",
+            overscrollBehavior: "contain",
+            touchAction: "pan-y",
+          }}
+        >
+          <div className="p-6 relative z-[10]">
+            <div className="max-w-3xl mx-auto flex flex-col gap-4">
+              {messages.map((m) => (
+                <div
+                  key={m.id}
+                  className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
+                >
+                  <div className="max-w-[80%] relative z-[10]">
+                    {/* bubble */}
+                    <div
+                      className="px-4 py-2 rounded-2xl border border-white/10 relative z-[10]"
+                      style={
+                        m.role === "user"
+                          ? {
+                              background:
+                                "linear-gradient(180deg, rgba(255,255,255,0.12) 0%, rgba(0,0,0,0.18) 100%), var(--brand)",
+                              color: "white",
+                              boxShadow:
+                                "0 10px 26px rgba(0,0,0,0.22), 0 0 0 1px rgba(255,255,255,0.10) inset",
+                            }
+                          : {
+                              background: "rgba(255,255,255,0.06)",
+                              color: "rgba(255,255,255,0.92)",
+                              backdropFilter: "blur(14px)",
+                              WebkitBackdropFilter: "blur(14px)",
+                              boxShadow: "0 10px 26px rgba(0,0,0,0.18)",
+                            }
+                      }
+                    >
+                      {m.content}
                     </div>
-                  )}
-                </div>
-              </div>
-            ))}
 
-            <div ref={bottomRef} />
+                    {/* panel */}
+                    {m.panel && (
+                      <div className="mt-3 relative z-[10]">
+                        {m.panel === "devices" ? (
+                          <DeviceDiscoveryPanel devices={discoveredDevices} />
+                        ) : (
+                          <RemotePanelRenderer
+                            panel={m.panel}
+                            deviceId={m.deviceId}
+                            lastUpdated={m.lastUpdated}
+                            onInteraction={() =>
+                              setMessages((prev) =>
+                                prev.map((x) =>
+                                  x.id === m.id
+                                    ? {
+                                        ...x,
+                                        time: new Date().toLocaleTimeString([], {
+                                          hour: "2-digit",
+                                          minute: "2-digit",
+                                        }),
+                                        lastUpdated: Date.now(),
+                                      }
+                                    : x
+                                )
+                              )
+                            }
+                          />
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              <div ref={bottomRef} />
+            </div>
           </div>
         </div>
-      </div>
 
-          {/* SUGGESTIONS */}
-          <div className="fixed left-0 right-0 z-[50] px-4 chat-suggestions">
-            <div className="max-w-3xl mx-auto">
-              <DynamicSuggestionCard onSend={(t) => handleSend(t)} />
-            </div>
+        {/* SUGGESTIONS */}
+        <div className="fixed left-0 right-0 z-[50] px-4 chat-suggestions">
+          <div className="max-w-3xl mx-auto">
+            <DynamicSuggestionCard onSend={(t) => handleSend(t)} />
           </div>
+        </div>
 
-          {/* FOOTER */}
-          <div
-            className="fixed bottom-0 left-0 right-0 z-[60] border-t border-white/10 chat-footer"
-            style={{
-              background: "rgba(10,12,18,0.72)",
-              backdropFilter: "blur(18px)",
-              WebkitBackdropFilter: "blur(18px)",
-            }}
-          >
-            <div className="max-w-3xl mx-auto px-4 pt-4">
-              <ChatFooter input={input} setInput={setInput} onSend={() => handleSend()} />
-            </div>
+        {/* FOOTER */}
+        <div
+          className="fixed bottom-0 left-0 right-0 z-[60] border-t border-white/10 chat-footer"
+          style={{
+            background: "rgba(10,12,18,0.72)",
+            backdropFilter: "blur(18px)",
+            WebkitBackdropFilter: "blur(18px)",
+          }}
+        >
+          <div className="max-w-3xl mx-auto px-4 pt-4">
+            <ChatFooter input={input} setInput={setInput} onSend={() => handleSend()} />
           </div>
         </div>
       </main>
