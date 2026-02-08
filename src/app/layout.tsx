@@ -18,13 +18,16 @@ export const viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className="min-h-screen bg-black text-white">
-        {/* ✅ must run once globally */}
+      {/* ✅ match globals.css (height:100% + body locked) */}
+      <body className="h-full overflow-hidden bg-black text-white">
         <ViewportKeyboardFix />
-
         <CapacitorBoot />
+
         <ReactQueryProvider>
-          <AuthProvider>{children}</AuthProvider>
+          <AuthProvider>
+            {/* ✅ ensures children can fill height consistently */}
+            <div className="h-full">{children}</div>
+          </AuthProvider>
         </ReactQueryProvider>
       </body>
     </html>
