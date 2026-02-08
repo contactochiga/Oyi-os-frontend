@@ -280,9 +280,9 @@ export default function HomePage() {
 
   return (
     <LayoutWrapper>
-      <main className="fixed inset-0 relative">
-        {/* ✅ BACKGROUND (fixed, behind everything, cannot overlay) */}
-        <div className="estate-wallpaper" />
+      <main className="fixed inset-0 relative min-h-0 isolate">
+  {/* ✅ Wallpaper always behind everything */}
+  <div className="estate-wallpaper" />
 
         <InviteSuggestionBridge />
         <NotificationsBridge />
