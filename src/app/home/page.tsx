@@ -1,6 +1,7 @@
+// src/app/home/page.tsx
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import InviteSuggestionBridge from "../components/InviteSuggestionBridge";
@@ -58,7 +59,9 @@ function createId() {
 }
 
 function inferPanel(aiPanel?: string | null, userText?: string): string | null {
-  const src = `${aiPanel || ""} ${userText || ""}`.toLowerCase().replace(/[^\w\s]/g, "");
+  const src = `${aiPanel || ""} ${userText || ""}`
+    .toLowerCase()
+    .replace(/[^\w\s]/g, "");
 
   if (
     src.includes("home") ||
@@ -68,59 +71,123 @@ function inferPanel(aiPanel?: string | null, userText?: string): string | null {
     src.includes("status") ||
     src.includes("whats happening") ||
     src.includes("what's happening")
-  ) return "home";
+  )
+    return "home";
 
-  if (src.includes("room") || src.includes("bedroom") || src.includes("kitchen") || src.includes("living room"))
+  if (
+    src.includes("room") ||
+    src.includes("bedroom") ||
+    src.includes("kitchen") ||
+    src.includes("living room")
+  )
     return "rooms";
 
-  if (src.includes("visitor") || src.includes("guest") || src.includes("expecting") || src.includes("delivery") || src.includes("gate pass"))
+  if (
+    src.includes("visitor") ||
+    src.includes("guest") ||
+    src.includes("expecting") ||
+    src.includes("delivery") ||
+    src.includes("gate pass")
+  )
     return "visitor";
 
-  if (src.includes("door") || src.includes("lock") || src.includes("unlock") || src.includes("front door"))
+  if (
+    src.includes("door") ||
+    src.includes("lock") ||
+    src.includes("unlock") ||
+    src.includes("front door")
+  )
     return "door";
 
-  if (src.includes("cctv") || src.includes("camera") || src.includes("surveillance")) return "cctv";
+  if (src.includes("cctv") || src.includes("camera") || src.includes("surveillance"))
+    return "cctv";
 
-  if (src.includes("sensor") || src.includes("motion") || src.includes("smoke") || src.includes("gas") || src.includes("alert"))
+  if (
+    src.includes("sensor") ||
+    src.includes("motion") ||
+    src.includes("smoke") ||
+    src.includes("gas") ||
+    src.includes("alert")
+  )
     return "sensors";
 
-  if (src.includes("maintenance") || src.includes("repair") || src.includes("fix") || src.includes("issue") || src.includes("support"))
+  if (
+    src.includes("maintenance") ||
+    src.includes("repair") ||
+    src.includes("fix") ||
+    src.includes("issue") ||
+    src.includes("support")
+  )
     return "maintenance";
 
-  if (src.includes("wallet") || src.includes("payment") || src.includes("balance") || src.includes("fund"))
+  if (
+    src.includes("wallet") ||
+    src.includes("payment") ||
+    src.includes("balance") ||
+    src.includes("fund")
+  )
     return "wallet";
 
-  if (src.includes("utility") || src.includes("electric") || src.includes("power") || src.includes("water") || src.includes("internet") || src.includes("rent"))
+  if (
+    src.includes("utility") ||
+    src.includes("electric") ||
+    src.includes("power") ||
+    src.includes("water") ||
+    src.includes("internet") ||
+    src.includes("rent")
+  )
     return "utilities";
 
-  if (src.includes("community") || src.includes("announcement") || src.includes("estate news") || src.includes("notice"))
+  if (
+    src.includes("community") ||
+    src.includes("announcement") ||
+    src.includes("estate news") ||
+    src.includes("notice")
+  )
     return "community";
 
   if (src.includes("light")) return "light";
-  if (src.includes("ac") || src.includes("air conditioner") || src.includes("air")) return "ac";
+  if (src.includes("ac") || src.includes("air conditioner") || src.includes("air"))
+    return "ac";
   if (src.includes("tv") || src.includes("television")) return "tv";
-  if (src.includes("device") || src.includes("appliance") || src.includes("discover")) return "devices";
+  if (src.includes("device") || src.includes("appliance") || src.includes("discover"))
+    return "devices";
 
   return null;
 }
 
 function getSuggestionTitle(panel: string): string {
   switch (panel) {
-    case "home": return "View home summary";
-    case "rooms": return "Manage rooms";
-    case "visitor": return "Manage visitors";
-    case "door": return "Door access";
-    case "wallet": return "Open wallet";
-    case "utilities": return "View utilities";
-    case "maintenance": return "Report maintenance issue";
-    case "community": return "Community updates";
-    case "light": return "Control lights";
-    case "ac": return "Adjust air conditioner";
-    case "tv": return "Control TV";
-    case "cctv": return "View CCTV";
-    case "sensors": return "View sensors";
-    case "devices": return "View devices";
-    default: return "Continue";
+    case "home":
+      return "View home summary";
+    case "rooms":
+      return "Manage rooms";
+    case "visitor":
+      return "Manage visitors";
+    case "door":
+      return "Door access";
+    case "wallet":
+      return "Open wallet";
+    case "utilities":
+      return "View utilities";
+    case "maintenance":
+      return "Report maintenance issue";
+    case "community":
+      return "Community updates";
+    case "light":
+      return "Control lights";
+    case "ac":
+      return "Adjust air conditioner";
+    case "tv":
+      return "Control TV";
+    case "cctv":
+      return "View CCTV";
+    case "sensors":
+      return "View sensors";
+    case "devices":
+      return "View devices";
+    default:
+      return "Continue";
   }
 }
 
@@ -191,6 +258,20 @@ export default function HomePage() {
       (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null)
     );
   }, [user?.estate_id]);
+
+  // ✅ scroll container + bottom anchor for “jump to latest”
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+
+  // ✅ Always keep latest message visible (stable, no footer shake)
+  useEffect(() => {
+    // next tick so DOM layout is updated (panels/charts can be tall)
+    const t = setTimeout(() => {
+      bottomRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+    }, 0);
+
+    return () => clearTimeout(t);
+  }, [messages.length]);
 
   async function handleSend(text?: string) {
     const command = (text ?? input).trim();
@@ -301,21 +382,29 @@ export default function HomePage() {
 
   return (
     <LayoutWrapper>
-      <main className="fixed inset-0 flex flex-col min-h-0 relative">
-        {/* ✅ WhatsApp-style wallpaper but for estate */}
-        <div className="estate-wallpaper" />
+      {/* ✅ Not flex-based anymore. Absolute scroll region = guaranteed height */}
+      <main className="fixed inset-0 relative min-h-0">
+        {/* ✅ Wallpaper must be FIXED so it always covers the whole screen */}
+        <div
+          className="estate-wallpaper"
+          style={{ position: "fixed", inset: 0, zIndex: 0 }}
+        />
 
         <InviteSuggestionBridge />
         <NotificationsBridge />
         <TopBar />
 
-        {/* ✅ CHAT SCROLLER */}
+        {/* ✅ CHAT SCROLLER (absolute region) */}
         <div
-          className="flex-1 min-h-0 overflow-y-auto p-6 relative"
+          ref={scrollRef}
+          className="absolute inset-0 overflow-y-auto p-6"
           style={{
+            zIndex: 10,
             paddingTop: "calc(64px + var(--sat) + 24px)",
             paddingBottom: "calc(160px + var(--sab) + var(--kb))",
             WebkitOverflowScrolling: "touch",
+            overscrollBehavior: "contain",
+            touchAction: "pan-y",
           }}
         >
           <div className="max-w-3xl mx-auto flex flex-col gap-4">
@@ -325,7 +414,6 @@ export default function HomePage() {
                 className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
               >
                 <div className="max-w-[80%]">
-                  {/* ✅ MESSAGE BUBBLE: NO RED */}
                   <div
                     className="px-4 py-2 rounded-2xl border border-white/10"
                     style={
@@ -334,7 +422,8 @@ export default function HomePage() {
                             background:
                               "linear-gradient(180deg, rgba(255,255,255,0.12) 0%, rgba(0,0,0,0.18) 100%), var(--brand)",
                             color: "white",
-                            boxShadow: "0 10px 26px rgba(0,0,0,0.22), 0 0 0 1px rgba(255,255,255,0.10) inset",
+                            boxShadow:
+                              "0 10px 26px rgba(0,0,0,0.22), 0 0 0 1px rgba(255,255,255,0.10) inset",
                           }
                         : {
                             background: "rgba(255,255,255,0.06)",
@@ -348,7 +437,6 @@ export default function HomePage() {
                     {m.content}
                   </div>
 
-                  {/* PANEL */}
                   {m.panel && (
                     <div className="mt-3">
                       {m.panel === "devices" ? (
@@ -381,6 +469,9 @@ export default function HomePage() {
                 </div>
               </div>
             ))}
+
+            {/* ✅ bottom anchor for auto scroll */}
+            <div ref={bottomRef} />
           </div>
         </div>
 
