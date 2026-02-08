@@ -17,14 +17,14 @@ body {
   overflow: hidden;
 }
 
-/* iOS viewport stability */
+/* iOS viewport stability + stacking sanity */
 body {
   min-height: 100dvh;
   min-height: -webkit-fill-available;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 
-  /* ✅ create a clean stacking context (helps iOS layering) */
+  /* ✅ clean stacking context so z-index is predictable */
   isolation: isolate;
 }
 
@@ -89,19 +89,23 @@ a {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* ✅ don’t force smooth scrolling globally (can feel stuck on iOS) */
+/* ✅ don’t force smooth scrolling globally (iOS can feel stuck) */
 * {
   scroll-behavior: auto;
 }
 
-/* ✅ OYI WhatsApp-style estate wallpaper
-   - always behind everything
-   - never blocks clicks
-*/
+/* -------------------------------------------------
+   ✅ OYI WhatsApp-style estate wallpaper
+   IMPORTANT:
+   - DO NOT use z-index:-1 (breaks on iOS)
+   - wallpaper sits at z-index:0
+   - app content sits above it in a higher layer
+-------------------------------------------------- */
+
 .estate-wallpaper {
-  position: fixed;        /* important */
+  position: fixed;
   inset: 0;
-  z-index: -1;            /* important: force behind page content */
+  z-index: 0;              /* ✅ stable background layer */
   pointer-events: none;
 
   background-color: #06080e;
@@ -124,6 +128,13 @@ a {
     right top,
     center bottom,
     center;
+}
+
+/* ✅ app layer above wallpaper (production-grade) */
+.oyi-layer {
+  position: relative;
+  z-index: 1;              /* ✅ ALWAYS above wallpaper */
+  height: 100%;
 }
 
 /* -------------------------------------------------
