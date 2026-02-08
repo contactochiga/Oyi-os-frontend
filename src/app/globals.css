@@ -94,17 +94,14 @@ a {
   scroll-behavior: auto;
 }
 
-/* -------------------------------------------------
-   ✅ OYI estate wallpaper (SAFE VERSION)
-   - fixed behind everything
-   - cannot overlay content
-   - does not affect layout
--------------------------------------------------- */
-
+/* ✅ OYI WhatsApp-style estate wallpaper
+   - always behind everything
+   - never blocks clicks
+*/
 .estate-wallpaper {
-  position: fixed;
+  position: fixed;        /* important */
   inset: 0;
-  z-index: 0;          /* behind app content */
+  z-index: -1;            /* important: force behind page content */
   pointer-events: none;
 
   background-color: #06080e;
