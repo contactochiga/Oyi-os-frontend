@@ -229,7 +229,7 @@ async function executeActions(actions: DeviceAction[] | undefined) {
         await deviceService.commandDevice(a.deviceId, a.command);
       }
     } catch {
-      // swallow: still show reply + panels
+      // swallow
     }
   }
 }
@@ -259,11 +259,10 @@ export default function HomePage() {
     );
   }, [user?.estate_id]);
 
-  // ✅ scroll container + bottom anchor for “jump to latest”
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
-  // ✅ Keep latest message visible (no footer shake)
+  // ✅ keep latest visible
   useEffect(() => {
     const t = setTimeout(() => {
       bottomRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
@@ -380,26 +379,42 @@ export default function HomePage() {
 
   return (
     <LayoutWrapper>
-      {/* ✅ Absolute scroll region = guaranteed height */}
-      <main className="fixed inset-0 relative min-h-0">
-        {/* ✅ Wallpaper: fixed, behind everything */}
-        <div className="estate-wallpaper" />
+      {/* ✅ isolate fixes Safari stacking bugs (background jumping ABOVE content) */}
+      <main
+        className="fixed inset-0 relative min-h-0"
+        style={{ isolation: "isolate" }}
+      >
+        {/* ✅ wallpaper ALWAYS behind everything */}
+        <div
+          className="estate-wallpaper"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: -10, // <- KEY FIX
+            pointerEvents: "none",
+          }}
+        />
 
         <InviteSuggestionBridge />
         <NotificationsBridge />
         <TopBar />
 
-        {/* ✅ CHAT SCROLLER (absolute region) */}
+        {/* ✅ CHAT SCROLLER (always above wallpaper) */}
         <div
           ref={scrollRef}
           className="absolute inset-0 overflow-y-auto p-6"
           style={{
-            zIndex: 10,
+            position: "absolute",
+            zIndex: 10, // <- KEY FIX
             paddingTop: "calc(64px + var(--sat) + 24px)",
             paddingBottom: "calc(160px + var(--sab) + var(--kb))",
             WebkitOverflowScrolling: "touch",
             overscrollBehavior: "contain",
             touchAction: "pan-y",
+
+            // IMPORTANT: creates a stable stacking context for children
+            // so charts/panels never slip “behind” the wallpaper.
+            transform: "translateZ(0)",
           }}
         >
           <div className="max-w-3xl mx-auto flex flex-col gap-4">
@@ -409,7 +424,6 @@ export default function HomePage() {
                 className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
               >
                 <div className="max-w-[80%]">
-                  {/* ✅ MESSAGE BUBBLE */}
                   <div
                     className="px-4 py-2 rounded-2xl border border-white/10"
                     style={
@@ -433,7 +447,6 @@ export default function HomePage() {
                     {m.content}
                   </div>
 
-                  {/* PANEL */}
                   {m.panel && (
                     <div className="mt-3">
                       {m.panel === "devices" ? (
@@ -467,7 +480,6 @@ export default function HomePage() {
               </div>
             ))}
 
-            {/* ✅ bottom anchor for auto scroll */}
             <div ref={bottomRef} />
           </div>
         </div>
