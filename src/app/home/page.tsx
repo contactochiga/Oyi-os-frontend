@@ -228,9 +228,7 @@ async function executeActions(actions: DeviceAction[] | undefined) {
       if (a.type === "device.command") {
         await deviceService.commandDevice(a.deviceId, a.command);
       }
-    } catch {
-      // swallow
-    }
+    } catch {}
   }
 }
 
@@ -262,12 +260,26 @@ export default function HomePage() {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
-  // ✅ keep latest visible
+  // ✅ Enable wallpaper ONLY on this page (no DOM layer => no overlay bug)
   useEffect(() => {
-    const t = setTimeout(() => {
-      bottomRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
-    }, 0);
-    return () => clearTimeout(t);
+    document.body.classList.add("estate-bg");
+    return () => {
+      document.body.classList.remove("estate-bg");
+    };
+  }, []);
+
+  // ✅ Always keep latest message visible
+  useEffect(() => {
+    // 2 ticks helps when panels/charts mount and expand
+    const t1 = requestAnimationFrame(() => {
+      const t2 = requestAnimationFrame(() => {
+        bottomRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+      });
+      // @ts-ignore
+      return () => cancelAnimationFrame(t2);
+    });
+
+    return () => cancelAnimationFrame(t1);
   }, [messages.length]);
 
   async function handleSend(text?: string) {
@@ -379,42 +391,22 @@ export default function HomePage() {
 
   return (
     <LayoutWrapper>
-      {/* ✅ isolate fixes Safari stacking bugs (background jumping ABOVE content) */}
-      <main
-        className="fixed inset-0 relative min-h-0"
-        style={{ isolation: "isolate" }}
-      >
-        {/* ✅ wallpaper ALWAYS behind everything */}
-        <div
-          className="estate-wallpaper"
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: -10, // <- KEY FIX
-            pointerEvents: "none",
-          }}
-        />
-
+      <main className="fixed inset-0 relative min-h-0">
         <InviteSuggestionBridge />
         <NotificationsBridge />
         <TopBar />
 
-        {/* ✅ CHAT SCROLLER (always above wallpaper) */}
+        {/* ✅ CHAT SCROLLER */}
         <div
           ref={scrollRef}
-          className="absolute inset-0 overflow-y-auto p-6"
+          className="absolute inset-0 overflow-y-auto p-6 relative"
           style={{
-            position: "absolute",
-            zIndex: 10, // <- KEY FIX
+            zIndex: 10,
             paddingTop: "calc(64px + var(--sat) + 24px)",
             paddingBottom: "calc(160px + var(--sab) + var(--kb))",
             WebkitOverflowScrolling: "touch",
             overscrollBehavior: "contain",
             touchAction: "pan-y",
-
-            // IMPORTANT: creates a stable stacking context for children
-            // so charts/panels never slip “behind” the wallpaper.
-            transform: "translateZ(0)",
           }}
         >
           <div className="max-w-3xl mx-auto flex flex-col gap-4">
