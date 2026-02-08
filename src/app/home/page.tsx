@@ -373,100 +373,95 @@ export default function HomePage() {
   }
 
   return (
-    <LayoutWrapper>
-      <main className="fixed inset-0 relative min-h-0">
-        {/* ✅ wallpaper layer */}
-        <div className="estate-wallpaper" />
+  <LayoutWrapper>
+    <main className="fixed inset-0 relative min-h-0 isolate">
+      {/* ✅ Wallpaper stays behind, but not negative z */}
+      <div className="estate-wallpaper" />
 
-        {/* ✅ everything else is forced above wallpaper */}
-        <div className="oyi-layer">
-          <InviteSuggestionBridge />
-          <NotificationsBridge />
-          <TopBar />
+      <InviteSuggestionBridge />
+      <NotificationsBridge />
+      <TopBar />
 
-          {/* ✅ SCROLL REGION (bounded between TopBar and Footer) */}
-          <div
-            className="absolute left-0 right-0 overflow-y-auto"
-            style={{
-              /* ✅ below TopBar */
-              top: "calc(64px + var(--sat))",
-
-              /* ✅ space for suggestions + footer + keyboard */
-              bottom: "calc(152px + var(--sab) + var(--kb))",
-
-              WebkitOverflowScrolling: "touch",
-              overscrollBehavior: "contain",
-              touchAction: "pan-y",
-            }}
-          >
-            <div className="p-6">
-              <div className="max-w-3xl mx-auto flex flex-col gap-4">
-                {messages.map((m) => (
+      {/* ✅ CHAT SCROLL REGION MUST BE ABOVE WALLPAPER */}
+      <div
+        className="absolute left-0 right-0 overflow-y-auto"
+        style={{
+          zIndex: 10,
+          top: "calc(64px + var(--sat))",
+          bottom: "calc(152px + var(--sab) + var(--kb))",
+          WebkitOverflowScrolling: "touch",
+        }}
+      >
+        <div className="p-6 relative z-[10]">
+          <div className="max-w-3xl mx-auto flex flex-col gap-4">
+            {messages.map((m) => (
+              <div
+                key={m.id}
+                className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
+              >
+                <div className="max-w-[80%] relative z-[10]">
+                  {/* bubble */}
                   <div
-                    key={m.id}
-                    className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
+                    className="px-4 py-2 rounded-2xl border border-white/10 relative z-[10]"
+                    style={
+                      m.role === "user"
+                        ? {
+                            background:
+                              "linear-gradient(180deg, rgba(255,255,255,0.12) 0%, rgba(0,0,0,0.18) 100%), var(--brand)",
+                            color: "white",
+                            boxShadow:
+                              "0 10px 26px rgba(0,0,0,0.22), 0 0 0 1px rgba(255,255,255,0.10) inset",
+                          }
+                        : {
+                            background: "rgba(255,255,255,0.06)",
+                            color: "rgba(255,255,255,0.92)",
+                            backdropFilter: "blur(14px)",
+                            WebkitBackdropFilter: "blur(14px)",
+                            boxShadow: "0 10px 26px rgba(0,0,0,0.18)",
+                          }
+                    }
                   >
-                    <div className="max-w-[80%]">
-                      <div
-                        className="px-4 py-2 rounded-2xl border border-white/10"
-                        style={
-                          m.role === "user"
-                            ? {
-                                background:
-                                  "linear-gradient(180deg, rgba(255,255,255,0.12) 0%, rgba(0,0,0,0.18) 100%), var(--brand)",
-                                color: "white",
-                                boxShadow:
-                                  "0 10px 26px rgba(0,0,0,0.22), 0 0 0 1px rgba(255,255,255,0.10) inset",
-                              }
-                            : {
-                                background: "rgba(255,255,255,0.06)",
-                                color: "rgba(255,255,255,0.92)",
-                                backdropFilter: "blur(14px)",
-                                WebkitBackdropFilter: "blur(14px)",
-                                boxShadow: "0 10px 26px rgba(0,0,0,0.18)",
-                              }
-                        }
-                      >
-                        {m.content}
-                      </div>
+                    {m.content}
+                  </div>
 
-                      {m.panel && (
-                        <div className="mt-3">
-                          {m.panel === "devices" ? (
-                            <DeviceDiscoveryPanel devices={discoveredDevices} />
-                          ) : (
-                            <RemotePanelRenderer
-                              panel={m.panel}
-                              deviceId={m.deviceId}
-                              lastUpdated={m.lastUpdated}
-                              onInteraction={() =>
-                                setMessages((prev) =>
-                                  prev.map((x) =>
-                                    x.id === m.id
-                                      ? {
-                                          ...x,
-                                          time: new Date().toLocaleTimeString([], {
-                                            hour: "2-digit",
-                                            minute: "2-digit",
-                                          }),
-                                          lastUpdated: Date.now(),
-                                        }
-                                      : x
-                                  )
-                                )
-                              }
-                            />
-                          )}
-                        </div>
+                  {/* panel */}
+                  {m.panel && (
+                    <div className="mt-3 relative z-[10]">
+                      {m.panel === "devices" ? (
+                        <DeviceDiscoveryPanel devices={discoveredDevices} />
+                      ) : (
+                        <RemotePanelRenderer
+                          panel={m.panel}
+                          deviceId={m.deviceId}
+                          lastUpdated={m.lastUpdated}
+                          onInteraction={() =>
+                            setMessages((prev) =>
+                              prev.map((x) =>
+                                x.id === m.id
+                                  ? {
+                                      ...x,
+                                      time: new Date().toLocaleTimeString([], {
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                      }),
+                                      lastUpdated: Date.now(),
+                                    }
+                                  : x
+                              )
+                            )
+                          }
+                        />
                       )}
                     </div>
-                  </div>
-                ))}
-
-                <div ref={bottomRef} />
+                  )}
+                </div>
               </div>
-            </div>
+            ))}
+
+            <div ref={bottomRef} />
           </div>
+        </div>
+      </div>
 
           {/* SUGGESTIONS */}
           <div className="fixed left-0 right-0 z-[50] px-4 chat-suggestions">
