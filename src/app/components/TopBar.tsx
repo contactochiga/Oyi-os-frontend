@@ -19,10 +19,13 @@ export default function TopBar() {
         top: 0,
         height: "calc(64px + var(--sat))",
         paddingTop: "var(--sat)",
+
+        // ✅ iOS compositor hardeners
+        isolation: "isolate",
+        transform: "translateZ(0)",
       }}
     >
       <div className="h-16 w-full px-4 flex items-center">
-        {/* LEFT: hamburger + logo */}
         <div className="flex items-center gap-3">
           <HamburgerMenu />
 
@@ -40,7 +43,6 @@ export default function TopBar() {
 
         <div className="flex-1" />
 
-        {/* RIGHT */}
         <div className="flex items-center gap-2">
           <NotificationBell />
 
