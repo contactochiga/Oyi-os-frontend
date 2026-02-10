@@ -194,7 +194,7 @@ function getSuggestionTitle(panel: string): string {
 function shouldOpenPanel(userText: string, panel: string | null) {
   if (!panel) return false;
 
-  // ✅ Your rule: panels only open when user intent is clearly management-ish
+  // ✅ panels only open when user intent is clearly management-ish
   const MANAGEMENT = new Set([
     "home",
     "rooms",
@@ -206,6 +206,7 @@ function shouldOpenPanel(userText: string, panel: string | null) {
     "devices",
     "cctv",
     "sensors",
+    // NOTE: you can add more here if you later decide AC/TV/Lights should open panels on "show/open"
   ]);
 
   const t = (userText || "").toLowerCase();
@@ -238,6 +239,30 @@ async function executeActions(actions: DeviceAction[] | undefined) {
       // swallow errors
     }
   }
+}
+
+/**
+ * ✅ Dedup rule:
+ * If user requests a panel that already exists in chat,
+ * do NOT create another panel instance.
+ * Instead: move that panel to the latest assistant message
+ * by clearing old occurrence(s) and attaching to the newest message.
+ */
+function isSamePanelInstance(
+  m: ChatMessage,
+  panel: string,
+  deviceId?: string
+) {
+  if (!m.panel) return false;
+  if (m.panel !== panel) return false;
+
+  // devices panel is global
+  if (panel === "devices") return true;
+
+  // other panels can be per-device; if deviceId is missing, treat as same “type”
+  if (!deviceId) return true;
+
+  return m.deviceId === deviceId;
 }
 
 export default function HomePage() {
@@ -325,33 +350,43 @@ export default function HomePage() {
       const openPanel = shouldOpenPanel(command, panel);
       const deviceId = resp?.deviceId;
 
-      setMessages((prev) =>
-        prev.map((m) => {
-          if (m.id !== pendingId) return m;
+      setMessages((prev) => {
+        const next = prev.map((m) => {
+          // ✅ If we are opening a panel, remove any previous occurrence of that SAME panel instance
+          if (openPanel && panel && isSamePanelInstance(m, panel, deviceId) && m.id !== pendingId) {
+            return { ...m, panel: null, deviceId: undefined };
+          }
 
-          if (!openPanel) {
+          // Update pending message into final assistant reply
+          if (m.id === pendingId) {
+            if (!openPanel) {
+              return {
+                ...m,
+                pending: false,
+                content: reply,
+                panel: null,
+                deviceId: undefined,
+                time,
+                lastUpdated: stamp,
+              };
+            }
+
             return {
               ...m,
               pending: false,
               content: reply,
-              panel: null,
-              deviceId: undefined,
+              panel: panel || null,
+              deviceId,
               time,
               lastUpdated: stamp,
             };
           }
 
-          return {
-            ...m,
-            pending: false,
-            content: reply,
-            panel: panel || null,
-            deviceId,
-            time,
-            lastUpdated: stamp,
-          };
-        })
-      );
+          return m;
+        });
+
+        return next;
+      });
 
       if (openPanel && panel === "devices") {
         const devices = await deviceService.getDevices(estateId ?? undefined);
@@ -384,121 +419,125 @@ export default function HomePage() {
 
   return (
     <LayoutWrapper>
-      <main className="fixed inset-0 relative min-h-0 isolate">
-        {/* ✅ Wallpaper: always behind (z-index 0 in CSS) */}
+      {/* ✅ remove "relative" here; keep isolate; layering handled by app-layer */}
+      <main className="fixed inset-0 min-h-0 isolate">
+        {/* ✅ Wallpaper stays behind */}
         <div className="estate-wallpaper" />
 
-        <InviteSuggestionBridge />
-        <NotificationsBridge />
-        <TopBar />
+        {/* ✅ Everything interactive above wallpaper */}
+        <div className="app-layer">
+          <InviteSuggestionBridge />
+          <NotificationsBridge />
+          <TopBar />
 
-        {/* ✅ SCROLL REGION: bounded between TopBar and Footer */}
-        <div
-          ref={scrollerRef}
-          className="absolute left-0 right-0 overflow-y-auto"
-          style={{
-            zIndex: 10,
+          {/* ✅ SCROLL REGION: bounded between TopBar and Footer */}
+          <div
+            ref={scrollerRef}
+            className="absolute left-0 right-0 overflow-y-auto"
+            style={{
+              zIndex: 20, // ✅ stronger than wallpaper layer on iOS
 
-            /* below topbar */
-            top: "calc(64px + var(--sat))",
+              /* below topbar */
+              top: "calc(64px + var(--sat))",
 
-            /* reserve space for suggestions + footer + keyboard */
-            bottom: "calc(152px + var(--sab) + var(--kb))",
+              /* reserve space for suggestions + footer + keyboard */
+              bottom: "calc(152px + var(--sab) + var(--kb))",
 
-            WebkitOverflowScrolling: "touch",
-            overscrollBehavior: "contain",
-            touchAction: "pan-y",
-          }}
-        >
-          <div className="p-6 relative z-[10]">
-            <div className="max-w-3xl mx-auto flex flex-col gap-4">
-              {messages.map((m) => (
-                <div
-                  key={m.id}
-                  className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
-                >
-                  <div className="max-w-[80%] relative z-[10]">
-                    {/* bubble */}
-                    <div
-                      className="px-4 py-2 rounded-2xl border border-white/10 relative z-[10]"
-                      style={
-                        m.role === "user"
-                          ? {
-                              background:
-                                "linear-gradient(180deg, rgba(255,255,255,0.12) 0%, rgba(0,0,0,0.18) 100%), var(--brand)",
-                              color: "white",
-                              boxShadow:
-                                "0 10px 26px rgba(0,0,0,0.22), 0 0 0 1px rgba(255,255,255,0.10) inset",
-                            }
-                          : {
-                              background: "rgba(255,255,255,0.06)",
-                              color: "rgba(255,255,255,0.92)",
-                              backdropFilter: "blur(14px)",
-                              WebkitBackdropFilter: "blur(14px)",
-                              boxShadow: "0 10px 26px rgba(0,0,0,0.18)",
-                            }
-                      }
-                    >
-                      {m.content}
-                    </div>
-
-                    {/* panel */}
-                    {m.panel && (
-                      <div className="mt-3 relative z-[10]">
-                        {m.panel === "devices" ? (
-                          <DeviceDiscoveryPanel devices={discoveredDevices} />
-                        ) : (
-                          <RemotePanelRenderer
-                            panel={m.panel}
-                            deviceId={m.deviceId}
-                            lastUpdated={m.lastUpdated}
-                            onInteraction={() =>
-                              setMessages((prev) =>
-                                prev.map((x) =>
-                                  x.id === m.id
-                                    ? {
-                                        ...x,
-                                        time: new Date().toLocaleTimeString([], {
-                                          hour: "2-digit",
-                                          minute: "2-digit",
-                                        }),
-                                        lastUpdated: Date.now(),
-                                      }
-                                    : x
-                                )
-                              )
-                            }
-                          />
-                        )}
+              WebkitOverflowScrolling: "touch",
+              overscrollBehavior: "contain",
+              touchAction: "pan-y",
+            }}
+          >
+            <div className="p-6 relative z-[20]">
+              <div className="max-w-3xl mx-auto flex flex-col gap-4">
+                {messages.map((m) => (
+                  <div
+                    key={m.id}
+                    className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
+                  >
+                    <div className="max-w-[80%] relative z-[20]">
+                      {/* bubble */}
+                      <div
+                        className="px-4 py-2 rounded-2xl border border-white/10 relative z-[20]"
+                        style={
+                          m.role === "user"
+                            ? {
+                                background:
+                                  "linear-gradient(180deg, rgba(255,255,255,0.12) 0%, rgba(0,0,0,0.18) 100%), var(--brand)",
+                                color: "white",
+                                boxShadow:
+                                  "0 10px 26px rgba(0,0,0,0.22), 0 0 0 1px rgba(255,255,255,0.10) inset",
+                              }
+                            : {
+                                background: "rgba(255,255,255,0.06)",
+                                color: "rgba(255,255,255,0.92)",
+                                backdropFilter: "blur(14px)",
+                                WebkitBackdropFilter: "blur(14px)",
+                                boxShadow: "0 10px 26px rgba(0,0,0,0.18)",
+                              }
+                        }
+                      >
+                        {m.content}
                       </div>
-                    )}
-                  </div>
-                </div>
-              ))}
 
-              <div ref={bottomRef} />
+                      {/* panel */}
+                      {m.panel && (
+                        <div className="mt-3 relative z-[30]">
+                          {m.panel === "devices" ? (
+                            <DeviceDiscoveryPanel devices={discoveredDevices} />
+                          ) : (
+                            <RemotePanelRenderer
+                              panel={m.panel}
+                              deviceId={m.deviceId}
+                              lastUpdated={m.lastUpdated}
+                              onInteraction={() =>
+                                setMessages((prev) =>
+                                  prev.map((x) =>
+                                    x.id === m.id
+                                      ? {
+                                          ...x,
+                                          time: new Date().toLocaleTimeString([], {
+                                            hour: "2-digit",
+                                            minute: "2-digit",
+                                          }),
+                                          lastUpdated: Date.now(),
+                                        }
+                                      : x
+                                  )
+                                )
+                              }
+                            />
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+
+                <div ref={bottomRef} />
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* SUGGESTIONS */}
-        <div className="fixed left-0 right-0 z-[50] px-4 chat-suggestions">
-          <div className="max-w-3xl mx-auto">
-            <DynamicSuggestionCard onSend={(t) => handleSend(t)} />
+          {/* SUGGESTIONS */}
+          <div className="fixed left-0 right-0 z-[50] px-4 chat-suggestions">
+            <div className="max-w-3xl mx-auto">
+              <DynamicSuggestionCard onSend={(t) => handleSend(t)} />
+            </div>
           </div>
-        </div>
 
-        {/* FOOTER */}
-        <div
-          className="fixed bottom-0 left-0 right-0 z-[60] border-t border-white/10 chat-footer"
-          style={{
-            background: "rgba(10,12,18,0.72)",
-            backdropFilter: "blur(18px)",
-            WebkitBackdropFilter: "blur(18px)",
-          }}
-        >
-          <div className="max-w-3xl mx-auto px-4 pt-4">
-            <ChatFooter input={input} setInput={setInput} onSend={() => handleSend()} />
+          {/* FOOTER */}
+          <div
+            className="fixed bottom-0 left-0 right-0 z-[60] border-t border-white/10 chat-footer"
+            style={{
+              background: "rgba(10,12,18,0.72)",
+              backdropFilter: "blur(18px)",
+              WebkitBackdropFilter: "blur(18px)",
+            }}
+          >
+            <div className="max-w-3xl mx-auto px-4 pt-4">
+              <ChatFooter input={input} setInput={setInput} onSend={() => handleSend()} />
+            </div>
           </div>
         </div>
       </main>
