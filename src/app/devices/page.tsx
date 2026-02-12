@@ -5,19 +5,12 @@ import { useEffect, useMemo, useState } from "react";
 import ConsumerShell from "@/app/components/ConsumerShell";
 import useAuth from "@/hooks/useAuth";
 import { deviceService } from "@/services/deviceService";
+import GangRingSwitch from "@/app/components/devices/GangRingSwitch";
 
 type AnyDevice = Record<string, any>;
 
 function pickId(d: AnyDevice) {
-  return (
-    d.device_id ||
-    d.devId ||
-    d.external_id ||
-    d.externalId ||
-    d.id ||
-    d.uuid ||
-    null
-  );
+  return d.device_id || d.devId || d.external_id || d.externalId || d.id || d.uuid || null;
 }
 
 function pickName(d: AnyDevice) {
@@ -49,14 +42,12 @@ function prettyState(state: any) {
 }
 
 function guessIsOn(state: any): boolean | null {
-  // best-effort: common Tuya / adapter patterns
   if (!state) return null;
 
   if (typeof state.on === "boolean") return state.on;
   if (typeof state.power === "boolean") return state.power;
   if (typeof state.switch === "boolean") return state.switch;
 
-  // Tuya often returns { dps: { "1": true } } or { switch: true } etc.
   const dps = state.dps || state?.raw?.dps || null;
   if (dps && typeof dps === "object") {
     const candidates = ["1", "switch", "switch_1", "power"];
@@ -66,6 +57,46 @@ function guessIsOn(state: any): boolean | null {
   }
 
   return null;
+}
+
+function guessGangCount(device: AnyDevice, state: any): 1 | 2 | 3 {
+  const raw = (device?.metadata?.raw ?? device?.metadata ?? device?.meta ?? {}) as any;
+
+  const rawKeys = Object.keys(raw || {});
+  const has2 = rawKeys.some((k) => k === "switch_2" || k === "switch_2_code");
+  const has3 = rawKeys.some((k) => k === "switch_3" || k === "switch_3_code");
+  if (has3) return 3;
+  if (has2) return 2;
+
+  const keys = Object.keys(state || {});
+  if (keys.includes("switch_3")) return 3;
+  if (keys.includes("switch_2")) return 2;
+
+  const dps = state?.dps || state?.raw?.dps;
+  if (dps && typeof dps === "object") {
+    const dpKeys = Object.keys(dps);
+    if (dpKeys.some((k) => String(k).includes("switch_3"))) return 3;
+    if (dpKeys.some((k) => String(k).includes("switch_2"))) return 2;
+  }
+
+  return 1;
+}
+
+function readGangValues(gangCount: 1 | 2 | 3, state: any): Array<boolean | null> {
+  const out: Array<boolean | null> = [];
+
+  for (let i = 1; i <= gangCount; i++) {
+    const k = `switch_${i}`;
+    const v = state?.[k];
+    out.push(typeof v === "boolean" ? v : null);
+  }
+
+  if (gangCount === 1 && out[0] === null) {
+    const v = state?.switch ?? state?.power ?? state?.on;
+    if (typeof v === "boolean") out[0] = v;
+  }
+
+  return out;
 }
 
 export default function DevicesPage() {
@@ -90,8 +121,11 @@ export default function DevicesPage() {
   const [stateBody, setStateBody] = useState<string>("{}");
   const [stateLoading, setStateLoading] = useState(false);
 
-  // local on/off cache (so UI feels instant even if state endpoint is slow)
+  // local on/off cache
   const [onMap, setOnMap] = useState<Record<string, boolean | null>>({});
+
+  // lightweight per-device state cache (so rings can show something after "Details" is opened)
+  const [stateMap, setStateMap] = useState<Record<string, any>>({});
 
   async function load() {
     setLoading(true);
@@ -101,13 +135,11 @@ export default function DevicesPage() {
       const arr = Array.isArray(list) ? list : [];
       setItems(arr);
 
-      // optional: warm UI toggle states with whatever the list provides
       const next: Record<string, boolean | null> = {};
       for (const d of arr) {
         const id = pickId(d);
         if (!id) continue;
 
-        // try common list fields
         const listOn =
           typeof d.on === "boolean"
             ? d.on
@@ -119,9 +151,7 @@ export default function DevicesPage() {
 
         if (listOn !== null) next[String(id)] = listOn;
       }
-      if (Object.keys(next).length) {
-        setOnMap((prev) => ({ ...prev, ...next }));
-      }
+      if (Object.keys(next).length) setOnMap((prev) => ({ ...prev, ...next }));
     } catch (e: any) {
       setErr(e?.response?.data?.error || e?.message || "Failed to load devices");
       setItems([]);
@@ -135,55 +165,28 @@ export default function DevicesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [estateId]);
 
-  async function commandSwitch(device: AnyDevice, on: boolean) {
-    const id = pickId(device);
-    if (!id) return;
-
-    setBusyId(String(id));
-    setErr(null);
-
-    // optimistic
-    setOnMap((p) => ({ ...p, [String(id)]: on }));
-
-    try {
-      const meta = device.metadata || device.meta || {};
-      const raw = meta?.raw || meta || {};
-
-      const code =
-        raw?.switch_code ||
-        raw?.switch ||
-        raw?.switch_1 ||
-        "switch";
-
-      await deviceService.commandDevice(String(id), { [code]: on });
-    } catch (e: any) {
-      // revert optimistic on failure
-      setOnMap((p) => ({ ...p, [String(id)]: p[String(id)] ?? null }));
-      setErr(e?.response?.data?.error || e?.message || "Command failed (device may be offline)");
-    } finally {
-      setBusyId(null);
-    }
-  }
-
   async function viewState(device: AnyDevice) {
     const id = pickId(device);
     if (!id) return;
 
+    const sid = String(id);
+
     setStateTitle(pickName(device));
-    setStateMeta({ id: String(id), vendor: pickVendor(device) });
+    setStateMeta({ id: sid, vendor: pickVendor(device) });
     setStateBody("{}");
     setStateOpen(true);
     setStateLoading(true);
 
     try {
-      const res = await deviceService.getDeviceState(String(id));
+      const res = await deviceService.getDeviceState(sid);
       const state = res?.state ?? res ?? {};
       setStateBody(prettyState(state));
 
+      // cache it for rings
+      setStateMap((p) => ({ ...p, [sid]: state }));
+
       const guessed = guessIsOn(state);
-      if (guessed !== null) {
-        setOnMap((p) => ({ ...p, [String(id)]: guessed }));
-      }
+      if (guessed !== null) setOnMap((p) => ({ ...p, [sid]: guessed }));
     } catch (e: any) {
       setStateBody(
         prettyState({
@@ -192,6 +195,39 @@ export default function DevicesPage() {
       );
     } finally {
       setStateLoading(false);
+    }
+  }
+
+  async function toggleGang(device: AnyDevice, gangIndex: number, next: boolean) {
+    const id = pickId(device);
+    if (!id) return;
+
+    const sid = String(id);
+    setBusyId(sid);
+    setErr(null);
+
+    try {
+      const cached = stateMap[sid] || {};
+      const gangCount = guessGangCount(device, cached);
+
+      // multi-gang -> switch_1/2/3, single -> "switch"
+      const code = gangCount === 1 ? "switch" : `switch_${gangIndex + 1}`;
+
+      await deviceService.commandDevice(sid, { [code]: next });
+
+      // optimistic update local cache (so ring flips instantly)
+      setStateMap((p) => {
+        const prev = p[sid] || {};
+        if (gangCount === 1) return { ...p, [sid]: { ...prev, switch: next, power: next, on: next } };
+        return { ...p, [sid]: { ...prev, [`switch_${gangIndex + 1}`]: next } };
+      });
+
+      // also update onMap (used elsewhere)
+      setOnMap((p) => ({ ...p, [sid]: next }));
+    } catch (e: any) {
+      setErr(e?.response?.data?.error || e?.message || "Command failed (device may be offline)");
+    } finally {
+      setBusyId(null);
     }
   }
 
@@ -248,15 +284,25 @@ export default function DevicesPage() {
             const online = isOnline(d);
 
             const sid = id ? String(id) : "";
-            const isBusy = id && busyId === sid;
-            const isOn = id ? onMap[sid] ?? null : null;
+            const isBusy = !!sid && busyId === sid;
+
+            const cachedState = sid ? stateMap[sid] : {};
+            const gangCount = guessGangCount(d, cachedState);
+
+            // if we don't have cachedState yet, fall back to onMap for single-gang
+            const ringValues =
+              Object.keys(cachedState || {}).length > 0
+                ? readGangValues(gangCount, cachedState)
+                : gangCount === 1
+                ? [onMap[sid] ?? null]
+                : Array.from({ length: gangCount }, () => null);
 
             return (
               <div
                 key={String(id || name)}
                 className="rounded-3xl border border-white/10 bg-white/5 hover:bg-white/7 transition p-4"
               >
-                <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <span className={`h-2 w-2 rounded-full ${statusDot(online)}`} aria-hidden="true" />
@@ -266,6 +312,7 @@ export default function DevicesPage() {
                     <div className="text-xs text-white/40 mt-1 truncate">
                       {vendor}
                       {online === null ? "" : online ? " • online" : " • offline"}
+                      {gangCount > 1 ? ` • ${gangCount}-gang` : ""}
                     </div>
 
                     {Array.isArray(d.capabilities) && d.capabilities.length > 0 ? (
@@ -282,7 +329,7 @@ export default function DevicesPage() {
                     ) : null}
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-3 shrink-0">
                     {/* details */}
                     <button
                       onClick={() => viewState(d)}
@@ -292,20 +339,15 @@ export default function DevicesPage() {
                       Details
                     </button>
 
-                    {/* toggle */}
-                    <button
-                      disabled={!id || !!isBusy}
-                      onClick={() => commandSwitch(d, !(isOn === true))}
-                      className={`rounded-2xl px-4 py-2 text-sm border transition disabled:opacity-50 ${
-                        isOn === true
-                          ? "bg-white text-black border-white/10 hover:opacity-90"
-                          : "bg-black/20 text-white border-white/10 hover:bg-white/10"
-                      }`}
-                      type="button"
-                      aria-label={isOn === true ? "Turn off" : "Turn on"}
-                    >
-                      {isBusy ? "…" : isOn === true ? "On" : "Off"}
-                    </button>
+                    {/* rings */}
+                    <GangRingSwitch
+                      gangCount={gangCount}
+                      online={online}
+                      values={ringValues}
+                      busy={isBusy}
+                      onToggleGang={(gangIndex, next) => toggleGang(d, gangIndex, next)}
+                      size={54}
+                    />
                   </div>
                 </div>
 
@@ -340,9 +382,7 @@ export default function DevicesPage() {
                     {stateMeta?.id ? (
                       <div className="mt-2 flex items-center gap-2">
                         <span className="text-[11px] text-white/35">ID:</span>
-                        <span className="text-[11px] text-white/70 font-mono truncate">
-                          {stateMeta.id}
-                        </span>
+                        <span className="text-[11px] text-white/70 font-mono truncate">{stateMeta.id}</span>
                         <button
                           onClick={() => copy(stateMeta.id)}
                           className="text-[11px] text-white/60 hover:text-white underline"
