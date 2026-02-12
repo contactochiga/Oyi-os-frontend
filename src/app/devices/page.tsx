@@ -64,7 +64,6 @@ function guessGangCount(device: AnyDevice, state: any): 1 | 2 | 3 {
   const dps = state?.dps || state?.raw?.dps;
   if (dps && typeof dps === "object") {
     const dpKeys = Object.keys(dps);
-    // if we see 3 toggles, assume 3-gang
     if (dpKeys.length >= 3) return 3;
     if (dpKeys.length >= 2) return 2;
   }
@@ -76,11 +75,7 @@ function readGangValues(gangCount: 1 | 2 | 3, state: any): Array<boolean | null>
   const out: Array<boolean | null> = [];
 
   for (let i = 1; i <= gangCount; i++) {
-    out.push(
-      cleanBool(state?.[`switch_${i}`]) ??
-        cleanBool(state?.[`switch${i}`]) ??
-        null
-    );
+    out.push(cleanBool(state?.[`switch_${i}`]) ?? cleanBool(state?.[`switch${i}`]) ?? null);
   }
 
   if (gangCount === 1 && out[0] === null) {
@@ -93,13 +88,7 @@ function readGangValues(gangCount: 1 | 2 | 3, state: any): Array<boolean | null>
 
 function looksLikeSwitchCard(d: AnyDevice) {
   const t = pickType(d);
-  return (
-    t.includes("switch") ||
-    t.includes("light") ||
-    t.includes("bulb") ||
-    t.includes("lamp") ||
-    t.includes("ac")
-  );
+  return t.includes("switch") || t.includes("light") || t.includes("bulb") || t.includes("lamp") || t.includes("ac");
 }
 
 type CategoryKey = "favorites" | "lighting" | "climate" | "media" | "security" | "all";
@@ -110,7 +99,13 @@ function categorize(d: AnyDevice): CategoryKey {
   if (t.includes("switch") || t.includes("light") || t.includes("lamp") || t.includes("bulb")) return "lighting";
   if (t.includes("ac") || t.includes("air") || t.includes("hvac") || t.includes("therm")) return "climate";
   if (t.includes("tv") || t.includes("media") || t.includes("ir") || t.includes("remote")) return "media";
-  if (t.includes("camera") || t.includes("lock") || t.includes("door") || t.includes("alarm") || t.includes("sensor"))
+  if (
+    t.includes("camera") ||
+    t.includes("lock") ||
+    t.includes("door") ||
+    t.includes("alarm") ||
+    t.includes("sensor")
+  )
     return "security";
 
   return "all";
@@ -133,52 +128,53 @@ function PowerIcon({ className }: { className?: string }) {
 }
 
 /**
- * ✅ IMPORTANT: Resolve the real Tuya/adapters command key for each gang.
- * Priority:
- *  - metadata.raw.switch_{i}_code / switch_code
- *  - metadata.raw.switch_{i} / switch
- *  - metadata.switch_{i}_code / switch_code
- *  - metadata.switch_{i} / switch
- *  - fallback: switch / switch_1 / switch_2 / switch_3
+ * ✅ COMMAND FIX (based on your “working” page)
+ *
+ * Your backend expects:
+ *  - 1-gang:  "switch"
+ *  - 2/3-gang: "switch_1", "switch_2", "switch_3"
+ *
+ * We ONLY use *_code if it is a NORMAL string key (not numeric DP like "1").
  */
+function isSafeCommandKey(v: any) {
+  if (typeof v !== "string") return false;
+  const s = v.trim();
+  if (!s) return false;
+  // Reject pure numeric DP keys like "1", "2", "3"
+  if (/^\d+$/.test(s)) return false;
+  // Accept typical adapter keys: switch, switch_1, etc
+  return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(s);
+}
+
 function resolveGangCode(device: AnyDevice, gangIndex: number, gangCount: 1 | 2 | 3): string {
   const i = gangIndex + 1;
+
+  // ✅ hard default to the working command pattern
+  const hardDefault = gangCount === 1 ? "switch" : `switch_${i}`;
 
   const meta = (device?.metadata ?? device?.meta ?? {}) as any;
   const raw = (meta?.raw ?? meta ?? {}) as any;
 
-  // helper for picking a string key
-  const pickKey = (...keys: string[]) => {
-    for (const k of keys) {
-      const v = raw?.[k] ?? meta?.[k];
-      if (typeof v === "string" && v.trim().length) return v.trim();
-      // some adapters store numeric DP as number -> convert to string
-      if (typeof v === "number" && Number.isFinite(v)) return String(v);
-    }
-    return null;
-  };
+  // optional override (only if safe)
+  const candidates =
+    gangCount === 1
+      ? [raw?.switch_code, raw?.switch, meta?.switch_code, meta?.switch]
+      : [
+          raw?.[`switch_${i}_code`],
+          raw?.[`switch${i}_code`],
+          raw?.[`switch_${i}`],
+          raw?.[`switch${i}`],
+          meta?.[`switch_${i}_code`],
+          meta?.[`switch${i}_code`],
+          meta?.[`switch_${i}`],
+          meta?.[`switch${i}`],
+        ];
 
-  // ✅ single gang: prefer switch_code (or DP "1")
-  if (gangCount === 1) {
-    return (
-      pickKey("switch_code", "switch", "switch_1_code", "switch_1", "dp_1", "dps_1", "dps1", "1") ||
-      "switch"
-    );
+  for (const c of candidates) {
+    if (isSafeCommandKey(c)) return String(c).trim();
   }
 
-  // ✅ multi gang: prefer per-gang code fields
-  return (
-    pickKey(
-      `switch_${i}_code`,
-      `switch${i}_code`,
-      `switch_${i}`,
-      `switch${i}`,
-      `dp_${i}`,
-      `dps_${i}`,
-      `dps${i}`,
-      String(i)
-    ) || `switch_${i}`
-  );
+  return hardDefault;
 }
 
 /**
@@ -230,7 +226,7 @@ export default function DevicesPage() {
 
   const [tab, setTab] = useState<CategoryKey>("favorites");
 
-  // Controls modal (tap card -> open this)
+  // Controls modal
   const [ctrlOpen, setCtrlOpen] = useState(false);
   const [ctrlDevice, setCtrlDevice] = useState<AnyDevice | null>(null);
 
@@ -247,11 +243,7 @@ export default function DevicesPage() {
         const id = pickId(d);
         if (!id) continue;
 
-        const listOn =
-          cleanBool(d?.on) ??
-          cleanBool(d?.power) ??
-          cleanBool(d?.switch);
-
+        const listOn = cleanBool(d?.on) ?? cleanBool(d?.power) ?? cleanBool(d?.switch);
         if (listOn !== null) next[String(id)] = listOn;
       }
       if (Object.keys(next).length) setOnMap((prev) => ({ ...prev, ...next }));
@@ -282,14 +274,13 @@ export default function DevicesPage() {
     } catch {}
   }
 
-  // ✅ Tap card -> open controls (1/2/3 rings)
   async function openControls(device: AnyDevice) {
     setCtrlDevice(device);
     setCtrlOpen(true);
     warmState(device);
   }
 
-  // ✅ Master ring -> toggle ALL gangs using resolved codes
+  // ✅ Master ring -> toggle ALL gangs using the correct keys
   async function toggleMaster(device: AnyDevice) {
     const id = pickId(device);
     if (!id) return;
@@ -305,19 +296,18 @@ export default function DevicesPage() {
       const masterOn = computeMasterOn(sid, gangCount, cached, onMap);
       const next = masterOn === true ? false : true;
 
-      // ✅ build command using real keys
+      // ✅ build command using correct keys
       const cmd: Record<string, any> = {};
       for (let gi = 0; gi < gangCount; gi++) {
         const code = resolveGangCode(device, gi, gangCount);
         cmd[code] = next;
       }
 
-      // ✅ optimistic UI (instant “click” feel)
+      // optimistic UI
       setStateMap((p) => {
         const prev = p[sid] || {};
         const patched: any = { ...prev };
 
-        // also keep common keys updated for UI reading
         if (gangCount === 1) {
           patched.switch = next;
           patched.power = next;
@@ -337,7 +327,7 @@ export default function DevicesPage() {
     }
   }
 
-  // ✅ In modal: toggle a single gang using resolved key
+  // ✅ toggle single gang (modal)
   async function toggleGang(device: AnyDevice, gangIndex: number, next: boolean) {
     const id = pickId(device);
     if (!id) return;
@@ -364,9 +354,6 @@ export default function DevicesPage() {
         } else {
           patched[`switch_${gangIndex + 1}`] = next;
         }
-
-        // also store by actual adapter key if UI wants later
-        patched[code] = next;
 
         return { ...p, [sid]: patched };
       });
@@ -475,7 +462,6 @@ export default function DevicesPage() {
                 type="button"
                 onClick={() => {
                   if (isSwitchCard) return openControls(d);
-                  return;
                 }}
                 className="text-left rounded-3xl border border-white/10 bg-white/5 hover:bg-white/7 transition px-4 py-3"
               >
@@ -510,9 +496,7 @@ export default function DevicesPage() {
                   )}
                 </div>
 
-                <div className="mt-4 text-[15px] leading-tight text-white font-semibold line-clamp-2">
-                  {name}
-                </div>
+                <div className="mt-4 text-[15px] leading-tight text-white font-semibold line-clamp-2">{name}</div>
 
                 <div className="mt-2 flex items-center justify-between gap-2">
                   <div className="text-xs text-white/45 truncate">{room}</div>
@@ -590,9 +574,7 @@ export default function DevicesPage() {
                           size={82}
                         />
 
-                        <div className="text-xs text-white/40 text-center">
-                          Tap a ring to toggle that channel.
-                        </div>
+                        <div className="text-xs text-white/40 text-center">Tap a ring to toggle that channel.</div>
                       </div>
                     );
                   })()}
