@@ -25,6 +25,10 @@ function pickName(d: AnyDevice) {
   return d.name || d.local_name || d.localName || d.alias || "Unnamed Device";
 }
 
+function pickRoom(d: AnyDevice) {
+  return d.room?.name || d.room_name || d.roomName || d.metadata?.room || "Home";
+}
+
 function pickType(d: AnyDevice) {
   const t =
     d.type ||
@@ -55,11 +59,7 @@ function prettyState(state: any) {
 function guessIsOn(state: any): boolean | null {
   if (!state) return null;
 
-  const direct =
-    cleanBool(state?.on) ??
-    cleanBool(state?.power) ??
-    cleanBool(state?.switch);
-
+  const direct = cleanBool(state?.on) ?? cleanBool(state?.power) ?? cleanBool(state?.switch);
   if (direct !== null) return direct;
 
   const dps = state?.dps || state?.raw?.dps || null;
@@ -70,7 +70,6 @@ function guessIsOn(state: any): boolean | null {
       if (v !== null) return v;
     }
   }
-
   return null;
 }
 
@@ -100,8 +99,7 @@ function guessGangCount(device: AnyDevice, state: any): 1 | 2 | 3 {
 function readGangValues(gangCount: 1 | 2 | 3, state: any): Array<boolean | null> {
   const out: Array<boolean | null> = [];
   for (let i = 1; i <= gangCount; i++) {
-    const v = cleanBool(state?.[`switch_${i}`]);
-    out.push(v);
+    out.push(cleanBool(state?.[`switch_${i}`]));
   }
 
   if (gangCount === 1 && out[0] === null) {
@@ -112,60 +110,38 @@ function readGangValues(gangCount: 1 | 2 | 3, state: any): Array<boolean | null>
   return out;
 }
 
-function statusText(online: boolean | null) {
-  if (online === null) return "—";
-  return online ? "Online" : "Offline";
-}
-
-/**
- * Categories (UI-first, not vendor-first)
- */
 type CategoryKey = "favorites" | "lighting" | "climate" | "media" | "security" | "all";
 
 function categorize(d: AnyDevice): CategoryKey {
   const t = pickType(d);
-
   if (t.includes("switch") || t.includes("light") || t.includes("lamp") || t.includes("bulb")) return "lighting";
   if (t.includes("ac") || t.includes("air") || t.includes("hvac") || t.includes("therm")) return "climate";
   if (t.includes("tv") || t.includes("media") || t.includes("ir") || t.includes("remote")) return "media";
   if (t.includes("camera") || t.includes("lock") || t.includes("door") || t.includes("alarm") || t.includes("sensor"))
     return "security";
-
   return "all";
 }
 
 function looksLikeSwitchDevice(d: AnyDevice) {
   const t = pickType(d);
-  return (
-    t.includes("switch") ||
-    t.includes("light") ||
-    t.includes("bulb") ||
-    t.includes("lamp") ||
-    t.includes("ac switch") ||
-    t.includes("ac_switch")
-  );
+  return t.includes("switch") || t.includes("light") || t.includes("bulb") || t.includes("lamp") || t.includes("ac");
 }
 
-/**
- * Ring toggle styling:
- * - online + ON  => blue ring + icon
- * - online + OFF => red ring + NO icon (hidden)
- * - offline/unknown => dim ring
- */
-function ringBorderClass(online: boolean | null, isOn: boolean | null) {
-  if (online !== true) return "border-white/15";
-  if (isOn === true) return "border-sky-400/80";
-  if (isOn === false) return "border-red-400/80";
-  return "border-white/20";
+function statusText(online: boolean | null) {
+  if (online === null) return "—";
+  return online ? "Online" : "Offline";
 }
 
-function ringGlowClass(online: boolean | null, isOn: boolean | null) {
-  if (online !== true) return "shadow-none";
-  if (isOn === true) return "shadow-[0_0_16px_rgba(56,189,248,0.35)]";
-  if (isOn === false) return "shadow-[0_0_16px_rgba(248,113,113,0.22)]";
-  return "shadow-none";
+function computeMasterOn(sid: string, gangCount: 1 | 2 | 3, cachedState: any, onMap: Record<string, boolean | null>) {
+  if (cachedState && Object.keys(cachedState).length) {
+    const vals = readGangValues(gangCount, cachedState);
+    if (vals.every((v) => v === null)) return onMap[sid] ?? null;
+    return vals.some((v) => v === true);
+  }
+  return onMap[sid] ?? null;
 }
 
+/** Power icon (Tuya-ish) */
 function PowerIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
@@ -175,6 +151,19 @@ function PowerIcon({ className }: { className?: string }) {
       />
     </svg>
   );
+}
+
+function powerRingClasses(online: boolean | null, isOn: boolean | null) {
+  // offline/unknown: dim ring
+  if (online !== true) {
+    return "border-white/15 text-white/35 bg-white/5";
+  }
+  // ON = blue ring + blue-ish icon glow
+  if (isOn === true) {
+    return "border-sky-400/80 text-sky-200 bg-sky-400/10 shadow-[0_0_18px_rgba(56,189,248,0.35)]";
+  }
+  // OFF = red ring, icon off (hidden by opacity)
+  return "border-red-400/80 text-red-200 bg-red-400/5 shadow-[0_0_16px_rgba(248,113,113,0.20)]";
 }
 
 export default function DevicesPage() {
@@ -203,9 +192,8 @@ export default function DevicesPage() {
   const [advOpen, setAdvOpen] = useState(false);
   const [advDevice, setAdvDevice] = useState<AnyDevice | null>(null);
 
-  // local on/off cache
+  // caches
   const [onMap, setOnMap] = useState<Record<string, boolean | null>>({});
-  // per-device state cache (more accurate after Details fetch)
   const [stateMap, setStateMap] = useState<Record<string, any>>({});
 
   const [tab, setTab] = useState<CategoryKey>("favorites");
@@ -213,6 +201,7 @@ export default function DevicesPage() {
   async function load() {
     setLoading(true);
     setErr(null);
+
     try {
       const list = await deviceService.getDevices(estateId || undefined);
       const arr = Array.isArray(list) ? list : [];
@@ -222,15 +211,10 @@ export default function DevicesPage() {
       for (const d of arr) {
         const id = pickId(d);
         if (!id) continue;
-
-        const listOn =
-          cleanBool(d?.on) ??
-          cleanBool(d?.power) ??
-          cleanBool(d?.switch);
-
+        const listOn = cleanBool(d?.on) ?? cleanBool(d?.power) ?? cleanBool(d?.switch);
         if (listOn !== null) next[String(id)] = listOn;
       }
-      if (Object.keys(next).length) setOnMap((prev) => ({ ...prev, ...next }));
+      if (Object.keys(next).length) setOnMap((p) => ({ ...p, ...next }));
     } catch (e: any) {
       setErr(e?.response?.data?.error || e?.message || "Failed to load devices");
       setItems([]);
@@ -276,13 +260,26 @@ export default function DevicesPage() {
     }
   }
 
-  function computeMasterOn(sid: string, gangCount: 1 | 2 | 3, cachedState: any): boolean | null {
-    if (cachedState && Object.keys(cachedState).length) {
-      const vals = readGangValues(gangCount, cachedState);
-      if (vals.every((v) => v === null)) return onMap[sid] ?? null;
-      return vals.some((v) => v === true);
+  async function openAdvanced(device: AnyDevice) {
+    setAdvDevice(device);
+    setAdvOpen(true);
+
+    // warm state so rings are correct
+    const id = pickId(device);
+    if (!id) return;
+    const sid = String(id);
+
+    if (!stateMap[sid]) {
+      try {
+        const res = await deviceService.getDeviceState(sid);
+        const state = res?.state ?? res ?? {};
+        setStateMap((p) => ({ ...p, [sid]: state }));
+        const guessed = guessIsOn(state);
+        if (guessed !== null) setOnMap((p) => ({ ...p, [sid]: guessed }));
+      } catch {
+        // ignore
+      }
     }
-    return onMap[sid] ?? null;
   }
 
   async function toggleMaster(device: AnyDevice) {
@@ -296,14 +293,12 @@ export default function DevicesPage() {
     try {
       const cached = stateMap[sid] || {};
       const gangCount = guessGangCount(device, cached);
-      const masterOn = computeMasterOn(sid, gangCount, cached);
+      const masterOn = computeMasterOn(sid, gangCount, cached, onMap);
 
-      // if unknown, default to turning ON
       const nextMaster = masterOn === true ? false : true;
 
       if (gangCount === 1) {
         await deviceService.commandDevice(sid, { switch: nextMaster });
-
         setStateMap((p) => ({
           ...p,
           [sid]: { ...(p[sid] || {}), switch: nextMaster, power: nextMaster, on: nextMaster },
@@ -342,7 +337,6 @@ export default function DevicesPage() {
     try {
       const cached = stateMap[sid] || {};
       const gangCount = guessGangCount(device, cached);
-
       const code = gangCount === 1 ? "switch" : `switch_${gangIndex + 1}`;
 
       await deviceService.commandDevice(sid, { [code]: next });
@@ -358,27 +352,6 @@ export default function DevicesPage() {
       setErr(e?.response?.data?.error || e?.message || "Command failed (device may be offline)");
     } finally {
       setBusyId(null);
-    }
-  }
-
-  async function openAdvanced(device: AnyDevice) {
-    setAdvDevice(device);
-    setAdvOpen(true);
-
-    // warm state so gang UI is correct
-    const id = pickId(device);
-    if (!id) return;
-    const sid = String(id);
-    if (!stateMap[sid]) {
-      try {
-        const res = await deviceService.getDeviceState(sid);
-        const state = res?.state ?? res ?? {};
-        setStateMap((p) => ({ ...p, [sid]: state }));
-        const guessed = guessIsOn(state);
-        if (guessed !== null) setOnMap((p) => ({ ...p, [sid]: guessed }));
-      } catch {
-        // ignore
-      }
     }
   }
 
@@ -402,7 +375,7 @@ export default function DevicesPage() {
 
   return (
     <ConsumerShell title={title} subtitle={subtitle} showBack backHref="/home">
-      {/* Top bar (unchanged) */}
+      {/* Top bar */}
       <div className="rounded-3xl border border-white/10 bg-white/5 p-4 flex items-center justify-between gap-3">
         <div className="text-xs text-white/50 truncate">
           {estateId ? "Home linked" : "No home linked"}
@@ -429,7 +402,7 @@ export default function DevicesPage() {
         </div>
       </div>
 
-      {/* Tabs (unchanged) */}
+      {/* Tabs */}
       <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
         {[
           ["favorites", "Favorites"],
@@ -446,7 +419,11 @@ export default function DevicesPage() {
               type="button"
               onClick={() => setTab(k as CategoryKey)}
               className={`shrink-0 rounded-2xl px-3 py-2 text-sm border transition
-                ${active ? "bg-white text-black border-white/20" : "bg-white/5 text-white/80 border-white/10 hover:bg-white/10"}`}
+                ${
+                  active
+                    ? "bg-white text-black border-white/20"
+                    : "bg-white/5 text-white/80 border-white/10 hover:bg-white/10"
+                }`}
             >
               {label}
             </button>
@@ -460,7 +437,7 @@ export default function DevicesPage() {
         </div>
       )}
 
-      {/* Empty state (unchanged) */}
+      {/* Empty */}
       {!loading && items.length === 0 ? (
         <div className="mt-4 rounded-3xl border border-white/10 bg-white/5 p-5">
           <div className="text-white font-semibold">No devices yet</div>
@@ -488,7 +465,7 @@ export default function DevicesPage() {
         </div>
       ) : null}
 
-      {/* Grid (KEEP SAME DESIGN, only swap top-right control) */}
+      {/* Grid */}
       {items.length > 0 && (
         <>
           {loading && filtered.length === 0 ? (
@@ -506,14 +483,16 @@ export default function DevicesPage() {
                 const id = pickId(d);
                 const sid = id ? String(id) : "";
                 const name = pickName(d);
+                const room = pickRoom(d);
                 const online = isOnline(d);
-                const isBusy = !!sid && busyId === sid;
 
                 const cachedState = sid ? stateMap[sid] : {};
                 const gangCount = guessGangCount(d, cachedState);
 
-                const switchLike = looksLikeSwitchDevice(d);
-                const masterOn = sid ? computeMasterOn(sid, gangCount, cachedState) : null;
+                const isBusy = !!sid && busyId === sid;
+                const isSwitchLike = looksLikeSwitchDevice(d);
+
+                const masterOn = sid ? computeMasterOn(sid, gangCount, cachedState, onMap) : null;
 
                 return (
                   <button
@@ -522,55 +501,69 @@ export default function DevicesPage() {
                     onClick={() => viewState(d)}
                     className="text-left rounded-3xl border border-white/10 bg-white/5 hover:bg-white/7 transition p-4"
                   >
+                    {/* TOP ROW: icon left, power right (matches your screenshot) */}
                     <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="text-sm text-white font-semibold truncate">{name}</div>
-                        <div className="mt-1 text-xs text-white/40 truncate">
-                          {statusText(online)}
-                          {switchLike && gangCount > 1 ? ` • ${gangCount}-gang` : ""}
-                        </div>
+                      {/* icon */}
+                      <div className="h-10 w-10 rounded-2xl bg-white/10 border border-white/10 flex items-center justify-center text-white/80">
+                        {/* simple “switch plate” icon */}
+                        <div className="h-5 w-6 rounded-md bg-white/80 opacity-90" />
                       </div>
 
-                      {/* TOP-RIGHT CONTROL (new) */}
-                      {switchLike ? (
-                        <div className="shrink-0 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                          {/* Ring toggle */}
-                          <button
-                            type="button"
-                            disabled={!sid || isBusy}
-                            onClick={() => toggleMaster(d)}
-                            className={`h-10 w-10 rounded-full border-2 grid place-items-center bg-black/20 transition disabled:opacity-50
-                              ${ringBorderClass(online, masterOn)} ${ringGlowClass(online, masterOn)} hover:bg-white/5`}
-                            aria-label={masterOn === true ? "Turn off" : "Turn on"}
-                          >
-                            <PowerIcon
-                              className={`h-5 w-5 transition
-                                ${
-                                  online === true && masterOn === true
-                                    ? "text-sky-200 opacity-100"
-                                    : "text-sky-200 opacity-0"
-                                }`}
-                            />
-                          </button>
-
-                          {/* Chevron (only for 2/3 gang) */}
-                          {gangCount > 1 ? (
-                            <button
-                              type="button"
-                              onClick={() => openAdvanced(d)}
-                              className="h-10 w-10 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/70 flex items-center justify-center"
-                              aria-label="Open gang controls"
-                            >
-                              ›
-                            </button>
-                          ) : null}
-                        </div>
+                      {/* power button (top-right) */}
+                      {isSwitchLike ? (
+                        <button
+                          type="button"
+                          disabled={!sid || isBusy}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleMaster(d);
+                          }}
+                          className={`h-12 w-12 rounded-full border-2 flex items-center justify-center transition disabled:opacity-50
+                            ${powerRingClasses(online, masterOn)}`}
+                          aria-label={masterOn === true ? "Turn off" : "Turn on"}
+                        >
+                          <PowerIcon
+                            className={`h-6 w-6 transition ${
+                              online === true && masterOn === true ? "opacity-100" : "opacity-0"
+                            }`}
+                          />
+                        </button>
                       ) : (
-                        <div className="shrink-0 text-xs text-white/30">Open</div>
+                        <div className="h-12 w-12 rounded-full border border-white/10 bg-white/5" />
                       )}
                     </div>
 
-                    <div className="mt-3 text-[11px] text-white/35">Tap to open controls</div>
+                    {/* NAME */}
+                    <div className="mt-4 text-[15px] leading-tight text-white font-semibold line-clamp-2">
+                      {name}
+                    </div>
+
+                    {/* ROOM + CHEVRON (placement exactly like your screenshot) */}
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <div className="text-xs text-white/45 truncate">{room}</div>
+
+                      {isSwitchLike && gangCount > 1 ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openAdvanced(d);
+                          }}
+                          className="h-7 w-10 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/55 flex items-center justify-center"
+                          aria-label="Open gang controls"
+                        >
+                          <span className="text-base leading-none">⌄</span>
+                        </button>
+                      ) : (
+                        <div className="h-7 w-10" />
+                      )}
+                    </div>
+
+                    {/* tiny status (optional, low-noise) */}
+                    <div className="mt-2 text-[11px] text-white/30">
+                      {statusText(online)}
+                      {isSwitchLike && gangCount > 1 ? ` • ${gangCount}-gang` : ""}
+                    </div>
                   </button>
                 );
               })}
@@ -579,7 +572,7 @@ export default function DevicesPage() {
         </>
       )}
 
-      {/* ADVANCED MODAL (multi-gang only) */}
+      {/* ADVANCED MODAL (multi-gang) */}
       {advOpen && advDevice && (
         <div className="fixed inset-0 z-[125]">
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setAdvOpen(false)} />
@@ -641,7 +634,7 @@ export default function DevicesPage() {
                 </div>
 
                 <div className="px-4 py-3 border-t border-white/10 text-[11px] text-white/40">
-                  This stays inside Settings/Integrations later — not branded as Tuya.
+                  This stays under Integrations later — not branded as Tuya.
                 </div>
               </div>
             </div>
@@ -649,7 +642,7 @@ export default function DevicesPage() {
         </div>
       )}
 
-      {/* STATE MODAL (unchanged) */}
+      {/* STATE MODAL (your existing) */}
       {stateOpen && (
         <div className="fixed inset-0 z-[120]">
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setStateOpen(false)} />
