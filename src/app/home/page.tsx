@@ -150,7 +150,17 @@ function inferPanel(aiPanel?: string | null, userText?: string): string | null {
   if (src.includes("ac") || src.includes("air conditioner") || src.includes("air"))
     return "ac";
   if (src.includes("tv") || src.includes("television")) return "tv";
-  if (src.includes("device") || src.includes("appliance") || src.includes("discover"))
+
+  // ✅ include “discover” to force devices panel intent
+  if (
+    src.includes("device") ||
+    src.includes("appliance") ||
+    src.includes("discover") ||
+    src.includes("pair") ||
+    src.includes("bind") ||
+    src.includes("add device") ||
+    src.includes("connect device")
+  )
     return "devices";
 
   return null;
@@ -185,7 +195,7 @@ function getSuggestionTitle(panel: string): string {
     case "sensors":
       return "View sensors";
     case "devices":
-      return "View devices";
+      return "Devices & Discovery";
     default:
       return "Continue";
   }
@@ -194,7 +204,6 @@ function getSuggestionTitle(panel: string): string {
 function shouldOpenPanel(userText: string, panel: string | null) {
   if (!panel) return false;
 
-  // ✅ panels only open when user intent is clearly management-ish
   const MANAGEMENT = new Set([
     "home",
     "rooms",
@@ -206,12 +215,11 @@ function shouldOpenPanel(userText: string, panel: string | null) {
     "devices",
     "cctv",
     "sensors",
-    // NOTE: you can add more here if you later decide AC/TV/Lights should open panels on "show/open"
   ]);
 
   const t = (userText || "").toLowerCase();
 
-  // explicit request words → open panel
+  // ✅ explicit request words → open panel
   const explicit =
     t.includes("open") ||
     t.includes("show") ||
@@ -219,7 +227,17 @@ function shouldOpenPanel(userText: string, panel: string | null) {
     t.includes("panel") ||
     t.includes("settings") ||
     t.includes("list") ||
-    t.includes("view");
+    t.includes("view") ||
+    // ✅ onboarding intents
+    t.includes("discover") ||
+    t.includes("add device") ||
+    t.includes("add devices") ||
+    t.includes("bind device") ||
+    t.includes("bind devices") ||
+    t.includes("pair device") ||
+    t.includes("pair devices") ||
+    t.includes("connect device") ||
+    t.includes("connect devices");
 
   if (explicit && MANAGEMENT.has(panel)) return true;
 
@@ -241,18 +259,7 @@ async function executeActions(actions: DeviceAction[] | undefined) {
   }
 }
 
-/**
- * ✅ Dedup rule:
- * If user requests a panel that already exists in chat,
- * do NOT create another panel instance.
- * Instead: move that panel to the latest assistant message
- * by clearing old occurrence(s) and attaching to the newest message.
- */
-function isSamePanelInstance(
-  m: ChatMessage,
-  panel: string,
-  deviceId?: string
-) {
+function isSamePanelInstance(m: ChatMessage, panel: string, deviceId?: string) {
   if (!m.panel) return false;
   if (m.panel !== panel) return false;
 
@@ -271,7 +278,10 @@ export default function HomePage() {
   const { pushEvent } = useEventStore();
 
   const [input, setInput] = useState("");
-  const [discoveredDevices, setDiscoveredDevices] = useState<any[]>([]);
+
+  // ✅ device panel data: separate discovery vs assigned
+  const [assignedDevices, setAssignedDevices] = useState<any[]>([]);
+  const [discoveryDevices, setDiscoveryDevices] = useState<any[]>([]);
 
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -285,10 +295,10 @@ export default function HomePage() {
 
   const estateId = useMemo(() => {
     return (
-      user?.estate_id ??
+      (user as any)?.estate_id ??
       (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null)
     );
-  }, [user?.estate_id]);
+  }, [(user as any)?.estate_id]);
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -303,6 +313,24 @@ export default function HomePage() {
     });
     return () => cancelAnimationFrame(a);
   }, [messages.length]);
+
+  // ✅ helper: refresh both assigned + discovery
+  async function refreshDevicePanelData() {
+    try {
+      const [assigned, discovered] = await Promise.all([
+        // assigned: must be scoped to estate
+        estateId ? deviceService.getAssignedDevices(estateId) : Promise.resolve([]),
+        // discovery: adapter scan
+        deviceService.getDevices(undefined),
+      ]);
+
+      setAssignedDevices(Array.isArray(assigned) ? assigned : []);
+      setDiscoveryDevices(Array.isArray(discovered) ? discovered : []);
+    } catch {
+      setAssignedDevices([]);
+      setDiscoveryDevices([]);
+    }
+  }
 
   async function handleSend(text?: string) {
     const command = (text ?? input).trim();
@@ -388,9 +416,9 @@ export default function HomePage() {
         return next;
       });
 
+      // ✅ if user opens devices panel, load both assigned + discovery
       if (openPanel && panel === "devices") {
-        const devices = await deviceService.getDevices(estateId ?? undefined);
-        setDiscoveredDevices(devices || []);
+        await refreshDevicePanelData();
       }
 
       if (openPanel && panel) {
@@ -419,30 +447,24 @@ export default function HomePage() {
 
   return (
     <LayoutWrapper>
-      {/* ✅ remove "relative" here; keep isolate; layering handled by app-layer */}
       <main className="fixed inset-0 min-h-0 isolate">
-        {/* ✅ Wallpaper stays behind */}
+        {/* wallpaper */}
         <div className="estate-wallpaper" />
 
-        {/* ✅ Everything interactive above wallpaper */}
+        {/* interactive layer */}
         <div className="app-layer">
           <InviteSuggestionBridge />
           <NotificationsBridge />
           <TopBar />
 
-          {/* ✅ SCROLL REGION: bounded between TopBar and Footer */}
+          {/* scroll region */}
           <div
             ref={scrollerRef}
             className="absolute left-0 right-0 overflow-y-auto"
             style={{
-              zIndex: 20, // ✅ stronger than wallpaper layer on iOS
-
-              /* below topbar */
+              zIndex: 20,
               top: "calc(64px + var(--sat))",
-
-              /* reserve space for suggestions + footer + keyboard */
               bottom: "calc(152px + var(--sab) + var(--kb))",
-
               WebkitOverflowScrolling: "touch",
               overscrollBehavior: "contain",
               touchAction: "pan-y",
@@ -484,7 +506,25 @@ export default function HomePage() {
                       {m.panel && (
                         <div className="mt-3 relative z-[30]">
                           {m.panel === "devices" ? (
-                            <DeviceDiscoveryPanel devices={discoveredDevices} />
+                            <div className="space-y-3">
+                              {/* ✅ small header hint so user knows what is shown */}
+                              <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/60">
+                                Assigned:{" "}
+                                <span className="text-white/85 font-semibold">
+                                  {assignedDevices.length}
+                                </span>{" "}
+                                • Discovery:{" "}
+                                <span className="text-white/85 font-semibold">
+                                  {discoveryDevices.length}
+                                </span>
+                              </div>
+
+                              {/* Discovery panel (bind devices) */}
+                              <DeviceDiscoveryPanel
+                                devices={discoveryDevices}
+                                onInteraction={refreshDevicePanelData}
+                              />
+                            </div>
                           ) : (
                             <RemotePanelRenderer
                               panel={m.panel}
@@ -519,14 +559,14 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* SUGGESTIONS */}
+          {/* suggestions */}
           <div className="fixed left-0 right-0 z-[50] px-4 chat-suggestions">
             <div className="max-w-3xl mx-auto">
               <DynamicSuggestionCard onSend={(t) => handleSend(t)} />
             </div>
           </div>
 
-          {/* FOOTER */}
+          {/* footer */}
           <div
             className="fixed bottom-0 left-0 right-0 z-[60] border-t border-white/10 chat-footer"
             style={{
