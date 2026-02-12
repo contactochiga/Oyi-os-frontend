@@ -2,8 +2,9 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
-import { signUpWithEmail } from "@/services/authService"; // ✅ consumer service (now supports otpToken)
+import { signUpWithEmail } from "@/services/authService";
 import { decodeToken, isExpired, setCookie } from "@/lib/auth";
 import { useSessionStore } from "@/store/useSessionStore";
 
@@ -44,7 +45,6 @@ async function verifyOtp(email: string, code: string) {
 
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.message || data?.error || "OTP verification failed");
-
   return data as { ok?: boolean; otpToken?: string; message?: string };
 }
 
@@ -86,7 +86,7 @@ function StatusDot({ ok }: { ok: boolean | null }) {
   const title = ok === null ? "Checking connection" : ok ? "Backend connected" : "Backend offline";
   const cls =
     ok === null
-      ? "bg-gray-500"
+      ? "bg-white/25"
       : ok
       ? "bg-emerald-400 shadow-[0_0_0_3px_rgba(52,211,153,0.12)]"
       : "bg-red-400 shadow-[0_0_0_3px_rgba(248,113,113,0.12)]";
@@ -141,7 +141,7 @@ function Otp6({
               disabled={disabled}
               inputMode="numeric"
               maxLength={1}
-              className="h-12 w-full rounded-xl bg-gray-800 border border-white/10 text-center text-lg font-semibold outline-none focus:border-white/25"
+              className="h-12 w-full rounded-xl bg-black/20 border border-white/10 text-center text-lg font-semibold outline-none focus:border-white/25 text-white"
               onChange={(e) => {
                 const next = e.target.value.replace(/\D/g, "").slice(0, 1);
                 setAt(i, next);
@@ -187,18 +187,13 @@ export default function SignupClient() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // single timer: expiry
   const [expiresLeft, setExpiresLeft] = useState(0);
-
-  // resend lock: 60s (no second timer displayed)
   const [resendLocked, setResendLocked] = useState(true);
 
-  // backend status dot
   const [backendOk, setBackendOk] = useState<boolean | null>(null);
 
   const cleanEmail = email.trim().toLowerCase();
 
-  // backend connectivity check (light ping)
   useEffect(() => {
     const API = getApiBase();
     if (!API) {
@@ -225,7 +220,6 @@ export default function SignupClient() {
     };
   }, []);
 
-  // tick expiry timer only when in otp step
   useEffect(() => {
     if (step !== "otp") return;
     const t = setInterval(() => setExpiresLeft((s) => Math.max(0, s - 1)), 1000);
@@ -290,7 +284,6 @@ export default function SignupClient() {
         return;
       }
 
-      // ✅ get short-lived otpToken from backend
       const v = await verifyOtp(cleanEmail, code);
       const otpToken = v?.otpToken;
 
@@ -299,7 +292,6 @@ export default function SignupClient() {
         return;
       }
 
-      // ✅ IMPORTANT: consumer signup must pass otpToken now
       const res = await signUpWithEmail(cleanEmail, password, fullName.trim(), otpToken);
 
       if (res?.error || !res?.token) {
@@ -335,137 +327,217 @@ export default function SignupClient() {
   const subtitle = step === "form" ? "Continue with email." : "Enter the verification code we sent.";
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-gradient-to-b from-gray-900 to-gray-950 text-white px-6">
-      <div className="w-full max-w-sm overflow-hidden">
-        <h1 className="text-2xl font-semibold">Create your account</h1>
-
-        <div className="mt-1 flex items-center justify-between">
-          <p className="text-sm text-gray-400">{subtitle}</p>
-          <StatusDot ok={backendOk} />
+    <main className="min-h-screen text-white">
+      <div className="relative min-h-screen flex items-center justify-center px-6 py-10 overflow-hidden bg-[#070A12]">
+        {/* Background (same as landing/login) */}
+        <div className="pointer-events-none absolute inset-0">
+          <div
+            className="absolute -top-56 -left-56 h-[680px] w-[680px] rounded-full blur-3xl opacity-25"
+            style={{ background: "radial-gradient(circle at center, var(--brand) 0%, transparent 60%)" }}
+          />
+          <div
+            className="absolute top-1/4 -right-56 h-[720px] w-[720px] rounded-full blur-3xl opacity-25"
+            style={{
+              background: "radial-gradient(circle at center, rgba(148,163,184,0.55) 0%, transparent 62%)",
+            }}
+          />
+          <div
+            className="absolute inset-0"
+            style={{
+              background:
+                "radial-gradient(circle at 50% 30%, rgba(255,255,255,0.06) 0%, rgba(7,10,18,0.72) 45%, rgba(7,10,18,0.97) 100%)",
+            }}
+          />
+          <div
+            className="absolute inset-0 opacity-[0.10]"
+            style={{
+              backgroundImage:
+                "linear-gradient(to right, rgba(255,255,255,0.10) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.10) 1px, transparent 1px)",
+              backgroundSize: "56px 56px",
+              maskImage: "radial-gradient(circle at 50% 35%, black 0%, transparent 65%)",
+              WebkitMaskImage: "radial-gradient(circle at 50% 35%, black 0%, transparent 65%)",
+            }}
+          />
         </div>
 
-        {/* Slide wrapper */}
-        <div
-          className={`mt-6 flex w-[200%] transition-transform duration-300 ease-out ${
-            step === "otp" ? "-translate-x-1/2" : "translate-x-0"
-          }`}
-        >
-          {/* FORM */}
-          <div className="w-1/2 pr-4 flex flex-col gap-3">
-            <input
-              className="bg-gray-800 rounded-lg p-3 outline-none"
-              placeholder="Full name"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              disabled={loading}
+        <div className="relative w-full max-w-sm">
+          <div className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur shadow-[0_20px_90px_rgba(0,0,0,0.60)] overflow-hidden">
+            <div
+              className="pointer-events-none absolute inset-x-0 top-0 h-[2px]"
+              style={{
+                background:
+                  "linear-gradient(90deg, transparent 0%, var(--brand) 35%, rgba(255,255,255,0.35) 50%, var(--brand) 65%, transparent 100%)",
+                opacity: 0.55,
+              }}
             />
 
-            <input
-              className="bg-gray-800 rounded-lg p-3 outline-none"
-              placeholder="Email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              disabled={loading}
-            />
-
-            <input
-              className="bg-gray-800 rounded-lg p-3 outline-none"
-              placeholder="Password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              disabled={loading}
-            />
-
-            {err && (
-              <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-                {err}
-              </div>
-            )}
-
-            <button
-              className="bg-[#E11D2E] py-3 rounded-xl font-medium hover:bg-[#C81E2A] transition disabled:opacity-60"
-              onClick={startOtp}
-              disabled={loading || !fullName.trim() || !email.trim() || !password}
-              type="button"
-            >
-              {loading ? "Please wait..." : "Continue"}
-            </button>
-
-            <button
-              onClick={() => router.push("/auth/login")}
-              className="text-sm text-gray-400 mt-2 hover:text-gray-300"
-              type="button"
-            >
-              Already have access? Log in
-            </button>
-          </div>
-
-          {/* OTP */}
-          <div className="w-1/2 pl-4">
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-              <div className="text-sm text-gray-300">We sent a 6-digit code to</div>
-              <div className="mt-1 text-sm font-medium text-white break-all underline underline-offset-4">
-                {cleanEmail || "—"}
-              </div>
-
-              <Otp6 value={otp} onChange={setOtp} disabled={loading} />
-
-              <div className="mt-3 flex items-center justify-between gap-3">
-                <div className="text-xs text-gray-400">Expires in {formatMMSS(expiresLeft)}</div>
-
-                <button
-                  type="button"
-                  onClick={resendNow}
-                  disabled={loading || resendLocked}
-                  className={`inline-flex items-center gap-2 rounded-lg px-2 py-1 text-xs transition ${
-                    loading || resendLocked
-                      ? "text-gray-600 cursor-not-allowed"
-                      : "text-gray-200 hover:bg-white/5"
-                  }`}
-                  aria-disabled={loading || resendLocked}
-                  title={resendLocked ? "You can resend after 1 minute" : "Resend code"}
-                >
-                  <ResendIcon className="opacity-90" />
-                  <span>Resend</span>
-                </button>
-              </div>
-
-              {err && (
-                <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-                  {err}
+            <div className="relative p-6">
+              <div className="flex flex-col items-center text-center">
+                <div className="h-16 w-16 rounded-2xl border border-white/10 bg-black/20 grid place-items-center overflow-hidden">
+                  <div className="relative h-10 w-10">
+                    <Image
+                      src="/oyi-logo-transparent.png"
+                      alt="Oyi OS Logo"
+                      fill
+                      className="object-contain"
+                      priority
+                    />
+                  </div>
                 </div>
-              )}
 
-              <button
-                className="mt-5 w-full bg-[#E11D2E] py-3 rounded-xl font-medium hover:bg-[#C81E2A] transition disabled:opacity-60"
-                onClick={verifyAndCreate}
-                disabled={loading || otp.replace(/\D/g, "").length !== 6}
-                type="button"
-              >
-                {loading ? "Verifying..." : "Verify & Create account"}
-              </button>
+                <div className="mt-5 text-xl font-semibold text-white">Create account</div>
+                <div className="mt-1 text-xs text-white/45">{subtitle}</div>
 
-              <button
-                className={`mt-3 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium transition ${
-                  loading ? "opacity-50 cursor-not-allowed" : "hover:bg-white/10"
+                <div className="mt-3 flex items-center gap-2 text-[11px] text-white/35">
+                  <StatusDot ok={backendOk} />
+                  <span>{backendOk === null ? "Checking backend…" : backendOk ? "Backend connected" : "Backend offline"}</span>
+                </div>
+              </div>
+
+              {/* Slide wrapper */}
+              <div
+                className={`mt-6 flex w-[200%] transition-transform duration-300 ease-out ${
+                  step === "otp" ? "-translate-x-1/2" : "translate-x-0"
                 }`}
-                onClick={changeEmail}
-                disabled={loading}
-                type="button"
               >
-                Change email
-              </button>
-            </div>
+                {/* FORM */}
+                <div className="w-1/2 pr-4 space-y-3">
+                  <input
+                    className="w-full rounded-2xl bg-black/20 border border-white/10 px-4 py-3 text-sm text-white placeholder-white/30 outline-none focus:border-white/20 disabled:opacity-60"
+                    placeholder="Full name"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    disabled={loading}
+                  />
 
-            <button
-              onClick={() => router.push("/auth/login")}
-              className="text-sm text-gray-400 mt-4 hover:text-gray-300"
-              type="button"
-            >
-              Already have access? Log in
-            </button>
+                  <input
+                    className="w-full rounded-2xl bg-black/20 border border-white/10 px-4 py-3 text-sm text-white placeholder-white/30 outline-none focus:border-white/20 disabled:opacity-60"
+                    placeholder="Email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    disabled={loading}
+                  />
+
+                  <input
+                    className="w-full rounded-2xl bg-black/20 border border-white/10 px-4 py-3 text-sm text-white placeholder-white/30 outline-none focus:border-white/20 disabled:opacity-60"
+                    placeholder="Password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    disabled={loading}
+                  />
+
+                  {err && (
+                    <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                      {err}
+                    </div>
+                  )}
+
+                  {/* ✅ Brand primary (no old red) */}
+                  <button
+                    onClick={startOtp}
+                    disabled={loading || !fullName.trim() || !cleanEmail || !password}
+                    type="button"
+                    className="w-full py-3 rounded-2xl text-sm font-semibold transition active:scale-[0.99] disabled:opacity-50"
+                    style={{
+                      background:
+                        "linear-gradient(180deg, rgba(255,255,255,0.14) 0%, rgba(0,0,0,0.18) 100%), var(--brand)",
+                      color: "#fff",
+                      boxShadow:
+                        "0 10px 26px rgba(0,0,0,0.22), 0 0 0 1px rgba(255,255,255,0.10) inset",
+                    }}
+                  >
+                    {loading ? "Please wait…" : "Continue"}
+                  </button>
+
+                  <button
+                    onClick={() => router.push("/auth/login")}
+                    className="w-full py-3 rounded-2xl bg-white/10 text-white/85 text-sm font-semibold hover:bg-white/15 transition active:scale-[0.99] border border-white/10"
+                    type="button"
+                  >
+                    Already have access? Log in
+                  </button>
+                </div>
+
+                {/* OTP */}
+                <div className="w-1/2 pl-4">
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <div className="text-sm text-white/60">We sent a 6-digit code to</div>
+                    <div className="mt-1 text-sm font-medium text-white break-all underline underline-offset-4">
+                      {cleanEmail || "—"}
+                    </div>
+
+                    <Otp6 value={otp} onChange={setOtp} disabled={loading} />
+
+                    <div className="mt-3 flex items-center justify-between gap-3">
+                      <div className="text-xs text-white/45">Expires in {formatMMSS(expiresLeft)}</div>
+
+                      <button
+                        type="button"
+                        onClick={resendNow}
+                        disabled={loading || resendLocked}
+                        className={`inline-flex items-center gap-2 rounded-lg px-2 py-1 text-xs transition ${
+                          loading || resendLocked
+                            ? "text-white/30 cursor-not-allowed"
+                            : "text-white/75 hover:bg-white/5"
+                        }`}
+                        aria-disabled={loading || resendLocked}
+                        title={resendLocked ? "You can resend after 1 minute" : "Resend code"}
+                      >
+                        <ResendIcon className="opacity-90" />
+                        <span>Resend</span>
+                      </button>
+                    </div>
+
+                    {err && (
+                      <div className="mt-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                        {err}
+                      </div>
+                    )}
+
+                    <button
+                      onClick={verifyAndCreate}
+                      disabled={loading || otp.replace(/\D/g, "").length !== 6}
+                      type="button"
+                      className="mt-5 w-full py-3 rounded-2xl text-sm font-semibold transition active:scale-[0.99] disabled:opacity-50"
+                      style={{
+                        background:
+                          "linear-gradient(180deg, rgba(255,255,255,0.14) 0%, rgba(0,0,0,0.18) 100%), var(--brand)",
+                        color: "#fff",
+                        boxShadow:
+                          "0 10px 26px rgba(0,0,0,0.22), 0 0 0 1px rgba(255,255,255,0.10) inset",
+                      }}
+                    >
+                      {loading ? "Verifying…" : "Verify & Create account"}
+                    </button>
+
+                    <button
+                      className={`mt-3 w-full rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-sm font-semibold transition ${
+                        loading ? "opacity-50 cursor-not-allowed" : "hover:bg-white/15"
+                      }`}
+                      onClick={changeEmail}
+                      disabled={loading}
+                      type="button"
+                    >
+                      Change email
+                    </button>
+                  </div>
+
+                  <button
+                    onClick={() => router.push("/auth/login")}
+                    className="mt-4 w-full py-3 rounded-2xl bg-white/5 text-white/60 text-sm border border-white/10 hover:bg-white/10 transition"
+                    type="button"
+                  >
+                    Back to login
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-5 text-center text-[11px] text-white/30">
+                Infrastructure-grade estate control
+              </div>
+            </div>
           </div>
         </div>
       </div>
