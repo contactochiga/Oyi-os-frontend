@@ -40,14 +40,6 @@ function isOnline(d: AnyDevice): boolean | null {
   return null;
 }
 
-function prettyState(state: any) {
-  try {
-    return JSON.stringify(state ?? {}, null, 2);
-  } catch {
-    return String(state ?? "");
-  }
-}
-
 function cleanBool(v: any): boolean | null {
   if (typeof v === "boolean") return v;
   if (v === 1 || v === 0) return !!v;
@@ -102,22 +94,20 @@ function guessGangCount(device: AnyDevice, state: any): 1 | 2 | 3 {
 
 function readGangValues(gangCount: 1 | 2 | 3, state: any): Array<boolean | null> {
   const out: Array<boolean | null> = [];
-
   for (let i = 1; i <= gangCount; i++) {
-    const v = cleanBool(state?.[`switch_${i}`]);
-    out.push(v);
+    out.push(cleanBool(state?.[`switch_${i}`]));
   }
 
   if (gangCount === 1 && out[0] === null) {
     const v = cleanBool(state?.switch) ?? cleanBool(state?.power) ?? cleanBool(state?.on);
     if (v !== null) out[0] = v;
   }
-
   return out;
 }
 
-function looksLikeSwitch(d: AnyDevice) {
+function looksLikeSwitchCard(d: AnyDevice) {
   const t = pickType(d);
+  // your AC switch + light switches must behave like switches
   return (
     t.includes("switch") ||
     t.includes("light") ||
@@ -157,13 +147,24 @@ function PowerIcon({ className }: { className?: string }) {
   );
 }
 
-function powerRingClasses(online: boolean | null, isOn: boolean | null) {
+/**
+ * MASTER ring style:
+ * - offline/unknown -> dim
+ * - online + any gang ON -> blue
+ * - online + all OFF -> red
+ */
+function masterRingClasses(online: boolean | null, masterOn: boolean | null) {
   if (online !== true) return "border-white/15 text-white/35 bg-white/5";
-  if (isOn === true)
-    return "border-sky-400/80 text-sky-200 bg-sky-400/10 shadow-[0_0_16px_rgba(56,189,248,0.30)]";
+  if (masterOn === true)
+    return "border-sky-400/80 text-sky-200 bg-sky-400/10 shadow-[0_0_16px_rgba(56,189,248,0.28)]";
+  // online but OFF => red idle
   return "border-red-400/80 text-red-200 bg-red-400/5 shadow-[0_0_14px_rgba(248,113,113,0.18)]";
 }
 
+/**
+ * MasterOn means: any gang is ON (so master ring should be blue)
+ * If all off => red
+ */
 function computeMasterOn(
   sid: string,
   gangCount: 1 | 2 | 3,
@@ -172,7 +173,8 @@ function computeMasterOn(
 ): boolean | null {
   if (cachedState && Object.keys(cachedState).length) {
     const vals = readGangValues(gangCount, cachedState);
-    if (vals.every((v) => v === null)) return onMap[sid] ?? null;
+    const anyKnown = vals.some((v) => v !== null);
+    if (!anyKnown) return onMap[sid] ?? null;
     return vals.some((v) => v === true);
   }
   return onMap[sid] ?? null;
@@ -193,23 +195,15 @@ export default function DevicesPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  // local quick cache
+  // quick caches
   const [onMap, setOnMap] = useState<Record<string, boolean | null>>({});
   const [stateMap, setStateMap] = useState<Record<string, any>>({});
 
-  // tabs
   const [tab, setTab] = useState<CategoryKey>("favorites");
 
-  // controls modal (multi-gang / single-gang view)
+  // Controls modal (tap card -> open this)
   const [ctrlOpen, setCtrlOpen] = useState(false);
   const [ctrlDevice, setCtrlDevice] = useState<AnyDevice | null>(null);
-
-  // device info modal (hidden for end users, only via “Device info” button)
-  const [infoOpen, setInfoOpen] = useState(false);
-  const [infoTitle, setInfoTitle] = useState<string>("Device");
-  const [infoId, setInfoId] = useState<string>("");
-  const [infoBody, setInfoBody] = useState<string>("{}");
-  const [infoLoading, setInfoLoading] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -248,8 +242,8 @@ export default function DevicesPage() {
   async function warmState(device: AnyDevice) {
     const id = pickId(device);
     if (!id) return;
-
     const sid = String(id);
+
     if (stateMap[sid]) return;
 
     try {
@@ -262,63 +256,19 @@ export default function DevicesPage() {
     } catch {}
   }
 
+  // ✅ TAP CARD -> OPEN CONTROLS (1/2/3 rings)
   async function openControls(device: AnyDevice) {
-    // ✅ user flow:
-    // - 1-gang -> just toggle (no modal)
-    // - 2/3-gang -> open controls modal
-    const id = pickId(device);
-    if (!id) return;
-
-    const sid = String(id);
-    const cached = stateMap[sid] || {};
-    const gangCount = guessGangCount(device, cached);
-
-    if (gangCount === 1) {
-      await toggleMaster(device);
-      return;
-    }
-
     setCtrlDevice(device);
     setCtrlOpen(true);
     warmState(device);
   }
 
-  async function openInfo(device: AnyDevice) {
-    const id = pickId(device);
-    if (!id) return;
-
-    const sid = String(id);
-
-    setInfoTitle(pickName(device));
-    setInfoId(sid);
-    setInfoBody("{}");
-    setInfoOpen(true);
-    setInfoLoading(true);
-
-    try {
-      const res = await deviceService.getDeviceState(sid);
-      const state = res?.state ?? res ?? {};
-      setInfoBody(prettyState(state));
-      setStateMap((p) => ({ ...p, [sid]: state }));
-
-      const guessed = guessIsOn(state);
-      if (guessed !== null) setOnMap((p) => ({ ...p, [sid]: guessed }));
-    } catch (e: any) {
-      setInfoBody(
-        prettyState({
-          error: e?.response?.data?.error || e?.message || "Failed to load device state",
-        })
-      );
-    } finally {
-      setInfoLoading(false);
-    }
-  }
-
+  // ✅ TOP-RIGHT RING -> MASTER toggle ALL gangs
   async function toggleMaster(device: AnyDevice) {
     const id = pickId(device);
     if (!id) return;
-
     const sid = String(id);
+
     setBusyId(sid);
     setErr(null);
 
@@ -327,29 +277,29 @@ export default function DevicesPage() {
       const gangCount = guessGangCount(device, cached);
 
       const masterOn = computeMasterOn(sid, gangCount, cached, onMap);
-      const nextMaster = masterOn === true ? false : true;
+      const next = masterOn === true ? false : true;
 
       if (gangCount === 1) {
-        await deviceService.commandDevice(sid, { switch: nextMaster });
+        await deviceService.commandDevice(sid, { switch: next });
         setStateMap((p) => ({
           ...p,
-          [sid]: { ...(p[sid] || {}), switch: nextMaster, power: nextMaster, on: nextMaster },
+          [sid]: { ...(p[sid] || {}), switch: next, power: next, on: next },
         }));
-        setOnMap((p) => ({ ...p, [sid]: nextMaster }));
+        setOnMap((p) => ({ ...p, [sid]: next }));
       } else {
         const cmd: Record<string, any> = {};
-        for (let i = 1; i <= gangCount; i++) cmd[`switch_${i}`] = nextMaster;
+        for (let i = 1; i <= gangCount; i++) cmd[`switch_${i}`] = next;
 
         await deviceService.commandDevice(sid, cmd);
 
         setStateMap((p) => {
           const prev = p[sid] || {};
           const patched: any = { ...prev };
-          for (let i = 1; i <= gangCount; i++) patched[`switch_${i}`] = nextMaster;
+          for (let i = 1; i <= gangCount; i++) patched[`switch_${i}`] = next;
           return { ...p, [sid]: patched };
         });
 
-        setOnMap((p) => ({ ...p, [sid]: nextMaster }));
+        setOnMap((p) => ({ ...p, [sid]: next }));
       }
     } catch (e: any) {
       setErr(e?.response?.data?.error || e?.message || "Command failed (device may be offline)");
@@ -358,6 +308,7 @@ export default function DevicesPage() {
     }
   }
 
+  // inside controls modal: toggle individual gang ring
   async function toggleGang(device: AnyDevice, gangIndex: number, next: boolean) {
     const id = pickId(device);
     if (!id) return;
@@ -385,13 +336,6 @@ export default function DevicesPage() {
     } finally {
       setBusyId(null);
     }
-  }
-
-  function copy(text?: string | null) {
-    if (!text) return;
-    try {
-      navigator.clipboard.writeText(text);
-    } catch {}
   }
 
   const favorites = useMemo(() => items.slice(0, 4), [items]);
@@ -465,34 +409,6 @@ export default function DevicesPage() {
         </div>
       )}
 
-      {/* Empty */}
-      {!loading && items.length === 0 ? (
-        <div className="mt-4 rounded-3xl border border-white/10 bg-white/5 p-5">
-          <div className="text-white font-semibold">No devices yet</div>
-          <div className="mt-2 text-sm text-white/60">
-            Add your first device to start controlling lights, climate, media and security.
-          </div>
-
-          <div className="mt-4 flex gap-2">
-            <button
-              type="button"
-              className="rounded-2xl px-4 py-2 text-sm bg-white text-black hover:opacity-90 transition"
-              onClick={() => setErr("Next: open Discovery → select → Bind to account.")}
-            >
-              Add devices
-            </button>
-
-            <button
-              type="button"
-              className="rounded-2xl px-4 py-2 text-sm bg-white/10 text-white hover:bg-white/15 border border-white/10 transition"
-              onClick={load}
-            >
-              Retry
-            </button>
-          </div>
-        </div>
-      ) : null}
-
       {/* Grid */}
       {items.length > 0 && (
         <div className="mt-4 grid grid-cols-2 gap-3">
@@ -505,28 +421,21 @@ export default function DevicesPage() {
 
             const cachedState = sid ? stateMap[sid] : {};
             const gangCount = guessGangCount(d, cachedState);
-            const isSwitchCard = looksLikeSwitch(d);
+
+            const isBusy = !!sid && busyId === sid;
+            const isSwitchCard = looksLikeSwitchCard(d);
 
             const masterOn = sid ? computeMasterOn(sid, gangCount, cachedState, onMap) : null;
-            const isBusy = !!sid && busyId === sid;
-
-            // values for modal rings
-            const ringValues =
-              Object.keys(cachedState || {}).length > 0
-                ? readGangValues(gangCount, cachedState)
-                : gangCount === 1
-                  ? [onMap[sid] ?? null]
-                  : Array.from({ length: gangCount }, () => null);
 
             return (
               <button
                 key={String(id || name)}
                 type="button"
                 onClick={() => {
-                  // ✅ Card tap opens controls (not state)
+                  // ✅ card tap opens controls for switch cards
                   if (isSwitchCard) return openControls(d);
-                  // non-switch devices: keep simple for now
-                  setErr("This device opens a custom remote panel soon (IR/TV/AC).");
+                  // non-switch cards: do nothing for now
+                  return;
                 }}
                 className="text-left rounded-3xl border border-white/10 bg-white/5 hover:bg-white/7 transition px-4 py-3"
               >
@@ -537,28 +446,27 @@ export default function DevicesPage() {
                     <div className="h-5 w-6 rounded-md bg-white/80 opacity-90" />
                   </div>
 
-                  {/* ✅ power ring: toggle (1-gang) OR open controls (2/3-gang) */}
+                  {/* ✅ MASTER POWER RING (tap = toggle all) */}
                   {isSwitchCard ? (
                     <button
                       type="button"
                       disabled={!sid || isBusy}
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (gangCount === 1) return toggleMaster(d);
-                        return openControls(d);
+                        toggleMaster(d);
                       }}
-                      className={`h-11 w-11 rounded-full border-2 flex items-center justify-center transition disabled:opacity-50 ${powerRingClasses(
+                      className={`h-11 w-11 rounded-full border-2 flex items-center justify-center transition disabled:opacity-50 ${masterRingClasses(
                         online,
                         masterOn
                       )}`}
-                      aria-label={masterOn === true ? "Turn off" : "Turn on"}
+                      aria-label={masterOn === true ? "Turn off all" : "Turn on all"}
                     >
                       <PowerIcon
                         className={`h-6 w-6 transition ${
                           online === true
                             ? masterOn === true
                               ? "opacity-100"
-                              : "opacity-55"
+                              : "opacity-60"
                             : "opacity-30"
                         }`}
                       />
@@ -573,26 +481,14 @@ export default function DevicesPage() {
                   {name}
                 </div>
 
-                {/* Room + dropdown */}
+                {/* Room + dropdown (just visual; card tap already opens controls) */}
                 <div className="mt-2 flex items-center justify-between gap-2">
                   <div className="text-xs text-white/45 truncate">{room}</div>
 
-                  {/* ✅ dropdown lives here */}
-                  {isSwitchCard && gangCount > 1 ? (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        // open multi-gang controls
-                        setCtrlDevice(d);
-                        setCtrlOpen(true);
-                        warmState(d);
-                      }}
-                      className="h-7 w-10 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/55 flex items-center justify-center"
-                      aria-label="Open controls"
-                    >
+                  {isSwitchCard ? (
+                    <div className="h-7 w-10 rounded-xl bg-white/5 border border-white/10 text-white/35 flex items-center justify-center">
                       <span className="text-base leading-none">⌄</span>
-                    </button>
+                    </div>
                   ) : (
                     <div className="h-7 w-10" />
                   )}
@@ -602,18 +498,13 @@ export default function DevicesPage() {
                   {statusText(online)}
                   {isSwitchCard && gangCount > 1 ? ` • ${gangCount}-gang` : ""}
                 </div>
-
-                {/* hidden usage so TS doesn't complain */}
-                <div className="hidden" aria-hidden="true">
-                  {ringValues.length}
-                </div>
               </button>
             );
           })}
         </div>
       )}
 
-      {/* CONTROLS MODAL (2/3-gang) */}
+      {/* CONTROLS MODAL (tap card -> open 1/2/3 rings) */}
       {ctrlOpen && ctrlDevice && (
         <div className="fixed inset-0 z-[125]">
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setCtrlOpen(false)} />
@@ -623,28 +514,17 @@ export default function DevicesPage() {
                 <div className="px-4 py-3 border-b border-white/10 flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="text-sm font-medium text-white truncate">{pickName(ctrlDevice)}</div>
-                    <div className="text-xs text-white/40 mt-1 truncate">Controls</div>
+                    <div className="text-xs text-white/40 mt-1 truncate">Switch controls</div>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    {/* ✅ device state only accessible here (not on card) */}
-                    <button
-                      type="button"
-                      className="rounded-xl px-3 py-1.5 text-xs bg-white/10 text-white hover:bg-white/15 border border-white/10"
-                      onClick={() => openInfo(ctrlDevice)}
-                    >
-                      Device info
-                    </button>
-
-                    <button
-                      className="rounded-xl px-2 py-1 text-white/70 hover:bg-white/5"
-                      onClick={() => setCtrlOpen(false)}
-                      aria-label="Close"
-                      type="button"
-                    >
-                      ✕
-                    </button>
-                  </div>
+                  <button
+                    className="rounded-xl px-2 py-1 text-white/70 hover:bg-white/5"
+                    onClick={() => setCtrlOpen(false)}
+                    aria-label="Close"
+                    type="button"
+                  >
+                    ✕
+                  </button>
                 </div>
 
                 <div className="p-4">
@@ -656,130 +536,39 @@ export default function DevicesPage() {
                     const cachedState = stateMap[sid] || {};
                     const gangCount = guessGangCount(ctrlDevice, cachedState);
                     const online = isOnline(ctrlDevice);
+                    const busy = busyId === sid;
 
                     const ringValues =
                       Object.keys(cachedState || {}).length > 0
                         ? readGangValues(gangCount, cachedState)
                         : Array.from({ length: gangCount }, () => null);
 
-                    const busy = busyId === sid;
-
                     return (
-                      <>
-                        <div className="flex items-center justify-between gap-4">
-                          <div className="text-sm text-white/70">
-                            {statusText(online)} • {gangCount}-gang
-                          </div>
-
-                          <GangRingSwitch
-                            gangCount={gangCount}
-                            online={online}
-                            values={ringValues}
-                            busy={busy}
-                            onToggleGang={(gangIndex, next) => toggleGang(ctrlDevice, gangIndex, next)}
-                            size={78}
-                          />
+                      <div className="flex flex-col items-center gap-4">
+                        <div className="text-sm text-white/70">
+                          {statusText(online)} • {gangCount}-gang
                         </div>
 
-                        <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-3">
-                          <div className="text-xs text-white/70">Master</div>
-                          <div className="mt-2 flex gap-2">
-                            <button
-                              type="button"
-                              disabled={busy}
-                              onClick={() => toggleMaster(ctrlDevice)}
-                              className="rounded-2xl px-4 py-2 text-sm bg-white text-black hover:opacity-90 disabled:opacity-50 transition"
-                            >
-                              Toggle all
-                            </button>
-                            <button
-                              type="button"
-                              disabled={busy}
-                              onClick={() => setCtrlOpen(false)}
-                              className="rounded-2xl px-4 py-2 text-sm bg-white/10 text-white hover:bg-white/15 border border-white/10 disabled:opacity-50 transition"
-                            >
-                              Done
-                            </button>
-                          </div>
+                        {/* ✅ This is the “Smart Life” style: 1/2/3 rings */}
+                        <GangRingSwitch
+                          gangCount={gangCount}
+                          online={online}
+                          values={ringValues}
+                          busy={busy}
+                          onToggleGang={(gangIndex, next) => toggleGang(ctrlDevice, gangIndex, next)}
+                          size={82}
+                        />
+
+                        <div className="text-xs text-white/40 text-center">
+                          Tap a ring to toggle that light channel.
                         </div>
-                      </>
+                      </div>
                     );
                   })()}
                 </div>
 
                 <div className="px-4 py-3 border-t border-white/10 text-[11px] text-white/40">
-                  Tap a ring to control that gang.
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* DEVICE INFO (DEBUG) MODAL */}
-      {infoOpen && (
-        <div className="fixed inset-0 z-[130]">
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setInfoOpen(false)} />
-          <div className="absolute left-0 right-0 top-20 px-4">
-            <div className="max-w-3xl mx-auto">
-              <div className="rounded-3xl border border-white/10 bg-zinc-950 overflow-hidden">
-                <div className="px-4 py-3 border-b border-white/10 flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium text-white truncate">{infoTitle}</div>
-                    <div className="text-xs text-white/40 mt-1 truncate">Device state (debug)</div>
-
-                    {infoId ? (
-                      <div className="mt-2 flex items-center gap-2">
-                        <span className="text-[11px] text-white/35">ID:</span>
-                        <span className="text-[11px] text-white/70 font-mono truncate">{infoId}</span>
-                        <button
-                          onClick={() => copy(infoId)}
-                          className="text-[11px] text-white/60 hover:text-white underline"
-                          type="button"
-                        >
-                          Copy
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-
-                  <button
-                    className="rounded-xl px-2 py-1 text-white/70 hover:bg-white/5"
-                    onClick={() => setInfoOpen(false)}
-                    aria-label="Close"
-                    type="button"
-                  >
-                    ✕
-                  </button>
-                </div>
-
-                <div className="p-4">
-                  {infoLoading ? (
-                    <div className="flex items-center gap-3 text-sm text-white/60">
-                      <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-                      Fetching…
-                    </div>
-                  ) : (
-                    <>
-                      <div className="flex justify-end mb-2">
-                        <button
-                          onClick={() => copy(infoBody)}
-                          className="rounded-2xl px-3 py-2 text-sm bg-white/10 text-white hover:bg-white/15 border border-white/10 transition"
-                          type="button"
-                        >
-                          Copy JSON
-                        </button>
-                      </div>
-
-                      <pre className="text-xs text-white/80 whitespace-pre-wrap break-words font-mono">
-                        {infoBody}
-                      </pre>
-                    </>
-                  )}
-                </div>
-
-                <div className="px-4 py-3 border-t border-white/10 text-[11px] text-white/40">
-                  Source: <span className="text-white/70">GET /devices/:deviceId/state</span>
+                  Tip: Use the top-right power ring on the card to toggle ALL channels at once.
                 </div>
               </div>
             </div>
