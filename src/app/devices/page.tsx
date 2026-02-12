@@ -48,45 +48,25 @@ function cleanBool(v: any): boolean | null {
   return null;
 }
 
-function guessIsOn(state: any): boolean | null {
-  if (!state) return null;
-
-  const direct =
-    cleanBool(state?.on) ??
-    cleanBool(state?.power) ??
-    cleanBool(state?.switch);
-
-  if (direct !== null) return direct;
-
-  const dps = state.dps || state?.raw?.dps || null;
-  if (dps && typeof dps === "object") {
-    const candidates = ["1", "switch", "switch_1", "power"];
-    for (const k of candidates) {
-      const v = cleanBool(dps[k]);
-      if (v !== null) return v;
-    }
-  }
-  return null;
-}
-
 function guessGangCount(device: AnyDevice, state: any): 1 | 2 | 3 {
   const raw = (device?.metadata?.raw ?? device?.metadata ?? device?.meta ?? {}) as any;
 
   const rawKeys = Object.keys(raw || {});
-  const has2 = rawKeys.some((k) => k === "switch_2" || k === "switch_2_code");
-  const has3 = rawKeys.some((k) => k === "switch_3" || k === "switch_3_code");
+  const has2 = rawKeys.some((k) => k === "switch_2" || k === "switch_2_code" || k === "switch2" || k === "switch2_code");
+  const has3 = rawKeys.some((k) => k === "switch_3" || k === "switch_3_code" || k === "switch3" || k === "switch3_code");
   if (has3) return 3;
   if (has2) return 2;
 
   const keys = Object.keys(state || {});
-  if (keys.includes("switch_3")) return 3;
-  if (keys.includes("switch_2")) return 2;
+  if (keys.includes("switch_3") || keys.includes("switch3")) return 3;
+  if (keys.includes("switch_2") || keys.includes("switch2")) return 2;
 
   const dps = state?.dps || state?.raw?.dps;
   if (dps && typeof dps === "object") {
     const dpKeys = Object.keys(dps);
-    if (dpKeys.some((k) => String(k).includes("switch_3"))) return 3;
-    if (dpKeys.some((k) => String(k).includes("switch_2"))) return 2;
+    // if we see 3 toggles, assume 3-gang
+    if (dpKeys.length >= 3) return 3;
+    if (dpKeys.length >= 2) return 2;
   }
 
   return 1;
@@ -94,20 +74,25 @@ function guessGangCount(device: AnyDevice, state: any): 1 | 2 | 3 {
 
 function readGangValues(gangCount: 1 | 2 | 3, state: any): Array<boolean | null> {
   const out: Array<boolean | null> = [];
+
   for (let i = 1; i <= gangCount; i++) {
-    out.push(cleanBool(state?.[`switch_${i}`]));
+    out.push(
+      cleanBool(state?.[`switch_${i}`]) ??
+        cleanBool(state?.[`switch${i}`]) ??
+        null
+    );
   }
 
   if (gangCount === 1 && out[0] === null) {
     const v = cleanBool(state?.switch) ?? cleanBool(state?.power) ?? cleanBool(state?.on);
     if (v !== null) out[0] = v;
   }
+
   return out;
 }
 
 function looksLikeSwitchCard(d: AnyDevice) {
   const t = pickType(d);
-  // your AC switch + light switches must behave like switches
   return (
     t.includes("switch") ||
     t.includes("light") ||
@@ -148,23 +133,67 @@ function PowerIcon({ className }: { className?: string }) {
 }
 
 /**
+ * ✅ IMPORTANT: Resolve the real Tuya/adapters command key for each gang.
+ * Priority:
+ *  - metadata.raw.switch_{i}_code / switch_code
+ *  - metadata.raw.switch_{i} / switch
+ *  - metadata.switch_{i}_code / switch_code
+ *  - metadata.switch_{i} / switch
+ *  - fallback: switch / switch_1 / switch_2 / switch_3
+ */
+function resolveGangCode(device: AnyDevice, gangIndex: number, gangCount: 1 | 2 | 3): string {
+  const i = gangIndex + 1;
+
+  const meta = (device?.metadata ?? device?.meta ?? {}) as any;
+  const raw = (meta?.raw ?? meta ?? {}) as any;
+
+  // helper for picking a string key
+  const pickKey = (...keys: string[]) => {
+    for (const k of keys) {
+      const v = raw?.[k] ?? meta?.[k];
+      if (typeof v === "string" && v.trim().length) return v.trim();
+      // some adapters store numeric DP as number -> convert to string
+      if (typeof v === "number" && Number.isFinite(v)) return String(v);
+    }
+    return null;
+  };
+
+  // ✅ single gang: prefer switch_code (or DP "1")
+  if (gangCount === 1) {
+    return (
+      pickKey("switch_code", "switch", "switch_1_code", "switch_1", "dp_1", "dps_1", "dps1", "1") ||
+      "switch"
+    );
+  }
+
+  // ✅ multi gang: prefer per-gang code fields
+  return (
+    pickKey(
+      `switch_${i}_code`,
+      `switch${i}_code`,
+      `switch_${i}`,
+      `switch${i}`,
+      `dp_${i}`,
+      `dps_${i}`,
+      `dps${i}`,
+      String(i)
+    ) || `switch_${i}`
+  );
+}
+
+/**
  * MASTER ring style:
- * - offline/unknown -> dim
- * - online + any gang ON -> blue
- * - online + all OFF -> red
+ * - offline/unknown -> dim grey
+ * - online + any gang ON -> blue ring + blue icon
+ * - online + all OFF -> red ring + red icon
  */
 function masterRingClasses(online: boolean | null, masterOn: boolean | null) {
   if (online !== true) return "border-white/15 text-white/35 bg-white/5";
   if (masterOn === true)
     return "border-sky-400/80 text-sky-200 bg-sky-400/10 shadow-[0_0_16px_rgba(56,189,248,0.28)]";
-  // online but OFF => red idle
   return "border-red-400/80 text-red-200 bg-red-400/5 shadow-[0_0_14px_rgba(248,113,113,0.18)]";
 }
 
-/**
- * MasterOn means: any gang is ON (so master ring should be blue)
- * If all off => red
- */
 function computeMasterOn(
   sid: string,
   gangCount: 1 | 2 | 3,
@@ -195,7 +224,7 @@ export default function DevicesPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  // quick caches
+  // caches
   const [onMap, setOnMap] = useState<Record<string, boolean | null>>({});
   const [stateMap, setStateMap] = useState<Record<string, any>>({});
 
@@ -248,22 +277,19 @@ export default function DevicesPage() {
 
     try {
       const res = await deviceService.getDeviceState(sid);
-      const state = res?.state ?? res ?? {};
+      const state = (res as any)?.state ?? res ?? {};
       setStateMap((p) => ({ ...p, [sid]: state }));
-
-      const guessed = guessIsOn(state);
-      if (guessed !== null) setOnMap((p) => ({ ...p, [sid]: guessed }));
     } catch {}
   }
 
-  // ✅ TAP CARD -> OPEN CONTROLS (1/2/3 rings)
+  // ✅ Tap card -> open controls (1/2/3 rings)
   async function openControls(device: AnyDevice) {
     setCtrlDevice(device);
     setCtrlOpen(true);
     warmState(device);
   }
 
-  // ✅ TOP-RIGHT RING -> MASTER toggle ALL gangs
+  // ✅ Master ring -> toggle ALL gangs using resolved codes
   async function toggleMaster(device: AnyDevice) {
     const id = pickId(device);
     if (!id) return;
@@ -279,28 +305,31 @@ export default function DevicesPage() {
       const masterOn = computeMasterOn(sid, gangCount, cached, onMap);
       const next = masterOn === true ? false : true;
 
-      if (gangCount === 1) {
-        await deviceService.commandDevice(sid, { switch: next });
-        setStateMap((p) => ({
-          ...p,
-          [sid]: { ...(p[sid] || {}), switch: next, power: next, on: next },
-        }));
-        setOnMap((p) => ({ ...p, [sid]: next }));
-      } else {
-        const cmd: Record<string, any> = {};
-        for (let i = 1; i <= gangCount; i++) cmd[`switch_${i}`] = next;
-
-        await deviceService.commandDevice(sid, cmd);
-
-        setStateMap((p) => {
-          const prev = p[sid] || {};
-          const patched: any = { ...prev };
-          for (let i = 1; i <= gangCount; i++) patched[`switch_${i}`] = next;
-          return { ...p, [sid]: patched };
-        });
-
-        setOnMap((p) => ({ ...p, [sid]: next }));
+      // ✅ build command using real keys
+      const cmd: Record<string, any> = {};
+      for (let gi = 0; gi < gangCount; gi++) {
+        const code = resolveGangCode(device, gi, gangCount);
+        cmd[code] = next;
       }
+
+      // ✅ optimistic UI (instant “click” feel)
+      setStateMap((p) => {
+        const prev = p[sid] || {};
+        const patched: any = { ...prev };
+
+        // also keep common keys updated for UI reading
+        if (gangCount === 1) {
+          patched.switch = next;
+          patched.power = next;
+          patched.on = next;
+        } else {
+          for (let i = 1; i <= gangCount; i++) patched[`switch_${i}`] = next;
+        }
+        return { ...p, [sid]: patched };
+      });
+      setOnMap((p) => ({ ...p, [sid]: next }));
+
+      await deviceService.commandDevice(sid, cmd);
     } catch (e: any) {
       setErr(e?.response?.data?.error || e?.message || "Command failed (device may be offline)");
     } finally {
@@ -308,7 +337,7 @@ export default function DevicesPage() {
     }
   }
 
-  // inside controls modal: toggle individual gang ring
+  // ✅ In modal: toggle a single gang using resolved key
   async function toggleGang(device: AnyDevice, gangIndex: number, next: boolean) {
     const id = pickId(device);
     if (!id) return;
@@ -320,17 +349,30 @@ export default function DevicesPage() {
     try {
       const cached = stateMap[sid] || {};
       const gangCount = guessGangCount(device, cached);
-      const code = gangCount === 1 ? "switch" : `switch_${gangIndex + 1}`;
 
-      await deviceService.commandDevice(sid, { [code]: next });
+      const code = resolveGangCode(device, gangIndex, gangCount);
 
+      // optimistic update
       setStateMap((p) => {
         const prev = p[sid] || {};
-        if (gangCount === 1) return { ...p, [sid]: { ...prev, switch: next, power: next, on: next } };
-        return { ...p, [sid]: { ...prev, [`switch_${gangIndex + 1}`]: next } };
-      });
+        const patched: any = { ...prev };
 
+        if (gangCount === 1) {
+          patched.switch = next;
+          patched.power = next;
+          patched.on = next;
+        } else {
+          patched[`switch_${gangIndex + 1}`] = next;
+        }
+
+        // also store by actual adapter key if UI wants later
+        patched[code] = next;
+
+        return { ...p, [sid]: patched };
+      });
       setOnMap((p) => ({ ...p, [sid]: next }));
+
+      await deviceService.commandDevice(sid, { [code]: next });
     } catch (e: any) {
       setErr(e?.response?.data?.error || e?.message || "Command failed (device may be offline)");
     } finally {
@@ -432,21 +474,17 @@ export default function DevicesPage() {
                 key={String(id || name)}
                 type="button"
                 onClick={() => {
-                  // ✅ card tap opens controls for switch cards
                   if (isSwitchCard) return openControls(d);
-                  // non-switch cards: do nothing for now
                   return;
                 }}
                 className="text-left rounded-3xl border border-white/10 bg-white/5 hover:bg-white/7 transition px-4 py-3"
               >
-                {/* Top row */}
                 <div className="flex items-start justify-between gap-3">
-                  {/* icon */}
                   <div className="h-9 w-9 rounded-2xl bg-white/10 border border-white/10 flex items-center justify-center">
                     <div className="h-5 w-6 rounded-md bg-white/80 opacity-90" />
                   </div>
 
-                  {/* ✅ MASTER POWER RING (tap = toggle all) */}
+                  {/* ✅ MASTER POWER RING */}
                   {isSwitchCard ? (
                     <button
                       type="button"
@@ -463,11 +501,7 @@ export default function DevicesPage() {
                     >
                       <PowerIcon
                         className={`h-6 w-6 transition ${
-                          online === true
-                            ? masterOn === true
-                              ? "opacity-100"
-                              : "opacity-60"
-                            : "opacity-30"
+                          online === true ? (masterOn === true ? "opacity-100" : "opacity-75") : "opacity-35"
                         }`}
                       />
                     </button>
@@ -476,12 +510,10 @@ export default function DevicesPage() {
                   )}
                 </div>
 
-                {/* Title */}
                 <div className="mt-4 text-[15px] leading-tight text-white font-semibold line-clamp-2">
                   {name}
                 </div>
 
-                {/* Room + dropdown (just visual; card tap already opens controls) */}
                 <div className="mt-2 flex items-center justify-between gap-2">
                   <div className="text-xs text-white/45 truncate">{room}</div>
 
@@ -504,7 +536,7 @@ export default function DevicesPage() {
         </div>
       )}
 
-      {/* CONTROLS MODAL (tap card -> open 1/2/3 rings) */}
+      {/* CONTROLS MODAL */}
       {ctrlOpen && ctrlDevice && (
         <div className="fixed inset-0 z-[125]">
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setCtrlOpen(false)} />
@@ -549,7 +581,6 @@ export default function DevicesPage() {
                           {statusText(online)} • {gangCount}-gang
                         </div>
 
-                        {/* ✅ This is the “Smart Life” style: 1/2/3 rings */}
                         <GangRingSwitch
                           gangCount={gangCount}
                           online={online}
@@ -560,7 +591,7 @@ export default function DevicesPage() {
                         />
 
                         <div className="text-xs text-white/40 text-center">
-                          Tap a ring to toggle that light channel.
+                          Tap a ring to toggle that channel.
                         </div>
                       </div>
                     );
@@ -568,7 +599,7 @@ export default function DevicesPage() {
                 </div>
 
                 <div className="px-4 py-3 border-t border-white/10 text-[11px] text-white/40">
-                  Tip: Use the top-right power ring on the card to toggle ALL channels at once.
+                  Tip: Use the top-right power ring on the card to toggle ALL channels.
                 </div>
               </div>
             </div>
