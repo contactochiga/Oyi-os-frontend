@@ -1,3 +1,4 @@
+// src/app/components/remotes/LightPanel.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -5,6 +6,7 @@ import RemotePanel from "./RemotePanel";
 import { signalService } from "@/services/signalService";
 import useAuth from "@/hooks/useAuth";
 import { useDeviceLiveState } from "@/hooks/useDeviceLiveState";
+import GangRingSwitch from "@/app/components/devices/GangRingSwitch";
 
 function pickBool(state: any, keys: string[], fallback: boolean) {
   for (const k of keys) {
@@ -48,7 +50,10 @@ export default function LightPanel({
   const { state, loading, refresh } = useDeviceLiveState(deviceId, estateId);
 
   const isOn = useMemo(() => pickBool(state, ["power", "on", "switch"], false), [state]);
-  const brightness = useMemo(() => pickNumber(state, ["brightness", "dimmer", "level"], 70), [state]);
+  const brightness = useMemo(
+    () => pickNumber(state, ["brightness", "dimmer", "level"], 70),
+    [state]
+  );
 
   const [brightDraft, setBrightDraft] = useState<number>(brightness);
   useEffect(() => setBrightDraft(brightness), [brightness]);
@@ -155,22 +160,19 @@ export default function LightPanel({
       <div className="flex items-center justify-between gap-3">
         <div className="text-sm text-white/80">
           {isOn ? "On" : "Off"}
-          {(pending || loading) ? <span className="text-xs text-white/40"> • syncing…</span> : null}
+          {pending || loading ? (
+            <span className="text-xs text-white/40"> • syncing…</span>
+          ) : null}
         </div>
 
-        <button
-          type="button"
-          onClick={() => sendPower(!isOn)}
-          disabled={disabled}
-          className={`px-4 py-2 rounded-full text-sm font-semibold border transition disabled:opacity-50
-            ${
-              isOn
-                ? "bg-white text-black border-white/20"
-                : "bg-white/5 text-white border-white/10 hover:bg-white/10"
-            }`}
-        >
-          {isOn ? "Turn off" : "Turn on"}
-        </button>
+        <GangRingSwitch
+          gangCount={1}
+          online={deviceId ? true : null}
+          values={[isOn]}
+          busy={pending || loading}
+          onToggleGang={(_, next) => sendPower(next)}
+          size={58}
+        />
       </div>
 
       <div className={`mt-4 ${mutedControls ? "opacity-40 pointer-events-none" : ""}`}>
