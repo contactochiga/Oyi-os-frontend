@@ -6,7 +6,7 @@ import RemotePanel from "./RemotePanel";
 import { deviceService } from "@/services/deviceService";
 
 type Device = {
-  id?: string; // sometimes internal uuid
+  id?: string; // sometimes internal uuid (after assigned)
   externalId?: string;
   external_id?: string;
   device_id?: string;
@@ -31,22 +31,26 @@ type Device = {
 
 const ROOMS = ["Living Room", "Bedroom", "Kitchen", "Bathroom", "Other"];
 
+/** ✅ Discovery → real “device id” we must bind by (external_id) */
 function pickExternalId(d: Device): string | null {
-  return (
-    (d.external_id && String(d.external_id)) ||
-    (d.externalId && String(d.externalId)) ||
-    (d.device_id && String(d.device_id)) ||
-    (d.dev_id && String(d.dev_id)) ||
-    (d.uuid && String(d.uuid)) ||
-    null
-  );
+  const v =
+    d.external_id ??
+    d.externalId ??
+    d.device_id ??
+    d.dev_id ??
+    d.uuid ??
+    null;
+
+  if (!v) return null;
+  const s = String(v).trim();
+  return s.length ? s : null;
 }
 
-// UI key only (must be stable for React list). NOT used for backend.
+/** ✅ Stable UI key for React rendering only (NOT used for backend actions) */
 function uiKey(d: Device): string {
   const ext = pickExternalId(d);
-  if (ext) return ext;
-  return `${d.adapter || d.vendor || "device"}:${d.name || d.type || "unknown"}:${d.ip || ""}`;
+  if (ext) return `ext:${ext}`;
+  return `tmp:${d.adapter || d.vendor || "device"}:${d.name || d.type || "unknown"}:${d.ip || ""}`;
 }
 
 function pickLabel(d: Device) {
@@ -70,8 +74,11 @@ export default function DeviceDiscoveryPanel({
   const [loading, setLoading] = useState(false);
   const [assigning, setAssigning] = useState(false);
 
-  // selected by UI key
-  const [selected, setSelected] = useState<Record<string, boolean>>({});
+  /**
+   * ✅ Selection must be by external_id, not by UI key.
+   * Because backend bind is strictly external_id.
+   */
+  const [selectedByExternalId, setSelectedByExternalId] = useState<Record<string, boolean>>({});
   const [room, setRoom] = useState("");
 
   const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -94,16 +101,19 @@ export default function DeviceDiscoveryPanel({
     })) as Array<Device & { __uiKey: string; __externalId: string | null }>;
   }, [devices]);
 
-  const selectedUiKeys = useMemo(() => Object.keys(selected).filter((k) => selected[k]), [selected]);
+  const selectedExternalIds = useMemo(
+    () => Object.keys(selectedByExternalId).filter((k) => selectedByExternalId[k]),
+    [selectedByExternalId]
+  );
 
   async function refreshDevices() {
     setLoading(true);
     setNotice(null);
     try {
-      // discovery list
-      const result = await deviceService.getDevices(undefined); // no estateId => /devices/discover
+      // ✅ ALWAYS discovery endpoint
+      const result = await deviceService.discoverDevices();
       setDevices(Array.isArray(result) ? result : []);
-      setSelected({});
+      setSelectedByExternalId({});
       touch();
     } catch (e: any) {
       flash("error", e?.message || "Failed to load devices");
@@ -117,43 +127,44 @@ export default function DeviceDiscoveryPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function getSelectedDeviceObjects() {
-    const map = new Map(keyedDevices.map((d) => [d.__uiKey, d]));
-    return selectedUiKeys.map((k) => map.get(k)).filter(Boolean) as Array<Device & { __uiKey: string; __externalId: string | null }>;
+  function toggleRow(d: Device & { __externalId: string | null }) {
+    const ext = d.__externalId;
+    if (!ext) return;
+
+    setSelectedByExternalId((prev) => ({ ...prev, [ext]: !prev[ext] }));
+  }
+
+  function clearSelection() {
+    setSelectedByExternalId({});
   }
 
   async function bindSelected() {
-    if (!selectedUiKeys.length || assigning) return;
+    if (!selectedExternalIds.length || assigning) return;
 
-    const selectedDevices = getSelectedDeviceObjects();
+    // ✅ Bind payload should contain full objects so backend stores metadata/vendor properly
+    const selectedDevices = keyedDevices.filter((d) => d.__externalId && selectedByExternalId[d.__externalId]);
 
-    // ✅ send full device objects so backend can store vendor/external_id/metadata properly
-    const payload: any = {
-      devices: selectedDevices.map((d) => {
-        // normalize fields your backend expects
-        const external_id = d.__externalId ?? undefined;
-        return {
-          external_id,
-          vendor: d.vendor || d.adapter || "tuya",
-          adapter: d.adapter || d.vendor || "tuya",
-          name: d.name,
-          type: d.type || d.category,
-          icon: d.icon,
-          ip: d.ip,
-          protocol: d.protocol,
-          online: typeof d.online === "boolean" ? d.online : undefined,
-          metadata: d.metadata ?? d,
-        };
-      }),
-      room: room || null,
-    };
-
-    // Guard: if none of them has external_id, stop early
-    const hasAnyExternalId = payload.devices.some((x: any) => !!x.external_id);
-    if (!hasAnyExternalId) {
-      flash("error", "These discovered items have no device ID. Refresh discovery or ensure Tuya returns external_id.");
+    // Guard
+    if (!selectedDevices.length) {
+      flash("error", "No valid devices selected (missing external_id).");
       return;
     }
+
+    const payload: any = {
+      devices: selectedDevices.map((d) => ({
+        external_id: d.__externalId!,
+        vendor: d.vendor || d.adapter || "tuya",
+        adapter: d.adapter || d.vendor || "tuya",
+        name: d.name || "Device",
+        type: d.type || d.category || "device",
+        icon: d.icon,
+        ip: d.ip,
+        protocol: d.protocol,
+        online: typeof d.online === "boolean" ? d.online : undefined,
+        metadata: d.metadata ?? d, // keep raw
+      })),
+      room: room || null,
+    };
 
     setAssigning(true);
     setNotice(null);
@@ -168,10 +179,10 @@ export default function DeviceDiscoveryPanel({
         `Bound ${savedCount} device${savedCount === 1 ? "" : "s"}${room ? ` to ${room}` : ""}.`
       );
 
-      // refresh discovery list after binding (optional)
-      const updated = await deviceService.getDevices(undefined);
+      // ✅ Refresh discovery list (optional)
+      const updated = await deviceService.discoverDevices();
       setDevices(Array.isArray(updated) ? updated : []);
-      setSelected({});
+      clearSelection();
       setRoom("");
       touch();
     } catch (e: any) {
@@ -185,6 +196,8 @@ export default function DeviceDiscoveryPanel({
       setAssigning(false);
     }
   }
+
+  const anySelectable = keyedDevices.some((d) => !!d.__externalId);
 
   return (
     <RemotePanel title="Discovery" lastUpdated={lastUpdated}>
@@ -224,37 +237,50 @@ export default function DeviceDiscoveryPanel({
 
       {/* List */}
       <div className="space-y-2">
-        {keyedDevices.map((d) => (
-          <label
-            key={d.__uiKey}
-            className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 transition px-3 py-2 cursor-pointer"
-          >
-            <div className="flex items-center gap-3 min-w-0">
-              <input
-                type="checkbox"
-                checked={!!selected[d.__uiKey]}
-                onChange={() => setSelected((s) => ({ ...s, [d.__uiKey]: !s[d.__uiKey] }))}
-                disabled={loading || assigning}
-                className="accent-white"
-              />
+        {keyedDevices.map((d) => {
+          const ext = d.__externalId;
+          const checked = ext ? !!selectedByExternalId[ext] : false;
 
-              <div className="min-w-0">
-                <div className="text-[13px] text-white/90 font-semibold truncate">
-                  {pickLabel(d)}
-                </div>
+          return (
+            <label
+              key={d.__uiKey}
+              className={`flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 transition px-3 py-2 cursor-pointer ${
+                !ext ? "opacity-60" : ""
+              }`}
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => toggleRow(d)}
+                  disabled={!ext || loading || assigning}
+                  className="accent-white"
+                />
 
-                <div className="text-[11px] text-white/45 truncate">
-                  {pickMeta(d)}
-                  {d.__externalId ? ` • id:${d.__externalId}` : " • id:—"}
+                <div className="min-w-0">
+                  <div className="text-[13px] text-white/90 font-semibold truncate">{pickLabel(d)}</div>
+
+                  <div className="text-[11px] text-white/45 truncate">
+                    {pickMeta(d)}
+                    {ext ? ` • id:${ext}` : " • id:—"}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="text-[11px] text-white/40 shrink-0">
-              {d.status ? String(d.status) : typeof d.online === "boolean" ? (d.online ? "Online" : "Offline") : "Available"}
-            </div>
-          </label>
-        ))}
+              <div className="text-[11px] text-white/40 shrink-0">
+                {d.status
+                  ? String(d.status)
+                  : typeof d.online === "boolean"
+                  ? d.online
+                    ? "Online"
+                    : "Offline"
+                  : ext
+                  ? "Available"
+                  : "No ID"}
+              </div>
+            </label>
+          );
+        })}
 
         {!loading && keyedDevices.length === 0 && (
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/60">
@@ -264,16 +290,12 @@ export default function DeviceDiscoveryPanel({
       </div>
 
       {/* Bottom bind bar */}
-      {selectedUiKeys.length > 0 && (
+      {selectedExternalIds.length > 0 && (
         <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-3">
           <div className="flex items-center justify-between gap-3 mb-2">
-            <div className="text-xs text-white/60">{selectedUiKeys.length} selected</div>
+            <div className="text-xs text-white/60">{selectedExternalIds.length} selected</div>
 
-            <button
-              type="button"
-              onClick={() => setSelected({})}
-              className="text-xs text-white/50 hover:text-white/70"
-            >
+            <button type="button" onClick={clearSelection} className="text-xs text-white/50 hover:text-white/70">
               Clear
             </button>
           </div>
@@ -303,9 +325,15 @@ export default function DeviceDiscoveryPanel({
             </button>
 
             <div className="text-[11px] text-white/40">
-              Binding saves devices into your account/home, so AI can control them (on/off, switch_1, etc).
+              Binding saves devices into your account/home/room, so AI can control them (switch, switch_1, etc).
             </div>
           </div>
+        </div>
+      )}
+
+      {!anySelectable && !loading && keyedDevices.length > 0 && (
+        <div className="mt-3 rounded-2xl border border-yellow-500/20 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-200">
+          Tuya discovery returned items without external_id. Check your discover controller mapping (must return externalId/external_id).
         </div>
       )}
     </RemotePanel>
