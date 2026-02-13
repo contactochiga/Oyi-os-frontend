@@ -1,4 +1,4 @@
-// src/app/devices/page.tsx
+// src/app/devices/DeviceClient.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -9,52 +9,44 @@ import GangRingSwitch from "@/app/components/devices/GangRingSwitch";
 
 type AnyDevice = Record<string, any>;
 
-/**
- * ✅ KEY FIX:
- * - Use DB UUID (devices.id) for all state + command calls
- * - external_id is ONLY for display / Tuya mapping
- */
 function pickDbId(d: AnyDevice) {
-  return d.id || null; // <-- DB UUID (public.devices.id)
+  return d?.id || null; // ✅ DB uuid
 }
 
 function pickExternalId(d: AnyDevice) {
   return (
-    d.external_id ||
-    d.externalId ||
-    d.device_id ||
-    d.dev_id ||
-    d.devId ||
-    d.uuid ||
+    d?.external_id ||
+    d?.externalId ||
+    d?.device_id ||
+    d?.dev_id ||
+    d?.devId ||
+    d?.uuid ||
     null
   );
 }
 
-// React list key
-function pickKey(d: AnyDevice) {
-  return pickDbId(d) || pickExternalId(d) || d.name || Math.random().toString(36).slice(2);
-}
-
 function pickName(d: AnyDevice) {
-  return d.name || d.local_name || d.localName || d.alias || "Unnamed Device";
+  return d?.name || d?.local_name || d?.localName || d?.alias || "Unnamed Device";
 }
 
 function pickVendor(d: AnyDevice) {
-  return d.vendor || d.adapter || d.protocol || d.brand || "device";
+  return d?.vendor || d?.adapter || d?.protocol || d?.brand || "device";
+}
+
+function pickRoomName(d: AnyDevice) {
+  return d?.room_name || d?.room?.name || d?.metadata?.room_name || null;
 }
 
 function isOnline(d: AnyDevice): boolean | null {
-  if (typeof d.online === "boolean") return d.online;
-  if (typeof d.isOnline === "boolean") return d.isOnline;
-  if (typeof d.connected === "boolean") return d.connected;
+  if (typeof d?.online === "boolean") return d.online;
+  if (typeof d?.isOnline === "boolean") return d.isOnline;
+  if (typeof d?.connected === "boolean") return d.connected;
 
-  // fallback: status field
-  if (typeof d.status === "string") {
+  if (typeof d?.status === "string") {
     const s = d.status.toLowerCase();
     if (s.includes("online")) return true;
     if (s.includes("offline")) return false;
   }
-
   return null;
 }
 
@@ -69,24 +61,6 @@ function prettyState(state: any) {
   } catch {
     return String(state ?? "");
   }
-}
-
-function guessIsOn(state: any): boolean | null {
-  if (!state) return null;
-
-  if (typeof state.on === "boolean") return state.on;
-  if (typeof state.power === "boolean") return state.power;
-  if (typeof state.switch === "boolean") return state.switch;
-
-  const dps = state.dps || state?.raw?.dps || null;
-  if (dps && typeof dps === "object") {
-    const candidates = ["1", "switch", "switch_1", "power"];
-    for (const k of candidates) {
-      if (typeof dps[k] === "boolean") return dps[k];
-    }
-  }
-
-  return null;
 }
 
 function guessGangCount(device: AnyDevice, state: any): 1 | 2 | 3 {
@@ -114,7 +88,6 @@ function guessGangCount(device: AnyDevice, state: any): 1 | 2 | 3 {
 
 function readGangValues(gangCount: 1 | 2 | 3, state: any): Array<boolean | null> {
   const out: Array<boolean | null> = [];
-
   for (let i = 1; i <= gangCount; i++) {
     const k = `switch_${i}`;
     const v = state?.[k];
@@ -129,26 +102,24 @@ function readGangValues(gangCount: 1 | 2 | 3, state: any): Array<boolean | null>
   return out;
 }
 
-/**
- * ✅ DEMO DEVICES (for App Store screenshots)
- * Only used when Demo Mode is ON.
- */
-const DEMO: AnyDevice[] = [
-  { id: "demo-1", name: "Living Room Lights", vendor: "tuya", status: "online", metadata: { room_name: "Living Room", raw: { switch_1_code: true } } },
-  { id: "demo-2", name: "Bedroom Lights", vendor: "tuya", status: "online", metadata: { room_name: "Bedroom", raw: { switch_1_code: true } } },
-  { id: "demo-3", name: "AC Switch", vendor: "tuya", status: "online", metadata: { room_name: "Bedroom", raw: { switch_1_code: true, switch_2_code: true } } },
-  { id: "demo-4", name: "Smart TV", vendor: "tuya", status: "online", metadata: { room_name: "Living Room", raw: { switch_1_code: true } } },
-];
+function normalizeCommandKey(gangCount: 1 | 2 | 3, gangIndex: number) {
+  return gangCount === 1 ? "switch" : `switch_${gangIndex + 1}`;
+}
 
-export default function DevicesPage() {
+function powerButtonClass(isOn: boolean | null) {
+  if (isOn === null) return "bg-white/10 text-white/70 border-white/10";
+  return isOn
+    ? "bg-emerald-500/15 text-emerald-200 border-emerald-500/20"
+    : "bg-white/10 text-white/70 border-white/10";
+}
+
+export default function DeviceClient() {
   const { user } = useAuth();
 
   const estateId = useMemo(
     () =>
       (user as any)?.estate_id ??
-      (typeof window !== "undefined"
-        ? localStorage.getItem("ochiga_estate")
-        : null),
+      (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null),
     [user]
   );
 
@@ -157,56 +128,28 @@ export default function DevicesPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  // ✅ screenshot helpers
-  const [demoMode, setDemoMode] = useState(false);
-  const [screenshotMode, setScreenshotMode] = useState(true);
+  const [q, setQ] = useState("");
 
-  // state modal
+  // device state cache (by DB id)
+  const [stateMap, setStateMap] = useState<Record<string, any>>({});
+
+  // details modal
   const [stateOpen, setStateOpen] = useState(false);
   const [stateTitle, setStateTitle] = useState<string>("Device");
   const [stateMeta, setStateMeta] = useState<{ id?: string; vendor?: string; external_id?: string } | null>(null);
   const [stateBody, setStateBody] = useState<string>("{}");
   const [stateLoading, setStateLoading] = useState(false);
 
-  // local on/off cache
-  const [onMap, setOnMap] = useState<Record<string, boolean | null>>({});
-
-  // per-device state cache
-  const [stateMap, setStateMap] = useState<Record<string, any>>({});
+  // bottom sheet for controls
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetDevice, setSheetDevice] = useState<AnyDevice | null>(null);
 
   async function load() {
     setLoading(true);
     setErr(null);
     try {
-      if (demoMode) {
-        setItems(DEMO);
-        setLoading(false);
-        return;
-      }
-
       const list = await deviceService.getDevices(estateId || undefined);
-      const arr = Array.isArray(list) ? list : [];
-      setItems(arr);
-
-      // prefill onMap from list fields (if present)
-      const next: Record<string, boolean | null> = {};
-      for (const d of arr) {
-        const dbId = pickDbId(d);
-        if (!dbId) continue;
-        const sid = String(dbId);
-
-        const listOn =
-          typeof d.on === "boolean"
-            ? d.on
-            : typeof d.power === "boolean"
-            ? d.power
-            : typeof d.switch === "boolean"
-            ? d.switch
-            : null;
-
-        if (listOn !== null) next[sid] = listOn;
-      }
-      if (Object.keys(next).length) setOnMap((prev) => ({ ...prev, ...next }));
+      setItems(Array.isArray(list) ? list : []);
     } catch (e: any) {
       setErr(e?.response?.data?.error || e?.message || "Failed to load devices");
       setItems([]);
@@ -218,35 +161,160 @@ export default function DevicesPage() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [estateId, demoMode]);
+  }, [estateId]);
 
-  // ✅ Warm state before first toggle so gangCount + keys are correct
+  const filtered = useMemo(() => {
+    const t = (q || "").trim().toLowerCase();
+    if (!t) return items;
+
+    return items.filter((d) => {
+      const name = String(pickName(d)).toLowerCase();
+      const vendor = String(pickVendor(d)).toLowerCase();
+      const room = String(pickRoomName(d) ?? "").toLowerCase();
+      const ext = String(pickExternalId(d) ?? "").toLowerCase();
+      return name.includes(t) || vendor.includes(t) || room.includes(t) || ext.includes(t);
+    });
+  }, [q, items]);
+
   async function warmState(device: AnyDevice) {
     const dbId = pickDbId(device);
     if (!dbId) return;
-    const sid = String(dbId);
 
+    const sid = String(dbId);
     if (stateMap[sid]) return;
 
     try {
-      const res = await deviceService.getDeviceState(sid); // ✅ DB ID
+      const res = await deviceService.getDeviceState(sid);
       const state = (res as any)?.state ?? res ?? {};
       setStateMap((p) => ({ ...p, [sid]: state }));
-
-      const guessed = guessIsOn(state);
-      if (guessed !== null) setOnMap((p) => ({ ...p, [sid]: guessed }));
     } catch {
       // silent
     }
   }
 
+  function currentIsOn(device: AnyDevice, state: any): boolean | null {
+    if (!state) return null;
+
+    // prefer dp-like switches first if present
+    const v =
+      state?.switch ??
+      state?.power ??
+      state?.on ??
+      null;
+
+    if (typeof v === "boolean") return v;
+
+    // fallback: if any switch_i is true, treat as "on"
+    const keys = ["switch_1", "switch_2", "switch_3"];
+    for (const k of keys) {
+      if (typeof state?.[k] === "boolean" && state[k] === true) return true;
+    }
+    // if we can see them but all false
+    const hasAny = keys.some((k) => typeof state?.[k] === "boolean");
+    if (hasAny) return false;
+
+    return null;
+  }
+
+  async function toggleGang(device: AnyDevice, gangIndex: number, next: boolean) {
+    const dbId = pickDbId(device);
+    if (!dbId) {
+      setErr("This device has no DB id yet. Bind/assign it first.");
+      return;
+    }
+
+    const sid = String(dbId);
+    setBusyId(sid);
+    setErr(null);
+
+    try {
+      await warmState(device);
+
+      const cached = stateMap[sid] || {};
+      const gangCount = guessGangCount(device, cached);
+      const code = normalizeCommandKey(gangCount, gangIndex);
+
+      await deviceService.commandDevice(sid, { [code]: next });
+
+      // optimistic UI
+      setStateMap((p) => {
+        const prev = p[sid] || {};
+        if (gangCount === 1) {
+          return { ...p, [sid]: { ...prev, switch: next, power: next, on: next } };
+        }
+        return { ...p, [sid]: { ...prev, [`switch_${gangIndex + 1}`]: next } };
+      });
+    } catch (e: any) {
+      setErr(e?.response?.data?.error || e?.message || "Command failed (device may be offline)");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  // ✅ card power button: full ON/OFF
+  // - 1-gang => switch
+  // - multi-gang => switch_1..switch_n all together
+  async function toggleMasterPower(device: AnyDevice) {
+    const dbId = pickDbId(device);
+    if (!dbId) {
+      setErr("This device has no DB id yet. Bind/assign it first.");
+      return;
+    }
+
+    const sid = String(dbId);
+    setBusyId(sid);
+    setErr(null);
+
+    try {
+      await warmState(device);
+
+      const cached = stateMap[sid] || {};
+      const gangCount = guessGangCount(device, cached);
+      const nowOn = currentIsOn(device, cached);
+      const next = nowOn === null ? true : !nowOn;
+
+      const command: Record<string, any> = {};
+
+      if (gangCount === 1) {
+        command["switch"] = next;
+      } else {
+        for (let i = 1; i <= gangCount; i++) {
+          command[`switch_${i}`] = next;
+        }
+      }
+
+      await deviceService.commandDevice(sid, command);
+
+      // optimistic UI
+      setStateMap((p) => {
+        const prev = p[sid] || {};
+        if (gangCount === 1) {
+          return { ...p, [sid]: { ...prev, switch: next, power: next, on: next } };
+        }
+        const patch: any = {};
+        for (let i = 1; i <= gangCount; i++) patch[`switch_${i}`] = next;
+        return { ...p, [sid]: { ...prev, ...patch } };
+      });
+    } catch (e: any) {
+      setErr(e?.response?.data?.error || e?.message || "Command failed (device may be offline)");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  function openSheet(device: AnyDevice) {
+    setSheetDevice(device);
+    setSheetOpen(true);
+    // warm quickly so ring state shows immediately
+    warmState(device);
+  }
+
   async function viewState(device: AnyDevice) {
     const dbId = pickDbId(device);
-    const ext = pickExternalId(device);
-
     if (!dbId) return;
 
     const sid = String(dbId);
+    const ext = pickExternalId(device);
 
     setStateTitle(pickName(device));
     setStateMeta({ id: sid, vendor: pickVendor(device), external_id: ext ? String(ext) : undefined });
@@ -255,14 +323,10 @@ export default function DevicesPage() {
     setStateLoading(true);
 
     try {
-      const res = await deviceService.getDeviceState(sid); // ✅ DB ID
+      const res = await deviceService.getDeviceState(sid);
       const state = (res as any)?.state ?? res ?? {};
       setStateBody(prettyState(state));
-
       setStateMap((p) => ({ ...p, [sid]: state }));
-
-      const guessed = guessIsOn(state);
-      if (guessed !== null) setOnMap((p) => ({ ...p, [sid]: guessed }));
     } catch (e: any) {
       setStateBody(
         prettyState({
@@ -274,51 +338,6 @@ export default function DevicesPage() {
     }
   }
 
-  /**
-   * ✅ WORKING COMMAND LOGIC
-   * - Always command using DB device UUID
-   * - Uses switch for 1-gang, switch_1 / switch_2 / switch_3 for multi-gang
-   * - In screenshotMode we keep UI optimistic even if backend fails
-   */
-  async function toggleGang(device: AnyDevice, gangIndex: number, next: boolean) {
-    const dbId = pickDbId(device);
-    if (!dbId) return;
-
-    const sid = String(dbId);
-    setBusyId(sid);
-    setErr(null);
-
-    try {
-      await warmState(device);
-
-      const cached = stateMap[sid] || {};
-      const gangCount = guessGangCount(device, cached);
-
-      const code = gangCount === 1 ? "switch" : `switch_${gangIndex + 1}`;
-
-      if (!demoMode) {
-        await deviceService.commandDevice(sid, { [code]: next }); // ✅ DB ID
-      }
-
-      // optimistic UI (instant ring flip)
-      setStateMap((p) => {
-        const prev = p[sid] || {};
-        if (gangCount === 1) {
-          return { ...p, [sid]: { ...prev, switch: next, power: next, on: next } };
-        }
-        return { ...p, [sid]: { ...prev, [`switch_${gangIndex + 1}`]: next } };
-      });
-
-      setOnMap((p) => ({ ...p, [sid]: next }));
-    } catch (e: any) {
-      const msg = e?.response?.data?.error || e?.message || "Command failed (device may be offline)";
-      if (!screenshotMode) setErr(msg);
-      // screenshotMode: keep it looking smooth
-    } finally {
-      setBusyId(null);
-    }
-  }
-
   function copy(text?: string | null) {
     if (!text) return;
     try {
@@ -326,33 +345,14 @@ export default function DevicesPage() {
     } catch {}
   }
 
-  const title = "Devices";
-  const subtitle = "Device Command Center";
-
   return (
-    <ConsumerShell title={title} subtitle={subtitle} showBack backHref="/home">
-      {/* top row */}
-      <div className="rounded-3xl border border-white/10 bg-white/5 p-4 flex items-center justify-between gap-3">
-        <div className="text-xs text-white/45 truncate">
-          {demoMode ? "Demo Mode ON • clean App Store screenshot data" : estateId ? "Estate linked • DB devices" : "No estate linked"}
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setScreenshotMode((v) => !v)}
-            className="rounded-2xl px-3 py-2 text-xs bg-white/10 text-white hover:bg-white/15 border border-white/10 transition"
-            type="button"
-          >
-            {screenshotMode ? "Screenshot: ON" : "Screenshot: OFF"}
-          </button>
-
-          <button
-            onClick={() => setDemoMode((v) => !v)}
-            className="rounded-2xl px-3 py-2 text-xs bg-white/10 text-white hover:bg-white/15 border border-white/10 transition"
-            type="button"
-          >
-            {demoMode ? "Demo: ON" : "Demo: OFF"}
-          </button>
+    <ConsumerShell title="Devices" subtitle="Command Center" showBack backHref="/home">
+      {/* header */}
+      <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-xs text-white/45 truncate">
+            {estateId ? "Estate linked" : "No estate linked"}
+          </div>
 
           <button
             onClick={load}
@@ -363,119 +363,268 @@ export default function DevicesPage() {
             {loading ? "Refreshing…" : "Refresh"}
           </button>
         </div>
+
+        <div className="mt-3">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search devices…"
+            className="
+              w-full rounded-2xl
+              bg-white/5 border border-white/10
+              px-4 py-3
+              text-sm text-white/90 placeholder:text-white/35
+              outline-none focus:border-white/20
+            "
+          />
+        </div>
+
+        <div className="mt-3 flex items-center justify-between text-xs text-white/45">
+          <span>{filtered.length} device{filtered.length === 1 ? "" : "s"}</span>
+          <span className="text-white/30">Tap card for controls • Power button for full on/off</span>
+        </div>
       </div>
 
-      {/* error */}
-      {!screenshotMode && err && (
+      {err && (
         <div className="mt-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
           {err}
         </div>
       )}
 
-      {/* list */}
-      {loading && items.length === 0 ? (
+      {/* grid */}
+      {loading && filtered.length === 0 ? (
         <div className="mt-4 flex items-center gap-3 text-sm text-white/60">
           <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
           Loading devices…
         </div>
-      ) : items.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <div className="mt-4 rounded-3xl border border-white/10 bg-white/5 p-5 text-sm text-white/60">
-          No devices found yet.
+          No devices found.
         </div>
       ) : (
-        <div className="mt-4 space-y-3">
-          {items.map((d) => {
-            const key = pickKey(d);
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {filtered.map((d) => {
             const dbId = pickDbId(d);
-            const ext = pickExternalId(d);
-
+            const sid = dbId ? String(dbId) : "";
             const name = pickName(d);
+            const roomName = pickRoomName(d);
             const vendor = pickVendor(d);
             const online = isOnline(d);
 
-            const sid = dbId ? String(dbId) : "";
-            const isBusy = !!sid && busyId === sid;
+            const cached = sid ? stateMap[sid] : {};
+            const gangCount = guessGangCount(d, cached);
+            const nowOn = currentIsOn(d, cached);
 
-            const cachedState = sid ? stateMap[sid] : {};
-            const gangCount = guessGangCount(d, cachedState);
-
-            const ringValues =
-              Object.keys(cachedState || {}).length > 0
-                ? readGangValues(gangCount, cachedState)
-                : gangCount === 1
-                ? [sid ? onMap[sid] ?? null : null]
-                : Array.from({ length: gangCount }, () => null);
+            const busy = sid && busyId === sid;
 
             return (
-              <div
-                key={String(key)}
-                className="rounded-3xl border border-white/10 bg-white/5 hover:bg-white/7 transition p-4"
+              <button
+                key={sid || String(pickExternalId(d) || name)}
+                type="button"
+                onClick={() => openSheet(d)}
+                className="
+                  text-left rounded-3xl
+                  border border-white/10
+                  bg-white/5 hover:bg-white/8
+                  transition
+                  p-4
+                  relative
+                  overflow-hidden
+                "
               >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className={`h-2 w-2 rounded-full ${statusDot(online)}`} aria-hidden="true" />
-                      <div className="text-sm text-white font-medium truncate">{name}</div>
-                    </div>
-
-                    <div className="text-xs text-white/40 mt-1 truncate">
-                      {vendor}
-                      {online === null ? "" : online ? " • online" : " • offline"}
-                      {gangCount > 1 ? ` • ${gangCount}-gang` : ""}
-                    </div>
-
-                    {/* small id hint (safe for screenshots) */}
-                    <div className="mt-2 text-[11px] text-white/35 truncate">
-                      {ext ? `Tuya id: ${String(ext)}` : "Tuya id: —"}
-                      {"  "}
-                      <span className="text-white/25">•</span>
-                      {"  "}
-                      DB id hidden (open Details)
-                    </div>
+                {/* top row: icon + power */}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className={`h-2 w-2 rounded-full ${statusDot(online)}`} />
+                    <div className="text-[11px] text-white/45 truncate">{vendor}</div>
                   </div>
 
-                  <div className="flex items-center gap-3 shrink-0">
-                    <button
-                      onClick={() => viewState(d)}
-                      className="rounded-2xl px-3 py-2 text-sm bg-white/10 text-white hover:bg-white/15 border border-white/10 transition"
-                      type="button"
-                    >
-                      Details
-                    </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleMasterPower(d);
+                    }}
+                    disabled={busy}
+                    className={`
+                      h-9 w-9 rounded-full border
+                      flex items-center justify-center
+                      transition active:scale-[0.99]
+                      ${powerButtonClass(nowOn)}
+                      ${busy ? "opacity-60" : ""}
+                    `}
+                    aria-label="Power"
+                    title="Power"
+                  >
+                    {/* power icon */}
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                      <path
+                        d="M12 2v10"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                      />
+                      <path
+                        d="M7.5 4.5C5 6.3 3.5 9 3.5 12c0 4.7 3.8 8.5 8.5 8.5S20.5 16.7 20.5 12c0-3-1.5-5.7-4-7.5"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  </button>
+                </div>
 
-                    <GangRingSwitch
-                      gangCount={gangCount}
-                      online={online}
-                      values={ringValues}
-                      busy={isBusy}
-                      onToggleGang={(gangIndex, next) => toggleGang(d, gangIndex, next)}
-                      size={54}
-                    />
+                {/* name */}
+                <div className="mt-3">
+                  <div className="text-[14px] text-white/95 font-semibold leading-snug line-clamp-2">
+                    {name}
+                  </div>
+                  <div className="mt-1 text-[12px] text-white/45 truncate">
+                    {roomName || "Unassigned"}
                   </div>
                 </div>
-              </div>
+
+                {/* bottom hint */}
+                <div className="mt-3 flex items-center justify-between">
+                  <div className="text-[11px] text-white/35">
+                    {gangCount > 1 ? `${gangCount}-gang` : "1-gang"}
+                  </div>
+
+                  <div className="text-[11px] text-white/35">
+                    {busy ? "Working…" : "Open"}
+                  </div>
+                </div>
+
+                {/* subtle background glow */}
+                <div
+                  className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full blur-2xl"
+                  style={{ background: "rgba(255,255,255,0.06)" }}
+                />
+              </button>
             );
           })}
         </div>
       )}
 
-      {/* STATE MODAL */}
-      {stateOpen && (
+      {/* BOTTOM SHEET (card tap) */}
+      {sheetOpen && sheetDevice && (
         <div className="fixed inset-0 z-[120]">
+          <div
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setSheetOpen(false)}
+          />
+
+          <div className="absolute left-0 right-0 bottom-0 px-3 pb-[calc(12px+var(--sab))]">
+            <div className="max-w-3xl mx-auto">
+              <div className="rounded-t-3xl border border-white/10 bg-zinc-950 overflow-hidden">
+                {/* grabber */}
+                <div className="pt-3 flex justify-center">
+                  <div className="h-1.5 w-12 rounded-full bg-white/15" />
+                </div>
+
+                {/* header */}
+                <div className="px-4 pt-3 pb-4 border-b border-white/10 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-base font-semibold text-white truncate">
+                      {pickName(sheetDevice)}
+                    </div>
+                    <div className="text-xs text-white/45 mt-1 truncate">
+                      {pickRoomName(sheetDevice) || "Unassigned"} • {pickVendor(sheetDevice)}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => viewState(sheetDevice)}
+                      className="rounded-2xl px-3 py-2 text-sm bg-white/10 text-white hover:bg-white/15 border border-white/10 transition"
+                    >
+                      Details
+                    </button>
+
+                    <button
+                      className="rounded-xl px-2 py-1 text-white/70 hover:bg-white/5"
+                      onClick={() => setSheetOpen(false)}
+                      aria-label="Close"
+                      type="button"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+
+                {/* controls */}
+                <div className="p-4">
+                  {(() => {
+                    const dbId = pickDbId(sheetDevice);
+                    const sid = dbId ? String(dbId) : "";
+                    const cached = sid ? stateMap[sid] : {};
+                    const gangCount = guessGangCount(sheetDevice, cached);
+                    const ringValues = Object.keys(cached || {}).length
+                      ? readGangValues(gangCount, cached)
+                      : Array.from({ length: gangCount }, () => null);
+
+                    const busy = sid && busyId === sid;
+                    const online = isOnline(sheetDevice);
+
+                    return (
+                      <div className="grid gap-4">
+                        <div className="rounded-3xl border border-white/10 bg-white/5 p-4 flex items-center justify-between">
+                          <div className="text-sm text-white/75">
+                            Controls
+                            <div className="text-xs text-white/40 mt-1">
+                              {gangCount > 1 ? `Switch groups: ${gangCount}` : "Switch"}
+                            </div>
+                          </div>
+
+                          <GangRingSwitch
+                            gangCount={gangCount}
+                            online={online}
+                            values={ringValues}
+                            busy={busy}
+                            onToggleGang={(gangIndex, next) => toggleGang(sheetDevice, gangIndex, next)}
+                            size={64}
+                          />
+                        </div>
+
+                        <div className="text-[11px] text-white/45">
+                          Tip: Use the power button on the card for full on/off. Use rings here for per-gang control.
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* footer */}
+                <div className="px-4 py-3 border-t border-white/10 text-[11px] text-white/40">
+                  Device:{" "}
+                  <span className="text-white/70 font-mono">
+                    {String(pickExternalId(sheetDevice) || "—")}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DETAILS MODAL */}
+      {stateOpen && (
+        <div className="fixed inset-0 z-[140]">
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setStateOpen(false)} />
-          <div className="absolute left-0 right-0 top-20 px-4">
+          <div className="absolute left-0 right-0 top-16 px-4">
             <div className="max-w-3xl mx-auto">
               <div className="rounded-3xl border border-white/10 bg-zinc-950 overflow-hidden">
                 <div className="px-4 py-3 border-b border-white/10 flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-sm font-medium text-white truncate">{stateTitle}</div>
+                    <div className="text-sm font-semibold text-white truncate">{stateTitle}</div>
                     <div className="text-xs text-white/40 mt-1 truncate">
                       {stateMeta?.vendor ? `${stateMeta.vendor} • ` : ""}Live state snapshot
                     </div>
 
                     {stateMeta?.external_id ? (
                       <div className="mt-2 flex items-center gap-2">
-                        <span className="text-[11px] text-white/35">Tuya:</span>
+                        <span className="text-[11px] text-white/35">External:</span>
                         <span className="text-[11px] text-white/70 font-mono truncate">{stateMeta.external_id}</span>
                         <button
                           onClick={() => copy(stateMeta.external_id)}
@@ -489,7 +638,7 @@ export default function DevicesPage() {
 
                     {stateMeta?.id ? (
                       <div className="mt-1 flex items-center gap-2">
-                        <span className="text-[11px] text-white/35">DB:</span>
+                        <span className="text-[11px] text-white/35">Device:</span>
                         <span className="text-[11px] text-white/70 font-mono truncate">{stateMeta.id}</span>
                         <button
                           onClick={() => copy(stateMeta.id)}
@@ -538,7 +687,7 @@ export default function DevicesPage() {
                 </div>
 
                 <div className="px-4 py-3 border-t border-white/10 text-[11px] text-white/40">
-                  Source: <span className="text-white/70">GET /devices/:deviceId/state</span> (deviceId = DB UUID)
+                  Source: <span className="text-white/70">GET /devices/:deviceId/state</span>
                 </div>
               </div>
             </div>
