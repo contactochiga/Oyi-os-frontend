@@ -151,7 +151,7 @@ function inferPanel(aiPanel?: string | null, userText?: string): string | null {
     return "ac";
   if (src.includes("tv") || src.includes("television")) return "tv";
 
-  // ✅ include “discover” to force devices panel intent
+  // ✅ include onboarding verbs to force devices panel intent
   if (
     src.includes("device") ||
     src.includes("appliance") ||
@@ -272,6 +272,26 @@ function isSamePanelInstance(m: ChatMessage, panel: string, deviceId?: string) {
   return m.deviceId === deviceId;
 }
 
+function devKey(d: any) {
+  return String(d?.id || d?.external_id || d?.externalId || d?.device_id || d?.dev_id || d?.uuid || "");
+}
+
+function devLabel(d: any) {
+  return d?.name || d?.type || d?.category || "Device";
+}
+
+function devSub(d: any) {
+  const vendor = d?.vendor || d?.adapter || "";
+  const room = d?.room_name || d?.room || null;
+  const id = d?.external_id || d?.externalId || d?.device_id || d?.dev_id || d?.uuid || null;
+  const bits = [
+    vendor ? String(vendor) : null,
+    room ? `room:${room}` : null,
+    id ? `id:${id}` : null,
+  ].filter(Boolean);
+  return bits.join(" • ");
+}
+
 export default function HomePage() {
   const router = useRouter();
   const { user } = useAuth();
@@ -282,6 +302,10 @@ export default function HomePage() {
   // ✅ device panel data: separate discovery vs assigned
   const [assignedDevices, setAssignedDevices] = useState<any[]>([]);
   const [discoveryDevices, setDiscoveryDevices] = useState<any[]>([]);
+  const [devicesTab, setDevicesTab] = useState<"assigned" | "discovery">("assigned");
+
+  const [devicesBusy, setDevicesBusy] = useState(false);
+  const [devicesErr, setDevicesErr] = useState<string | null>(null);
 
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -316,19 +340,25 @@ export default function HomePage() {
 
   // ✅ helper: refresh both assigned + discovery
   async function refreshDevicePanelData() {
+    setDevicesBusy(true);
+    setDevicesErr(null);
+
     try {
       const [assigned, discovered] = await Promise.all([
-        // assigned: must be scoped to estate
-        estateId ? deviceService.getAssignedDevices(estateId) : Promise.resolve([]),
-        // discovery: adapter scan
+        // ✅ A FIX: use existing getDevices(estateId) which calls /devices/estate/:estateId
+        estateId ? deviceService.getDevices(estateId) : Promise.resolve([]),
+        // discovery: adapter scan => /devices/discover
         deviceService.getDevices(undefined),
       ]);
 
       setAssignedDevices(Array.isArray(assigned) ? assigned : []);
       setDiscoveryDevices(Array.isArray(discovered) ? discovered : []);
-    } catch {
+    } catch (e: any) {
       setAssignedDevices([]);
       setDiscoveryDevices([]);
+      setDevicesErr(e?.message || "Failed to load devices");
+    } finally {
+      setDevicesBusy(false);
     }
   }
 
@@ -419,6 +449,7 @@ export default function HomePage() {
       // ✅ if user opens devices panel, load both assigned + discovery
       if (openPanel && panel === "devices") {
         await refreshDevicePanelData();
+        setDevicesTab("assigned");
       }
 
       if (openPanel && panel) {
@@ -507,23 +538,130 @@ export default function HomePage() {
                         <div className="mt-3 relative z-[30]">
                           {m.panel === "devices" ? (
                             <div className="space-y-3">
-                              {/* ✅ small header hint so user knows what is shown */}
-                              <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/60">
-                                Assigned:{" "}
-                                <span className="text-white/85 font-semibold">
-                                  {assignedDevices.length}
-                                </span>{" "}
-                                • Discovery:{" "}
-                                <span className="text-white/85 font-semibold">
-                                  {discoveryDevices.length}
-                                </span>
+                              {/* ✅ B FIX: show both Assigned + Discovery + tabs */}
+                              <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
+                                <div className="flex items-center justify-between gap-3">
+                                  <div className="text-xs text-white/60">
+                                    Assigned:{" "}
+                                    <span className="text-white/85 font-semibold">
+                                      {assignedDevices.length}
+                                    </span>{" "}
+                                    • Discovery:{" "}
+                                    <span className="text-white/85 font-semibold">
+                                      {discoveryDevices.length}
+                                    </span>
+                                  </div>
+
+                                  <button
+                                    type="button"
+                                    onClick={refreshDevicePanelData}
+                                    disabled={devicesBusy}
+                                    className="px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 text-[11px] text-white/80 border border-white/10 disabled:opacity-50"
+                                  >
+                                    {devicesBusy ? "Refreshing…" : "Refresh"}
+                                  </button>
+                                </div>
+
+                                {/* Tabs */}
+                                <div className="mt-2 grid grid-cols-2 gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setDevicesTab("assigned")}
+                                    className={`py-2 rounded-xl text-xs border transition ${
+                                      devicesTab === "assigned"
+                                        ? "bg-white text-black border-white/20"
+                                        : "bg-white/5 text-white/75 border-white/10 hover:bg-white/10"
+                                    }`}
+                                  >
+                                    Assigned
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setDevicesTab("discovery")}
+                                    className={`py-2 rounded-xl text-xs border transition ${
+                                      devicesTab === "discovery"
+                                        ? "bg-white text-black border-white/20"
+                                        : "bg-white/5 text-white/75 border-white/10 hover:bg-white/10"
+                                    }`}
+                                  >
+                                    Discovery
+                                  </button>
+                                </div>
+
+                                {devicesErr && (
+                                  <div className="mt-2 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+                                    {devicesErr}
+                                  </div>
+                                )}
                               </div>
 
-                              {/* Discovery panel (bind devices) */}
-                              <DeviceDiscoveryPanel
-                                devices={discoveryDevices}
-                                onInteraction={refreshDevicePanelData}
-                              />
+                              {/* Assigned list */}
+                              {devicesTab === "assigned" ? (
+                                <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                                  <div className="flex items-center justify-between">
+                                    <div className="text-xs text-white/70 font-semibold">
+                                      Devices in your home
+                                    </div>
+                                    <div className="text-[11px] text-white/45">
+                                      (saved to DB)
+                                    </div>
+                                  </div>
+
+                                  <div className="mt-3 space-y-2">
+                                    {assignedDevices.map((d) => {
+                                      const k = devKey(d) || Math.random().toString(36).slice(2);
+                                      return (
+                                        <div
+                                          key={k}
+                                          className="flex items-start justify-between gap-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-2"
+                                        >
+                                          <div className="min-w-0">
+                                            <div className="text-[13px] text-white/90 font-semibold truncate">
+                                              {devLabel(d)}
+                                            </div>
+                                            <div className="text-[11px] text-white/45 truncate">
+                                              {devSub(d) || "—"}
+                                            </div>
+                                          </div>
+
+                                          <div className="text-[11px] text-white/45 shrink-0">
+                                            {d?.status
+                                              ? String(d.status)
+                                              : typeof d?.online === "boolean"
+                                              ? d.online
+                                                ? "Online"
+                                                : "Offline"
+                                              : ""}
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+
+                                    {!devicesBusy && assignedDevices.length === 0 && (
+                                      <div className="rounded-2xl border border-white/10 bg-black/20 p-3 text-sm text-white/60">
+                                        No assigned devices yet. Go to{" "}
+                                        <span className="text-white/80 font-semibold">
+                                          Discovery
+                                        </span>{" "}
+                                        to bind devices to your account/home.
+                                      </div>
+                                    )}
+
+                                    {devicesBusy && (
+                                      <div className="flex items-center gap-3 text-xs text-white/50">
+                                        <div className="w-4 h-4 border-2 border-white/15 border-t-white/70 rounded-full animate-spin" />
+                                        Loading assigned devices…
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ) : (
+                                // Discovery panel (bind devices)
+                                <DeviceDiscoveryPanel
+                                  devices={discoveryDevices}
+                                  onInteraction={refreshDevicePanelData}
+                                />
+                              )}
                             </div>
                           ) : (
                             <RemotePanelRenderer
