@@ -259,6 +259,13 @@ async function executeActions(actions: DeviceAction[] | undefined) {
   }
 }
 
+/**
+ * ✅ Dedup rule:
+ * If user requests a panel that already exists in chat,
+ * do NOT create another panel instance.
+ * Instead: move that panel to the latest assistant message
+ * by clearing old occurrence(s) and attaching to the newest message.
+ */
 function isSamePanelInstance(m: ChatMessage, panel: string, deviceId?: string) {
   if (!m.panel) return false;
   if (m.panel !== panel) return false;
@@ -273,7 +280,15 @@ function isSamePanelInstance(m: ChatMessage, panel: string, deviceId?: string) {
 }
 
 function devKey(d: any) {
-  return String(d?.id || d?.external_id || d?.externalId || d?.device_id || d?.dev_id || d?.uuid || "");
+  return String(
+    d?.id ||
+      d?.external_id ||
+      d?.externalId ||
+      d?.device_id ||
+      d?.dev_id ||
+      d?.uuid ||
+      ""
+  );
 }
 
 function devLabel(d: any) {
@@ -284,17 +299,15 @@ function devSub(d: any) {
   const vendor = d?.vendor || d?.adapter || "";
   const room = d?.room_name || d?.room || null;
   const id = d?.external_id || d?.externalId || d?.device_id || d?.dev_id || d?.uuid || null;
-  const bits = [
-    vendor ? String(vendor) : null,
-    room ? `room:${room}` : null,
-    id ? `id:${id}` : null,
-  ].filter(Boolean);
+  const bits = [vendor ? String(vendor) : null, room ? `room:${room}` : null, id ? `id:${id}` : null].filter(
+    Boolean
+  );
   return bits.join(" • ");
 }
 
 export default function HomePage() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, token, ready } = useAuth() as any; // ✅ requires the updated useAuth that returns {ready}
   const { pushEvent } = useEventStore();
 
   const [input, setInput] = useState("");
@@ -345,9 +358,9 @@ export default function HomePage() {
 
     try {
       const [assigned, discovered] = await Promise.all([
-        // ✅ A FIX: use existing getDevices(estateId) which calls /devices/estate/:estateId
+        // ✅ assigned: scoped to estate
         estateId ? deviceService.getDevices(estateId) : Promise.resolve([]),
-        // discovery: adapter scan => /devices/discover
+        // discovery: adapter scan
         deviceService.getDevices(undefined),
       ]);
 
@@ -476,6 +489,8 @@ export default function HomePage() {
     }
   }
 
+  const canMountAuthedBridges = !!ready && !!token;
+
   return (
     <LayoutWrapper>
       <main className="fixed inset-0 min-h-0 isolate">
@@ -484,8 +499,14 @@ export default function HomePage() {
 
         {/* interactive layer */}
         <div className="app-layer">
-          <InviteSuggestionBridge />
-          <NotificationsBridge />
+          {/* ✅ A+B FIX: do NOT mount polling bridges until auth is ready + token exists */}
+          {canMountAuthedBridges ? (
+            <>
+              <InviteSuggestionBridge />
+              <NotificationsBridge />
+            </>
+          ) : null}
+
           <TopBar />
 
           {/* scroll region */}
@@ -538,7 +559,6 @@ export default function HomePage() {
                         <div className="mt-3 relative z-[30]">
                           {m.panel === "devices" ? (
                             <div className="space-y-3">
-                              {/* ✅ B FIX: show both Assigned + Discovery + tabs */}
                               <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
                                 <div className="flex items-center justify-between gap-3">
                                   <div className="text-xs text-white/60">
@@ -562,7 +582,6 @@ export default function HomePage() {
                                   </button>
                                 </div>
 
-                                {/* Tabs */}
                                 <div className="mt-2 grid grid-cols-2 gap-2">
                                   <button
                                     type="button"
@@ -595,16 +614,13 @@ export default function HomePage() {
                                 )}
                               </div>
 
-                              {/* Assigned list */}
                               {devicesTab === "assigned" ? (
                                 <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
                                   <div className="flex items-center justify-between">
                                     <div className="text-xs text-white/70 font-semibold">
                                       Devices in your home
                                     </div>
-                                    <div className="text-[11px] text-white/45">
-                                      (saved to DB)
-                                    </div>
+                                    <div className="text-[11px] text-white/45">(saved to DB)</div>
                                   </div>
 
                                   <div className="mt-3 space-y-2">
@@ -640,9 +656,7 @@ export default function HomePage() {
                                     {!devicesBusy && assignedDevices.length === 0 && (
                                       <div className="rounded-2xl border border-white/10 bg-black/20 p-3 text-sm text-white/60">
                                         No assigned devices yet. Go to{" "}
-                                        <span className="text-white/80 font-semibold">
-                                          Discovery
-                                        </span>{" "}
+                                        <span className="text-white/80 font-semibold">Discovery</span>{" "}
                                         to bind devices to your account/home.
                                       </div>
                                     )}
@@ -656,7 +670,6 @@ export default function HomePage() {
                                   </div>
                                 </div>
                               ) : (
-                                // Discovery panel (bind devices)
                                 <DeviceDiscoveryPanel
                                   devices={discoveryDevices}
                                   onInteraction={refreshDevicePanelData}
