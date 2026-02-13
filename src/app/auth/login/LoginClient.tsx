@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { loginWithEmail } from "@/services/authService";
 import { decodeToken, isExpired, setCookie } from "@/lib/auth";
 import { useSessionStore } from "@/store/useSessionStore";
+import API from "@/services/api";
 
 export default function LoginClient() {
   const router = useRouter();
@@ -15,12 +16,14 @@ export default function LoginClient() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   async function submit() {
     setErr(null);
     setLoading(true);
+
     try {
       const res = await loginWithEmail(email.trim(), password);
 
@@ -35,13 +38,35 @@ export default function LoginClient() {
         return;
       }
 
+      // ✅ keep cookie for web (fine if iOS ignores it)
       setCookie("oyi_consumer_token", res.token, 30);
+
+      // ✅ store token immediately (so interceptor can use it too)
       setSession(res.token);
+
+      // ✅ CRITICAL for iOS: set axios default header immediately
+      API.defaults.headers.common.Authorization = `Bearer ${res.token}`;
+
+      // ✅ pull full context (estate_id, home_id, email, etc) and store it
+      try {
+        const ctxRes = await API.get("/me/context");
+        const ctx = ctxRes?.data;
+
+        // depending on how your backend formats it, pick best shape
+        const userFromCtx = ctx?.user || ctx?.profile || ctx?.me || ctx;
+
+        if (userFromCtx) {
+          setSession(res.token, userFromCtx);
+        }
+      } catch {
+        // If /me/context fails, we still let user in with token-only.
+        // (But normally it should succeed once Authorization is set above)
+      }
 
       const next = searchParams.get("next");
       router.replace(next || "/home");
     } catch (e: any) {
-      setErr(e?.message || "Login failed");
+      setErr(e?.response?.data?.error || e?.message || "Login failed");
     } finally {
       setLoading(false);
     }
@@ -52,23 +77,22 @@ export default function LoginClient() {
   return (
     <main className="min-h-screen text-white">
       <div className="relative min-h-screen flex items-center justify-center px-6 py-10 overflow-hidden bg-[#070A12]">
-        {/* Background (same vibe as landing) */}
+        {/* Background */}
         <div className="pointer-events-none absolute inset-0">
-          {/* brand glow */}
           <div
             className="absolute -top-56 -left-56 h-[680px] w-[680px] rounded-full blur-3xl opacity-25"
             style={{
-              background: "radial-gradient(circle at center, var(--brand) 0%, transparent 60%)",
+              background:
+                "radial-gradient(circle at center, var(--brand) 0%, transparent 60%)",
             }}
           />
-          {/* cool neutral glow */}
           <div
             className="absolute top-1/4 -right-56 h-[720px] w-[720px] rounded-full blur-3xl opacity-25"
             style={{
-              background: "radial-gradient(circle at center, rgba(148,163,184,0.55) 0%, transparent 62%)",
+              background:
+                "radial-gradient(circle at center, rgba(148,163,184,0.55) 0%, transparent 62%)",
             }}
           />
-          {/* deep vignette */}
           <div
             className="absolute inset-0"
             style={{
@@ -76,15 +100,16 @@ export default function LoginClient() {
                 "radial-gradient(circle at 50% 30%, rgba(255,255,255,0.06) 0%, rgba(7,10,18,0.72) 45%, rgba(7,10,18,0.97) 100%)",
             }}
           />
-          {/* subtle grid */}
           <div
             className="absolute inset-0 opacity-[0.10]"
             style={{
               backgroundImage:
                 "linear-gradient(to right, rgba(255,255,255,0.10) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.10) 1px, transparent 1px)",
               backgroundSize: "56px 56px",
-              maskImage: "radial-gradient(circle at 50% 35%, black 0%, transparent 65%)",
-              WebkitMaskImage: "radial-gradient(circle at 50% 35%, black 0%, transparent 65%)",
+              maskImage:
+                "radial-gradient(circle at 50% 35%, black 0%, transparent 65%)",
+              WebkitMaskImage:
+                "radial-gradient(circle at 50% 35%, black 0%, transparent 65%)",
             }}
           />
         </div>
@@ -92,7 +117,6 @@ export default function LoginClient() {
         {/* Card */}
         <div className="relative w-full max-w-sm">
           <div className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur shadow-[0_20px_90px_rgba(0,0,0,0.60)] overflow-hidden">
-            {/* Top micro highlight */}
             <div
               className="pointer-events-none absolute inset-x-0 top-0 h-[2px]"
               style={{
@@ -103,7 +127,6 @@ export default function LoginClient() {
             />
 
             <div className="relative p-6">
-              {/* Logo */}
               <div className="flex flex-col items-center text-center">
                 <div className="h-16 w-16 rounded-2xl border border-white/10 bg-black/20 grid place-items-center overflow-hidden">
                   <div className="relative h-10 w-10">
@@ -117,8 +140,12 @@ export default function LoginClient() {
                   </div>
                 </div>
 
-                <div className="mt-5 text-xl font-semibold text-white">Sign in</div>
-                <div className="mt-1 text-xs text-white/45">Continue to your dashboard</div>
+                <div className="mt-5 text-xl font-semibold text-white">
+                  Sign in
+                </div>
+                <div className="mt-1 text-xs text-white/45">
+                  Continue to your dashboard
+                </div>
               </div>
 
               <div className="mt-6 space-y-3">
@@ -148,7 +175,6 @@ export default function LoginClient() {
                   </div>
                 )}
 
-                {/* ✅ Primary = brand (not red) */}
                 <button
                   onClick={submit}
                   disabled={!canSubmit}
