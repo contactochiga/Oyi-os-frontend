@@ -1,36 +1,113 @@
-"use client";
-
+// src/supabase/supabaseBrowser.ts
 import { createClient } from "@supabase/supabase-js";
-import { Preferences } from "@capacitor/preferences";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SUPABASE_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-const isNative =
-  typeof window !== "undefined" &&
-  (window as any)?.Capacitor &&
-  (window as any)?.Capacitor?.isNativePlatform?.();
-
-function makeCapacitorStorage() {
-  return {
-    getItem: async (key: string) => {
-      const { value } = await Preferences.get({ key });
-      return value ?? null;
-    },
-    setItem: async (key: string, value: string) => {
-      await Preferences.set({ key, value });
-    },
-    removeItem: async (key: string) => {
-      await Preferences.remove({ key });
-    },
-  };
+function isBrowser() {
+  return typeof window !== "undefined";
 }
 
-export const supabaseBrowser = createClient(supabaseUrl, supabaseAnonKey, {
+/**
+ * Detect if we're running inside a Capacitor native container
+ * without importing any capacitor package at build-time.
+ */
+async function isCapacitorNative(): Promise<boolean> {
+  if (!isBrowser()) return false;
+
+  try {
+    const mod = await import("@capacitor/core");
+    return !!mod?.Capacitor?.isNativePlatform?.();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Storage adapter that:
+ * - Uses localStorage on web
+ * - Uses Capacitor Preferences on native (if installed)
+ *
+ * IMPORTANT:
+ * No static imports of @capacitor/preferences so Vercel won’t fail build.
+ */
+const storage = {
+  async getItem(key: string) {
+    if (!isBrowser()) return null;
+
+    // web
+    const native = await isCapacitorNative();
+    if (!native) {
+      try {
+        return window.localStorage.getItem(key);
+      } catch {
+        return null;
+      }
+    }
+
+    // native (Capacitor)
+    try {
+      const prefs = await import("@capacitor/preferences");
+      const { value } = await prefs.Preferences.get({ key });
+      return value ?? null;
+    } catch {
+      // if Preferences plugin not installed, fallback to localStorage
+      try {
+        return window.localStorage.getItem(key);
+      } catch {
+        return null;
+      }
+    }
+  },
+
+  async setItem(key: string, value: string) {
+    if (!isBrowser()) return;
+
+    const native = await isCapacitorNative();
+    if (!native) {
+      try {
+        window.localStorage.setItem(key, value);
+      } catch {}
+      return;
+    }
+
+    try {
+      const prefs = await import("@capacitor/preferences");
+      await prefs.Preferences.set({ key, value });
+    } catch {
+      try {
+        window.localStorage.setItem(key, value);
+      } catch {}
+    }
+  },
+
+  async removeItem(key: string) {
+    if (!isBrowser()) return;
+
+    const native = await isCapacitorNative();
+    if (!native) {
+      try {
+        window.localStorage.removeItem(key);
+      } catch {}
+      return;
+    }
+
+    try {
+      const prefs = await import("@capacitor/preferences");
+      await prefs.Preferences.remove({ key });
+    } catch {
+      try {
+        window.localStorage.removeItem(key);
+      } catch {}
+    }
+  },
+};
+
+export const supabaseBrowser = createClient(SUPABASE_URL, SUPABASE_ANON, {
   auth: {
-    persistSession: true,
+    storage,
     autoRefreshToken: true,
+    persistSession: true,
     detectSessionInUrl: true,
-    storage: isNative ? (makeCapacitorStorage() as any) : undefined,
   },
 });
