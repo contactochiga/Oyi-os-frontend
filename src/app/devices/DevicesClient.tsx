@@ -1,374 +1,550 @@
+// src/app/devices/page.tsx
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import ConsumerShell from "@/app/components/ConsumerShell";
 import useAuth from "@/hooks/useAuth";
 import { deviceService } from "@/services/deviceService";
+import GangRingSwitch from "@/app/components/devices/GangRingSwitch";
 
-type Device = {
-  id?: string; // internal uuid
-  external_id?: string;
-  externalId?: string;
-  dev_id?: string;
-  device_id?: string;
-  uuid?: string;
+type AnyDevice = Record<string, any>;
 
-  estate_id?: string;
-  home_id?: string;
-  room_id?: string | null;
-
-  name?: string;
-  type?: string;
-  category?: string;
-  vendor?: string;
-  adapter?: string;
-
-  status?: string;
-  online?: boolean;
-  icon?: string;
-
-  metadata?: any;
-  [k: string]: any;
-};
-
-function cleanStr(v: any) {
-  const s = String(v ?? "").trim();
-  return s.length ? s : "";
+/**
+ * ✅ KEY FIX:
+ * - Use DB UUID (devices.id) for all state + command calls
+ * - external_id is ONLY for display / Tuya mapping
+ */
+function pickDbId(d: AnyDevice) {
+  return d.id || null; // <-- DB UUID (public.devices.id)
 }
 
-function pickExternalId(d: Device): string {
+function pickExternalId(d: AnyDevice) {
   return (
-    cleanStr(d.external_id) ||
-    cleanStr(d.externalId) ||
-    cleanStr(d.device_id) ||
-    cleanStr(d.dev_id) ||
-    cleanStr(d.uuid) ||
-    ""
+    d.external_id ||
+    d.externalId ||
+    d.device_id ||
+    d.dev_id ||
+    d.devId ||
+    d.uuid ||
+    null
   );
 }
 
-function pickStableId(d: Device): string {
-  // Prefer internal uuid for state lookups / commands if your backend uses it.
-  // But if your backend expects external_id, we’ll use that when needed.
-  return cleanStr(d.id) || pickExternalId(d) || `tmp_${Math.random().toString(36).slice(2, 9)}`;
+// React list key
+function pickKey(d: AnyDevice) {
+  return pickDbId(d) || pickExternalId(d) || d.name || Math.random().toString(36).slice(2);
 }
 
-function pickLabel(d: Device) {
-  return cleanStr(d.name) || cleanStr(d.type) || cleanStr(d.category) || "Device";
+function pickName(d: AnyDevice) {
+  return d.name || d.local_name || d.localName || d.alias || "Unnamed Device";
 }
 
-function pickMeta(d: Device) {
-  const v = cleanStr(d.vendor || d.adapter || "tuya");
-  const ext = pickExternalId(d);
-  const st = cleanStr(d.status) || (typeof d.online === "boolean" ? (d.online ? "online" : "offline") : "");
-  return `${v}${ext ? ` • id:${ext}` : ""}${st ? ` • ${st}` : ""}`;
+function pickVendor(d: AnyDevice) {
+  return d.vendor || d.adapter || d.protocol || d.brand || "device";
 }
 
-function roomNameFromMetadata(d: Device): string {
-  // If you stored room name into metadata at some point, show it.
-  // Otherwise shows “Unassigned”.
-  const m = d.metadata || {};
-  return cleanStr(m.room_name || m.roomName || "");
-}
+function isOnline(d: AnyDevice): boolean | null {
+  if (typeof d.online === "boolean") return d.online;
+  if (typeof d.isOnline === "boolean") return d.isOnline;
+  if (typeof d.connected === "boolean") return d.connected;
 
-function uniqRooms(devices: Device[]) {
-  const set = new Set<string>();
-  for (const d of devices) {
-    const rn = roomNameFromMetadata(d);
-    if (rn) set.add(rn);
+  // fallback: status field
+  if (typeof d.status === "string") {
+    const s = d.status.toLowerCase();
+    if (s.includes("online")) return true;
+    if (s.includes("offline")) return false;
   }
-  return Array.from(set).sort((a, b) => a.localeCompare(b));
+
+  return null;
 }
 
-// --- Premium demo data (for screenshots)
-const DEMO_DEVICES: Device[] = [
-  { id: "demo-1", name: "Living Room Lights", type: "light", vendor: "tuya", status: "online", metadata: { room_name: "Living Room" } },
-  { id: "demo-2", name: "Bedroom Lights", type: "light", vendor: "tuya", status: "online", metadata: { room_name: "Bedroom" } },
-  { id: "demo-3", name: "Room AC Switch", type: "switch", vendor: "tuya", status: "online", metadata: { room_name: "Bedroom" } },
-  { id: "demo-4", name: "Smart TV", type: "tv", vendor: "tuya", status: "online", metadata: { room_name: "Living Room" } },
-  { id: "demo-5", name: "Door Lock", type: "lock", vendor: "tuya", status: "online", metadata: { room_name: "Entrance" } },
+function statusDot(online: boolean | null) {
+  if (online === null) return "bg-white/20";
+  return online ? "bg-emerald-500" : "bg-white/25";
+}
+
+function prettyState(state: any) {
+  try {
+    return JSON.stringify(state ?? {}, null, 2);
+  } catch {
+    return String(state ?? "");
+  }
+}
+
+function guessIsOn(state: any): boolean | null {
+  if (!state) return null;
+
+  if (typeof state.on === "boolean") return state.on;
+  if (typeof state.power === "boolean") return state.power;
+  if (typeof state.switch === "boolean") return state.switch;
+
+  const dps = state.dps || state?.raw?.dps || null;
+  if (dps && typeof dps === "object") {
+    const candidates = ["1", "switch", "switch_1", "power"];
+    for (const k of candidates) {
+      if (typeof dps[k] === "boolean") return dps[k];
+    }
+  }
+
+  return null;
+}
+
+function guessGangCount(device: AnyDevice, state: any): 1 | 2 | 3 {
+  const raw = (device?.metadata?.raw ?? device?.metadata ?? device?.meta ?? {}) as any;
+
+  const rawKeys = Object.keys(raw || {});
+  const has2 = rawKeys.some((k) => k === "switch_2" || k === "switch_2_code");
+  const has3 = rawKeys.some((k) => k === "switch_3" || k === "switch_3_code");
+  if (has3) return 3;
+  if (has2) return 2;
+
+  const keys = Object.keys(state || {});
+  if (keys.includes("switch_3")) return 3;
+  if (keys.includes("switch_2")) return 2;
+
+  const dps = state?.dps || state?.raw?.dps;
+  if (dps && typeof dps === "object") {
+    const dpKeys = Object.keys(dps);
+    if (dpKeys.some((k) => String(k).includes("switch_3"))) return 3;
+    if (dpKeys.some((k) => String(k).includes("switch_2"))) return 2;
+  }
+
+  return 1;
+}
+
+function readGangValues(gangCount: 1 | 2 | 3, state: any): Array<boolean | null> {
+  const out: Array<boolean | null> = [];
+
+  for (let i = 1; i <= gangCount; i++) {
+    const k = `switch_${i}`;
+    const v = state?.[k];
+    out.push(typeof v === "boolean" ? v : null);
+  }
+
+  if (gangCount === 1 && out[0] === null) {
+    const v = state?.switch ?? state?.power ?? state?.on;
+    if (typeof v === "boolean") out[0] = v;
+  }
+
+  return out;
+}
+
+/**
+ * ✅ DEMO DEVICES (for App Store screenshots)
+ * Only used when Demo Mode is ON.
+ */
+const DEMO: AnyDevice[] = [
+  { id: "demo-1", name: "Living Room Lights", vendor: "tuya", status: "online", metadata: { room_name: "Living Room", raw: { switch_1_code: true } } },
+  { id: "demo-2", name: "Bedroom Lights", vendor: "tuya", status: "online", metadata: { room_name: "Bedroom", raw: { switch_1_code: true } } },
+  { id: "demo-3", name: "AC Switch", vendor: "tuya", status: "online", metadata: { room_name: "Bedroom", raw: { switch_1_code: true, switch_2_code: true } } },
+  { id: "demo-4", name: "Smart TV", vendor: "tuya", status: "online", metadata: { room_name: "Living Room", raw: { switch_1_code: true } } },
 ];
 
-type UiState = {
-  power?: boolean; // our UI “power” state (for screenshots)
-  busy?: boolean;
-  last?: string; // last action label
-  error?: string | null;
-};
-
-export default function DevicesClient() {
+export default function DevicesPage() {
   const { user } = useAuth();
 
-  const estateId = useMemo(() => {
-    return (
+  const estateId = useMemo(
+    () =>
       (user as any)?.estate_id ??
-      (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null)
-    );
-  }, [user]);
+      (typeof window !== "undefined"
+        ? localStorage.getItem("ochiga_estate")
+        : null),
+    [user]
+  );
 
+  const [items, setItems] = useState<AnyDevice[]>([]);
   const [loading, setLoading] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  const [devices, setDevices] = useState<Device[]>([]);
-  const [ui, setUi] = useState<Record<string, UiState>>({});
-
-  // Screenshot helpers
+  // ✅ screenshot helpers
   const [demoMode, setDemoMode] = useState(false);
   const [screenshotMode, setScreenshotMode] = useState(true);
 
-  // Filters
-  const [q, setQ] = useState("");
-  const [roomFilter, setRoomFilter] = useState("");
+  // state modal
+  const [stateOpen, setStateOpen] = useState(false);
+  const [stateTitle, setStateTitle] = useState<string>("Device");
+  const [stateMeta, setStateMeta] = useState<{ id?: string; vendor?: string; external_id?: string } | null>(null);
+  const [stateBody, setStateBody] = useState<string>("{}");
+  const [stateLoading, setStateLoading] = useState(false);
 
-  async function loadAssigned() {
+  // local on/off cache
+  const [onMap, setOnMap] = useState<Record<string, boolean | null>>({});
+
+  // per-device state cache
+  const [stateMap, setStateMap] = useState<Record<string, any>>({});
+
+  async function load() {
     setLoading(true);
     setErr(null);
     try {
-      if (!estateId) {
-        setDevices([]);
+      if (demoMode) {
+        setItems(DEMO);
+        setLoading(false);
         return;
       }
 
-      // Your service currently uses:
-      // estateId => /devices/estate/:estateId
-      // which is OK for now (even if it's still discovery-ish)
-      const list = await deviceService.getDevices(estateId);
+      const list = await deviceService.getDevices(estateId || undefined);
       const arr = Array.isArray(list) ? list : [];
-      setDevices(arr);
+      setItems(arr);
 
-      // If empty, keep your page useful for screenshots
-      if (!arr.length) setDemoMode(true);
+      // prefill onMap from list fields (if present)
+      const next: Record<string, boolean | null> = {};
+      for (const d of arr) {
+        const dbId = pickDbId(d);
+        if (!dbId) continue;
+        const sid = String(dbId);
+
+        const listOn =
+          typeof d.on === "boolean"
+            ? d.on
+            : typeof d.power === "boolean"
+            ? d.power
+            : typeof d.switch === "boolean"
+            ? d.switch
+            : null;
+
+        if (listOn !== null) next[sid] = listOn;
+      }
+      if (Object.keys(next).length) setOnMap((prev) => ({ ...prev, ...next }));
     } catch (e: any) {
       setErr(e?.response?.data?.error || e?.message || "Failed to load devices");
-      setDevices([]);
-      setDemoMode(true);
+      setItems([]);
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    loadAssigned();
+    load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [estateId]);
+  }, [estateId, demoMode]);
 
-  const visibleDevices = useMemo(() => {
-    const src = demoMode ? DEMO_DEVICES : devices;
+  // ✅ Warm state before first toggle so gangCount + keys are correct
+  async function warmState(device: AnyDevice) {
+    const dbId = pickDbId(device);
+    if (!dbId) return;
+    const sid = String(dbId);
 
-    const qq = q.trim().toLowerCase();
-    return src.filter((d) => {
-      const label = pickLabel(d).toLowerCase();
-      const meta = pickMeta(d).toLowerCase();
-      const rn = roomNameFromMetadata(d).toLowerCase();
-
-      const matchQ = !qq || label.includes(qq) || meta.includes(qq) || rn.includes(qq);
-      const matchRoom = !roomFilter || rn === roomFilter.toLowerCase();
-      return matchQ && matchRoom;
-    });
-  }, [devices, demoMode, q, roomFilter]);
-
-  const rooms = useMemo(() => uniqRooms(demoMode ? DEMO_DEVICES : devices), [devices, demoMode]);
-
-  function setBusy(id: string, busy: boolean, patch?: Partial<UiState>) {
-    setUi((s) => ({ ...s, [id]: { ...(s[id] || {}), busy, ...(patch || {}) } }));
-  }
-
-  function setPower(id: string, power: boolean, patch?: Partial<UiState>) {
-    setUi((s) => ({ ...s, [id]: { ...(s[id] || {}), power, ...(patch || {}) } }));
-  }
-
-  async function sendPower(d: Device, on: boolean) {
-    const stableId = pickStableId(d);
-    const externalId = pickExternalId(d);
-
-    // optimistic UI for screenshots
-    setBusy(stableId, true, { error: null, last: on ? "Turning on…" : "Turning off…" });
-    setPower(stableId, on);
-
-    // If you want perfect screenshots: demoMode makes it always succeed visually
-    if (demoMode) {
-      window.setTimeout(() => {
-        setBusy(stableId, false, { last: on ? "On" : "Off" });
-      }, 450);
-      return;
-    }
+    if (stateMap[sid]) return;
 
     try {
-      // IMPORTANT: Your backend command route likely expects the “assigned device id”
-      // If your backend expects external_id instead, switch deviceId below to externalId.
-      const deviceIdForCommand = cleanStr(d.id) || externalId || stableId;
+      const res = await deviceService.getDeviceState(sid); // ✅ DB ID
+      const state = (res as any)?.state ?? res ?? {};
+      setStateMap((p) => ({ ...p, [sid]: state }));
 
-      // Generic Tuya-ish switch payload (your backend/adapter can map later)
-      // Works for screenshot flows, even if adapter ignores for now.
-      const command = { power: on, switch: on, switch_1: on };
-
-      await deviceService.commandDevice(deviceIdForCommand, command);
-
-      setBusy(stableId, false, { last: on ? "On" : "Off" });
-    } catch (e: any) {
-      // keep power state visually (for screenshots), but show error if not in screenshot mode
-      const msg = e?.response?.data?.error || e?.message || "Command failed";
-      setBusy(stableId, false, { error: msg, last: "Failed" });
-
-      if (screenshotMode) {
-        // hide failures during screenshot session
-        setUi((s) => ({ ...s, [stableId]: { ...(s[stableId] || {}), error: null } }));
-      }
+      const guessed = guessIsOn(state);
+      if (guessed !== null) setOnMap((p) => ({ ...p, [sid]: guessed }));
+    } catch {
+      // silent
     }
   }
 
+  async function viewState(device: AnyDevice) {
+    const dbId = pickDbId(device);
+    const ext = pickExternalId(device);
+
+    if (!dbId) return;
+
+    const sid = String(dbId);
+
+    setStateTitle(pickName(device));
+    setStateMeta({ id: sid, vendor: pickVendor(device), external_id: ext ? String(ext) : undefined });
+    setStateBody("{}");
+    setStateOpen(true);
+    setStateLoading(true);
+
+    try {
+      const res = await deviceService.getDeviceState(sid); // ✅ DB ID
+      const state = (res as any)?.state ?? res ?? {};
+      setStateBody(prettyState(state));
+
+      setStateMap((p) => ({ ...p, [sid]: state }));
+
+      const guessed = guessIsOn(state);
+      if (guessed !== null) setOnMap((p) => ({ ...p, [sid]: guessed }));
+    } catch (e: any) {
+      setStateBody(
+        prettyState({
+          error: e?.response?.data?.error || e?.message || "Failed to load device state",
+        })
+      );
+    } finally {
+      setStateLoading(false);
+    }
+  }
+
+  /**
+   * ✅ WORKING COMMAND LOGIC
+   * - Always command using DB device UUID
+   * - Uses switch for 1-gang, switch_1 / switch_2 / switch_3 for multi-gang
+   * - In screenshotMode we keep UI optimistic even if backend fails
+   */
+  async function toggleGang(device: AnyDevice, gangIndex: number, next: boolean) {
+    const dbId = pickDbId(device);
+    if (!dbId) return;
+
+    const sid = String(dbId);
+    setBusyId(sid);
+    setErr(null);
+
+    try {
+      await warmState(device);
+
+      const cached = stateMap[sid] || {};
+      const gangCount = guessGangCount(device, cached);
+
+      const code = gangCount === 1 ? "switch" : `switch_${gangIndex + 1}`;
+
+      if (!demoMode) {
+        await deviceService.commandDevice(sid, { [code]: next }); // ✅ DB ID
+      }
+
+      // optimistic UI (instant ring flip)
+      setStateMap((p) => {
+        const prev = p[sid] || {};
+        if (gangCount === 1) {
+          return { ...p, [sid]: { ...prev, switch: next, power: next, on: next } };
+        }
+        return { ...p, [sid]: { ...prev, [`switch_${gangIndex + 1}`]: next } };
+      });
+
+      setOnMap((p) => ({ ...p, [sid]: next }));
+    } catch (e: any) {
+      const msg = e?.response?.data?.error || e?.message || "Command failed (device may be offline)";
+      if (!screenshotMode) setErr(msg);
+      // screenshotMode: keep it looking smooth
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  function copy(text?: string | null) {
+    if (!text) return;
+    try {
+      navigator.clipboard.writeText(text);
+    } catch {}
+  }
+
+  const title = "Devices";
+  const subtitle = "Device Command Center";
+
   return (
-    <ConsumerShell title="Devices" subtitle="Device Command Center">
-      {/* Top controls */}
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-3">
+    <ConsumerShell title={title} subtitle={subtitle} showBack backHref="/home">
+      {/* top row */}
+      <div className="rounded-3xl border border-white/10 bg-white/5 p-4 flex items-center justify-between gap-3">
+        <div className="text-xs text-white/45 truncate">
+          {demoMode ? "Demo Mode ON • clean App Store screenshot data" : estateId ? "Estate linked • DB devices" : "No estate linked"}
+        </div>
+
+        <div className="flex items-center gap-2">
           <button
+            onClick={() => setScreenshotMode((v) => !v)}
+            className="rounded-2xl px-3 py-2 text-xs bg-white/10 text-white hover:bg-white/15 border border-white/10 transition"
             type="button"
-            onClick={loadAssigned}
+          >
+            {screenshotMode ? "Screenshot: ON" : "Screenshot: OFF"}
+          </button>
+
+          <button
+            onClick={() => setDemoMode((v) => !v)}
+            className="rounded-2xl px-3 py-2 text-xs bg-white/10 text-white hover:bg-white/15 border border-white/10 transition"
+            type="button"
+          >
+            {demoMode ? "Demo: ON" : "Demo: OFF"}
+          </button>
+
+          <button
+            onClick={load}
             disabled={loading}
-            className="rounded-xl px-3 py-2 text-sm border border-white/10 bg-white/5 hover:bg-white/10 text-white/90 disabled:opacity-50"
+            className="rounded-2xl px-3 py-2 text-sm bg-white text-black hover:opacity-90 disabled:opacity-50 transition"
+            type="button"
           >
             {loading ? "Refreshing…" : "Refresh"}
           </button>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setScreenshotMode((v) => !v)}
-              className="rounded-xl px-3 py-2 text-xs border border-white/10 bg-white/5 hover:bg-white/10 text-white/80"
-            >
-              {screenshotMode ? "Screenshot Mode: ON" : "Screenshot Mode: OFF"}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setDemoMode((v) => !v)}
-              className="rounded-xl px-3 py-2 text-xs border border-white/10 bg-white/5 hover:bg-white/10 text-white/80"
-              title="Use clean demo data (for App Store screenshots)"
-            >
-              {demoMode ? "Demo Mode: ON" : "Demo Mode: OFF"}
-            </button>
-          </div>
-        </div>
-
-        {!screenshotMode && err && (
-          <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-200">
-            {err}
-          </div>
-        )}
-
-        {/* Search + room filter */}
-        <div className="grid gap-2 sm:grid-cols-2">
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search devices (light, TV, switch…) "
-            className="w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-white/85 outline-none"
-          />
-
-          <select
-            value={roomFilter}
-            onChange={(e) => setRoomFilter(e.target.value)}
-            className="w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-white/85 outline-none"
-          >
-            <option value="">All rooms</option>
-            {rooms.map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Tiny status line */}
-        <div className="text-xs text-white/45">
-          Showing <span className="text-white/80 font-semibold">{visibleDevices.length}</span>{" "}
-          device{visibleDevices.length === 1 ? "" : "s"}
-          {demoMode ? <span className="ml-2 text-white/35">(demo)</span> : null}
         </div>
       </div>
 
-      {/* Device grid */}
-      <div className="mt-4 grid gap-3">
-        {visibleDevices.map((d) => {
-          const stableId = pickStableId(d);
-          const state = ui[stableId] || {};
-          const rn = roomNameFromMetadata(d);
-          const power = typeof state.power === "boolean" ? state.power : undefined;
+      {/* error */}
+      {!screenshotMode && err && (
+        <div className="mt-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+          {err}
+        </div>
+      )}
 
-          return (
-            <div
-              key={stableId}
-              className="rounded-2xl border border-white/10 bg-white/5 hover:bg-white/8 transition p-4"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="text-[15px] text-white font-semibold truncate">
-                    {pickLabel(d)}
-                  </div>
+      {/* list */}
+      {loading && items.length === 0 ? (
+        <div className="mt-4 flex items-center gap-3 text-sm text-white/60">
+          <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+          Loading devices…
+        </div>
+      ) : items.length === 0 ? (
+        <div className="mt-4 rounded-3xl border border-white/10 bg-white/5 p-5 text-sm text-white/60">
+          No devices found yet.
+        </div>
+      ) : (
+        <div className="mt-4 space-y-3">
+          {items.map((d) => {
+            const key = pickKey(d);
+            const dbId = pickDbId(d);
+            const ext = pickExternalId(d);
 
-                  <div className="mt-1 text-[11px] text-white/45 truncate">
-                    {rn ? `${rn} • ` : ""}
-                    {pickMeta(d)}
-                  </div>
+            const name = pickName(d);
+            const vendor = pickVendor(d);
+            const online = isOnline(d);
 
-                  {!screenshotMode && state.error ? (
-                    <div className="mt-2 text-[12px] text-red-200">
-                      {state.error}
+            const sid = dbId ? String(dbId) : "";
+            const isBusy = !!sid && busyId === sid;
+
+            const cachedState = sid ? stateMap[sid] : {};
+            const gangCount = guessGangCount(d, cachedState);
+
+            const ringValues =
+              Object.keys(cachedState || {}).length > 0
+                ? readGangValues(gangCount, cachedState)
+                : gangCount === 1
+                ? [sid ? onMap[sid] ?? null : null]
+                : Array.from({ length: gangCount }, () => null);
+
+            return (
+              <div
+                key={String(key)}
+                className="rounded-3xl border border-white/10 bg-white/5 hover:bg-white/7 transition p-4"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className={`h-2 w-2 rounded-full ${statusDot(online)}`} aria-hidden="true" />
+                      <div className="text-sm text-white font-medium truncate">{name}</div>
                     </div>
-                  ) : null}
-                </div>
 
-                {/* power pill */}
-                <div
-                  className={`shrink-0 rounded-full px-2 py-1 text-[11px] border ${
-                    power === true
-                      ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-200"
-                      : power === false
-                      ? "bg-zinc-500/10 border-white/10 text-white/55"
-                      : "bg-sky-500/10 border-sky-500/20 text-sky-200"
-                  }`}
-                  title="UI state (for screenshots)"
-                >
-                  {power === true ? "On" : power === false ? "Off" : "Ready"}
+                    <div className="text-xs text-white/40 mt-1 truncate">
+                      {vendor}
+                      {online === null ? "" : online ? " • online" : " • offline"}
+                      {gangCount > 1 ? ` • ${gangCount}-gang` : ""}
+                    </div>
+
+                    {/* small id hint (safe for screenshots) */}
+                    <div className="mt-2 text-[11px] text-white/35 truncate">
+                      {ext ? `Tuya id: ${String(ext)}` : "Tuya id: —"}
+                      {"  "}
+                      <span className="text-white/25">•</span>
+                      {"  "}
+                      DB id hidden (open Details)
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 shrink-0">
+                    <button
+                      onClick={() => viewState(d)}
+                      className="rounded-2xl px-3 py-2 text-sm bg-white/10 text-white hover:bg-white/15 border border-white/10 transition"
+                      type="button"
+                    >
+                      Details
+                    </button>
+
+                    <GangRingSwitch
+                      gangCount={gangCount}
+                      online={online}
+                      values={ringValues}
+                      busy={isBusy}
+                      onToggleGang={(gangIndex, next) => toggleGang(d, gangIndex, next)}
+                      size={54}
+                    />
+                  </div>
                 </div>
               </div>
+            );
+          })}
+        </div>
+      )}
 
-              {/* actions */}
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  disabled={!!state.busy}
-                  onClick={() => sendPower(d, true)}
-                  className="rounded-xl py-2 text-sm font-semibold border border-white/10 bg-white text-black hover:bg-white/90 disabled:opacity-60"
-                >
-                  {state.busy && state.last?.includes("on") ? "Turning on…" : "Turn On"}
-                </button>
+      {/* STATE MODAL */}
+      {stateOpen && (
+        <div className="fixed inset-0 z-[120]">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setStateOpen(false)} />
+          <div className="absolute left-0 right-0 top-20 px-4">
+            <div className="max-w-3xl mx-auto">
+              <div className="rounded-3xl border border-white/10 bg-zinc-950 overflow-hidden">
+                <div className="px-4 py-3 border-b border-white/10 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-white truncate">{stateTitle}</div>
+                    <div className="text-xs text-white/40 mt-1 truncate">
+                      {stateMeta?.vendor ? `${stateMeta.vendor} • ` : ""}Live state snapshot
+                    </div>
 
-                <button
-                  type="button"
-                  disabled={!!state.busy}
-                  onClick={() => sendPower(d, false)}
-                  className="rounded-xl py-2 text-sm font-semibold border border-white/10 bg-white/10 text-white/85 hover:bg-white/15 disabled:opacity-60"
-                >
-                  {state.busy && state.last?.includes("off") ? "Turning off…" : "Turn Off"}
-                </button>
-              </div>
+                    {stateMeta?.external_id ? (
+                      <div className="mt-2 flex items-center gap-2">
+                        <span className="text-[11px] text-white/35">Tuya:</span>
+                        <span className="text-[11px] text-white/70 font-mono truncate">{stateMeta.external_id}</span>
+                        <button
+                          onClick={() => copy(stateMeta.external_id)}
+                          className="text-[11px] text-white/60 hover:text-white underline"
+                          type="button"
+                        >
+                          Copy
+                        </button>
+                      </div>
+                    ) : null}
 
-              {/* small footer */}
-              <div className="mt-2 text-[11px] text-white/35">
-                {state.last ? `Last: ${state.last}` : "Commands update instantly (optimistic UI)."}
+                    {stateMeta?.id ? (
+                      <div className="mt-1 flex items-center gap-2">
+                        <span className="text-[11px] text-white/35">DB:</span>
+                        <span className="text-[11px] text-white/70 font-mono truncate">{stateMeta.id}</span>
+                        <button
+                          onClick={() => copy(stateMeta.id)}
+                          className="text-[11px] text-white/60 hover:text-white underline"
+                          type="button"
+                        >
+                          Copy
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <button
+                    className="rounded-xl px-2 py-1 text-white/70 hover:bg-white/5"
+                    onClick={() => setStateOpen(false)}
+                    aria-label="Close"
+                    type="button"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="p-4">
+                  {stateLoading ? (
+                    <div className="flex items-center gap-3 text-sm text-white/60">
+                      <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                      Fetching state…
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex justify-end mb-2">
+                        <button
+                          onClick={() => copy(stateBody)}
+                          className="rounded-2xl px-3 py-2 text-sm bg-white/10 text-white hover:bg-white/15 border border-white/10 transition"
+                          type="button"
+                        >
+                          Copy JSON
+                        </button>
+                      </div>
+
+                      <pre className="text-xs text-white/80 whitespace-pre-wrap break-words font-mono">
+                        {stateBody}
+                      </pre>
+                    </>
+                  )}
+                </div>
+
+                <div className="px-4 py-3 border-t border-white/10 text-[11px] text-white/40">
+                  Source: <span className="text-white/70">GET /devices/:deviceId/state</span> (deviceId = DB UUID)
+                </div>
               </div>
             </div>
-          );
-        })}
-
-        {visibleDevices.length === 0 && (
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-sm text-white/60 text-center">
-            No devices to show. Turn on <span className="text-white/85 font-semibold">Demo Mode</span> to take screenshots.
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </ConsumerShell>
   );
 }
