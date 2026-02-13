@@ -1,3 +1,4 @@
+// src/services/api.ts
 import axios from "axios";
 import { useSessionStore } from "@/store/useSessionStore";
 
@@ -8,11 +9,7 @@ function getBaseURL() {
 
 function getCookie(name: string): string | null {
   if (typeof document === "undefined") return null;
-
-  const match = document.cookie
-    .split("; ")
-    .find((row) => row.startsWith(name + "="));
-
+  const match = document.cookie.split("; ").find((row) => row.startsWith(name + "="));
   return match ? decodeURIComponent(match.split("=")[1]) : null;
 }
 
@@ -22,27 +19,21 @@ const API = axios.create({
   timeout: 15000,
 });
 
-// ✅ set default auth header explicitly
-export function setApiAuthToken(token: string | null) {
-  if (!token) {
-    delete API.defaults.headers.common.Authorization;
-    return;
-  }
-  API.defaults.headers.common.Authorization = `Bearer ${token}`;
-}
-
-// ✅ keep interceptor as a safety-net
+// ✅ Attach JWT automatically (works on iOS + web)
 API.interceptors.request.use((config) => {
-  if (typeof window !== "undefined") {
-    const storeToken = useSessionStore.getState().token;
-    const cookieToken = getCookie("oyi_consumer_token");
-    const token = storeToken || cookieToken;
+  const storeToken =
+    typeof window !== "undefined" ? useSessionStore.getState().token : null;
 
-    if (token) {
-      config.headers = config.headers || {};
-      (config.headers as any).Authorization = `Bearer ${token}`;
-    }
+  const cookieToken =
+    typeof window !== "undefined" ? getCookie("oyi_consumer_token") : null;
+
+  const token = storeToken || cookieToken;
+
+  if (token) {
+    config.headers = config.headers || {};
+    (config.headers as any).Authorization = `Bearer ${token}`;
   }
+
   return config;
 });
 
