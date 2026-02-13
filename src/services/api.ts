@@ -1,4 +1,6 @@
+// src/services/api.ts
 import axios from "axios";
+import { useSessionStore } from "@/store/useSessionStore";
 
 /**
  * Normalize backend URL
@@ -6,15 +8,12 @@ import axios from "axios";
  * - guarantees fallback in dev
  */
 function getBaseURL() {
-  const raw =
-    process.env.NEXT_PUBLIC_API_URL ||
-    "http://localhost:5000";
-
+  const raw = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
   return raw.replace(/\/$/, "");
 }
 
 /**
- * Read cookie safely in browser
+ * Read cookie safely in browser (web fallback)
  */
 function getCookie(name: string): string | null {
   if (typeof document === "undefined") return null;
@@ -40,11 +39,15 @@ const API = axios.create({
 /**
  * Attach JWT automatically
  * Source of truth:
- * - oyi_consumer_token (cookie)
+ *  1) Zustand session store (works on iOS/Capacitor)
+ *  2) Cookie fallback (works on web)
  */
 API.interceptors.request.use((config) => {
   if (typeof window !== "undefined") {
-    const token = getCookie("oyi_consumer_token");
+    const storeToken = useSessionStore.getState().token;
+    const cookieToken = getCookie("oyi_consumer_token");
+
+    const token = storeToken || cookieToken;
 
     if (token) {
       config.headers = config.headers || {};
