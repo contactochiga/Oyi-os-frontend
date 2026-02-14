@@ -1,4 +1,3 @@
-// src/app/auth/login/LoginClient.tsx
 "use client";
 
 import React, { useState } from "react";
@@ -7,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { loginWithEmail } from "@/services/authService";
 import { decodeToken, isExpired, setCookie } from "@/lib/auth";
 import { useSessionStore } from "@/store/useSessionStore";
-import API from "@/services/api";
+import API, { setApiAuthToken } from "@/services/api";
 
 export default function LoginClient() {
   const router = useRouter();
@@ -16,9 +15,13 @@ export default function LoginClient() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  function pickUserFromContext(ctx: any) {
+    // support common backend shapes
+    return ctx?.user || ctx?.profile || ctx?.me || ctx?.data?.user || ctx?.data || ctx || null;
+  }
 
   async function submit() {
     setErr(null);
@@ -41,26 +44,23 @@ export default function LoginClient() {
       // ✅ keep cookie for web (fine if iOS ignores it)
       setCookie("oyi_consumer_token", res.token, 30);
 
-      // ✅ store token immediately (so interceptor can use it too)
+      // ✅ CRITICAL: set auth header through the ONE SOURCE OF TRUTH
+      setApiAuthToken(res.token);
+
+      // ✅ set token in store immediately
       setSession(res.token);
 
-      // ✅ CRITICAL for iOS: set axios default header immediately
-      API.defaults.headers.common.Authorization = `Bearer ${res.token}`;
-
-      // ✅ pull full context (estate_id, home_id, email, etc) and store it
+      // ✅ pull full context + store user so estate/home shows on iOS too
       try {
         const ctxRes = await API.get("/me/context");
         const ctx = ctxRes?.data;
-
-        // depending on how your backend formats it, pick best shape
-        const userFromCtx = ctx?.user || ctx?.profile || ctx?.me || ctx;
+        const userFromCtx = pickUserFromContext(ctx);
 
         if (userFromCtx) {
           setSession(res.token, userFromCtx);
         }
       } catch {
-        // If /me/context fails, we still let user in with token-only.
-        // (But normally it should succeed once Authorization is set above)
+        // allow entry even if context fetch fails
       }
 
       const next = searchParams.get("next");
@@ -82,15 +82,13 @@ export default function LoginClient() {
           <div
             className="absolute -top-56 -left-56 h-[680px] w-[680px] rounded-full blur-3xl opacity-25"
             style={{
-              background:
-                "radial-gradient(circle at center, var(--brand) 0%, transparent 60%)",
+              background: "radial-gradient(circle at center, var(--brand) 0%, transparent 60%)",
             }}
           />
           <div
             className="absolute top-1/4 -right-56 h-[720px] w-[720px] rounded-full blur-3xl opacity-25"
             style={{
-              background:
-                "radial-gradient(circle at center, rgba(148,163,184,0.55) 0%, transparent 62%)",
+              background: "radial-gradient(circle at center, rgba(148,163,184,0.55) 0%, transparent 62%)",
             }}
           />
           <div
@@ -106,10 +104,8 @@ export default function LoginClient() {
               backgroundImage:
                 "linear-gradient(to right, rgba(255,255,255,0.10) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.10) 1px, transparent 1px)",
               backgroundSize: "56px 56px",
-              maskImage:
-                "radial-gradient(circle at 50% 35%, black 0%, transparent 65%)",
-              WebkitMaskImage:
-                "radial-gradient(circle at 50% 35%, black 0%, transparent 65%)",
+              maskImage: "radial-gradient(circle at 50% 35%, black 0%, transparent 65%)",
+              WebkitMaskImage: "radial-gradient(circle at 50% 35%, black 0%, transparent 65%)",
             }}
           />
         </div>
@@ -140,12 +136,8 @@ export default function LoginClient() {
                   </div>
                 </div>
 
-                <div className="mt-5 text-xl font-semibold text-white">
-                  Sign in
-                </div>
-                <div className="mt-1 text-xs text-white/45">
-                  Continue to your dashboard
-                </div>
+                <div className="mt-5 text-xl font-semibold text-white">Sign in</div>
+                <div className="mt-1 text-xs text-white/45">Continue to your dashboard</div>
               </div>
 
               <div className="mt-6 space-y-3">
