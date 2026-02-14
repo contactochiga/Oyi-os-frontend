@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { deleteCookie } from "@/lib/auth";
 import { useSessionStore, type SessionUser } from "@/store/useSessionStore";
@@ -11,7 +11,7 @@ type AuthContextType = {
   token: string | null;
   setSession: (token: string, user?: SessionUser | null) => void;
   logout: () => void;
-  ready: boolean; // ✅ add
+  ready: boolean;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -31,7 +31,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })();
   }, [hydrate]);
 
-  // ✅ whenever token changes, force axios default header
+  // ✅ ALWAYS attach auth header in one place
   useEffect(() => {
     setApiAuthToken(token);
   }, [token]);
