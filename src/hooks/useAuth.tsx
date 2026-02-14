@@ -4,7 +4,7 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from "
 import { useRouter } from "next/navigation";
 import { deleteCookie } from "@/lib/auth";
 import { useSessionStore, type SessionUser } from "@/store/useSessionStore";
-import { setApiAuthToken } from "@/services/api";
+import API, { setApiAuthToken } from "@/services/api";
 
 type AuthContextType = {
   user: SessionUser | null;
@@ -16,11 +16,23 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function pickUserFromContext(payload: any) {
+  return (
+    payload?.user ||
+    payload?.profile ||
+    payload?.me ||
+    payload?.resident ||
+    payload?.account ||
+    null
+  );
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { token, user, setSession, hydrate, clear } = useSessionStore();
   const [ready, setReady] = useState(false);
 
+  // hydrate once
   useEffect(() => {
     (async () => {
       try {
@@ -34,6 +46,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // ✅ ALWAYS attach auth header in one place
   useEffect(() => {
     setApiAuthToken(token);
+  }, [token]);
+
+  // ✅ refresh context on boot (fix iOS “no estate linked / no home selected”)
+  useEffect(() => {
+    if (!token) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await API.get("/me/context");
+        const payload = (res as any)?.data?.data ?? (res as any)?.data ?? null;
+        if (cancelled || !payload) return;
+
+        const estate = payload?.estate ?? null;
+        const home = payload?.home ?? null;
+
+        const u = pickUserFromContext(payload);
+
+        const mergedUser = {
+          ...(u || {}),
+          email: (u as any)?.email ?? user?.email,
+          full_name: (u as any)?.full_name ?? (user as any)?.full_name,
+          estate_id: (u as any)?.estate_id ?? estate?.id ?? payload?.estate_id ?? user?.estate_id,
+          home_id: (u as any)?.home_id ?? home?.id ?? payload?.home_id ?? user?.home_id,
+        };
+
+        setSession(token, mergedUser as any);
+
+        // keep legacy keys too
+        if (typeof window !== "undefined") {
+          if (estate?.id) localStorage.setItem("ochiga_estate", String(estate.id));
+          if (home?.id) localStorage.setItem("ochiga_home", String(home.id));
+        }
+      } catch {
+        // ignore
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   function logout() {
