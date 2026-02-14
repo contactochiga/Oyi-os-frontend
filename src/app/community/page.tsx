@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import RemotePanel from "./RemotePanel";
 import useAuth from "@/hooks/useAuth";
 import { communityService, type CommunityPost } from "@/services/communityService";
 
