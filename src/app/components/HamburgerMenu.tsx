@@ -141,7 +141,7 @@ export default function HamburgerMenu() {
     };
   }, [open]);
 
-  // Fetch consumer context
+  // ✅ Fetch consumer context (supports multiple backend response shapes)
   useEffect(() => {
     let cancelled = false;
 
@@ -162,15 +162,31 @@ export default function HamburgerMenu() {
         });
 
         if (!res.ok) return;
+
         const data = await res.json();
         if (cancelled) return;
 
-        const estate = data?.estate || null;
-        const home = data?.home || null;
+        // ✅ accept: {estate,home} OR {context:{estate,home}} OR {data:{...}} OR {user:{estate,home}}
+        const root = (data as any)?.data ?? data;
 
-        setEstateName(estate?.name ? String(estate.name) : null);
+        const estate =
+          root?.estate ?? root?.context?.estate ?? root?.user?.estate ?? null;
+
+        const home =
+          root?.home ?? root?.context?.home ?? root?.user?.home ?? null;
+
+        const estateNameResolved =
+          estate?.name
+            ? String(estate.name)
+            : root?.estate_name
+            ? String(root.estate_name)
+            : null;
+
+        setEstateName(estateNameResolved);
         setHomeLabel(home ? buildHomeLabel(home) : null);
-      } catch {}
+      } catch {
+        // silent
+      }
     }
 
     run();
@@ -179,7 +195,11 @@ export default function HamburgerMenu() {
     };
   }, [token, user?.estate_id, user?.home_id]);
 
-  const shouldShowContext = useMemo(() => !!estateName, [estateName]);
+  // ✅ show context if estate OR home exists
+  const shouldShowContext = useMemo(
+    () => !!estateName || !!homeLabel,
+    [estateName, homeLabel]
+  );
 
   const OVERLAY_Z = 2147483646;
   const DRAWER_Z = 2147483647;
@@ -188,7 +208,7 @@ export default function HamburgerMenu() {
     mounted && open
       ? createPortal(
           <>
-            {/* overlay (slightly lighter so it blends) */}
+            {/* overlay */}
             <div
               onClick={closeAll}
               className="fixed inset-0"
@@ -201,7 +221,7 @@ export default function HamburgerMenu() {
               aria-label="Close menu overlay"
             />
 
-            {/* drawer (MATCH APP BASE) */}
+            {/* drawer */}
             <aside
               className={`fixed inset-y-0 left-0 w-[300px] max-w-[86vw]
                 border-r border-white/10
@@ -275,9 +295,11 @@ export default function HamburgerMenu() {
                   {shouldShowContext ? (
                     <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
                       <div className="text-[11px] text-white/45">Estate</div>
+
                       <div className="text-[13px] text-white truncate font-medium">
-                        {estateName}
+                        {estateName || "—"}
                       </div>
+
                       {homeLabel ? (
                         <div className="text-[11px] text-white/45 mt-1 truncate">
                           Home: <span className="text-white/70">{homeLabel}</span>
@@ -364,7 +386,8 @@ export default function HamburgerMenu() {
                         className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition text-white"
                         type="button"
                       >
-                        <MdOutlinePerson /> <span className="text-[13px]">Profile</span>
+                        <MdOutlinePerson />{" "}
+                        <span className="text-[13px]">Profile</span>
                       </button>
 
                       <button
@@ -372,7 +395,8 @@ export default function HamburgerMenu() {
                         className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition text-white"
                         type="button"
                       >
-                        <MdSettings /> <span className="text-[13px]">Settings</span>
+                        <MdSettings />{" "}
+                        <span className="text-[13px]">Settings</span>
                       </button>
 
                       <button
@@ -380,7 +404,8 @@ export default function HamburgerMenu() {
                         className="w-full flex items-center gap-3 px-4 py-3 text-white/80 hover:bg-white/5 transition"
                         type="button"
                       >
-                        <FiLogOut /> <span className="text-[13px]">Logout</span>
+                        <FiLogOut />{" "}
+                        <span className="text-[13px]">Logout</span>
                       </button>
                     </div>
                   )}
