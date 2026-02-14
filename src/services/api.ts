@@ -1,3 +1,4 @@
+// src/services/api.ts
 import axios from "axios";
 
 /**
@@ -9,22 +10,7 @@ function getBaseURL() {
 }
 
 /**
- * In-memory token (works in Capacitor + Web)
- */
-let MEMORY_TOKEN: string | null = null;
-
-export function setApiAuthToken(token: string | null) {
-  MEMORY_TOKEN = token;
-
-  if (token) {
-    API.defaults.headers.common.Authorization = `Bearer ${token}`;
-  } else {
-    delete API.defaults.headers.common.Authorization;
-  }
-}
-
-/**
- * Cookie read (web-only helper)
+ * Read cookie safely in browser
  */
 function getCookie(name: string): string | null {
   if (typeof document === "undefined") return null;
@@ -36,19 +22,70 @@ function getCookie(name: string): string | null {
   return match ? decodeURIComponent(match.split("=")[1]) : null;
 }
 
+/**
+ * Safe localStorage read
+ */
+function getLS(key: string): string | null {
+  try {
+    if (typeof window === "undefined") return null;
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * In-memory token (works great for iOS WebView)
+ */
+let memToken: string | null = null;
+
+/**
+ * ✅ One source of truth setter
+ */
+export function setApiAuthToken(token: string | null) {
+  memToken = token;
+
+  if (token) {
+    API.defaults.headers.common.Authorization = `Bearer ${token}`;
+  } else {
+    // remove default header
+    delete API.defaults.headers.common.Authorization;
+  }
+}
+
+/**
+ * Axios instance
+ */
 const API = axios.create({
   baseURL: getBaseURL(),
-  headers: { "Content-Type": "application/json" },
+  headers: {
+    "Content-Type": "application/json",
+  },
   timeout: 15000,
 });
 
+/**
+ * Attach JWT automatically
+ * Priority:
+ * 1) in-memory (setApiAuthToken)
+ * 2) localStorage (iOS)
+ * 3) cookie (web)
+ */
 API.interceptors.request.use((config) => {
-  // Prefer in-memory token first (Capacitor safe)
-  const token = MEMORY_TOKEN || getCookie("oyi_consumer_token");
+  if (typeof window !== "undefined") {
+    const lsToken =
+      getLS("oyi_consumer_token_ls") || // ✅ your new key
+      getLS("oyi_consumer_token") || // fallback
+      null;
 
-  if (token) {
-    config.headers = config.headers || {};
-    config.headers.Authorization = `Bearer ${token}`;
+    const cookieToken = getCookie("oyi_consumer_token");
+
+    const token = memToken || lsToken || cookieToken;
+
+    if (token) {
+      config.headers = config.headers || {};
+      (config.headers as any).Authorization = `Bearer ${token}`;
+    }
   }
 
   return config;
