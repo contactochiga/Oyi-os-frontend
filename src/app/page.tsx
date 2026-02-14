@@ -9,7 +9,6 @@ export default function LandingPage() {
 
   return (
     <main className="min-h-screen text-white">
-      {/* Background (premium, not plain) */}
       <div className="relative min-h-screen flex items-center justify-center px-6 py-10 overflow-hidden bg-[#070A12]">
         <div className="pointer-events-none absolute inset-0">
           {/* brand glow */}
@@ -55,7 +54,7 @@ export default function LandingPage() {
             }}
           />
 
-          {/* subtle scanline/noise vibe */}
+          {/* subtle scanline vibe */}
           <div
             className="absolute inset-0 opacity-[0.06]"
             style={{
@@ -103,8 +102,8 @@ export default function LandingPage() {
                 </div>
               </div>
 
-              {/* ✅ OS -> OE */}
-              <div className="mt-5 text-2xl font-semibold tracking-wide">OYI&nbsp;OE</div>
+              {/* ✅ Just OYI */}
+              <div className="mt-5 text-2xl font-semibold tracking-wide">OYI</div>
 
               <div className="mt-1 text-sm text-white/55">Estate-native control</div>
 
@@ -114,7 +113,6 @@ export default function LandingPage() {
 
               {/* Actions */}
               <div className="w-full mt-6 grid gap-3">
-                {/* Primary */}
                 <button
                   onClick={() => router.push("/auth/signup")}
                   className="w-full py-3 rounded-2xl font-semibold text-sm transition active:scale-[0.99] disabled:opacity-60"
@@ -130,7 +128,6 @@ export default function LandingPage() {
                   Get started
                 </button>
 
-                {/* Secondary */}
                 <button
                   onClick={() => router.push("/auth/login")}
                   className="w-full py-3 rounded-2xl border border-white/10 bg-white/10 text-white/85 text-sm font-semibold hover:bg-white/15 transition active:scale-[0.99]"
@@ -140,7 +137,6 @@ export default function LandingPage() {
                 </button>
               </div>
 
-              {/* Trust hint */}
               <div className="mt-5 text-[11px] text-white/35">Secure • Private • Estate-native</div>
             </div>
           </div>
