@@ -10,6 +10,9 @@ import { XMarkIcon, Bars3Icon } from "@heroicons/react/24/outline";
 import { FiChevronDown, FiChevronUp, FiLogOut } from "react-icons/fi";
 import { MdOutlinePerson, MdSettings } from "react-icons/md";
 
+// ✅ NEW: token decode fallback (so iOS always has email)
+import { decodeToken } from "@/lib/auth";
+
 const MENU_ITEMS = [
   { key: "home", label: "Home" },
   { key: "rooms", label: "Rooms" },
@@ -77,20 +80,33 @@ export default function HamburgerMenu() {
 
   useEffect(() => setMounted(true), []);
 
-  const email = user?.email;
+  // ✅ Email fallback order:
+  // 1) session user email
+  // 2) decoded JWT email (works on iOS even when session user is blank)
+  const email = useMemo(() => {
+    if (user?.email) return user.email;
+
+    if (token) {
+      const decoded: any = decodeToken(token);
+      const fromToken = decoded?.email ? String(decoded.email) : null;
+      if (fromToken) return fromToken;
+    }
+
+    return null;
+  }, [user?.email, token]);
 
   const initials = useMemo(() => {
-    const n =
-      (email || "O")
-        .trim()
-        .toUpperCase()
-        .replace(/[^A-Z0-9]/g, "") || "O";
-    return n[0] || "O";
+    const base = (email || "O").trim().toUpperCase().replace(/[^A-Z0-9]/g, "") || "O";
+    return base[0] || "O";
   }, [email]);
 
+  // ✅ Display name should never show “Resident” if we have an email
   const displayName = useMemo(() => {
-    return (user as any)?.full_name || user?.email || "Resident";
-  }, [user]);
+    const full = (user as any)?.full_name;
+    if (full && String(full).trim()) return String(full).trim();
+    if (email) return email;
+    return "Resident";
+  }, [user, email]);
 
   const closeAll = () => {
     setOpen(false);
@@ -141,7 +157,7 @@ export default function HamburgerMenu() {
     };
   }, [open]);
 
-  // ✅ Fetch consumer context (supports multiple backend response shapes)
+  // Fetch consumer context (supports multiple backend response shapes)
   useEffect(() => {
     let cancelled = false;
 
@@ -166,14 +182,10 @@ export default function HamburgerMenu() {
         const data = await res.json();
         if (cancelled) return;
 
-        // ✅ accept: {estate,home} OR {context:{estate,home}} OR {data:{...}} OR {user:{estate,home}}
         const root = (data as any)?.data ?? data;
 
-        const estate =
-          root?.estate ?? root?.context?.estate ?? root?.user?.estate ?? null;
-
-        const home =
-          root?.home ?? root?.context?.home ?? root?.user?.home ?? null;
+        const estate = root?.estate ?? root?.context?.estate ?? root?.user?.estate ?? null;
+        const home = root?.home ?? root?.context?.home ?? root?.user?.home ?? null;
 
         const estateNameResolved =
           estate?.name
@@ -195,11 +207,7 @@ export default function HamburgerMenu() {
     };
   }, [token, user?.estate_id, user?.home_id]);
 
-  // ✅ show context if estate OR home exists
-  const shouldShowContext = useMemo(
-    () => !!estateName || !!homeLabel,
-    [estateName, homeLabel]
-  );
+  const shouldShowContext = useMemo(() => !!estateName || !!homeLabel, [estateName, homeLabel]);
 
   const OVERLAY_Z = 2147483646;
   const DRAWER_Z = 2147483647;
@@ -208,7 +216,6 @@ export default function HamburgerMenu() {
     mounted && open
       ? createPortal(
           <>
-            {/* overlay */}
             <div
               onClick={closeAll}
               className="fixed inset-0"
@@ -221,7 +228,6 @@ export default function HamburgerMenu() {
               aria-label="Close menu overlay"
             />
 
-            {/* drawer */}
             <aside
               className={`fixed inset-y-0 left-0 w-[300px] max-w-[86vw]
                 border-r border-white/10
@@ -272,12 +278,8 @@ export default function HamburgerMenu() {
                       </div>
 
                       <div className="min-w-0">
-                        <div className="text-[13px] font-semibold text-white truncate">
-                          Oyi OS
-                        </div>
-                        <div className="text-[11px] text-white/45 truncate">
-                          Resident App
-                        </div>
+                        <div className="text-[13px] font-semibold text-white truncate">Oyi OS</div>
+                        <div className="text-[11px] text-white/45 truncate">Resident App</div>
                       </div>
                     </div>
 
@@ -291,7 +293,6 @@ export default function HamburgerMenu() {
                     </button>
                   </div>
 
-                  {/* Context */}
                   {shouldShowContext ? (
                     <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
                       <div className="text-[11px] text-white/45">Estate</div>
@@ -311,9 +312,7 @@ export default function HamburgerMenu() {
 
                 {/* Menu */}
                 <nav className="flex-1 overflow-y-auto px-2 py-3">
-                  <div className="px-2 pb-2 text-[11px] text-white/35">
-                    Navigation
-                  </div>
+                  <div className="px-2 pb-2 text-[11px] text-white/35">Navigation</div>
 
                   <div className="space-y-1">
                     {MENU_ITEMS.map((item) => {
@@ -335,11 +334,7 @@ export default function HamburgerMenu() {
                         >
                           <div className="flex items-center justify-between">
                             <span className="font-medium">{item.label}</span>
-                            {active ? (
-                              <span className="text-[11px] text-white/50">
-                                Active
-                              </span>
-                            ) : null}
+                            {active ? <span className="text-[11px] text-white/50">Active</span> : null}
                           </div>
                         </button>
                       );
@@ -360,12 +355,8 @@ export default function HamburgerMenu() {
                       </div>
 
                       <div className="text-left min-w-0">
-                        <p className="text-white text-[13px] font-semibold truncate">
-                          {displayName}
-                        </p>
-                        <p className="text-white/45 text-[11px] truncate">
-                          {email || "Account"}
-                        </p>
+                        <p className="text-white text-[13px] font-semibold truncate">{displayName}</p>
+                        <p className="text-white/45 text-[11px] truncate">{email || "Account"}</p>
                       </div>
                     </button>
 
@@ -386,8 +377,7 @@ export default function HamburgerMenu() {
                         className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition text-white"
                         type="button"
                       >
-                        <MdOutlinePerson />{" "}
-                        <span className="text-[13px]">Profile</span>
+                        <MdOutlinePerson /> <span className="text-[13px]">Profile</span>
                       </button>
 
                       <button
@@ -395,8 +385,7 @@ export default function HamburgerMenu() {
                         className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition text-white"
                         type="button"
                       >
-                        <MdSettings />{" "}
-                        <span className="text-[13px]">Settings</span>
+                        <MdSettings /> <span className="text-[13px]">Settings</span>
                       </button>
 
                       <button
@@ -404,8 +393,7 @@ export default function HamburgerMenu() {
                         className="w-full flex items-center gap-3 px-4 py-3 text-white/80 hover:bg-white/5 transition"
                         type="button"
                       >
-                        <FiLogOut />{" "}
-                        <span className="text-[13px]">Logout</span>
+                        <FiLogOut /> <span className="text-[13px]">Logout</span>
                       </button>
                     </div>
                   )}
@@ -432,9 +420,7 @@ export default function HamburgerMenu() {
                     className="bg-[#06080e] p-6 rounded-3xl w-full max-w-sm border border-white/10"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <p className="text-white text-center font-semibold text-lg mb-2">
-                      Logout?
-                    </p>
+                    <p className="text-white text-center font-semibold text-lg mb-2">Logout?</p>
                     <p className="text-white/55 text-center text-sm mb-6">
                       You’ll need to sign in again to access your estate.
                     </p>
