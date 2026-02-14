@@ -5,75 +5,134 @@ export type SessionUser = {
   id: string;
   email?: string;
   role?: string;
-
   estate_id?: string;
   home_id?: string;
+  full_name?: string;
 };
 
 type SessionState = {
   token: string | null;
   user: SessionUser | null;
 
-  // actions
   setSession: (token: string | null, user?: SessionUser | null) => void;
   hydrate: () => void;
   clear: () => void;
 };
+
+const LS_TOKEN = "oyi_consumer_token_ls";
+const LS_USER = "oyi_consumer_user_ls";
+
+function safeReadLS(key: string): string | null {
+  try {
+    if (typeof window === "undefined") return null;
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function safeWriteLS(key: string, value: string) {
+  try {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(key, value);
+  } catch {}
+}
+
+function safeRemoveLS(key: string) {
+  try {
+    if (typeof window === "undefined") return;
+    window.localStorage.removeItem(key);
+  } catch {}
+}
+
+function deriveUserFromToken(token: string): SessionUser | null {
+  const decoded = decodeToken(token);
+  if (!decoded || isExpired(decoded)) return null;
+
+  return {
+    id: decoded.id,
+    email: decoded.email,
+    role: decoded.role,
+    estate_id: decoded.estate_id,
+    home_id: decoded.home_id,
+    full_name: decoded.full_name,
+  };
+}
 
 export const useSessionStore = create<SessionState>((set) => ({
   token: null,
   user: null,
 
   setSession: (token, user) => {
-    // If user not provided, derive from token
-    let derivedUser: SessionUser | null = user ?? null;
-
-    if (token && !derivedUser) {
-      const decoded = decodeToken(token);
-      if (decoded && !isExpired(decoded)) {
-        derivedUser = {
-          id: decoded.id,
-          email: decoded.email,
-          role: decoded.role,
-          estate_id: decoded.estate_id,
-          home_id: decoded.home_id,
-        };
-      }
+    // clear
+    if (!token) {
+      safeRemoveLS(LS_TOKEN);
+      safeRemoveLS(LS_USER);
+      set({ token: null, user: null });
+      return;
     }
 
-    set({ token: token ?? null, user: derivedUser });
+    // derive user if not provided
+    let nextUser: SessionUser | null = user ?? null;
+    if (!nextUser) nextUser = deriveUserFromToken(token);
+
+    // persist for iOS (Capacitor)
+    safeWriteLS(LS_TOKEN, token);
+    if (nextUser) {
+      safeWriteLS(LS_USER, JSON.stringify(nextUser));
+    } else {
+      safeRemoveLS(LS_USER);
+    }
+
+    set({ token, user: nextUser });
   },
 
   hydrate: () => {
-    // Safe in SSR/build
     if (typeof window === "undefined") return;
 
-    const token = getCookie("oyi_consumer_token");
+    // ✅ Prefer localStorage first (works on iOS)
+    const lsToken = safeReadLS(LS_TOKEN);
+
+    // ✅ Web fallback: cookie
+    const cookieToken = getCookie("oyi_consumer_token");
+
+    const token = lsToken || cookieToken;
+
     if (!token) {
       set({ token: null, user: null });
       return;
     }
 
-    const decoded = decodeToken(token);
-    if (!decoded || isExpired(decoded)) {
+    const derived = deriveUserFromToken(token);
+    if (!derived) {
+      safeRemoveLS(LS_TOKEN);
+      safeRemoveLS(LS_USER);
       set({ token: null, user: null });
       return;
     }
 
+    // Try to restore richer user from LS (estate/home/full_name may come from /me/context)
+    let lsUser: SessionUser | null = null;
+    const rawUser = safeReadLS(LS_USER);
+    if (rawUser) {
+      try {
+        lsUser = JSON.parse(rawUser);
+      } catch {
+        lsUser = null;
+      }
+    }
+
     set({
       token,
-      user: {
-        id: decoded.id,
-        email: decoded.email,
-        role: decoded.role,
-        estate_id: decoded.estate_id,
-        home_id: decoded.home_id,
-      },
+      user: lsUser || derived,
     });
   },
 
-  clear: () => set({ token: null, user: null }),
+  clear: () => {
+    safeRemoveLS(LS_TOKEN);
+    safeRemoveLS(LS_USER);
+    set({ token: null, user: null });
+  },
 }));
 
-// ✅ Also export default to avoid future mismatch
 export default useSessionStore;
