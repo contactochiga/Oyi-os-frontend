@@ -95,7 +95,7 @@ export default function LandingPage() {
                 <div className="relative h-10 w-10">
                   <Image
                     src="/oyi-logo-transparent.png"
-                    alt="Oyi OE Logo"
+                    alt="Oyi Logo"
                     fill
                     className="object-contain"
                     priority
