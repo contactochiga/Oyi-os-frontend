@@ -1,8 +1,8 @@
+// src/app/components/remotes/CommunityPanel.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import RemotePanel from "./RemotePanel";
 import useAuth from "@/hooks/useAuth";
 import { communityService, type CommunityPost } from "@/services/communityService";
 
@@ -10,43 +10,39 @@ function when(iso?: string | null) {
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleString([], { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleString([], {
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
-export default function CommunityPanel({
-  lastUpdated,
-  onInteraction,
-}: {
-  lastUpdated?: number;
-  onInteraction?: () => void;
-}) {
+export default function CommunityPanel({ limit = 3 }: { limit?: number }) {
   const router = useRouter();
   const { user } = useAuth();
 
-  const estateId = useMemo(
-    () =>
+  const estateId = useMemo(() => {
+    return (
       (user as any)?.estate_id ??
-      (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null),
-    [user]
-  );
+      (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null)
+    );
+  }, [user]);
 
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
   const [items, setItems] = useState<CommunityPost[]>([]);
-
-  function touch() {
-    onInteraction?.();
-  }
+  const [loading, setLoading] = useState(false);
 
   async function load() {
-    if (!estateId) return setErr("No estate linked yet.");
+    if (!estateId) {
+      setItems([]);
+      return;
+    }
     setLoading(true);
-    setErr(null);
     try {
       const list = await communityService.listByEstate(String(estateId));
-      setItems(Array.isArray(list) ? list : []);
-    } catch (e: any) {
-      setErr(e?.message || "Failed to load community");
+      const arr = Array.isArray(list) ? list : [];
+      setItems(arr.slice(0, Math.max(1, limit)));
+    } catch {
       setItems([]);
     } finally {
       setLoading(false);
@@ -58,81 +54,68 @@ export default function CommunityPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [estateId]);
 
-  const top = useMemo(() => items.slice(0, 3), [items]);
-
   return (
-    <RemotePanel title="Community" lastUpdated={lastUpdated}>
-      <div className="flex items-center justify-between gap-3 mb-3">
-        <div className="text-xs text-white/45">
-          {loading ? "Syncing…" : top.length ? `${items.length} updates` : "No updates"}
-        </div>
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-xs text-white/70 font-semibold">Community</div>
 
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={load}
-            disabled={loading}
-            className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-xs text-white/80 border border-white/10 disabled:opacity-50"
+            disabled={loading || !estateId}
+            className="px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 text-[11px] text-white/80 border border-white/10 disabled:opacity-50"
           >
-            Refresh
+            {loading ? "…" : "Refresh"}
           </button>
 
           <button
             type="button"
-            onClick={() => {
-              touch();
-              router.push("/community");
-            }}
-            className="px-3 py-2 rounded-xl bg-white text-black text-xs font-semibold border border-white/20"
+            onClick={() => router.push("/community")}
+            className="px-2.5 py-1.5 rounded-xl bg-white text-black text-[11px] font-semibold"
           >
             View all
           </button>
         </div>
       </div>
 
-      {err && (
-        <div className="mb-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-200">
-          {err}
+      {!estateId ? (
+        <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-3 text-sm text-white/60">
+          No estate linked.
+        </div>
+      ) : loading && items.length === 0 ? (
+        <div className="mt-3 flex items-center gap-3 text-sm text-white/60">
+          <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+          Loading…
+        </div>
+      ) : items.length === 0 ? (
+        <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-3 text-sm text-white/60">
+          No updates yet.
+        </div>
+      ) : (
+        <div className="mt-3 space-y-2">
+          {items.map((p: any) => (
+            <button
+              key={String(p?.id)}
+              type="button"
+              onClick={() => router.push("/community")}
+              className="w-full text-left rounded-2xl border border-white/10 bg-black/20 hover:bg-black/30 transition px-3 py-2"
+            >
+              <div className="text-[13px] text-white/90 font-semibold truncate">
+                {p?.title || "Update"}
+              </div>
+              <div className="text-[11px] text-white/40 mt-1">
+                {when(p?.created_at)}
+              </div>
+              {p?.body ? (
+                <div className="text-[12px] text-white/65 mt-2 line-clamp-2">
+                  {String(p.body)}
+                </div>
+              ) : null}
+            </button>
+          ))}
         </div>
       )}
-
-      <div className="space-y-2">
-        {top.map((p) => (
-          <button
-            key={p.id}
-            type="button"
-            onClick={() => {
-              touch();
-              router.push("/community");
-            }}
-            className="w-full text-left rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 transition p-3"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="text-[13px] font-semibold text-white/90 truncate">
-                  {p.title || "Announcement"}
-                </div>
-                <div className="text-[11px] text-white/45 mt-1">
-                  {when(p.created_at)} {p.status ? `• ${p.status}` : ""}
-                </div>
-              </div>
-              <div className="text-[11px] text-white/35 shrink-0">→</div>
-            </div>
-
-            {p.body ? (
-              <div className="text-[12px] text-white/65 mt-2 line-clamp-2">
-                {p.body}
-              </div>
-            ) : null}
-          </button>
-        ))}
-
-        {!loading && estateId && !items.length && (
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/60">
-            No posts yet.
-          </div>
-        )}
-      </div>
-    </RemotePanel>
+    </div>
   );
 }
