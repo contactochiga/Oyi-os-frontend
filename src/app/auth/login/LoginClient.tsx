@@ -8,6 +8,17 @@ import { decodeToken, isExpired, setCookie } from "@/lib/auth";
 import { useSessionStore } from "@/store/useSessionStore";
 import API, { setApiAuthToken } from "@/services/api";
 
+function pickUserFromContext(payload: any) {
+  return (
+    payload?.user ||
+    payload?.profile ||
+    payload?.me ||
+    payload?.resident ||
+    payload?.account ||
+    null
+  );
+}
+
 export default function LoginClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -15,13 +26,9 @@ export default function LoginClient() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-
-  function pickUserFromContext(ctx: any) {
-    // support common backend shapes
-    return ctx?.user || ctx?.profile || ctx?.me || ctx?.data?.user || ctx?.data || ctx || null;
-  }
 
   async function submit() {
     setErr(null);
@@ -41,26 +48,46 @@ export default function LoginClient() {
         return;
       }
 
-      // ✅ keep cookie for web (fine if iOS ignores it)
+      // ✅ Web cookie (fine if iOS ignores)
       setCookie("oyi_consumer_token", res.token, 30);
 
-      // ✅ CRITICAL: set auth header through the ONE SOURCE OF TRUTH
+      // ✅ iOS / WebView: set auth on axios immediately
       setApiAuthToken(res.token);
 
-      // ✅ set token in store immediately
+      // ✅ store token immediately (user derived from token)
       setSession(res.token);
 
-      // ✅ pull full context + store user so estate/home shows on iOS too
+      // ✅ fetch context and store richer user
       try {
         const ctxRes = await API.get("/me/context");
-        const ctx = ctxRes?.data;
-        const userFromCtx = pickUserFromContext(ctx);
+        const payload = (ctxRes as any)?.data?.data ?? (ctxRes as any)?.data ?? null;
 
-        if (userFromCtx) {
-          setSession(res.token, userFromCtx);
+        const estate = payload?.estate ?? null;
+        const home = payload?.home ?? null;
+
+        const u = pickUserFromContext(payload);
+
+        const mergedUser = {
+          ...(u || {}),
+          id: (u as any)?.id ?? decoded.id,
+          email: (u as any)?.email ?? decoded.email ?? email.trim(),
+          role: (u as any)?.role ?? decoded.role,
+          full_name: (u as any)?.full_name ?? decoded.full_name,
+          estate_id:
+            (u as any)?.estate_id ?? estate?.id ?? payload?.estate_id ?? decoded.estate_id,
+          home_id:
+            (u as any)?.home_id ?? home?.id ?? payload?.home_id ?? decoded.home_id,
+        };
+
+        setSession(res.token, mergedUser as any);
+
+        // ✅ legacy LS keys some pages still read directly
+        if (typeof window !== "undefined") {
+          if (estate?.id) localStorage.setItem("ochiga_estate", String(estate.id));
+          if (home?.id) localStorage.setItem("ochiga_home", String(home.id));
         }
       } catch {
-        // allow entry even if context fetch fails
+        // ok
       }
 
       const next = searchParams.get("next");
@@ -82,13 +109,15 @@ export default function LoginClient() {
           <div
             className="absolute -top-56 -left-56 h-[680px] w-[680px] rounded-full blur-3xl opacity-25"
             style={{
-              background: "radial-gradient(circle at center, var(--brand) 0%, transparent 60%)",
+              background:
+                "radial-gradient(circle at center, var(--brand) 0%, transparent 60%)",
             }}
           />
           <div
             className="absolute top-1/4 -right-56 h-[720px] w-[720px] rounded-full blur-3xl opacity-25"
             style={{
-              background: "radial-gradient(circle at center, rgba(148,163,184,0.55) 0%, transparent 62%)",
+              background:
+                "radial-gradient(circle at center, rgba(148,163,184,0.55) 0%, transparent 62%)",
             }}
           />
           <div
