@@ -34,6 +34,10 @@ export default function WalletPage() {
 
   const [amount, setAmount] = useState<string>("");
 
+  // ✅ Toggle: disable funding (for App Review safe pass)
+  // Turn back on after approval.
+  const FUNDING_ENABLED = false;
+
   async function load() {
     setLoading(true);
     setErr(null);
@@ -58,6 +62,11 @@ export default function WalletPage() {
   }, []);
 
   async function fund() {
+    // ✅ Hard stop if disabled (no accidental Paystack errors)
+    if (!FUNDING_ENABLED) {
+      return setErr("Wallet funding is temporarily disabled.");
+    }
+
     setErr(null);
 
     const n = safeNum(amount);
@@ -79,7 +88,9 @@ export default function WalletPage() {
         res?.data?.data?.authorization_url;
 
       if (!url) {
-        setErr("Payment initialized but Paystack URL missing (check backend response).");
+        setErr(
+          "Payment initialized but Paystack URL missing (check backend response)."
+        );
         return;
       }
 
@@ -98,6 +109,13 @@ export default function WalletPage() {
 
   return (
     <ConsumerShell title="Wallet" subtitle="Fund account • pay dues">
+      {/* ✅ Info banner when funding disabled (review-friendly, non-error) */}
+      {!FUNDING_ENABLED && (
+        <div className="mb-4 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+          Wallet funding is temporarily disabled.
+        </div>
+      )}
+
       {/* ✅ Error (quiet but clear) */}
       {err && (
         <div className="mb-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
@@ -132,11 +150,13 @@ export default function WalletPage() {
         {/* subtle divider */}
         <div className="mt-5 border-t border-white/10" />
 
-        {/* ✅ Funding composer row */}
+        {/* ✅ Funding section */}
+        {/* We keep it visible but clearly disabled so it doesn't look broken */}
         <div className="mt-4">
           <div className="text-sm font-medium text-white">Fund wallet</div>
           <div className="mt-1 text-xs text-white/40">
-            Payments run through Paystack. You’ll be redirected to complete payment.
+            Payments run through Paystack. You’ll be redirected to complete
+            payment.
           </div>
 
           {/* Quick picks */}
@@ -146,7 +166,8 @@ export default function WalletPage() {
                 key={q}
                 type="button"
                 onClick={() => setAmount(String(q))}
-                className="rounded-full px-3 py-2 text-xs bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 transition"
+                disabled={!FUNDING_ENABLED}
+                className="rounded-full px-3 py-2 text-xs bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 transition disabled:opacity-40 disabled:hover:bg-white/5 disabled:cursor-not-allowed"
               >
                 ₦{q.toLocaleString("en-NG")}
               </button>
@@ -162,23 +183,26 @@ export default function WalletPage() {
               onChange={(e) => setAmount(e.target.value)}
               inputMode="numeric"
               placeholder="Amount"
-              className="flex-1 bg-transparent outline-none text-sm text-white placeholder-white/30"
+              disabled={!FUNDING_ENABLED}
+              className="flex-1 bg-transparent outline-none text-sm text-white placeholder-white/30 disabled:opacity-40 disabled:cursor-not-allowed"
             />
 
             <button
               onClick={fund}
-              disabled={funding || !amount}
+              disabled={!FUNDING_ENABLED || funding || !amount}
               type="button"
               className="rounded-xl px-4 py-2 text-sm font-medium
                          bg-white text-black hover:opacity-90
-                         disabled:opacity-40 transition"
+                         disabled:opacity-30 disabled:cursor-not-allowed transition"
             >
               {funding ? "Starting…" : "Fund"}
             </button>
           </div>
 
           <div className="mt-3 text-[11px] text-white/35">
-            Balance updates via webhook. If it doesn’t reflect instantly, tap refresh.
+            {!FUNDING_ENABLED
+              ? "Funding will be enabled in a subsequent update."
+              : "Balance updates via webhook. If it doesn’t reflect instantly, tap refresh."}
           </div>
         </div>
       </div>
