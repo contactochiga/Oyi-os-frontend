@@ -1,3 +1,4 @@
+// src/app/components/HamburgerMenu.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -13,18 +14,19 @@ import { MdOutlinePerson, MdSettings } from "react-icons/md";
 // ✅ NEW: token decode fallback (so iOS always has email)
 import { decodeToken } from "@/lib/auth";
 
-const MENU_ITEMS = [
-  { key: "home", label: "Home" },
-  { key: "rooms", label: "Rooms" },
-  { key: "devices", label: "Devices" },
-  { key: "wallet", label: "Wallet" },
-  { key: "visitors", label: "Visitors" },
-  { key: "community", label: "Community" },
-  { key: "maintenance", label: "Maintenance & Support" },
-] as const;
+// ✅ NEW: menu icons
+import { FiGrid, FiCpu, FiCreditCard, FiUsers, FiKey, FiTool } from "react-icons/fi";
 
-type MenuKey = (typeof MENU_ITEMS)[number]["key"];
+type MenuKey =
+  | "home"
+  | "rooms"
+  | "devices"
+  | "wallet"
+  | "visitors"
+  | "community"
+  | "maintenance";
 
+// ✅ KEEP ROUTES EXACTLY AS YOU HAD IT (DO NOT CHANGE)
 const ROUTES: Record<MenuKey, string> = {
   home: "/home",
   rooms: "/rooms",
@@ -34,6 +36,21 @@ const ROUTES: Record<MenuKey, string> = {
   community: "/community",
   maintenance: "/maintenance",
 };
+
+// ✅ UI-only menu (NO route changes): remove rooms from display
+const MENU_ITEMS: Array<{
+  key: Exclude<MenuKey, "rooms">;
+  label: string;
+  icon: any;
+  badgeKey?: "devices" | "wallet" | "community" | "visitors" | "maintenance";
+}> = [
+  { key: "home", label: "Dashboard", icon: FiGrid },
+  { key: "devices", label: "Devices", icon: FiCpu, badgeKey: "devices" },
+  { key: "wallet", label: "Billing & Wallet", icon: FiCreditCard, badgeKey: "wallet" },
+  { key: "community", label: "Community", icon: FiUsers, badgeKey: "community" },
+  { key: "visitors", label: "Visitor Access", icon: FiKey, badgeKey: "visitors" },
+  { key: "maintenance", label: "Maintenance & Support", icon: FiTool, badgeKey: "maintenance" },
+];
 
 function getApiBase() {
   return (
@@ -61,6 +78,26 @@ function isActivePath(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+function clampBadge(n: number) {
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  if (n > 99) return 99;
+  return Math.floor(n);
+}
+
+function BadgePill({ value }: { value: number }) {
+  if (!value) return null;
+  const text = value > 99 ? "99+" : String(value);
+
+  return (
+    <span
+      className="text-[10px] px-2 py-1 rounded-full bg-white/10 text-white/80 border border-white/10"
+      aria-label={`${text} updates`}
+    >
+      {text}
+    </span>
+  );
+}
+
 export default function HamburgerMenu() {
   const router = useRouter();
   const pathname = usePathname();
@@ -73,6 +110,15 @@ export default function HamburgerMenu() {
 
   const [estateName, setEstateName] = useState<string | null>(null);
   const [homeLabel, setHomeLabel] = useState<string | null>(null);
+
+  // ✅ NEW: notification-style badges (UI-only for now, wire later)
+  const [badges, setBadges] = useState({
+    devices: 0,
+    wallet: 0,
+    community: 0,
+    visitors: 0,
+    maintenance: 0,
+  });
 
   // swipe-to-close
   const dragStartX = useRef<number | null>(null);
@@ -96,7 +142,8 @@ export default function HamburgerMenu() {
   }, [user?.email, token]);
 
   const initials = useMemo(() => {
-    const base = (email || "O").trim().toUpperCase().replace(/[^A-Z0-9]/g, "") || "O";
+    const base =
+      (email || "O").trim().toUpperCase().replace(/[^A-Z0-9]/g, "") || "O";
     return base[0] || "O";
   }, [email]);
 
@@ -125,7 +172,7 @@ export default function HamburgerMenu() {
     return pushAndClose("/settings");
   };
 
-  const onMenuClick = (key: MenuKey) => pushAndClose(ROUTES[key]);
+  const onMenuClick = (key: Exclude<MenuKey, "rooms">) => pushAndClose(ROUTES[key]);
 
   const handleLogout = async () => {
     closeAll();
@@ -184,15 +231,16 @@ export default function HamburgerMenu() {
 
         const root = (data as any)?.data ?? data;
 
-        const estate = root?.estate ?? root?.context?.estate ?? root?.user?.estate ?? null;
-        const home = root?.home ?? root?.context?.home ?? root?.user?.home ?? null;
+        const estate =
+          root?.estate ?? root?.context?.estate ?? root?.user?.estate ?? null;
+        const home =
+          root?.home ?? root?.context?.home ?? root?.user?.home ?? null;
 
-        const estateNameResolved =
-          estate?.name
-            ? String(estate.name)
-            : root?.estate_name
-            ? String(root.estate_name)
-            : null;
+        const estateNameResolved = estate?.name
+          ? String(estate.name)
+          : root?.estate_name
+          ? String(root.estate_name)
+          : null;
 
         setEstateName(estateNameResolved);
         setHomeLabel(home ? buildHomeLabel(home) : null);
@@ -207,7 +255,34 @@ export default function HamburgerMenu() {
     };
   }, [token, user?.estate_id, user?.home_id]);
 
-  const shouldShowContext = useMemo(() => !!estateName || !!homeLabel, [estateName, homeLabel]);
+  // ✅ Badge counts: UI-only seeded numbers for now (no breaking changes).
+  // When you’re ready we can replace with a real endpoint e.g. GET /me/badges.
+  useEffect(() => {
+    if (!token) {
+      setBadges({
+        devices: 0,
+        wallet: 0,
+        community: 0,
+        visitors: 0,
+        maintenance: 0,
+      });
+      return;
+    }
+
+    // Safe default counts (feel free to change)
+    setBadges({
+      devices: 0,
+      wallet: 0,
+      community: 2,
+      visitors: 1,
+      maintenance: 0,
+    });
+  }, [token]);
+
+  const shouldShowContext = useMemo(
+    () => !!estateName || !!homeLabel,
+    [estateName, homeLabel],
+  );
 
   const OVERLAY_Z = 2147483646;
   const DRAWER_Z = 2147483647;
@@ -278,8 +353,12 @@ export default function HamburgerMenu() {
                       </div>
 
                       <div className="min-w-0">
-                        <div className="text-[13px] font-semibold text-white truncate">Oyi OS</div>
-                        <div className="text-[11px] text-white/45 truncate">Resident App</div>
+                        <div className="text-[13px] font-semibold text-white truncate">
+                          Oyi OS
+                        </div>
+                        <div className="text-[11px] text-white/45 truncate">
+                          Resident App
+                        </div>
                       </div>
                     </div>
 
@@ -303,7 +382,8 @@ export default function HamburgerMenu() {
 
                       {homeLabel ? (
                         <div className="text-[11px] text-white/45 mt-1 truncate">
-                          Home: <span className="text-white/70">{homeLabel}</span>
+                          Home:{" "}
+                          <span className="text-white/70">{homeLabel}</span>
                         </div>
                       ) : null}
                     </div>
@@ -312,12 +392,18 @@ export default function HamburgerMenu() {
 
                 {/* Menu */}
                 <nav className="flex-1 overflow-y-auto px-2 py-3">
-                  <div className="px-2 pb-2 text-[11px] text-white/35">Navigation</div>
+                  <div className="px-2 pb-2 text-[11px] text-white/35">
+                    Navigation
+                  </div>
 
                   <div className="space-y-1">
                     {MENU_ITEMS.map((item) => {
-                      const href = ROUTES[item.key];
+                      const href = ROUTES[item.key]; // ✅ same routes
                       const active = isActivePath(pathname || "/", href);
+                      const Icon = item.icon;
+
+                      const badgeValue =
+                        item.badgeKey ? clampBadge((badges as any)[item.badgeKey]) : 0;
 
                       return (
                         <button
@@ -332,9 +418,33 @@ export default function HamburgerMenu() {
                           `}
                           type="button"
                         >
-                          <div className="flex items-center justify-between">
-                            <span className="font-medium">{item.label}</span>
-                            {active ? <span className="text-[11px] text-white/50">Active</span> : null}
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span
+                                className={`w-9 h-9 rounded-2xl border flex items-center justify-center shrink-0
+                                  ${
+                                    active
+                                      ? "bg-white/10 border-white/10 text-white"
+                                      : "bg-white/5 border-white/10 text-white/70"
+                                  }
+                                `}
+                              >
+                                <Icon className="text-[18px]" />
+                              </span>
+
+                              <span className="font-medium truncate">
+                                {item.label}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              <BadgePill value={badgeValue} />
+                              {active ? (
+                                <span className="text-[11px] text-white/50">
+                                  Active
+                                </span>
+                              ) : null}
+                            </div>
                           </div>
                         </button>
                       );
@@ -342,7 +452,7 @@ export default function HamburgerMenu() {
                   </div>
                 </nav>
 
-                {/* Account footer */}
+                {/* Account footer (UNCHANGED) */}
                 <div className="border-t border-white/10 bg-white/[0.03] px-4 pt-4">
                   <div className="flex items-center justify-between gap-3">
                     <button
@@ -355,8 +465,12 @@ export default function HamburgerMenu() {
                       </div>
 
                       <div className="text-left min-w-0">
-                        <p className="text-white text-[13px] font-semibold truncate">{displayName}</p>
-                        <p className="text-white/45 text-[11px] truncate">{email || "Account"}</p>
+                        <p className="text-white text-[13px] font-semibold truncate">
+                          {displayName}
+                        </p>
+                        <p className="text-white/45 text-[11px] truncate">
+                          {email || "Account"}
+                        </p>
                       </div>
                     </button>
 
@@ -377,7 +491,8 @@ export default function HamburgerMenu() {
                         className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition text-white"
                         type="button"
                       >
-                        <MdOutlinePerson /> <span className="text-[13px]">Profile</span>
+                        <MdOutlinePerson />{" "}
+                        <span className="text-[13px]">Profile</span>
                       </button>
 
                       <button
@@ -385,7 +500,8 @@ export default function HamburgerMenu() {
                         className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition text-white"
                         type="button"
                       >
-                        <MdSettings /> <span className="text-[13px]">Settings</span>
+                        <MdSettings />{" "}
+                        <span className="text-[13px]">Settings</span>
                       </button>
 
                       <button
@@ -393,7 +509,8 @@ export default function HamburgerMenu() {
                         className="w-full flex items-center gap-3 px-4 py-3 text-white/80 hover:bg-white/5 transition"
                         type="button"
                       >
-                        <FiLogOut /> <span className="text-[13px]">Logout</span>
+                        <FiLogOut />{" "}
+                        <span className="text-[13px]">Logout</span>
                       </button>
                     </div>
                   )}
@@ -402,7 +519,7 @@ export default function HamburgerMenu() {
                 </div>
               </div>
 
-              {/* Logout confirm */}
+              {/* Logout confirm (UNCHANGED) */}
               {showLogoutConfirm && (
                 <div
                   className="fixed inset-0 flex items-center justify-center px-6"
@@ -420,7 +537,9 @@ export default function HamburgerMenu() {
                     className="bg-[#06080e] p-6 rounded-3xl w-full max-w-sm border border-white/10"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <p className="text-white text-center font-semibold text-lg mb-2">Logout?</p>
+                    <p className="text-white text-center font-semibold text-lg mb-2">
+                      Logout?
+                    </p>
                     <p className="text-white/55 text-center text-sm mb-6">
                       You’ll need to sign in again to access your estate.
                     </p>
@@ -447,7 +566,7 @@ export default function HamburgerMenu() {
               )}
             </aside>
           </>,
-          document.body
+          document.body,
         )
       : null;
 
