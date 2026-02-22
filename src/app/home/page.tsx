@@ -21,6 +21,19 @@ import { deviceService } from "../../services/deviceService";
 import useAuth from "../../hooks/useAuth";
 import { useEventStore } from "../../store/useEventStore";
 
+import {
+  LayoutDashboard,
+  Zap,
+  DollarSign,
+  Users,
+  UserCheck,
+  Activity,
+  Clock,
+  ChevronRight,
+} from "lucide-react";
+
+import { motion } from "framer-motion";
+
 type ChatRole = "user" | "assistant";
 
 type ChatMessage = {
@@ -159,7 +172,9 @@ function inferPanel(aiPanel?: string | null, userText?: string): string | null {
     src.includes("pair") ||
     src.includes("bind") ||
     src.includes("add device") ||
-    src.includes("connect device")
+    src.includes("connect device") ||
+    src.includes("add devices") ||
+    src.includes("connect devices")
   )
     return "devices";
 
@@ -219,7 +234,6 @@ function shouldOpenPanel(userText: string, panel: string | null) {
 
   const t = (userText || "").toLowerCase();
 
-  // ✅ explicit request words → open panel
   const explicit =
     t.includes("open") ||
     t.includes("show") ||
@@ -228,7 +242,6 @@ function shouldOpenPanel(userText: string, panel: string | null) {
     t.includes("settings") ||
     t.includes("list") ||
     t.includes("view") ||
-    // ✅ onboarding intents
     t.includes("discover") ||
     t.includes("add device") ||
     t.includes("add devices") ||
@@ -240,8 +253,6 @@ function shouldOpenPanel(userText: string, panel: string | null) {
     t.includes("connect devices");
 
   if (explicit && MANAGEMENT.has(panel)) return true;
-
-  // For command-type stuff like “turn on light”, do NOT auto-open panel
   return false;
 }
 
@@ -259,21 +270,11 @@ async function executeActions(actions: DeviceAction[] | undefined) {
   }
 }
 
-/**
- * ✅ Dedup rule:
- * If user requests a panel that already exists in chat,
- * do NOT create another panel instance.
- * Instead: move that panel to the latest assistant message
- * by clearing old occurrence(s) and attaching to the newest message.
- */
 function isSamePanelInstance(m: ChatMessage, panel: string, deviceId?: string) {
   if (!m.panel) return false;
   if (m.panel !== panel) return false;
 
-  // devices panel is global
   if (panel === "devices") return true;
-
-  // other panels can be per-device; if deviceId is missing, treat as same “type”
   if (!deviceId) return true;
 
   return m.deviceId === deviceId;
@@ -298,16 +299,90 @@ function devLabel(d: any) {
 function devSub(d: any) {
   const vendor = d?.vendor || d?.adapter || "";
   const room = d?.room_name || d?.room || null;
-  const id = d?.external_id || d?.externalId || d?.device_id || d?.dev_id || d?.uuid || null;
-  const bits = [vendor ? String(vendor) : null, room ? `room:${room}` : null, id ? `id:${id}` : null].filter(
-    Boolean
-  );
+  const id =
+    d?.external_id || d?.externalId || d?.device_id || d?.dev_id || d?.uuid || null;
+
+  const bits = [
+    vendor ? String(vendor) : null,
+    room ? `room:${room}` : null,
+    id ? `id:${id}` : null,
+  ].filter(Boolean);
+
   return bits.join(" • ");
+}
+
+// -----------------------------
+// Dashboard UI helpers (NO new deps)
+// -----------------------------
+function StatCard({
+  icon,
+  label,
+  value,
+  sub,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  sub?: string;
+  onClick?: () => void;
+}) {
+  return (
+    <motion.button
+      type="button"
+      onClick={onClick}
+      whileTap={{ scale: 0.99 }}
+      className="text-left rounded-3xl border border-white/10 bg-white/5 hover:bg-white/7 transition p-4"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-xs text-white/55 flex items-center gap-2">
+            {icon}
+            <span className="truncate">{label}</span>
+          </div>
+          <div className="mt-2 text-2xl font-semibold text-white">{value}</div>
+          {sub ? <div className="mt-1 text-[11px] text-white/40">{sub}</div> : null}
+        </div>
+
+        <div className="shrink-0 text-white/40">
+          <ChevronRight className="w-4 h-4" />
+        </div>
+      </div>
+    </motion.button>
+  );
+}
+
+function MiniPanel({
+  title,
+  subtitle,
+  right,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  right?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-3xl border border-white/10 bg-black/20 overflow-hidden">
+      <div className="px-4 py-3 border-b border-white/10 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-sm font-semibold text-white flex items-center gap-2">
+            <LayoutDashboard className="w-4 h-4 text-white/70" />
+            {title}
+          </div>
+          {subtitle ? <div className="text-xs text-white/45 mt-1">{subtitle}</div> : null}
+        </div>
+        {right}
+      </div>
+      <div className="p-4">{children}</div>
+    </div>
+  );
 }
 
 export default function HomePage() {
   const router = useRouter();
-  const { user, token, ready } = useAuth() as any; // ✅ requires the updated useAuth that returns {ready}
+  const { user, token, ready } = useAuth() as any;
   const { pushEvent } = useEventStore();
 
   const [input, setInput] = useState("");
@@ -358,9 +433,7 @@ export default function HomePage() {
 
     try {
       const [assigned, discovered] = await Promise.all([
-        // ✅ assigned: scoped to estate
         estateId ? deviceService.getDevices(estateId) : Promise.resolve([]),
-        // discovery: adapter scan
         deviceService.getDevices(undefined),
       ]);
 
@@ -374,6 +447,13 @@ export default function HomePage() {
       setDevicesBusy(false);
     }
   }
+
+  // Load dashboard device stats early (safe)
+  useEffect(() => {
+    // don’t block: dashboard can still show 0
+    refreshDevicePanelData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [estateId]);
 
   async function handleSend(text?: string) {
     const command = (text ?? input).trim();
@@ -411,7 +491,8 @@ export default function HomePage() {
       const resp: any = await aiService.chat(command);
 
       const reply =
-        resp?.reply || `Got it. ${command.charAt(0).toUpperCase()}${command.slice(1)}.`;
+        resp?.reply ||
+        `Got it. ${command.charAt(0).toUpperCase()}${command.slice(1)}.`;
 
       const panel = inferPanel(resp?.panel, command);
 
@@ -423,12 +504,10 @@ export default function HomePage() {
 
       setMessages((prev) => {
         const next = prev.map((m) => {
-          // ✅ If we are opening a panel, remove any previous occurrence of that SAME panel instance
           if (openPanel && panel && isSamePanelInstance(m, panel, deviceId) && m.id !== pendingId) {
             return { ...m, panel: null, deviceId: undefined };
           }
 
-          // Update pending message into final assistant reply
           if (m.id === pendingId) {
             if (!openPanel) {
               return {
@@ -459,7 +538,6 @@ export default function HomePage() {
         return next;
       });
 
-      // ✅ if user opens devices panel, load both assigned + discovery
       if (openPanel && panel === "devices") {
         await refreshDevicePanelData();
         setDevicesTab("assigned");
@@ -490,6 +568,17 @@ export default function HomePage() {
   }
 
   const canMountAuthedBridges = !!ready && !!token;
+
+  // Dashboard computed stats (safe + real)
+  const totalDevices = assignedDevices.length;
+  const activeDevices = useMemo(() => {
+    return assignedDevices.filter((d) => {
+      if (typeof d?.online === "boolean") return d.online;
+      const s = String(d?.status || "").toLowerCase();
+      if (!s) return false;
+      return s.includes("online") || s.includes("active") || s.includes("on") || s.includes("connected");
+    }).length;
+  }, [assignedDevices]);
 
   return (
     <LayoutWrapper>
@@ -524,6 +613,148 @@ export default function HomePage() {
           >
             <div className="p-6 relative z-[20]">
               <div className="max-w-3xl mx-auto flex flex-col gap-4">
+                {/* ✅ NEW: Dashboard Overview (does not affect chat / routes / footer) */}
+                <div className="space-y-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-base font-semibold text-white flex items-center gap-2">
+                        <LayoutDashboard className="w-5 h-5 text-white/70" />
+                        Dashboard Overview
+                      </div>
+                      <div className="text-xs text-white/45 mt-1">
+                        Quick snapshot • tap any card to open its panel
+                      </div>
+                      {estateId ? (
+                        <div className="mt-2 inline-flex items-center gap-2 text-[11px] px-2 py-1 rounded-full border border-white/10 bg-white/5 text-white/60">
+                          Estate: <span className="text-white/80">{String(estateId)}</span>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={refreshDevicePanelData}
+                      disabled={devicesBusy}
+                      className="shrink-0 rounded-xl px-3 py-2 text-sm text-white/80 bg-white/10 hover:bg-white/15 border border-white/10 disabled:opacity-50 transition"
+                    >
+                      {devicesBusy ? "Refreshing…" : "Refresh"}
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <StatCard
+                      icon={<Zap className="w-4 h-4 text-sky-300" />}
+                      label="Active Devices"
+                      value={`${activeDevices}/${totalDevices || 0}`}
+                      sub={totalDevices ? `${Math.round((activeDevices / Math.max(1, totalDevices)) * 100)}% online` : "No devices yet"}
+                      onClick={() => handleSend("open devices")}
+                    />
+
+                    <StatCard
+                      icon={<DollarSign className="w-4 h-4 text-emerald-300" />}
+                      label="Wallet"
+                      value="Open"
+                      sub="Fund • bills • payments"
+                      onClick={() => router.push("/wallet")}
+                    />
+
+                    <StatCard
+                      icon={<UserCheck className="w-4 h-4 text-purple-300" />}
+                      label="Visitors"
+                      value="Manage"
+                      sub="Create access • track entries"
+                      onClick={() => router.push("/visitors")}
+                    />
+
+                    <StatCard
+                      icon={<Users className="w-4 h-4 text-orange-300" />}
+                      label="Community"
+                      value="Updates"
+                      sub="Announcements • posts"
+                      onClick={() => router.push("/community")}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                    <MiniPanel
+                      title="Quick Actions"
+                      subtitle="These use your existing chat logic (no new routes)."
+                      right={
+                        <div className="text-[11px] text-white/40">
+                          {discoveryDevices.length ? `${discoveryDevices.length} discovered` : ""}
+                        </div>
+                      }
+                    >
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleSend("open devices")}
+                          className="py-2.5 rounded-2xl bg-white text-black text-sm font-medium hover:opacity-90 transition"
+                        >
+                          Devices
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSend("show home status")}
+                          className="py-2.5 rounded-2xl bg-white/10 text-white text-sm border border-white/10 hover:bg-white/15 transition"
+                        >
+                          Home Summary
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSend("open community")}
+                          className="py-2.5 rounded-2xl bg-white/10 text-white text-sm border border-white/10 hover:bg-white/15 transition"
+                        >
+                          Community
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSend("open visitor")}
+                          className="py-2.5 rounded-2xl bg-white/10 text-white text-sm border border-white/10 hover:bg-white/15 transition"
+                        >
+                          Visitors
+                        </button>
+                      </div>
+                    </MiniPanel>
+
+                    <MiniPanel
+                      title="System Activity"
+                      subtitle="Fast context without waiting for the chat."
+                    >
+                      <div className="space-y-2">
+                        <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 flex items-start gap-3">
+                          <div className="mt-0.5">
+                            <Activity className="w-4 h-4 text-white/70" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-sm text-white/85 font-medium">
+                              Devices loaded
+                            </div>
+                            <div className="text-xs text-white/45 mt-0.5 truncate">
+                              Assigned: {assignedDevices.length} • Discovery: {discoveryDevices.length}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 flex items-start gap-3">
+                          <div className="mt-0.5">
+                            <Clock className="w-4 h-4 text-white/70" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-sm text-white/85 font-medium">
+                              Command center ready
+                            </div>
+                            <div className="text-xs text-white/45 mt-0.5 truncate">
+                              Use chat below to control devices & open panels.
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </MiniPanel>
+                  </div>
+                </div>
+
+                {/* Chat stream (UNCHANGED) */}
                 {messages.map((m) => (
                   <div
                     key={m.id}
@@ -625,7 +856,8 @@ export default function HomePage() {
 
                                   <div className="mt-3 space-y-2">
                                     {assignedDevices.map((d) => {
-                                      const k = devKey(d) || Math.random().toString(36).slice(2);
+                                      const k =
+                                        devKey(d) || Math.random().toString(36).slice(2);
                                       return (
                                         <div
                                           key={k}
@@ -656,7 +888,9 @@ export default function HomePage() {
                                     {!devicesBusy && assignedDevices.length === 0 && (
                                       <div className="rounded-2xl border border-white/10 bg-black/20 p-3 text-sm text-white/60">
                                         No assigned devices yet. Go to{" "}
-                                        <span className="text-white/80 font-semibold">Discovery</span>{" "}
+                                        <span className="text-white/80 font-semibold">
+                                          Discovery
+                                        </span>{" "}
                                         to bind devices to your account/home.
                                       </div>
                                     )}
