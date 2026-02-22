@@ -1,4 +1,3 @@
-// src/app/visitors/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -14,10 +13,8 @@ import {
   Clock,
   CheckCircle,
   XCircle,
-  Car,
   User,
   Phone,
-  Home,
   Calendar,
   QrCode,
   Link as LinkIcon,
@@ -26,9 +23,9 @@ import {
 import { motion } from "framer-motion";
 
 // -------------------------------
-// helpers
+// helpers (prefixed to avoid collisions)
 // -------------------------------
-function when(iso?: string | null) {
+function vWhen(iso?: string | null) {
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
@@ -40,19 +37,19 @@ function when(iso?: string | null) {
   });
 }
 
-function clampCount(n: any) {
+function vClampCount(n: any) {
   const x = Number(n ?? 0);
   if (!Number.isFinite(x) || x < 0) return 0;
   return Math.floor(x);
 }
 
-function maskPhone(p?: string | null) {
+function vMaskPhone(p?: string | null) {
   const s = String(p || "");
   if (s.length < 6) return s || "—";
   return `${s.slice(0, 3)}•••${s.slice(-2)}`;
 }
 
-function initialsFromName(name?: string | null) {
+function vInitialsFromName(name?: string | null) {
   const parts = String(name || "")
     .trim()
     .split(/\s+/)
@@ -64,7 +61,7 @@ function initialsFromName(name?: string | null) {
   return (a + b).toUpperCase();
 }
 
-function statusLabel(status: VisitorStatus) {
+function vStatusLabel(status: VisitorStatus) {
   const s = String(status || "").toLowerCase();
   if (s === "approved") return "Approved";
   if (s === "active") return "Active";
@@ -75,10 +72,9 @@ function statusLabel(status: VisitorStatus) {
   return String(status || "—");
 }
 
-function statusTone(status: VisitorStatus) {
+function vStatusTone(status: VisitorStatus) {
   const s = String(status || "").toLowerCase();
 
-  // green-ish
   if (s === "approved" || s === "active")
     return {
       pill: "border-emerald-500/20 bg-emerald-500/10 text-emerald-200",
@@ -86,7 +82,6 @@ function statusTone(status: VisitorStatus) {
       icon: <CheckCircle className="h-4 w-4 text-emerald-200" />,
     };
 
-  // blue-ish
   if (s === "entered")
     return {
       pill: "border-sky-500/20 bg-sky-500/10 text-sky-200",
@@ -94,7 +89,6 @@ function statusTone(status: VisitorStatus) {
       icon: <CheckCircle className="h-4 w-4 text-sky-200" />,
     };
 
-  // neutral
   if (s === "exited")
     return {
       pill: "border-white/10 bg-white/5 text-white/70",
@@ -102,7 +96,6 @@ function statusTone(status: VisitorStatus) {
       icon: <Clock className="h-4 w-4 text-white/70" />,
     };
 
-  // red-ish
   if (s === "denied" || s === "rejected")
     return {
       pill: "border-red-500/20 bg-red-500/10 text-red-200",
@@ -110,7 +103,6 @@ function statusTone(status: VisitorStatus) {
       icon: <XCircle className="h-4 w-4 text-red-200" />,
     };
 
-  // pending
   if (s === "pending")
     return {
       pill: "border-amber-500/20 bg-amber-500/10 text-amber-200",
@@ -118,7 +110,6 @@ function statusTone(status: VisitorStatus) {
       icon: <Clock className="h-4 w-4 text-amber-200" />,
     };
 
-  // default
   return {
     pill: "border-white/10 bg-white/5 text-white/70",
     iconBg: "bg-white/5 border-white/10",
@@ -126,36 +117,33 @@ function statusTone(status: VisitorStatus) {
   };
 }
 
-function isActiveStatus(status: VisitorStatus) {
+function vIsActiveStatus(status: VisitorStatus) {
   const s = String(status || "").toLowerCase();
   return s === "active" || s === "entered" || s === "checked-in";
 }
 
-function isPendingStatus(status: VisitorStatus) {
+function vIsPendingStatus(status: VisitorStatus) {
   const s = String(status || "").toLowerCase();
   return s === "pending";
 }
 
-function isApprovedStatus(status: VisitorStatus) {
+function vIsApprovedStatus(status: VisitorStatus) {
   const s = String(status || "").toLowerCase();
   return s === "approved";
 }
 
 // -------------------------------
-// minimal UI primitives (match your dark theme)
+// tiny UI primitives (fit your dark theme)
 // -------------------------------
 function Card({ className = "", children }: { className?: string; children: any }) {
   return <div className={`rounded-2xl border border-white/10 bg-black/20 ${className}`}>{children}</div>;
 }
-
 function CardHeader({ className = "", children }: { className?: string; children: any }) {
   return <div className={`p-4 pb-3 border-b border-white/10 ${className}`}>{children}</div>;
 }
-
 function CardBody({ className = "", children }: { className?: string; children: any }) {
   return <div className={`p-4 ${className}`}>{children}</div>;
 }
-
 function Pill({ className = "", children }: { className?: string; children: any }) {
   return (
     <span className={`inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full border ${className}`}>
@@ -165,10 +153,10 @@ function Pill({ className = "", children }: { className?: string; children: any 
 }
 
 // -------------------------------
-// Page
+// Page (ONLY ONE DEFAULT EXPORT)
 // -------------------------------
 export default function VisitorsPage() {
-  // form (keep same logic)
+  // form (same logic)
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [purpose, setPurpose] = useState("");
@@ -180,7 +168,7 @@ export default function VisitorsPage() {
     [name, phone]
   );
 
-  // create response (keep same)
+  // create response
   const [created, setCreated] = useState<{
     id?: string;
     code?: string | null;
@@ -194,13 +182,13 @@ export default function VisitorsPage() {
   const [creating, setCreating] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // details modal (keep same)
+  // details modal
   const [openInfo, setOpenInfo] = useState(false);
   const [infoLoading, setInfoLoading] = useState(false);
   const [infoErr, setInfoErr] = useState<string | null>(null);
   const [infoItem, setInfoItem] = useState<VisitorAccess | null>(null);
 
-  // UI: add dialog + tabs
+  // UI state
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [tab, setTab] = useState<"all" | "pending" | "active">("all");
 
@@ -295,19 +283,16 @@ export default function VisitorsPage() {
     }
   }
 
-  // derived stats + lists
   const activeVisitors = useMemo(
-    () => items.filter((v) => isActiveStatus(v.status)),
+    () => items.filter((v) => vIsActiveStatus(v.status)),
     [items]
   );
-
   const pendingVisitors = useMemo(
-    () => items.filter((v) => isPendingStatus(v.status)),
+    () => items.filter((v) => vIsPendingStatus(v.status)),
     [items]
   );
-
   const approvedVisitors = useMemo(
-    () => items.filter((v) => isApprovedStatus(v.status)),
+    () => items.filter((v) => vIsApprovedStatus(v.status)),
     [items]
   );
 
@@ -317,11 +302,10 @@ export default function VisitorsPage() {
     return items;
   }, [tab, items, pendingVisitors, activeVisitors]);
 
-  const pendingCount = clampCount(pendingVisitors.length);
+  const pendingCount = vClampCount(pendingVisitors.length);
 
   return (
     <ConsumerShell title="Visitor Access" subtitle="Create access • track entries">
-      {/* Error */}
       {err && (
         <div className="mb-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
           {err}
@@ -389,7 +373,7 @@ export default function VisitorsPage() {
         </Card>
       </div>
 
-      {/* Created result (keep your existing behavior) */}
+      {/* Created result */}
       {created && (
         <div className="mt-4 rounded-3xl border border-emerald-500/20 bg-emerald-500/10 p-4">
           <div className="text-sm font-medium text-emerald-100">Access created</div>
@@ -518,7 +502,7 @@ export default function VisitorsPage() {
         )}
       </div>
 
-      {/* Add Visitor Dialog (UI only; calls your existing createVisitor) */}
+      {/* Add Visitor Dialog */}
       {showAddDialog && (
         <div className="fixed inset-0 z-[130]">
           <div
@@ -628,541 +612,12 @@ export default function VisitorsPage() {
                       {creating ? "Submitting…" : "Submit Request"}
                     </button>
                   </div>
-
-                  <div className="text-[11px] text-white/35">
-                    This uses your existing backend operation — no route changes.
-                  </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
       )}
-
-      {/* Info modal (keep your existing info logic) */}
-      {openInfo && (
-        <div className="fixed inset-0 z-[120]">
-          <div
-            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-            onClick={() => setOpenInfo(false)}
-          />
-          <div className="absolute left-0 right-0 top-20 px-4">
-            <div className="max-w-3xl mx-auto">
-              <div className="rounded-3xl border border-white/10 bg-zinc-950 overflow-hidden">
-                <div className="px-4 py-3 border-b border-white/10 flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium text-white truncate">Visitor</div>
-                    <div className="text-xs text-white/40 mt-1">Details & access info</div>
-                  </div>
-
-                  <button
-                    className="rounded-xl px-2 py-1 text-white/70 hover:bg-white/5"
-                    onClick={() => setOpenInfo(false)}
-                    aria-label="Close"
-                    type="button"
-                  >
-                    ✕
-                  </button>
-                </div>
-
-                <div className="p-4">
-                  {infoLoading ? (
-                    <div className="flex items-center gap-3 text-sm text-white/60">
-                      <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-                      Loading…
-                    </div>
-                  ) : infoErr ? (
-                    <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-                      {infoErr}
-                    </div>
-                  ) : infoItem ? (
-                    <div className="space-y-3">
-                      <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                        <div className="text-[11px] text-white/40">Name</div>
-                        <div className="text-sm text-white mt-1">{infoItem.visitor_name}</div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                          <div className="text-[11px] text-white/40">Phone</div>
-                          <div className="text-sm text-white mt-1">{infoItem.visitor_phone}</div>
-                        </div>
-
-                        <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                          <div className="text-[11px] text-white/40">Status</div>
-                          <div className="text-sm text-white mt-1">{statusLabel(infoItem.status)}</div>
-                        </div>
-                      </div>
-
-                      <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                        <div className="text-[11px] text-white/40">Purpose</div>
-                        <div className="text-sm text-white mt-1">{infoItem.purpose || "—"}</div>
-                      </div>
-
-                      <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                        <div className="text-[11px] text-white/40">Access code</div>
-                        <div className="text-sm text-white mt-1 font-mono">{infoItem.access_code}</div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                          <div className="text-[11px] text-white/40">Created</div>
-                          <div className="text-sm text-white mt-1">{when(infoItem.created_at)}</div>
-                        </div>
-
-                        <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                          <div className="text-[11px] text-white/40">Expires</div>
-                          <div className="text-sm text-white mt-1">{when(infoItem.expires_at)}</div>
-                        </div>
-                      </div>
-
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => copy(infoItem.access_code)}
-                          className="flex-1 py-3 rounded-2xl bg-white/10 text-white text-sm border border-white/10 hover:bg-white/15 transition"
-                          type="button"
-                        >
-                          Copy code
-                        </button>
-
-                        <button
-                          onClick={() => setOpenInfo(false)}
-                          className="flex-1 py-3 rounded-2xl bg-white text-black text-sm font-medium hover:opacity-90 transition"
-                          type="button"
-                        >
-                          Done
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-sm text-white/60">—</div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </ConsumerShell>
-  );
-}
-
-// -------------------------------
-// Visitor Card (UI only, uses existing data)
-// -------------------------------
-function VisitorCard({
-  v,
-  onOpen,
-}: {
-  v: VisitorAccess;
-  onOpen: () => void;
-}) {
-  const tone = statusTone(v.status);
-  const initials = initialsFromName(v.visitor_name);
-
-  return (
-    <motion.button
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.18 }}
-      onClick={onOpen}
-      className="w-full text-left rounded-2xl border border-white/10 bg-black/20 hover:bg-white/5 transition"
-      type="button"
-    >
-      <div className="p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className={`h-10 w-10 rounded-2xl border flex items-center justify-center ${tone.iconBg}`}>
-              <span className="text-white font-semibold text-sm">{initials}</span>
-            </div>
-
-            <div className="min-w-0">
-              <div className="text-[14px] font-semibold text-white truncate">
-                {v.visitor_name || "Visitor"}
-              </div>
-
-              <div className="text-xs text-white/45 mt-1 flex items-center gap-3 flex-wrap">
-                <span className="inline-flex items-center gap-1">
-                  <Phone className="h-3 w-3" />
-                  {maskPhone(v.visitor_phone)}
-                </span>
-
-                <span className="inline-flex items-center gap-1">
-                  <Calendar className="h-3 w-3" />
-                  {when(v.created_at)}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <Pill className={tone.pill}>
-            {tone.icon}
-            {statusLabel(v.status)}
-          </Pill>
-        </div>
-
-        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/75">
-            <span className="text-white/45">Code:</span>{" "}
-            <span className="text-white font-mono">{v.access_code || "—"}</span>
-            {v.expires_at ? (
-              <span className="text-white/35"> • expires {when(v.expires_at)}</span>
-            ) : null}
-          </div>
-
-          <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/75">
-            <span className="text-white/45">Purpose:</span>{" "}
-            <span className="text-white/85">{v.purpose || "—"}</span>
-          </div>
-        </div>
-
-        <div className="mt-3 text-[11px] text-white/40">
-          Tap to view full details →
-        </div>
-      </div>
-    </motion.button>
-  );
-}function maskPhone(p?: string | null) {
-  const s = String(p || "");
-  if (s.length < 6) return s || "—";
-  return `${s.slice(0, 3)}•••${s.slice(-2)}`;
-}
-
-export default function VisitorsPage() {
-  // form
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [purpose, setPurpose] = useState("");
-  const [mode, setMode] = useState<"code" | "link">("code");
-  const [expiresHours, setExpiresHours] = useState<number>(6);
-
-  const canCreate = useMemo(
-    () => name.trim().length >= 2 && phone.trim().length >= 7,
-    [name, phone]
-  );
-
-  // create response
-  const [created, setCreated] = useState<{
-    id?: string;
-    code?: string | null;
-    link?: string | null;
-    qr?: string | null;
-  } | null>(null);
-
-  // list
-  const [items, setItems] = useState<VisitorAccess[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  // details modal
-  const [openInfo, setOpenInfo] = useState(false);
-  const [infoLoading, setInfoLoading] = useState(false);
-  const [infoErr, setInfoErr] = useState<string | null>(null);
-  const [infoItem, setInfoItem] = useState<VisitorAccess | null>(null);
-
-  async function loadMine() {
-    setLoading(true);
-    setErr(null);
-    try {
-      const list = await visitorService.listMine();
-      setItems(Array.isArray(list) ? list : []);
-    } catch (e: any) {
-      setItems([]);
-      setErr(e?.message || "Failed to load visitors");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    loadMine();
-  }, []);
-
-  async function createVisitor() {
-    if (!canCreate) return;
-
-    setCreating(true);
-    setErr(null);
-    setCreated(null);
-
-    try {
-      const res: any = await visitorService.create({
-        name: name.trim(),
-        phone: phone.trim(),
-        purpose: purpose.trim() || undefined,
-        navigation_mode: mode,
-        expires_hours: Number.isFinite(expiresHours) ? expiresHours : undefined,
-      });
-
-      if (res?.error) {
-        setErr(String(res.error));
-        return;
-      }
-
-      const v: VisitorAccess | undefined = res?.visitor;
-
-      setCreated({
-        id: v?.id,
-        code: res?.code ?? v?.access_code ?? null,
-        link: res?.link ?? null,
-        qr: res?.qr ?? null,
-      });
-
-      // reset form lightly (keep mode/expiry)
-      setName("");
-      setPhone("");
-      setPurpose("");
-
-      await loadMine();
-    } catch (e: any) {
-      setErr(e?.message || "Failed to create visitor");
-    } finally {
-      setCreating(false);
-    }
-  }
-
-  async function openVisitorInfo(id: string) {
-    setOpenInfo(true);
-    setInfoLoading(true);
-    setInfoErr(null);
-    setInfoItem(null);
-
-    try {
-      const res: any = await visitorService.getInfo(id);
-      if (res?.error) {
-        setInfoErr(String(res.error));
-        return;
-      }
-      setInfoItem(res?.visitor || null);
-    } catch (e: any) {
-      setInfoErr(e?.message || "Failed to load visitor info");
-    } finally {
-      setInfoLoading(false);
-    }
-  }
-
-  function copy(text?: string | null) {
-    if (!text) return;
-    try {
-      navigator.clipboard.writeText(text);
-    } catch {
-      // ignore
-    }
-  }
-
-  return (
-    <ConsumerShell title="Visitors" subtitle="Create access • track entries">
-      {/* Error */}
-      {err && (
-        <div className="mb-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-          {err}
-        </div>
-      )}
-
-      {/* Create */}
-      <div className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <div className="text-sm font-medium text-white">Create visitor access</div>
-            <div className="text-xs text-white/40 mt-1">
-              Generate a code or link for gate entry.
-            </div>
-          </div>
-
-          <button
-            onClick={loadMine}
-            disabled={loading}
-            className="shrink-0 rounded-xl px-3 py-2 text-sm text-white/80 bg-white/10 hover:bg-white/15 border border-white/10 disabled:opacity-50 transition"
-            type="button"
-          >
-            {loading ? "Refreshing…" : "Refresh"}
-          </button>
-        </div>
-
-        <div className="mt-5 grid gap-3">
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Visitor name"
-            className="w-full rounded-2xl bg-black/20 border border-white/10 px-4 py-3 text-sm text-white placeholder-white/30 outline-none"
-          />
-
-          <input
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="Phone (e.g. 08012345678)"
-            className="w-full rounded-2xl bg-black/20 border border-white/10 px-4 py-3 text-sm text-white placeholder-white/30 outline-none"
-          />
-
-          <input
-            value={purpose}
-            onChange={(e) => setPurpose(e.target.value)}
-            placeholder="Purpose (optional)"
-            className="w-full rounded-2xl bg-black/20 border border-white/10 px-4 py-3 text-sm text-white placeholder-white/30 outline-none"
-          />
-
-          <div className="grid grid-cols-2 gap-3">
-            <select
-              value={mode}
-              onChange={(e) => setMode(e.target.value as any)}
-              className="w-full rounded-2xl bg-black/20 border border-white/10 px-4 py-3 text-sm text-white outline-none"
-            >
-              <option value="code">Access Code</option>
-              <option value="link">Access Link</option>
-            </select>
-
-            <select
-              value={expiresHours}
-              onChange={(e) => setExpiresHours(Number(e.target.value))}
-              className="w-full rounded-2xl bg-black/20 border border-white/10 px-4 py-3 text-sm text-white outline-none"
-            >
-              <option value={1}>1 hour</option>
-              <option value={3}>3 hours</option>
-              <option value={6}>6 hours</option>
-              <option value={12}>12 hours</option>
-              <option value={24}>24 hours</option>
-            </select>
-          </div>
-
-          {/* Primary action (neutral) */}
-          <div className="flex gap-2">
-            <button
-              onClick={createVisitor}
-              disabled={!canCreate || creating}
-              className="flex-1 py-3 rounded-2xl bg-white text-black text-sm font-medium hover:opacity-90 disabled:opacity-40 transition"
-              type="button"
-            >
-              {creating ? "Creating…" : "Create access"}
-            </button>
-
-            <button
-              onClick={() => {
-                setName("");
-                setPhone("");
-                setPurpose("");
-                setCreated(null);
-                setErr(null);
-              }}
-              className="px-4 py-3 rounded-2xl bg-white/10 text-white/80 text-sm border border-white/10 hover:bg-white/15 transition"
-              type="button"
-            >
-              Clear
-            </button>
-          </div>
-        </div>
-
-        {/* Created result */}
-        {created && (
-          <div className="mt-5 rounded-3xl border border-emerald-500/20 bg-emerald-500/10 p-4">
-            <div className="text-sm font-medium text-emerald-100">Access created</div>
-            <div className="text-xs text-emerald-100/70 mt-1">
-              Share the code with security/gate.
-            </div>
-
-            <div className="mt-4 grid gap-3">
-              <div className="rounded-2xl border border-emerald-500/20 bg-black/20 px-4 py-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-[11px] text-emerald-100/70">Access code</div>
-                  <button
-                    onClick={() => copy(created.code)}
-                    className="text-[11px] text-emerald-100 underline"
-                    type="button"
-                  >
-                    Copy
-                  </button>
-                </div>
-                <div className="mt-1 text-sm text-white font-mono">
-                  {created.code || "—"}
-                </div>
-              </div>
-
-              {created.link ? (
-                <div className="rounded-2xl border border-emerald-500/20 bg-black/20 px-4 py-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="text-[11px] text-emerald-100/70">Access link</div>
-                    <button
-                      onClick={() => copy(created.link)}
-                      className="text-[11px] text-emerald-100 underline"
-                      type="button"
-                    >
-                      Copy
-                    </button>
-                  </div>
-                  <div className="mt-2 text-xs text-white/90 break-all">{created.link}</div>
-                </div>
-              ) : null}
-
-              {created.qr ? (
-                <div className="rounded-2xl border border-emerald-500/20 bg-black/20 px-4 py-3">
-                  <div className="text-[11px] text-emerald-100/70 mb-2">QR</div>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={created.qr}
-                    alt="Visitor QR"
-                    className="w-40 h-40 rounded-2xl border border-emerald-500/20 bg-black/30"
-                  />
-                </div>
-              ) : null}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Recent visitors */}
-      <div className="mt-5">
-        <div className="flex items-end justify-between gap-3">
-          <div>
-            <div className="text-sm font-medium text-white">Recent visitors</div>
-            <div className="text-xs text-white/40 mt-1">Tap any visitor to view details.</div>
-          </div>
-        </div>
-
-        {loading && items.length === 0 ? (
-          <div className="mt-4 flex items-center gap-3 text-sm text-white/60">
-            <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-            Loading…
-          </div>
-        ) : items.length === 0 ? (
-          <div className="mt-4 rounded-3xl border border-white/10 bg-white/5 p-5 text-sm text-white/60">
-            No visitors yet.
-          </div>
-        ) : (
-          <div className="mt-4 space-y-3">
-            {items.slice(0, 30).map((v) => (
-              <button
-                key={v.id}
-                onClick={() => openVisitorInfo(v.id)}
-                className="w-full text-left rounded-3xl border border-white/10 bg-white/5 hover:bg-white/7 transition p-4"
-                type="button"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-sm text-white font-medium truncate">
-                      {v.visitor_name || "Visitor"}
-                    </div>
-                    <div className="text-xs text-white/40 mt-1 truncate">
-                      {maskPhone(v.visitor_phone)} • {when(v.created_at)}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className={pill(v.status)}>{String(v.status)}</span>
-                    <span className="text-xs text-white/40">Open →</span>
-                  </div>
-                </div>
-
-                <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/70">
-                  Code: <span className="text-white font-mono">{v.access_code}</span>
-                  {v.expires_at ? (
-                    <span className="text-white/40"> • expires {when(v.expires_at)}</span>
-                  ) : null}
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
 
       {/* Info modal */}
       {openInfo && (
@@ -1215,7 +670,7 @@ export default function VisitorsPage() {
 
                         <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                           <div className="text-[11px] text-white/40">Status</div>
-                          <div className="text-sm text-white mt-1">{String(infoItem.status)}</div>
+                          <div className="text-sm text-white mt-1">{vStatusLabel(infoItem.status)}</div>
                         </div>
                       </div>
 
@@ -1226,20 +681,18 @@ export default function VisitorsPage() {
 
                       <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                         <div className="text-[11px] text-white/40">Access code</div>
-                        <div className="text-sm text-white mt-1 font-mono">
-                          {infoItem.access_code}
-                        </div>
+                        <div className="text-sm text-white mt-1 font-mono">{infoItem.access_code}</div>
                       </div>
 
                       <div className="grid grid-cols-2 gap-3">
                         <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                           <div className="text-[11px] text-white/40">Created</div>
-                          <div className="text-sm text-white mt-1">{when(infoItem.created_at)}</div>
+                          <div className="text-sm text-white mt-1">{vWhen(infoItem.created_at)}</div>
                         </div>
 
                         <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                           <div className="text-[11px] text-white/40">Expires</div>
-                          <div className="text-sm text-white mt-1">{when(infoItem.expires_at)}</div>
+                          <div className="text-sm text-white mt-1">{vWhen(infoItem.expires_at)}</div>
                         </div>
                       </div>
 
@@ -1271,5 +724,71 @@ export default function VisitorsPage() {
         </div>
       )}
     </ConsumerShell>
+  );
+}
+
+function VisitorCard({ v, onOpen }: { v: VisitorAccess; onOpen: () => void }) {
+  const tone = vStatusTone(v.status);
+  const initials = vInitialsFromName(v.visitor_name);
+
+  return (
+    <motion.button
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.18 }}
+      onClick={onOpen}
+      className="w-full text-left rounded-2xl border border-white/10 bg-black/20 hover:bg-white/5 transition"
+      type="button"
+    >
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className={`h-10 w-10 rounded-2xl border flex items-center justify-center ${tone.iconBg}`}>
+              <span className="text-white font-semibold text-sm">{initials}</span>
+            </div>
+
+            <div className="min-w-0">
+              <div className="text-[14px] font-semibold text-white truncate">
+                {v.visitor_name || "Visitor"}
+              </div>
+
+              <div className="text-xs text-white/45 mt-1 flex items-center gap-3 flex-wrap">
+                <span className="inline-flex items-center gap-1">
+                  <Phone className="h-3 w-3" />
+                  {vMaskPhone(v.visitor_phone)}
+                </span>
+
+                <span className="inline-flex items-center gap-1">
+                  <Calendar className="h-3 w-3" />
+                  {vWhen(v.created_at)}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <Pill className={tone.pill}>
+            {tone.icon}
+            {vStatusLabel(v.status)}
+          </Pill>
+        </div>
+
+        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/75">
+            <span className="text-white/45">Code:</span>{" "}
+            <span className="text-white font-mono">{v.access_code || "—"}</span>
+            {v.expires_at ? (
+              <span className="text-white/35"> • expires {vWhen(v.expires_at)}</span>
+            ) : null}
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/75">
+            <span className="text-white/45">Purpose:</span>{" "}
+            <span className="text-white/85">{v.purpose || "—"}</span>
+          </div>
+        </div>
+
+        <div className="mt-3 text-[11px] text-white/40">Tap to view full details →</div>
+      </div>
+    </motion.button>
   );
 }
