@@ -38,7 +38,7 @@ import {
   Clock,
   ChevronRight,
   MessageCircle,
-  X,
+  X
 } from "lucide-react";
 
 import { AnimatePresence, motion } from "framer-motion";
@@ -53,7 +53,7 @@ import {
   Tooltip,
   PieChart,
   Pie,
-  Cell,
+  Cell
 } from "recharts";
 
 type ChatRole = "user" | "assistant";
