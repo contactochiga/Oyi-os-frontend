@@ -38,7 +38,7 @@ import {
   Clock,
   ChevronRight,
   MessageCircle,
-  X
+  X,
 } from "lucide-react";
 
 import { AnimatePresence, motion } from "framer-motion";
@@ -53,7 +53,7 @@ import {
   Tooltip,
   PieChart,
   Pie,
-  Cell
+  Cell,
 } from "recharts";
 
 type ChatRole = "user" | "assistant";
@@ -86,7 +86,9 @@ function createId() {
 }
 
 function inferPanel(aiPanel?: string | null, userText?: string): string | null {
-  const src = `${aiPanel || ""} ${userText || ""}`.toLowerCase().replace(/[^\w\s]/g, "");
+  const src = `${aiPanel || ""} ${userText || ""}`
+    .toLowerCase()
+    .replace(/[^\w\s]/g, "");
 
   if (
     src.includes("home") ||
@@ -99,10 +101,21 @@ function inferPanel(aiPanel?: string | null, userText?: string): string | null {
   )
     return "home";
 
-  if (src.includes("room") || src.includes("bedroom") || src.includes("kitchen") || src.includes("living room"))
+  if (
+    src.includes("room") ||
+    src.includes("bedroom") ||
+    src.includes("kitchen") ||
+    src.includes("living room")
+  )
     return "rooms";
 
-  if (src.includes("visitor") || src.includes("guest") || src.includes("expecting") || src.includes("delivery") || src.includes("gate pass"))
+  if (
+    src.includes("visitor") ||
+    src.includes("guest") ||
+    src.includes("expecting") ||
+    src.includes("delivery") ||
+    src.includes("gate pass")
+  )
     return "visitor";
 
   if (src.includes("door") || src.includes("lock") || src.includes("unlock") || src.includes("front door"))
@@ -243,7 +256,15 @@ function isSamePanelInstance(m: ChatMessage, panel: string, deviceId?: string) {
 }
 
 function devKey(d: any) {
-  return String(d?.id || d?.external_id || d?.externalId || d?.device_id || d?.dev_id || d?.uuid || "");
+  return String(
+    d?.id ||
+      d?.external_id ||
+      d?.externalId ||
+      d?.device_id ||
+      d?.dev_id ||
+      d?.uuid ||
+      ""
+  );
 }
 function devLabel(d: any) {
   return d?.name || d?.type || d?.category || "Device";
@@ -251,8 +272,15 @@ function devLabel(d: any) {
 function devSub(d: any) {
   const vendor = d?.vendor || d?.adapter || "";
   const room = d?.room_name || d?.room || null;
-  const id = d?.external_id || d?.externalId || d?.device_id || d?.dev_id || d?.uuid || null;
-  const bits = [vendor ? String(vendor) : null, room ? `room:${room}` : null, id ? `id:${id}` : null].filter(Boolean);
+  const id =
+    d?.external_id || d?.externalId || d?.device_id || d?.dev_id || d?.uuid || null;
+
+  const bits = [
+    vendor ? String(vendor) : null,
+    room ? `room:${room}` : null,
+    id ? `id:${id}` : null,
+  ].filter(Boolean);
+
   return bits.join(" • ");
 }
 
@@ -274,7 +302,7 @@ function StatCard({
       type="button"
       onClick={onClick}
       whileTap={{ scale: 0.99 }}
-      className="text-left rounded-3xl border border-white/10 bg-white/5 hover:bg-white/7 transition p-4"
+      className="text-left rounded-3xl border border-white/10 bg-white/5 hover:bg-white/10 transition p-4"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -349,7 +377,7 @@ export default function HomePage() {
 
   const [input, setInput] = useState("");
 
-  // ✅ Chat bottom-sheet modal
+  // ✅ chat modal open/close
   const [chatOpen, setChatOpen] = useState(false);
 
   // devices panel
@@ -386,12 +414,10 @@ export default function HomePage() {
   }, [(user as any)?.estate_id]);
 
   const dashScrollRef = useRef<HTMLDivElement | null>(null);
-
-  // chat modal scroll refs
   const chatScrollerRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
-  // ✅ only auto-scroll chat when modal is open
+  // ✅ auto-scroll chat only when modal is open
   useEffect(() => {
     if (!chatOpen) return;
     const a = requestAnimationFrame(() => {
@@ -468,26 +494,37 @@ export default function HomePage() {
       return;
     }
 
-    // ✅ ensure chat modal is open when user triggers send
+    // ✅ ensure chat modal opens whenever user sends
     setChatOpen(true);
-
     setInput("");
 
     const { time, stamp } = nowMeta();
 
     const userMsgId = createId();
-    setMessages((prev) => [...prev, { id: userMsgId, role: "user", content: command, time, lastUpdated: stamp }]);
+    setMessages((prev) => [
+      ...prev,
+      { id: userMsgId, role: "user", content: command, time, lastUpdated: stamp },
+    ]);
 
     const pendingId = createId();
     setMessages((prev) => [
       ...prev,
-      { id: pendingId, role: "assistant", content: "Thinking…", time, lastUpdated: stamp, pending: true },
+      {
+        id: pendingId,
+        role: "assistant",
+        content: "Thinking…",
+        time,
+        lastUpdated: stamp,
+        pending: true,
+      },
     ]);
 
     try {
       const resp: any = await aiService.chat(command);
 
-      const reply = resp?.reply || `Got it. ${command.charAt(0).toUpperCase()}${command.slice(1)}.`;
+      const reply =
+        resp?.reply ||
+        `Got it. ${command.charAt(0).toUpperCase()}${command.slice(1)}.`;
 
       const panel = inferPanel(resp?.panel, command);
 
@@ -499,16 +536,33 @@ export default function HomePage() {
 
       setMessages((prev) => {
         const next = prev.map((m) => {
+          // close other instances of same panel
           if (openPanel && panel && isSamePanelInstance(m, panel, deviceId) && m.id !== pendingId) {
             return { ...m, panel: null, deviceId: undefined };
           }
 
           if (m.id === pendingId) {
             if (!openPanel) {
-              return { ...m, pending: false, content: reply, panel: null, deviceId: undefined, time, lastUpdated: stamp };
+              return {
+                ...m,
+                pending: false,
+                content: reply,
+                panel: null,
+                deviceId: undefined,
+                time,
+                lastUpdated: stamp,
+              };
             }
 
-            return { ...m, pending: false, content: reply, panel: panel || null, deviceId, time, lastUpdated: stamp };
+            return {
+              ...m,
+              pending: false,
+              content: reply,
+              panel: panel || null,
+              deviceId,
+              time,
+              lastUpdated: stamp,
+            };
           }
 
           return m;
@@ -537,7 +591,11 @@ export default function HomePage() {
       }
     } catch {
       setMessages((prev) =>
-        prev.map((m) => (m.id === pendingId ? { ...m, pending: false, content: "Sorry — I couldn’t reach the system." } : m))
+        prev.map((m) =>
+          m.id === pendingId
+            ? { ...m, pending: false, content: "Sorry — I couldn’t reach the system." }
+            : m
+        )
       );
     }
   }
@@ -552,7 +610,12 @@ export default function HomePage() {
       if (typeof d?.online === "boolean") return d.online;
       const s = String(d?.status || "").toLowerCase();
       if (!s) return false;
-      return s.includes("online") || s.includes("active") || s.includes("on") || s.includes("connected");
+      return (
+        s.includes("online") ||
+        s.includes("active") ||
+        s.includes("on") ||
+        s.includes("connected")
+      );
     }).length;
   }, [assignedDevices]);
 
@@ -618,7 +681,7 @@ export default function HomePage() {
 
           <TopBar />
 
-          {/* ✅ DASHBOARD scroll region (NO CHAT STREAM HERE ANYMORE) */}
+          {/* ✅ DASHBOARD scroll region (chat removed from here) */}
           <div
             ref={dashScrollRef}
             className="absolute left-0 right-0 overflow-y-auto"
@@ -633,7 +696,6 @@ export default function HomePage() {
           >
             <div className="p-6 relative z-[20]">
               <div className="max-w-3xl mx-auto flex flex-col gap-4">
-                {/* DASHBOARD */}
                 <div className="space-y-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -642,7 +704,7 @@ export default function HomePage() {
                         Dashboard Overview
                       </div>
                       <div className="text-xs text-white/45 mt-1">
-                        Real counts • charts • quick actions (chat is a pop-up)
+                        Real counts • charts • quick actions (assistant pops up)
                       </div>
 
                       {estateId ? (
@@ -673,7 +735,11 @@ export default function HomePage() {
                       icon={<Zap className="w-4 h-4 text-sky-300" />}
                       label="Devices"
                       value={`${activeDevices}/${totalDevices || 0}`}
-                      sub={totalDevices ? `${Math.round((activeDevices / Math.max(1, totalDevices)) * 100)}% online` : "No devices yet"}
+                      sub={
+                        totalDevices
+                          ? `${Math.round((activeDevices / Math.max(1, totalDevices)) * 100)}% online`
+                          : "No devices yet"
+                      }
                       onClick={() => handleSend("open devices")}
                     />
 
@@ -754,7 +820,13 @@ export default function HomePage() {
                       <div className="h-[180px]">
                         <ResponsiveContainer width="100%" height="100%">
                           <PieChart>
-                            <Pie data={devicePie} dataKey="value" nameKey="name" outerRadius={70} innerRadius={40}>
+                            <Pie
+                              data={devicePie}
+                              dataKey="value"
+                              nameKey="name"
+                              outerRadius={70}
+                              innerRadius={40}
+                            >
                               <Cell fill="rgba(125, 211, 252, 0.9)" />
                               <Cell fill="rgba(255, 255, 255, 0.18)" />
                             </Pie>
@@ -764,8 +836,11 @@ export default function HomePage() {
                       </div>
 
                       <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/60">
-                        Online: <span className="text-white/85 font-semibold">{activeDevices}</span> • Offline:{" "}
-                        <span className="text-white/85 font-semibold">{Math.max(0, totalDevices - activeDevices)}</span>
+                        Online:{" "}
+                        <span className="text-white/85 font-semibold">{activeDevices}</span> • Offline:{" "}
+                        <span className="text-white/85 font-semibold">
+                          {Math.max(0, totalDevices - activeDevices)}
+                        </span>
                       </div>
                     </PanelCard>
 
@@ -841,12 +916,20 @@ export default function HomePage() {
                       ) : (
                         <div className="space-y-2">
                           {recentActivity.map((n) => (
-                            <div key={n.id} className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
+                            <div
+                              key={n.id}
+                              className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2"
+                            >
                               <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0">
-                                  <div className="text-sm text-white/85 font-medium truncate">{n.title || "Update"}</div>
-                                  <div className="text-xs text-white/45 mt-0.5 truncate">{n.message || ""}</div>
+                                  <div className="text-sm text-white/85 font-medium truncate">
+                                    {n.title || "Update"}
+                                  </div>
+                                  <div className="text-xs text-white/45 mt-0.5 truncate">
+                                    {n.message || ""}
+                                  </div>
                                 </div>
+
                                 <div className="text-[11px] text-white/45 shrink-0">
                                   {String(n.status).toLowerCase() === "unread" ? "Unread" : "Read"}
                                 </div>
@@ -859,19 +942,19 @@ export default function HomePage() {
                   </div>
                 </div>
 
-                {/* A little spacer */}
-                <div className="h-6" />
+                {/* spacer so the floating launcher doesn't cover last cards */}
+                <div className="h-10" />
               </div>
             </div>
           </div>
 
-          {/* ✅ Floating assistant launcher (like Smart Life “type bar”) */}
+          {/* ✅ Floating assistant launcher (Smart Life style) */}
           <div className="fixed left-0 right-0 bottom-0 z-[60] px-4 pb-[calc(14px+var(--sab))]">
             <div className="max-w-3xl mx-auto">
               <button
                 type="button"
                 onClick={() => setChatOpen(true)}
-                className="w-full rounded-3xl border border-white/10 bg-white/8 backdrop-blur-xl px-4 py-3 flex items-center gap-3 hover:bg-white/10 transition"
+                className="w-full rounded-3xl border border-white/10 px-4 py-3 flex items-center gap-3 hover:bg-white/10 transition"
                 style={{
                   background: "rgba(10,12,18,0.72)",
                   backdropFilter: "blur(18px)",
@@ -893,7 +976,12 @@ export default function HomePage() {
           {/* ✅ Bottom Sheet Chat Modal */}
           <AnimatePresence>
             {chatOpen ? (
-              <motion.div className="fixed inset-0 z-[120]" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <motion.div
+                className="fixed inset-0 z-[120]"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+              >
                 {/* backdrop */}
                 <div className="absolute inset-0 bg-black/70" onClick={() => setChatOpen(false)} />
 
@@ -935,7 +1023,7 @@ export default function HomePage() {
                         </button>
                       </div>
 
-                      {/* suggestions (moved inside modal) */}
+                      {/* suggestions (inside modal) */}
                       <div className="px-4 pt-3">
                         <DynamicSuggestionCard onSend={(t) => handleSend(t)} />
                       </div>
@@ -952,7 +1040,10 @@ export default function HomePage() {
                       >
                         <div className="space-y-3 pb-4">
                           {messages.map((m) => (
-                            <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+                            <div
+                              key={m.id}
+                              className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
+                            >
                               <div className="max-w-[86%]">
                                 <div
                                   className="px-4 py-2 rounded-2xl border border-white/10"
@@ -986,8 +1077,13 @@ export default function HomePage() {
                                           <div className="flex items-center justify-between gap-3">
                                             <div className="text-xs text-white/60">
                                               Assigned:{" "}
-                                              <span className="text-white/85 font-semibold">{assignedDevices.length}</span> • Discovery:{" "}
-                                              <span className="text-white/85 font-semibold">{discoveryDevices.length}</span>
+                                              <span className="text-white/85 font-semibold">
+                                                {assignedDevices.length}
+                                              </span>{" "}
+                                              • Discovery:{" "}
+                                              <span className="text-white/85 font-semibold">
+                                                {discoveryDevices.length}
+                                              </span>
                                             </div>
 
                                             <button
@@ -1035,7 +1131,9 @@ export default function HomePage() {
                                         {devicesTab === "assigned" ? (
                                           <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
                                             <div className="flex items-center justify-between">
-                                              <div className="text-xs text-white/70 font-semibold">Devices in your home</div>
+                                              <div className="text-xs text-white/70 font-semibold">
+                                                Devices in your home
+                                              </div>
                                               <div className="text-[11px] text-white/45">(saved to DB)</div>
                                             </div>
 
@@ -1048,8 +1146,12 @@ export default function HomePage() {
                                                     className="flex items-start justify-between gap-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-2"
                                                   >
                                                     <div className="min-w-0">
-                                                      <div className="text-[13px] text-white/90 font-semibold truncate">{devLabel(d)}</div>
-                                                      <div className="text-[11px] text-white/45 truncate">{devSub(d) || "—"}</div>
+                                                      <div className="text-[13px] text-white/90 font-semibold truncate">
+                                                        {devLabel(d)}
+                                                      </div>
+                                                      <div className="text-[11px] text-white/45 truncate">
+                                                        {devSub(d) || "—"}
+                                                      </div>
                                                     </div>
 
                                                     <div className="text-[11px] text-white/45 shrink-0">
@@ -1081,7 +1183,10 @@ export default function HomePage() {
                                             </div>
                                           </div>
                                         ) : (
-                                          <DeviceDiscoveryPanel devices={discoveryDevices} onInteraction={refreshDevicePanelData} />
+                                          <DeviceDiscoveryPanel
+                                            devices={discoveryDevices}
+                                            onInteraction={refreshDevicePanelData}
+                                          />
                                         )}
                                       </div>
                                     ) : (
@@ -1095,7 +1200,10 @@ export default function HomePage() {
                                               x.id === m.id
                                                 ? {
                                                     ...x,
-                                                    time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+                                                    time: new Date().toLocaleTimeString([], {
+                                                      hour: "2-digit",
+                                                      minute: "2-digit",
+                                                    }),
                                                     lastUpdated: Date.now(),
                                                   }
                                                 : x
@@ -1128,3 +1236,4 @@ export default function HomePage() {
       </main>
     </LayoutWrapper>
   );
+}
