@@ -15,29 +15,49 @@ export type AiAction =
 
 export type AiChatResponse = {
   reply: string;
+
+  intent?: string;
+  confidence?: number;
+
   panel?: string | null;
   deviceId?: string;
+
   actions?: AiAction[];
+
+  requiresConfirmation?: boolean;
 };
+
+function normalize(resp: any): AiChatResponse {
+  return {
+    reply: String(resp?.reply || "").trim() || "Done.",
+
+    intent: resp?.intent || "info",
+    confidence:
+      typeof resp?.confidence === "number"
+        ? Math.max(0, Math.min(1, resp.confidence))
+        : 0.6,
+
+    panel: resp?.panel ?? null,
+    deviceId: resp?.deviceId,
+
+    actions: Array.isArray(resp?.actions) ? resp.actions : [],
+
+    requiresConfirmation: Boolean(resp?.requiresConfirmation),
+  };
+}
 
 export const aiService = {
   async chat(message: string): Promise<AiChatResponse> {
     try {
       const res = await API.post("/ai/chat", { message });
-
-      // Expected (new):
-      // {
-      //   reply: "...",
-      //   actions: [{ type: "device.command", deviceId, command }]
-      // }
-
-      return res.data as AiChatResponse;
+      return normalize(res.data);
     } catch (err) {
       console.warn("aiService.chat error:", err);
 
-      // Safe conversational fallback
       return {
-        reply: `Okay — I processed "${message}".`,
+        reply: "I couldn't reach the AI service.",
+        intent: "error",
+        confidence: 0,
       };
     }
   },
