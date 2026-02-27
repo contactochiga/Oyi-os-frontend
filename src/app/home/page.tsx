@@ -1,6 +1,3 @@
-The homepage also update and give me full code
-
-
 // src/app/home/page.tsx
 "use client";
 
@@ -66,7 +63,11 @@ import {
 import type { ChatMessage, DeviceAction } from "../components/ai-console/types";
 import { nowMeta, createId } from "../components/ai-console/logic/ids";
 import { inferPanel } from "../components/ai-console/logic/panelInference";
-import { shouldOpenPanel, isSamePanelInstance, getSuggestionTitle } from "../components/ai-console/logic/panelRules";
+import {
+  shouldOpenPanel,
+  isSamePanelInstance,
+  getSuggestionTitle,
+} from "../components/ai-console/logic/panelRules";
 import { executeActions } from "../components/ai-console/logic/actions";
 
 function StatCard({
@@ -190,7 +191,8 @@ export default function HomePage() {
   ]);
 
   const estateId = useMemo(() => {
-    return (user as any)?.estate_id ?? (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null);
+    return (user as any)?.estate_id ??
+      (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null);
   }, [(user as any)?.estate_id]);
 
   const dashScrollRef = useRef<HTMLDivElement | null>(null);
@@ -267,18 +269,23 @@ export default function HomePage() {
     const { time, stamp } = nowMeta();
 
     const userMsgId = createId();
-    setMessages((prev) => [...prev, { id: userMsgId, role: "user", content: command, time, lastUpdated: stamp }]);
+    setMessages((prev) => [
+      ...prev,
+      { id: userMsgId, role: "user", content: command, time, lastUpdated: stamp },
+    ]);
 
+    // ✅ IMPORTANT: no "Thinking…" text (TypingIndicator handles UI)
     const pendingId = createId();
     setMessages((prev) => [
       ...prev,
-      { id: pendingId, role: "assistant", content: "Thinking…", time, lastUpdated: stamp, pending: true },
+      { id: pendingId, role: "assistant", content: "", time, lastUpdated: stamp, pending: true },
     ]);
 
     try {
       const resp: any = await aiService.chat(command);
 
-      const reply = resp?.reply || `Got it. ${command.charAt(0).toUpperCase()}${command.slice(1)}.`;
+      const reply =
+        resp?.reply || `Got it. ${command.charAt(0).toUpperCase()}${command.slice(1)}.`;
       const panel = inferPanel(resp?.panel, command);
 
       const actions: DeviceAction[] | undefined = resp?.actions;
@@ -295,10 +302,26 @@ export default function HomePage() {
 
           if (m.id === pendingId) {
             if (!openPanel) {
-              return { ...m, pending: false, content: reply, panel: null, deviceId: undefined, time, lastUpdated: stamp };
+              return {
+                ...m,
+                pending: false,
+                content: reply,
+                panel: null,
+                deviceId: undefined,
+                time,
+                lastUpdated: stamp,
+              };
             }
 
-            return { ...m, pending: false, content: reply, panel: panel || null, deviceId, time, lastUpdated: stamp };
+            return {
+              ...m,
+              pending: false,
+              content: reply,
+              panel: panel || null,
+              deviceId,
+              time,
+              lastUpdated: stamp,
+            };
           }
 
           return m;
@@ -327,7 +350,9 @@ export default function HomePage() {
       }
     } catch {
       setMessages((prev) =>
-        prev.map((m) => (m.id === pendingId ? { ...m, pending: false, content: "Sorry — I couldn’t reach the system." } : m))
+        prev.map((m) =>
+          m.id === pendingId ? { ...m, pending: false, content: "Sorry — I couldn’t reach the system." } : m
+        )
       );
     }
   }
@@ -430,7 +455,9 @@ export default function HomePage() {
                         <LayoutDashboard className="w-5 h-5 text-white/70" />
                         Dashboard Overview
                       </div>
-                      <div className="text-xs text-white/45 mt-1">Real counts • charts • quick actions (assistant pops up)</div>
+                      <div className="text-xs text-white/45 mt-1">
+                        Real counts • charts • quick actions (assistant pops up)
+                      </div>
 
                       {estateId ? (
                         <div className="mt-2 inline-flex items-center gap-2 text-[11px] px-2 py-1 rounded-full border border-white/10 bg-white/5 text-white/60">
@@ -450,7 +477,9 @@ export default function HomePage() {
                   </div>
 
                   {dashErr ? (
-                    <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">{dashErr}</div>
+                    <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                      {dashErr}
+                    </div>
                   ) : null}
 
                   <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -458,7 +487,11 @@ export default function HomePage() {
                       icon={<Zap className="w-4 h-4 text-sky-300" />}
                       label="Devices"
                       value={`${activeDevices}/${totalDevices || 0}`}
-                      sub={totalDevices ? `${Math.round((activeDevices / Math.max(1, totalDevices)) * 100)}% online` : "No devices yet"}
+                      sub={
+                        totalDevices
+                          ? `${Math.round((activeDevices / Math.max(1, totalDevices)) * 100)}% online`
+                          : "No devices yet"
+                      }
                       onClick={() => handleSend("open devices")}
                     />
 
@@ -488,10 +521,34 @@ export default function HomePage() {
                   </div>
 
                   <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                    <StatCard icon={<Wrench className="w-4 h-4 text-yellow-300" />} label="Maintenance" value={`${openMaintenance}`} sub="Open tickets" onClick={() => handleSend("open maintenance")} />
-                    <StatCard icon={<Bell className="w-4 h-4 text-pink-300" />} label="Notifications" value={`${unreadNotifications}`} sub="Unread" onClick={() => router.push("/notifications")} />
-                    <StatCard icon={<Activity className="w-4 h-4 text-white/70" />} label="Discovery" value={`${discoveryDevices.length}`} sub="Devices found" onClick={() => handleSend("open devices")} />
-                    <StatCard icon={<Clock className="w-4 h-4 text-white/70" />} label="Assistant" value="Ready" sub="Tap to chat" onClick={() => setChatOpen(true)} />
+                    <StatCard
+                      icon={<Wrench className="w-4 h-4 text-yellow-300" />}
+                      label="Maintenance"
+                      value={`${openMaintenance}`}
+                      sub="Open tickets"
+                      onClick={() => handleSend("open maintenance")}
+                    />
+                    <StatCard
+                      icon={<Bell className="w-4 h-4 text-pink-300" />}
+                      label="Notifications"
+                      value={`${unreadNotifications}`}
+                      sub="Unread"
+                      onClick={() => router.push("/notifications")}
+                    />
+                    <StatCard
+                      icon={<Activity className="w-4 h-4 text-white/70" />}
+                      label="Discovery"
+                      value={`${discoveryDevices.length}`}
+                      sub="Devices found"
+                      onClick={() => handleSend("open devices")}
+                    />
+                    <StatCard
+                      icon={<Clock className="w-4 h-4 text-white/70" />}
+                      label="Assistant"
+                      value="Ready"
+                      sub="Tap to chat"
+                      onClick={() => setChatOpen(true)}
+                    />
                   </div>
 
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
@@ -562,16 +619,32 @@ export default function HomePage() {
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                     <PanelCard title="Quick Actions" subtitle="Uses your existing AI routes">
                       <div className="grid grid-cols-2 gap-2">
-                        <button type="button" onClick={() => handleSend("open devices")} className="py-2.5 rounded-2xl bg-white text-black text-sm font-medium hover:opacity-90 transition">
+                        <button
+                          type="button"
+                          onClick={() => handleSend("open devices")}
+                          className="py-2.5 rounded-2xl bg-white text-black text-sm font-medium hover:opacity-90 transition"
+                        >
                           Devices
                         </button>
-                        <button type="button" onClick={() => handleSend("show home status")} className="py-2.5 rounded-2xl bg-white/10 text-white text-sm border border-white/10 hover:bg-white/15 transition">
+                        <button
+                          type="button"
+                          onClick={() => handleSend("show home status")}
+                          className="py-2.5 rounded-2xl bg-white/10 text-white text-sm border border-white/10 hover:bg-white/15 transition"
+                        >
                           Home Summary
                         </button>
-                        <button type="button" onClick={() => handleSend("open maintenance")} className="py-2.5 rounded-2xl bg-white/10 text-white text-sm border border-white/10 hover:bg-white/15 transition">
+                        <button
+                          type="button"
+                          onClick={() => handleSend("open maintenance")}
+                          className="py-2.5 rounded-2xl bg-white/10 text-white text-sm border border-white/10 hover:bg-white/15 transition"
+                        >
                           Maintenance
                         </button>
-                        <button type="button" onClick={() => handleSend("open community")} className="py-2.5 rounded-2xl bg-white/10 text-white text-sm border border-white/10 hover:bg-white/15 transition">
+                        <button
+                          type="button"
+                          onClick={() => handleSend("open community")}
+                          className="py-2.5 rounded-2xl bg-white/10 text-white text-sm border border-white/10 hover:bg-white/15 transition"
+                        >
                           Community
                         </button>
                       </div>
@@ -586,10 +659,16 @@ export default function HomePage() {
                             <div key={n.id} className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
                               <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0">
-                                  <div className="text-sm text-white/85 font-medium truncate">{n.title || "Update"}</div>
-                                  <div className="text-xs text-white/45 mt-0.5 truncate">{n.message || ""}</div>
+                                  <div className="text-sm text-white/85 font-medium truncate">
+                                    {n.title || "Update"}
+                                  </div>
+                                  <div className="text-xs text-white/45 mt-0.5 truncate">
+                                    {n.message || ""}
+                                  </div>
                                 </div>
-                                <div className="text-[11px] text-white/45 shrink-0">{String(n.status).toLowerCase() === "unread" ? "Unread" : "Read"}</div>
+                                <div className="text-[11px] text-white/45 shrink-0">
+                                  {String(n.status).toLowerCase() === "unread" ? "Unread" : "Read"}
+                                </div>
                               </div>
                             </div>
                           ))}
