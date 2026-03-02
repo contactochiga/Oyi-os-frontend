@@ -178,27 +178,4 @@ function MenuItem({
       {label}
     </button>
   );
-}              height={32}
-              className="h-full w-full object-contain"
-              priority
-            />
-          </div>
-        </div>
-
-        <div className="flex-1" />
-
-        <div className="flex items-center gap-2">
-          <NotificationBell />
-
-          <button
-            type="button"
-            className="rounded-lg p-2 hover:bg-white/10 transition"
-            aria-label="More options"
-          >
-            <EllipsisVerticalIcon className="h-5 w-5 text-zinc-300" />
-          </button>
-        </div>
-      </div>
-    </header>
-  );
 }
