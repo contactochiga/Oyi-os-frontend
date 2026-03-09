@@ -231,7 +231,7 @@ export default function CommunityPage() {
     return arr.filter(isAnnouncement);
   }, [items]);
 
-  const unreadCount = 0; // keep UI badge for now; wire later if you add read-state
+  const unreadCount = announcements.length;
 
   async function load() {
     if (!estateId) return;
@@ -692,7 +692,7 @@ export default function CommunityPage() {
                   {tab === "announcements" ? (
                     <div className="text-[11px] text-white/45 flex items-center gap-2">
                       <AlertCircle className="h-3 w-3" />
-                      Announcements are derived from Admin/keywords for now.
+                      Announcements are identified from admin posts and priority keywords.
                     </div>
                   ) : null}
                 </CardContent>

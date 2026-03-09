@@ -65,3 +65,26 @@ export async function signInWithGoogle() {
 export async function signInWithApple() {
   return { error: "Apple sign-in not enabled yet (backend JWT mode)." };
 }
+
+export async function updateMyProfile(payload: {
+  username?: string;
+  full_name?: string;
+}) {
+  try {
+    const res = await API.patch("/me/profile", payload);
+    return res.data;
+  } catch (err: any) {
+    console.error("Update profile error:", err);
+    return { error: pickError(err, "Failed to update profile") };
+  }
+}
+
+export async function deleteMyAccount() {
+  try {
+    const res = await API.delete("/me/account");
+    return res.data;
+  } catch (err: any) {
+    console.error("Delete account error:", err);
+    return { error: pickError(err, "Failed to delete account") };
+  }
+}

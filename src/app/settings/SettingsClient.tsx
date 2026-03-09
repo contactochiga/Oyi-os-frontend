@@ -5,9 +5,10 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import useAuth from "@/hooks/useAuth";
 import { useSettingsStore } from "@/store/useSettingsStore";
+import { deleteMyAccount, updateMyProfile } from "@/services/authService";
 
 export default function SettingsClient() {
-  const { user, logout } = useAuth();
+  const { user, token, setSession, logout } = useAuth();
   const params = useSearchParams();
 
   const profileRef = useRef<HTMLDivElement>(null);
@@ -16,6 +17,11 @@ export default function SettingsClient() {
   const { notificationsEnabled, voiceEnabled, toggleNotifications, toggleVoice } = useSettingsStore();
 
   const [editOpen, setEditOpen] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const initials = useMemo(() => {
     const u = (user as any)?.username || (user as any)?.name || "User";
@@ -97,13 +103,89 @@ export default function SettingsClient() {
         </button>
       </section>
 
-      {/* ✅ Edit Profile modal (so Apple can tap and see it works) */}
+      {/* DELETE ACCOUNT */}
+      <section className="space-y-3">
+        <h3 className="text-sm text-gray-400">Privacy</h3>
+        <div className="bg-[#1b0b0d] border border-red-900/60 rounded-xl p-4 space-y-3">
+          <div className="text-sm text-red-200 font-medium">Delete account</div>
+          <p className="text-xs text-red-300/80">
+            This permanently removes your account and cannot be undone.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setDeleteError(null);
+              setDeleteOpen(true);
+            }}
+            className="w-full py-3 rounded-xl border border-red-500/50 text-red-300 hover:bg-red-500/10 transition active:scale-[0.99]"
+          >
+            Delete my account
+          </button>
+        </div>
+      </section>
+
       <EditProfileModal
         open={editOpen}
-        onClose={() => setEditOpen(false)}
+        loading={savingProfile}
+        error={profileError}
+        onClose={() => {
+          if (savingProfile) return;
+          setProfileError(null);
+          setEditOpen(false);
+        }}
+        onSave={async (nextName) => {
+          setSavingProfile(true);
+          setProfileError(null);
+          const name = nextName.trim();
+
+          const result = await updateMyProfile({
+            username: name,
+            full_name: name,
+          });
+
+          setSavingProfile(false);
+
+          if (result?.error) {
+            setProfileError(String(result.error));
+            return;
+          }
+
+          if (result?.user && token) {
+            setSession(token, {
+              ...(user || {}),
+              ...(result.user || {}),
+            } as any);
+          }
+
+          setEditOpen(false);
+        }}
         user={{
           username: user?.username ?? "Resident",
           email: user?.email ?? "",
+        }}
+      />
+
+      <DeleteAccountModal
+        open={deleteOpen}
+        loading={deleting}
+        error={deleteError}
+        onClose={() => {
+          if (deleting) return;
+          setDeleteOpen(false);
+        }}
+        onConfirm={async () => {
+          setDeleting(true);
+          setDeleteError(null);
+          const result = await deleteMyAccount();
+          setDeleting(false);
+
+          if (result?.error) {
+            setDeleteError(String(result.error));
+            return;
+          }
+
+          setDeleteOpen(false);
+          logout();
         }}
       />
     </div>
@@ -151,11 +233,17 @@ function ToggleRow({
 
 function EditProfileModal({
   open,
+  loading,
+  error,
   onClose,
+  onSave,
   user,
 }: {
   open: boolean;
+  loading: boolean;
+  error: string | null;
   onClose: () => void;
+  onSave: (name: string) => void;
   user: { username: string; email: string };
 }) {
   const [name, setName] = useState(user.username);
@@ -194,10 +282,6 @@ function EditProfileModal({
           </div>
 
           <div className="p-4 space-y-3">
-            <div className="text-xs text-white/50">
-              This modal is here so the button is responsive during App Review. You can wire saving later.
-            </div>
-
             <div className="space-y-2">
               <label className="text-xs text-white/60">Username</label>
               <input
@@ -205,6 +289,7 @@ function EditProfileModal({
                 onChange={(e) => setName(e.target.value)}
                 className="w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-white outline-none"
                 placeholder="Your name"
+                disabled={loading}
               />
             </div>
 
@@ -217,17 +302,94 @@ function EditProfileModal({
               />
             </div>
 
+            {error ? <div className="text-xs text-red-300">{error}</div> : null}
+
             <button
               type="button"
-              onClick={() => {
-                // For now: just prove responsiveness + no crash.
-                // Later you can call your API to update profile.
-                alert("Saved (demo). Wire API next.");
-                onClose();
-              }}
-              className="w-full mt-2 py-3 rounded-2xl bg-white text-black text-sm font-semibold hover:opacity-90 transition active:scale-[0.995]"
+              onClick={() => onSave(name)}
+              disabled={loading || !name.trim()}
+              className="w-full mt-2 py-3 rounded-2xl bg-white text-black text-sm font-semibold hover:opacity-90 transition active:scale-[0.995] disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Save changes
+              {loading ? "Saving..." : "Save changes"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DeleteAccountModal({
+  open,
+  loading,
+  error,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean;
+  loading: boolean;
+  error: string | null;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const [confirmText, setConfirmText] = useState("");
+
+  useEffect(() => {
+    if (open) setConfirmText("");
+  }, [open]);
+
+  if (!open) return null;
+
+  const canDelete = confirmText.trim().toUpperCase() === "DELETE" && !loading;
+
+  return (
+    <div className="fixed inset-0 z-[210]">
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/70"
+        onClick={onClose}
+        aria-label="Close delete account modal"
+      />
+
+      <div
+        className="absolute left-0 right-0 bottom-0 mx-auto max-w-3xl px-4"
+        style={{ paddingBottom: "calc(10px + var(--sab))" }}
+      >
+        <div className="rounded-t-3xl border border-red-900/50 bg-[#120709]/95 backdrop-blur-xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-red-900/50 flex items-center justify-between">
+            <div className="text-sm font-semibold text-red-200">Delete account</div>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={loading}
+              className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 text-xs text-white/80 border border-white/10 disabled:opacity-50"
+            >
+              Close
+            </button>
+          </div>
+
+          <div className="p-4 space-y-3">
+            <p className="text-xs text-red-200/90">
+              Type <span className="font-semibold">DELETE</span> to confirm permanent account deletion.
+            </p>
+
+            <input
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              className="w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-white outline-none"
+              placeholder="Type DELETE"
+              autoCapitalize="characters"
+            />
+
+            {error ? <div className="text-xs text-red-300">{error}</div> : null}
+
+            <button
+              type="button"
+              onClick={onConfirm}
+              disabled={!canDelete}
+              className="w-full mt-2 py-3 rounded-2xl bg-red-600 text-white text-sm font-semibold hover:bg-red-500 transition active:scale-[0.995] disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? "Deleting..." : "Permanently delete account"}
             </button>
           </div>
         </div>

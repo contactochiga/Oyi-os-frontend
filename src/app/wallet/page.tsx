@@ -34,9 +34,9 @@ export default function WalletPage() {
 
   const [amount, setAmount] = useState<string>("");
 
-  // ✅ Toggle: disable funding (for App Review safe pass)
-  // Turn back on after approval.
-  const FUNDING_ENABLED = false;
+  const FUNDING_ENABLED = String(
+    process.env.NEXT_PUBLIC_WALLET_FUNDING_ENABLED ?? "true"
+  ).toLowerCase() === "true";
 
   async function load() {
     setLoading(true);
@@ -62,7 +62,6 @@ export default function WalletPage() {
   }, []);
 
   async function fund() {
-    // ✅ Hard stop if disabled (no accidental Paystack errors)
     if (!FUNDING_ENABLED) {
       return setErr("Wallet funding is temporarily disabled.");
     }
@@ -109,21 +108,18 @@ export default function WalletPage() {
 
   return (
     <ConsumerShell title="Wallet" subtitle="Fund account • pay dues">
-      {/* ✅ Info banner when funding disabled (review-friendly, non-error) */}
       {!FUNDING_ENABLED && (
         <div className="mb-4 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
           Wallet funding is temporarily disabled.
         </div>
       )}
 
-      {/* ✅ Error (quiet but clear) */}
       {err && (
         <div className="mb-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
           {err}
         </div>
       )}
 
-      {/* ✅ Balance hero */}
       <div className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
@@ -147,11 +143,8 @@ export default function WalletPage() {
           </button>
         </div>
 
-        {/* subtle divider */}
         <div className="mt-5 border-t border-white/10" />
 
-        {/* ✅ Funding section */}
-        {/* We keep it visible but clearly disabled so it doesn't look broken */}
         <div className="mt-4">
           <div className="text-sm font-medium text-white">Fund wallet</div>
           <div className="mt-1 text-xs text-white/40">
@@ -207,7 +200,6 @@ export default function WalletPage() {
         </div>
       </div>
 
-      {/* ✅ Dues section (stub, but styled premium) */}
       <div className="mt-4 rounded-3xl border border-white/10 bg-white/5 p-5">
         <div className="flex items-center justify-between gap-3">
           <div>
