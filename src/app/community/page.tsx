@@ -4,7 +4,11 @@
 import { useEffect, useMemo, useState } from "react";
 import useAuth from "@/hooks/useAuth";
 import ConsumerShell from "@/app/components/ConsumerShell";
-import { communityService, type CommunityPost } from "@/services/communityService";
+import {
+  communityService,
+  type CommunityComment,
+  type CommunityPost,
+} from "@/services/communityService";
 
 // Icons (same style you referenced)
 import {
@@ -72,6 +76,22 @@ function clampCount(n: any) {
   const x = Number(n ?? 0);
   if (!Number.isFinite(x) || x < 0) return 0;
   return Math.floor(x);
+}
+
+function pickCommentId(c: any) {
+  return String(c?.id ?? c?.comment_id ?? "");
+}
+
+function pickCommentAuthor(c: any) {
+  return (
+    c?.author_name ||
+    c?.author?.name ||
+    c?.author?.full_name ||
+    c?.user?.name ||
+    c?.user_name ||
+    c?.created_by ||
+    "Resident"
+  );
 }
 
 function cn(...classes: Array<string | false | null | undefined>) {
@@ -208,7 +228,10 @@ export default function CommunityPage() {
   const [replyOpen, setReplyOpen] = useState<Record<string, boolean>>({});
   const [replyDraft, setReplyDraft] = useState<Record<string, string>>({});
   const [replyCounts, setReplyCounts] = useState<Record<string, number>>({});
-  const [busyPost, setBusyPost] = useState<string | null>(null);
+  const [busyPost, setBusyPost] = useState<Record<string, boolean>>({});
+  const [commentMap, setCommentMap] = useState<Record<string, CommunityComment[]>>({});
+  const [commentLoading, setCommentLoading] = useState<Record<string, boolean>>({});
+  const [lastLiveAt, setLastLiveAt] = useState<number | null>(null);
 
   // Tabs
   const [tab, setTab] = useState<"feed" | "announcements">("feed");
@@ -266,6 +289,7 @@ export default function CommunityPage() {
         setLikeCounts((prev) => ({ ...prev, ...nextLikes }));
       if (Object.keys(nextReplies).length)
         setReplyCounts((prev) => ({ ...prev, ...nextReplies }));
+      setLastLiveAt(Date.now());
     } catch (e: any) {
       setErr(e?.message || "Failed to load community");
       setItems([]);
@@ -279,6 +303,30 @@ export default function CommunityPage() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [estateId]);
+
+  useEffect(() => {
+    if (!estateId) return;
+    const t = window.setInterval(() => {
+      load();
+      Object.keys(replyOpen).forEach((postId) => {
+        if (replyOpen[postId]) loadComments(postId, true);
+      });
+    }, 15000);
+    return () => window.clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [estateId, replyOpen]);
+
+  async function loadComments(postId: string, force = false) {
+    if (!postId) return;
+    if (!force && commentMap[postId]) return;
+    setCommentLoading((p) => ({ ...p, [postId]: true }));
+    try {
+      const list = await communityService.listComments(postId);
+      setCommentMap((p) => ({ ...p, [postId]: Array.isArray(list) ? list : [] }));
+    } finally {
+      setCommentLoading((p) => ({ ...p, [postId]: false }));
+    }
+  }
 
   function openComposer() {
     if (!estateId) {
@@ -339,8 +387,8 @@ export default function CommunityPage() {
     const id = pickPostId(post);
     if (!id) return;
 
-    if (busyPost) return;
-    setBusyPost(id);
+    if (busyPost[id]) return;
+    setBusyPost((p) => ({ ...p, [id]: true }));
 
     const wasLiked = !!liked[id];
     const prevCount = likeCounts[id] ?? 0;
@@ -372,14 +420,16 @@ export default function CommunityPage() {
       setLiked((p) => ({ ...p, [id]: wasLiked }));
       setLikeCounts((p) => ({ ...p, [id]: prevCount }));
     } finally {
-      setBusyPost(null);
+      setBusyPost((p) => ({ ...p, [id]: false }));
     }
   }
 
   function toggleReplyBox(post: CommunityPost) {
     const id = pickPostId(post);
     if (!id) return;
-    setReplyOpen((p) => ({ ...p, [id]: !p[id] }));
+    const next = !replyOpen[id];
+    setReplyOpen((p) => ({ ...p, [id]: next }));
+    if (next) loadComments(id);
   }
 
   async function sendReply(post: CommunityPost) {
@@ -389,13 +439,21 @@ export default function CommunityPage() {
     const text = (replyDraft[id] || "").trim();
     if (!text) return;
 
-    if (busyPost) return;
-    setBusyPost(id);
+    if (busyPost[id]) return;
+    setBusyPost((p) => ({ ...p, [id]: true }));
 
     const prev = replyCounts[id] ?? 0;
 
     setReplyCounts((p) => ({ ...p, [id]: prev + 1 }));
     setReplyDraft((p) => ({ ...p, [id]: "" }));
+    const optimisticComment: CommunityComment = {
+      id: `local-${Date.now()}`,
+      post_id: id,
+      user_id: String((user as any)?.id || ""),
+      content: text,
+      created_at: new Date().toISOString(),
+    };
+    setCommentMap((p) => ({ ...p, [id]: [optimisticComment, ...(p[id] || [])] }));
 
     try {
       const res: any = await communityService.createComment(id, { content: text });
@@ -403,6 +461,10 @@ export default function CommunityPage() {
       if (res?.error) {
         setReplyCounts((p) => ({ ...p, [id]: prev }));
         setReplyDraft((p) => ({ ...p, [id]: text }));
+        setCommentMap((p) => ({
+          ...p,
+          [id]: (p[id] || []).filter((c) => !String(c.id).startsWith("local-")),
+        }));
         return;
       }
 
@@ -410,11 +472,16 @@ export default function CommunityPage() {
       if (serverCount != null) {
         setReplyCounts((p) => ({ ...p, [id]: clampCount(serverCount) }));
       }
+      await loadComments(id, true);
     } catch {
       setReplyCounts((p) => ({ ...p, [id]: prev }));
       setReplyDraft((p) => ({ ...p, [id]: text }));
+      setCommentMap((p) => ({
+        ...p,
+        [id]: (p[id] || []).filter((c) => !String(c.id).startsWith("local-")),
+      }));
     } finally {
-      setBusyPost(null);
+      setBusyPost((p) => ({ ...p, [id]: false }));
     }
   }
 
@@ -424,6 +491,13 @@ export default function CommunityPage() {
     <ConsumerShell title="Community" subtitle="Estate updates • announcements • resident posts">
       {/* Top row (kept) */}
       <div className="flex items-center justify-between gap-3">
+        <div className="inline-flex items-center gap-2 text-[11px] text-emerald-200 bg-emerald-500/10 border border-emerald-500/25 rounded-full px-2.5 py-1">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          Live activity
+          <span className="text-white/60">
+            {lastLiveAt ? `• updated ${new Date(lastLiveAt).toLocaleTimeString()}` : ""}
+          </span>
+        </div>
         <button
           onClick={load}
           disabled={!estateId || loading}
@@ -561,7 +635,9 @@ export default function CommunityPage() {
 
             const isLiked = !!liked[id];
             const replyIsOpen = !!replyOpen[id];
-            const isBusy = busyPost === id;
+            const isBusy = !!busyPost[id];
+            const comments = commentMap[id] || [];
+            const loadingComments = !!commentLoading[id];
 
             const type: "announcement" | "discussion" | "event" =
               tab === "announcements" ? "announcement" : badge === "Admin" ? "announcement" : "discussion";
@@ -643,6 +719,30 @@ export default function CommunityPage() {
 
                   {replyIsOpen && tab === "feed" && (
                     <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                      {loadingComments ? (
+                        <div className="mb-2 text-xs text-white/50">Loading comments…</div>
+                      ) : comments.length > 0 ? (
+                        <div className="mb-3 space-y-2 max-h-48 overflow-auto pr-1">
+                          {comments.map((c) => (
+                            <div key={pickCommentId(c)} className="rounded-xl bg-black/25 border border-white/10 px-3 py-2">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-[11px] font-semibold text-white/85 truncate">
+                                  {pickCommentAuthor(c)}
+                                </span>
+                                <span className="text-[10px] text-white/45">
+                                  {when(c?.created_at)}
+                                </span>
+                              </div>
+                              <div className="mt-1 text-xs text-white/75 whitespace-pre-wrap">
+                                {String(c?.content || "")}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="mb-2 text-xs text-white/45">No comments yet. Be the first.</div>
+                      )}
+
                       <textarea
                         value={replyDraft[id] ?? ""}
                         onChange={(e) =>
