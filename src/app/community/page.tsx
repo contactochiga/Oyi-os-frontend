@@ -424,22 +424,10 @@ export default function CommunityPage() {
     <ConsumerShell title="Community" subtitle="Estate updates • announcements • resident posts">
       {/* Top row (kept) */}
       <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="text-xs text-white/45">
-            {estateId ? "Estate linked" : "No estate linked"}
-          </div>
-
-          {estateId && (
-            <div className="text-[11px] px-2 py-1 rounded-full border border-white/10 bg-white/5 text-white/60 truncate">
-              {String(estateId)}
-            </div>
-          )}
-        </div>
-
         <button
           onClick={load}
           disabled={!estateId || loading}
-          className="px-3 py-2 rounded-xl bg-white/10 text-white text-sm disabled:opacity-50"
+          className="ml-auto px-3 py-2 rounded-xl bg-white/10 text-white text-sm disabled:opacity-50"
           type="button"
         >
           {loading ? "..." : "Refresh"}

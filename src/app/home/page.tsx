@@ -484,11 +484,6 @@ export default function HomePage() {
                         Real counts • charts • quick actions (assistant pops up)
                       </div>
 
-                      {estateId ? (
-                        <div className="mt-2 inline-flex items-center gap-2 text-[11px] px-2 py-1 rounded-full border border-white/10 bg-white/5 text-white/60">
-                          Estate: <span className="text-white/80">{String(estateId)}</span>
-                        </div>
-                      ) : null}
                     </div>
 
                     <button

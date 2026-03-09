@@ -350,14 +350,10 @@ export default function DeviceClient() {
       {/* header */}
       <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
         <div className="flex items-center justify-between gap-3">
-          <div className="text-xs text-white/45 truncate">
-            {estateId ? "Estate linked" : "No estate linked"}
-          </div>
-
           <button
             onClick={load}
             disabled={loading}
-            className="rounded-2xl px-3 py-2 text-sm bg-white text-black hover:opacity-90 disabled:opacity-50 transition"
+            className="ml-auto rounded-2xl px-3 py-2 text-sm bg-white text-black hover:opacity-90 disabled:opacity-50 transition"
             type="button"
           >
             {loading ? "Refreshing…" : "Refresh"}
