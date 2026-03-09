@@ -637,32 +637,32 @@ export default function HomePage() {
                   </div>
 
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                    <PanelCard title="Quick Actions" subtitle="Uses your existing AI routes">
+                    <PanelCard title="Quick Actions" subtitle="Open pages directly">
                       <div className="grid grid-cols-2 gap-2">
                         <button
                           type="button"
-                          onClick={() => handleSend("open devices")}
+                          onClick={() => router.push("/devices")}
                           className="py-2.5 rounded-2xl bg-white text-black text-sm font-medium hover:opacity-90 transition"
                         >
                           Devices
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleSend("show home status")}
+                          onClick={() => router.push("/rooms")}
                           className="py-2.5 rounded-2xl bg-white/10 text-white text-sm border border-white/10 hover:bg-white/15 transition"
                         >
                           Home Summary
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleSend("open maintenance")}
+                          onClick={() => router.push("/maintenance")}
                           className="py-2.5 rounded-2xl bg-white/10 text-white text-sm border border-white/10 hover:bg-white/15 transition"
                         >
                           Maintenance
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleSend("open community")}
+                          onClick={() => router.push("/community")}
                           className="py-2.5 rounded-2xl bg-white/10 text-white text-sm border border-white/10 hover:bg-white/15 transition"
                         >
                           Community
