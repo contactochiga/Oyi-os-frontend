@@ -6,6 +6,14 @@ import { useSearchParams } from "next/navigation";
 import useAuth from "@/hooks/useAuth";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { deleteMyAccount, updateMyProfile } from "@/services/authService";
+import API from "@/services/api";
+import { roomsService, type RoomDTO } from "@/services/roomsService";
+
+type AccessResident = {
+  id: string;
+  label: string;
+  email?: string;
+};
 
 export default function SettingsClient() {
   const { user, token, setSession, logout } = useAuth();
@@ -22,6 +30,21 @@ export default function SettingsClient() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [rooms, setRooms] = useState<RoomDTO[]>([]);
+  const [residents, setResidents] = useState<AccessResident[]>([]);
+  const [accessLoading, setAccessLoading] = useState(false);
+  const [accessError, setAccessError] = useState<string | null>(null);
+  const [assigningAccess, setAssigningAccess] = useState(false);
+  const [selectedRoomId, setSelectedRoomId] = useState("");
+  const [selectedResidentId, setSelectedResidentId] = useState("");
+  const [customResidentId, setCustomResidentId] = useState("");
+  const [assignRole, setAssignRole] = useState("member");
+  const [permissions, setPermissions] = useState({
+    control_devices: true,
+    manage_visitors: false,
+    post_community: true,
+    view_finance: false,
+  });
 
   const initials = useMemo(() => {
     const u = (user as any)?.username || (user as any)?.name || "User";
@@ -39,6 +62,115 @@ export default function SettingsClient() {
       profileRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }, [params]);
+
+  useEffect(() => {
+    const homeId =
+      (user as any)?.home_id ??
+      (typeof window !== "undefined" ? localStorage.getItem("ochiga_home") : null);
+
+    if (!homeId) return;
+
+    const parseResidentList = (ctx: any): AccessResident[] => {
+      const buckets = [
+        ctx?.members,
+        ctx?.residents,
+        ctx?.users,
+        ctx?.home?.members,
+        ctx?.home?.residents,
+        ctx?.home?.users,
+        ctx?.estate?.members,
+      ];
+      const firstList = buckets.find((arr) => Array.isArray(arr)) || [];
+      return (firstList as any[])
+        .map((m) => {
+          const id = String(m?.id ?? m?.user_id ?? m?.resident_id ?? "").trim();
+          if (!id) return null;
+          const label =
+            m?.full_name ||
+            m?.name ||
+            m?.username ||
+            m?.email ||
+            `Resident ${id.slice(0, 6)}`;
+          return { id, label: String(label), email: m?.email ? String(m.email) : undefined };
+        })
+        .filter(Boolean) as AccessResident[];
+    };
+
+    const run = async () => {
+      setAccessLoading(true);
+      setAccessError(null);
+      try {
+        const [roomList, ctxRes] = await Promise.all([
+          roomsService.getRooms(String(homeId)),
+          API.get("/me/context").catch(() => null),
+        ]);
+
+        setRooms(Array.isArray(roomList) ? roomList : []);
+
+        const ctxPayload = (ctxRes as any)?.data?.data ?? (ctxRes as any)?.data ?? null;
+        const parsedResidents = parseResidentList(ctxPayload);
+        setResidents(parsedResidents);
+
+        if (Array.isArray(roomList) && roomList[0]?.id) {
+          setSelectedRoomId(String(roomList[0].id));
+        }
+      } catch (e: any) {
+        setAccessError(e?.response?.data?.error || e?.message || "Failed to load access manager");
+      } finally {
+        setAccessLoading(false);
+      }
+    };
+
+    run();
+  }, [user]);
+
+  function togglePermission(key: keyof typeof permissions) {
+    setPermissions((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
+
+  async function assignRoomAccess() {
+    if (!selectedRoomId) {
+      setAccessError("Select a room first");
+      return;
+    }
+
+    const residentId = selectedResidentId || customResidentId.trim();
+    if (!residentId) {
+      setAccessError("Select a resident or enter resident ID");
+      return;
+    }
+
+    setAssigningAccess(true);
+    setAccessError(null);
+    try {
+      await roomsService.assignUserToRoom({
+        room_id: selectedRoomId,
+        resident_id: residentId,
+        role: assignRole,
+        permissions,
+      });
+
+      setRooms((prev) =>
+        prev.map((r) => {
+          if (String(r.id) !== String(selectedRoomId)) return r;
+          const nextAssignment = {
+            resident_id: residentId,
+            role: assignRole,
+            permissions,
+            created_at: new Date().toISOString(),
+          };
+          const existing = Array.isArray((r as any).room_assignments) ? (r as any).room_assignments : [];
+          return { ...r, room_assignments: [nextAssignment, ...existing] };
+        })
+      );
+
+      setCustomResidentId("");
+    } catch (e: any) {
+      setAccessError(e?.response?.data?.error || e?.message || "Failed to assign resident to room");
+    } finally {
+      setAssigningAccess(false);
+    }
+  }
 
   return (
     <div className="relative z-10 max-w-3xl mx-auto py-2 space-y-10">
@@ -74,6 +206,119 @@ export default function SettingsClient() {
         <Row label="Estate" value={(user as any)?.estate_name ?? "—"} />
         <Row label="Unit" value={(user as any)?.unit_name ?? "—"} />
         <Row label="Role" value={user?.role ?? "resident"} />
+      </section>
+
+      <section className="space-y-4">
+        <h3 className="text-sm text-gray-400">Room Access Control</h3>
+
+        <div className="rounded-xl border border-gray-800 bg-gray-900/70 p-4 space-y-3">
+          <div className="text-xs text-gray-400">
+            Assign residents to specific rooms and set role-based permissions.
+          </div>
+
+          {accessLoading ? (
+            <div className="text-sm text-gray-400">Loading access manager…</div>
+          ) : (
+            <>
+              <select
+                value={selectedRoomId}
+                onChange={(e) => setSelectedRoomId(e.target.value)}
+                className="w-full rounded-xl bg-black/30 border border-gray-700 px-3 py-2 text-sm text-white outline-none"
+              >
+                <option value="">Select room</option>
+                {rooms.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name || `Room ${r.id}`}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={selectedResidentId}
+                onChange={(e) => setSelectedResidentId(e.target.value)}
+                className="w-full rounded-xl bg-black/30 border border-gray-700 px-3 py-2 text-sm text-white outline-none"
+              >
+                <option value="">Select resident</option>
+                {residents.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.label}
+                    {r.email ? ` (${r.email})` : ""}
+                  </option>
+                ))}
+              </select>
+
+              <input
+                value={customResidentId}
+                onChange={(e) => setCustomResidentId(e.target.value)}
+                placeholder="Or paste resident ID manually"
+                className="w-full rounded-xl bg-black/30 border border-gray-700 px-3 py-2 text-sm text-white outline-none"
+              />
+
+              <select
+                value={assignRole}
+                onChange={(e) => setAssignRole(e.target.value)}
+                className="w-full rounded-xl bg-black/30 border border-gray-700 px-3 py-2 text-sm text-white outline-none"
+              >
+                <option value="member">Member</option>
+                <option value="room_manager">Room Manager</option>
+                <option value="viewer">Viewer</option>
+              </select>
+
+              <div className="grid grid-cols-2 gap-2">
+                <PermissionToggle
+                  label="Control devices"
+                  enabled={permissions.control_devices}
+                  onToggle={() => togglePermission("control_devices")}
+                />
+                <PermissionToggle
+                  label="Manage visitors"
+                  enabled={permissions.manage_visitors}
+                  onToggle={() => togglePermission("manage_visitors")}
+                />
+                <PermissionToggle
+                  label="Post community"
+                  enabled={permissions.post_community}
+                  onToggle={() => togglePermission("post_community")}
+                />
+                <PermissionToggle
+                  label="View finance"
+                  enabled={permissions.view_finance}
+                  onToggle={() => togglePermission("view_finance")}
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={assignRoomAccess}
+                disabled={assigningAccess}
+                className="w-full py-3 rounded-xl bg-white text-black text-sm font-semibold disabled:opacity-50"
+              >
+                {assigningAccess ? "Applying access..." : "Assign Room Access"}
+              </button>
+
+              {accessError ? <div className="text-xs text-red-300">{accessError}</div> : null}
+            </>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          {(rooms.find((r) => String(r.id) === String(selectedRoomId))?.room_assignments || []).length > 0 ? (
+            ((rooms.find((r) => String(r.id) === String(selectedRoomId))?.room_assignments || []) as any[]).map((a, idx) => (
+              <div key={`${a?.resident_id || a?.user_id || idx}`} className="rounded-xl border border-gray-800 bg-gray-900 px-3 py-2">
+                <div className="text-xs text-white/90">
+                  Resident: {String(a?.resident_id || a?.user_id || "—")}
+                </div>
+                <div className="text-[11px] text-white/50">
+                  Role: {String(a?.role || "member")}
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="rounded-xl border border-gray-800 bg-gray-900 px-3 py-2 text-xs text-gray-400">
+              No room assignments yet for the selected room.
+            </div>
+          )}
+        </div>
       </section>
 
       {/* SETTINGS */}
@@ -227,6 +472,30 @@ function ToggleRow({
       <div className={`w-11 h-6 rounded-full transition ${value ? "bg-[#16A34A]" : "bg-gray-700"}`}>
         <div className={`w-5 h-5 bg-white rounded-full mt-[2px] transition ${value ? "ml-[22px]" : "ml-[2px]"}`} />
       </div>
+    </button>
+  );
+}
+
+function PermissionToggle({
+  label,
+  enabled,
+  onToggle,
+}: {
+  label: string;
+  enabled: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className={`rounded-xl border px-3 py-2 text-xs text-left transition ${
+        enabled
+          ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
+          : "border-gray-700 bg-black/30 text-gray-300"
+      }`}
+    >
+      {label}
     </button>
   );
 }

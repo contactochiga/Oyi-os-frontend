@@ -8,6 +8,7 @@ import { deviceService } from "@/services/deviceService";
 import GangRingSwitch from "@/app/components/devices/GangRingSwitch";
 
 type AnyDevice = Record<string, any>;
+type DiscoveryDevice = Record<string, any>;
 
 function pickDbId(d: AnyDevice) {
   return d?.id || null; // ✅ DB uuid
@@ -35,6 +36,17 @@ function pickVendor(d: AnyDevice) {
 
 function pickRoomName(d: AnyDevice) {
   return d?.room_name || d?.room?.name || d?.metadata?.room_name || null;
+}
+
+function pickDiscoveryExternalId(d: DiscoveryDevice) {
+  return (
+    d?.external_id ||
+    d?.externalId ||
+    d?.device_id ||
+    d?.dev_id ||
+    d?.uuid ||
+    null
+  );
 }
 
 function isOnline(d: AnyDevice): boolean | null {
@@ -154,6 +166,12 @@ export default function DeviceClient() {
       (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null),
     [user]
   );
+  const homeId = useMemo(
+    () =>
+      (user as any)?.home_id ??
+      (typeof window !== "undefined" ? localStorage.getItem("ochiga_home") : null),
+    [user]
+  );
 
   const [items, setItems] = useState<AnyDevice[]>([]);
   const [loading, setLoading] = useState(false);
@@ -192,6 +210,12 @@ export default function DeviceClient() {
   const [automationName, setAutomationName] = useState("");
   const [automationSchedule, setAutomationSchedule] = useState("Every day • 7:00 PM");
   const [automationSceneId, setAutomationSceneId] = useState("");
+  const [addDeviceOpen, setAddDeviceOpen] = useState(false);
+  const [discovering, setDiscovering] = useState(false);
+  const [binding, setBinding] = useState(false);
+  const [discovered, setDiscovered] = useState<DiscoveryDevice[]>([]);
+  const [selectedDiscover, setSelectedDiscover] = useState<Record<string, boolean>>({});
+  const [bindRoom, setBindRoom] = useState("");
 
   async function hydrateStates(list: AnyDevice[]) {
     if (!Array.isArray(list) || list.length === 0) {
@@ -583,6 +607,82 @@ export default function DeviceClient() {
     setAutoEnabled((prev) => ({ ...prev, [key]: !prev[key] }));
   }
 
+  const selectedDiscoveryIds = useMemo(
+    () => Object.keys(selectedDiscover).filter((k) => selectedDiscover[k]),
+    [selectedDiscover]
+  );
+
+  async function openAddDevice() {
+    setAddDeviceOpen(true);
+    setSelectedDiscover({});
+    setErr(null);
+    await refreshDiscovery();
+  }
+
+  async function refreshDiscovery() {
+    setDiscovering(true);
+    try {
+      const found = await deviceService.discoverDevices();
+      setDiscovered(Array.isArray(found) ? found : []);
+    } catch (e: any) {
+      setErr(e?.response?.data?.error || e?.message || "Failed to discover devices");
+      setDiscovered([]);
+    } finally {
+      setDiscovering(false);
+    }
+  }
+
+  function toggleDiscoverySelection(id: string) {
+    setSelectedDiscover((prev) => ({ ...prev, [id]: !prev[id] }));
+  }
+
+  async function bindSelectedDevices() {
+    if (!selectedDiscoveryIds.length) return;
+    setBinding(true);
+    setErr(null);
+    try {
+      const targets = discovered.filter((d) => {
+        const ext = pickDiscoveryExternalId(d);
+        return ext ? selectedDiscover[String(ext)] : false;
+      });
+      const payload: any = {
+        devices: targets.map((d) => {
+          const ext = pickDiscoveryExternalId(d);
+          return {
+            external_id: String(ext),
+            vendor: d?.vendor || d?.adapter || "tuya",
+            adapter: d?.adapter || d?.vendor || "tuya",
+            name: d?.name || d?.type || "Device",
+            type: d?.type || d?.category || "device",
+            icon: d?.icon,
+            ip: d?.ip,
+            protocol: d?.protocol,
+            online: typeof d?.online === "boolean" ? d.online : undefined,
+            metadata: d?.metadata ?? d,
+          };
+        }),
+        room: bindRoom || null,
+        estate_id: estateId || undefined,
+        home_id: homeId || undefined,
+      };
+
+      if (!payload.devices.length) {
+        setErr("No valid discovered device IDs found.");
+        return;
+      }
+
+      await deviceService.assignDevices(payload);
+      setAddDeviceOpen(false);
+      setBindRoom("");
+      setSelectedDiscover({});
+      await load();
+    } catch (e: any) {
+      setErr(e?.response?.data?.error || e?.message || "Failed to add selected devices");
+    } finally {
+      setBinding(false);
+    }
+  }
+
   function toggleSceneDevice(id: string) {
     setSceneDeviceIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
@@ -665,15 +765,23 @@ export default function DeviceClient() {
               <div className="text-sm text-cyan-100/80">Smart Home Command Center</div>
               <div className="mt-1 text-xl font-semibold text-white">Live Control Grid</div>
             </div>
-
-            <button
-              onClick={load}
-              disabled={loading}
-              className="rounded-2xl px-3 py-2 text-sm bg-white text-black hover:opacity-90 disabled:opacity-50 transition"
-              type="button"
-            >
-              {loading ? "Refreshing…" : "Refresh"}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={openAddDevice}
+                className="rounded-2xl px-3 py-2 text-sm bg-cyan-300/20 text-cyan-100 border border-cyan-300/30 hover:bg-cyan-300/30 transition"
+                type="button"
+              >
+                Add Device
+              </button>
+              <button
+                onClick={load}
+                disabled={loading}
+                className="rounded-2xl px-3 py-2 text-sm bg-white text-black hover:opacity-90 disabled:opacity-50 transition"
+                type="button"
+              >
+                {loading ? "Refreshing…" : "Refresh"}
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -972,6 +1080,110 @@ export default function DeviceClient() {
       {err && (
         <div className="mt-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
           {err}
+        </div>
+      )}
+
+      {addDeviceOpen && (
+        <div className="fixed inset-0 z-[130]">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setAddDeviceOpen(false)} />
+          <div className="absolute left-0 right-0 bottom-0 px-3 pb-[calc(12px+var(--sab))]">
+            <div className="max-w-3xl mx-auto rounded-t-3xl border border-white/10 bg-zinc-950 overflow-hidden">
+              <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-white">Add Home Devices</div>
+                  <div className="text-[11px] text-white/45">Scan discoverable devices and bind to this home</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={refreshDiscovery}
+                    disabled={discovering || binding}
+                    className="rounded-xl border border-white/10 bg-white/10 px-3 py-1.5 text-xs text-white/85 disabled:opacity-60"
+                  >
+                    {discovering ? "Scanning…" : "Scan"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAddDeviceOpen(false)}
+                    className="rounded-xl px-2 py-1 text-white/70 hover:bg-white/5"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-4 space-y-3 max-h-[70vh] overflow-auto">
+                {discovering ? (
+                  <div className="flex items-center gap-3 text-sm text-white/60">
+                    <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                    Discovering devices…
+                  </div>
+                ) : discovered.length === 0 ? (
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/60">
+                    No discoverable devices found.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {discovered.map((d, idx) => {
+                      const ext = pickDiscoveryExternalId(d);
+                      const sid = ext ? String(ext) : `tmp-${idx}`;
+                      const selected = ext ? !!selectedDiscover[String(ext)] : false;
+                      return (
+                        <label
+                          key={sid}
+                          className={`flex items-center justify-between gap-3 rounded-2xl border border-white/10 px-3 py-2 ${
+                            selected ? "bg-cyan-500/15" : "bg-white/5 hover:bg-white/10"
+                          } ${ext ? "cursor-pointer" : "opacity-60"}`}
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <input
+                              type="checkbox"
+                              checked={selected}
+                              disabled={!ext || binding}
+                              onChange={() => ext && toggleDiscoverySelection(String(ext))}
+                              className="accent-white"
+                            />
+                            <div className="min-w-0">
+                              <div className="text-[13px] font-semibold text-white truncate">
+                                {d?.name || d?.type || "Device"}
+                              </div>
+                              <div className="text-[11px] text-white/45 truncate">
+                                {(d?.protocol || d?.adapter || d?.vendor || "device") + ` • id:${ext || "—"}`}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-[11px] text-white/45">
+                            {typeof d?.online === "boolean" ? (d.online ? "Online" : "Offline") : d?.status || "Found"}
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {selectedDiscoveryIds.length > 0 && (
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
+                    <div className="text-xs text-white/60 mb-2">{selectedDiscoveryIds.length} selected</div>
+                    <input
+                      value={bindRoom}
+                      onChange={(e) => setBindRoom(e.target.value)}
+                      placeholder="Room name (optional)"
+                      className="w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-white outline-none"
+                      disabled={binding}
+                    />
+                    <button
+                      type="button"
+                      onClick={bindSelectedDevices}
+                      disabled={binding}
+                      className="mt-2 w-full py-2.5 rounded-xl bg-white text-black text-sm font-semibold disabled:opacity-60"
+                    >
+                      {binding ? "Adding…" : "Add selected devices"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
