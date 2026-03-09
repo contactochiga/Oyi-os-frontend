@@ -217,9 +217,7 @@ export default function CommunityPage() {
   const [items, setItems] = useState<CommunityPost[]>([]);
 
   // Composer
-  const [composerOpen, setComposerOpen] = useState(false);
-  const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
+  const [postDraft, setPostDraft] = useState("");
   const [posting, setPosting] = useState(false);
 
   // Per-post interaction state
@@ -328,32 +326,19 @@ export default function CommunityPage() {
     }
   }
 
-  function openComposer() {
-    if (!estateId) {
-      setErr("No estate linked yet. Join/choose an estate to post.");
-      return;
-    }
-    setErr(null);
-    setComposerOpen(true);
-  }
-
-  function closeComposer() {
-    if (posting) return;
-    setComposerOpen(false);
-    setTitle("");
-    setBody("");
-  }
-
   async function createPost() {
-    if (!title.trim()) return setErr("Title is required.");
+    const content = postDraft.trim();
+    if (!content) return setErr("Write something to share.");
     if (!estateId) return setErr("No estate linked.");
 
     setPosting(true);
     setErr(null);
     try {
+      const generatedTitle =
+        content.length > 42 ? `${content.slice(0, 42).trimEnd()}…` : content;
       const res: any = await communityService.createPost({
-        title: title.trim(),
-        body: body.trim() ? body.trim() : null,
+        title: generatedTitle || "Update",
+        body: content,
         estateId: String(estateId),
       });
 
@@ -362,7 +347,7 @@ export default function CommunityPage() {
         return;
       }
 
-      closeComposer();
+      setPostDraft("");
       setItems((prev) => [res as CommunityPost, ...prev]);
 
       const id = pickPostId(res);
@@ -376,6 +361,7 @@ export default function CommunityPage() {
           [id]: clampCount((res as any)?.reply_count ?? 0),
         }));
       }
+      await load();
     } catch (e: any) {
       setErr(e?.message || "Failed to create post");
     } finally {
@@ -473,6 +459,7 @@ export default function CommunityPage() {
         setReplyCounts((p) => ({ ...p, [id]: clampCount(serverCount) }));
       }
       await loadComments(id, true);
+      await load();
     } catch {
       setReplyCounts((p) => ({ ...p, [id]: prev }));
       setReplyDraft((p) => ({ ...p, [id]: text }));
@@ -530,77 +517,39 @@ export default function CommunityPage() {
       {/* Composer (feed only) */}
       {tab === "feed" && (
         <div className="mt-4">
-          {!composerOpen ? (
-            <Card className="bg-white/5">
-              <CardHeader>
-                <div className="text-sm font-semibold text-white">Share with the community</div>
-                <div className="text-[11px] text-white/40 mt-1">
-                  Announcements, quick updates, facility info
+          <Card className="bg-white/5">
+            <CardHeader>
+              <div className="text-sm font-semibold text-white">Share with the community</div>
+              <div className="text-[11px] text-white/40 mt-1">
+                One post box. Just type and publish.
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <textarea
+                value={postDraft}
+                onChange={(e) => setPostDraft(e.target.value)}
+                placeholder="What’s on your mind?"
+                rows={4}
+                className="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-3 text-sm text-white outline-none resize-none"
+                disabled={posting || !estateId}
+              />
+
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[11px] text-white/45">
+                  Image/Video/Live can be added next with media upload endpoints.
                 </div>
-              </CardHeader>
-              <CardContent>
                 <button
+                  onClick={createPost}
+                  disabled={posting || !postDraft.trim() || !estateId}
+                  className="px-4 py-2.5 rounded-xl bg-white text-black text-sm font-semibold disabled:opacity-50 inline-flex items-center justify-center gap-2"
                   type="button"
-                  onClick={openComposer}
-                  disabled={!estateId}
-                  className="w-full text-left rounded-2xl px-4 py-3 border border-white/10 bg-black/20 hover:bg-black/30 transition disabled:opacity-60"
                 >
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="text-sm text-white/70">What’s on your mind?</div>
-                    <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white text-black text-sm font-semibold">
-                      <Send className="h-4 w-4" />
-                      Post
-                    </div>
-                  </div>
+                  <Send className="h-4 w-4" />
+                  {posting ? "Posting..." : "Post"}
                 </button>
-              </CardContent>
-            </Card>
-          ) : (
-            <Card className="bg-white/5">
-              <CardHeader>
-                <div className="text-sm font-semibold text-white">New post</div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <input
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Title (required)"
-                  className="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-3 text-sm text-white outline-none"
-                  disabled={posting}
-                />
-
-                <textarea
-                  value={body}
-                  onChange={(e) => setBody(e.target.value)}
-                  placeholder="Write your update…"
-                  rows={4}
-                  className="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-3 text-sm text-white outline-none resize-none"
-                  disabled={posting}
-                />
-
-                <div className="flex gap-2">
-                  <button
-                    onClick={closeComposer}
-                    disabled={posting}
-                    className="flex-1 py-3 rounded-xl bg-white/10 text-white text-sm disabled:opacity-50"
-                    type="button"
-                  >
-                    Cancel
-                  </button>
-
-                  <button
-                    onClick={createPost}
-                    disabled={posting || !title.trim()}
-                    className="flex-1 py-3 rounded-xl bg-white text-black text-sm font-semibold disabled:opacity-50 inline-flex items-center justify-center gap-2"
-                    type="button"
-                  >
-                    <Send className="h-4 w-4" />
-                    {posting ? "Posting..." : "Post"}
-                  </button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
 
@@ -699,12 +648,12 @@ export default function CommunityPage() {
                       className={cn(
                         "inline-flex items-center gap-2 text-sm px-3 py-2 rounded-xl border transition disabled:opacity-50",
                         isLiked
-                          ? "bg-white text-black border-white/20"
+                          ? "bg-cyan-400/20 text-cyan-100 border-cyan-300/40"
                           : "bg-white/5 text-white/80 border-white/10 hover:bg-white/10"
                       )}
                     >
                       <ThumbsUp className="h-4 w-4" />
-                      {likeCount}
+                      {isLiked ? "Liked" : "Like"} • {likeCount}
                     </button>
 
                     <button
@@ -713,7 +662,7 @@ export default function CommunityPage() {
                       className="inline-flex items-center gap-2 text-sm px-3 py-2 rounded-xl border border-white/10 bg-white/5 text-white/80 hover:bg-white/10 transition"
                     >
                       <MessageCircle className="h-4 w-4" />
-                      {replyCount}
+                      Comment • {replyCount}
                     </button>
                   </div>
 
