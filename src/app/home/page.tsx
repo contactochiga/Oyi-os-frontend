@@ -512,7 +512,7 @@ export default function HomePage() {
                           ? `${Math.round((activeDevices / Math.max(1, totalDevices)) * 100)}% online`
                           : "No devices yet"
                       }
-                      onClick={() => handleSend("open devices")}
+                      onClick={() => router.push("/devices")}
                     />
 
                     <StatCard
@@ -546,7 +546,7 @@ export default function HomePage() {
                       label="Maintenance"
                       value={`${openMaintenance}`}
                       sub="Open tickets"
-                      onClick={() => handleSend("open maintenance")}
+                      onClick={() => router.push("/maintenance")}
                     />
                     <StatCard
                       icon={<Bell className="w-4 h-4 text-pink-300" />}
@@ -560,7 +560,7 @@ export default function HomePage() {
                       label="Discovery"
                       value={`${discoveryDevices.length}`}
                       sub="Devices found"
-                      onClick={() => handleSend("open devices")}
+                      onClick={() => router.push("/devices")}
                     />
                     <StatCard
                       icon={<Clock className="w-4 h-4 text-white/70" />}
