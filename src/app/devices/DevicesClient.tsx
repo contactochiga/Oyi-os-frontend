@@ -115,6 +115,21 @@ function powerButtonClass(isOn: boolean | null) {
 
 type SceneKey = "welcome_home" | "evening" | "all_off" | "away_mode";
 type AutomationKey = "night_guard" | "energy_saver" | "presence_watch";
+type CustomScene = {
+  id: string;
+  name: string;
+  targetOn: boolean;
+  deviceIds: string[];
+  createdAt: number;
+};
+type CustomAutomation = {
+  id: string;
+  name: string;
+  schedule: string;
+  sceneId: string;
+  enabled: boolean;
+  createdAt: number;
+};
 
 function pickType(d: AnyDevice) {
   return d?.type || d?.device_type || d?.category || d?.kind || "";
@@ -160,13 +175,23 @@ export default function DeviceClient() {
   // bottom sheet for controls
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetDevice, setSheetDevice] = useState<AnyDevice | null>(null);
-  const [sceneBusy, setSceneBusy] = useState<SceneKey | null>(null);
+  const [sceneBusy, setSceneBusy] = useState<string | null>(null);
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
   const [autoEnabled, setAutoEnabled] = useState<Record<AutomationKey, boolean>>({
     night_guard: true,
     energy_saver: true,
     presence_watch: false,
   });
+  const [customScenes, setCustomScenes] = useState<CustomScene[]>([]);
+  const [customAutomations, setCustomAutomations] = useState<CustomAutomation[]>([]);
+  const [sceneFormOpen, setSceneFormOpen] = useState(false);
+  const [automationFormOpen, setAutomationFormOpen] = useState(false);
+  const [sceneName, setSceneName] = useState("");
+  const [sceneTargetOn, setSceneTargetOn] = useState(true);
+  const [sceneDeviceIds, setSceneDeviceIds] = useState<string[]>([]);
+  const [automationName, setAutomationName] = useState("");
+  const [automationSchedule, setAutomationSchedule] = useState("Every day • 7:00 PM");
+  const [automationSceneId, setAutomationSceneId] = useState("");
 
   async function hydrateStates(list: AnyDevice[]) {
     if (!Array.isArray(list) || list.length === 0) {
@@ -255,6 +280,46 @@ export default function DeviceClient() {
       // ignore storage errors
     }
   }, [estateId, autoEnabled]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const scenesKey = `oyi_custom_scenes_${estateId || "global"}`;
+    const autosKey = `oyi_custom_automations_${estateId || "global"}`;
+    try {
+      const rawScenes = localStorage.getItem(scenesKey);
+      const rawAutos = localStorage.getItem(autosKey);
+      if (rawScenes) {
+        const parsed = JSON.parse(rawScenes);
+        if (Array.isArray(parsed)) setCustomScenes(parsed);
+      }
+      if (rawAutos) {
+        const parsed = JSON.parse(rawAutos);
+        if (Array.isArray(parsed)) setCustomAutomations(parsed);
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }, [estateId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const scenesKey = `oyi_custom_scenes_${estateId || "global"}`;
+    try {
+      localStorage.setItem(scenesKey, JSON.stringify(customScenes));
+    } catch {
+      // ignore storage errors
+    }
+  }, [estateId, customScenes]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const autosKey = `oyi_custom_automations_${estateId || "global"}`;
+    try {
+      localStorage.setItem(autosKey, JSON.stringify(customAutomations));
+    } catch {
+      // ignore storage errors
+    }
+  }, [estateId, customAutomations]);
 
   const filtered = useMemo(() => {
     const t = (q || "").trim().toLowerCase();
@@ -396,22 +461,25 @@ export default function DeviceClient() {
     }
   }
 
-  async function runScene(scene: SceneKey) {
+  async function executeSceneTarget(targetOn: boolean, busyKey: string, allowedIds?: string[]) {
     if (!items.length) return;
-    setSceneBusy(scene);
+    setSceneBusy(busyKey);
     setErr(null);
     try {
-      const targetOn = scene === "all_off" || scene === "away_mode" ? false : true;
-      const candidates = items.filter((d) => isOnline(d) !== false && pickDbId(d));
+      const allow = allowedIds && allowedIds.length ? new Set(allowedIds) : null;
+      const candidates = items.filter((d) => {
+        const dbId = pickDbId(d);
+        if (!dbId) return false;
+        const sid = String(dbId);
+        if (allow && !allow.has(sid)) return false;
+        return isOnline(d) !== false;
+      });
 
       const jobs = candidates.map(async (d) => {
         const sid = String(pickDbId(d));
         const cached = stateMap[sid] || {};
         const family = inferFamily(d);
-        const command =
-          family === "curtain"
-            ? { open: targetOn }
-            : buildPowerCommand(d, cached, targetOn);
+        const command = family === "curtain" ? { open: targetOn } : buildPowerCommand(d, cached, targetOn);
 
         try {
           await deviceService.commandDevice(sid, command);
@@ -436,6 +504,15 @@ export default function DeviceClient() {
     } finally {
       setSceneBusy(null);
     }
+  }
+
+  async function runScene(scene: SceneKey) {
+    const targetOn = scene === "all_off" || scene === "away_mode" ? false : true;
+    await executeSceneTarget(targetOn, scene);
+  }
+
+  async function runCustomScene(scene: CustomScene) {
+    await executeSceneTarget(scene.targetOn, scene.id, scene.deviceIds);
   }
 
   function openSheet(device: AnyDevice) {
@@ -496,12 +573,83 @@ export default function DeviceClient() {
   }, [items, stateMap]);
 
   const activeAutomations = useMemo(
-    () => Object.values(autoEnabled).filter(Boolean).length,
-    [autoEnabled]
+    () =>
+      Object.values(autoEnabled).filter(Boolean).length +
+      customAutomations.filter((a) => a.enabled).length,
+    [autoEnabled, customAutomations]
   );
 
   function toggleAutomation(key: AutomationKey) {
     setAutoEnabled((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
+
+  function toggleSceneDevice(id: string) {
+    setSceneDeviceIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  }
+
+  function createCustomScene() {
+    const name = sceneName.trim();
+    if (!name) {
+      setErr("Scene name is required");
+      return;
+    }
+    if (!sceneDeviceIds.length) {
+      setErr("Select at least one device for the scene");
+      return;
+    }
+
+    setCustomScenes((prev) => [
+      {
+        id: `custom_scene_${Date.now()}`,
+        name,
+        targetOn: sceneTargetOn,
+        deviceIds: sceneDeviceIds,
+        createdAt: Date.now(),
+      },
+      ...prev,
+    ]);
+    setSceneName("");
+    setSceneTargetOn(true);
+    setSceneDeviceIds([]);
+    setSceneFormOpen(false);
+    setErr(null);
+  }
+
+  function createCustomAutomation() {
+    const name = automationName.trim();
+    if (!name) {
+      setErr("Automation name is required");
+      return;
+    }
+    if (!automationSceneId) {
+      setErr("Select a scene to link this automation");
+      return;
+    }
+
+    setCustomAutomations((prev) => [
+      {
+        id: `custom_auto_${Date.now()}`,
+        name,
+        schedule: automationSchedule.trim() || "Custom",
+        sceneId: automationSceneId,
+        enabled: true,
+        createdAt: Date.now(),
+      },
+      ...prev,
+    ]);
+    setAutomationName("");
+    setAutomationSchedule("Every day • 7:00 PM");
+    setAutomationSceneId("");
+    setAutomationFormOpen(false);
+    setErr(null);
+  }
+
+  function toggleCustomAutomation(id: string) {
+    setCustomAutomations((prev) =>
+      prev.map((a) => (a.id === id ? { ...a, enabled: !a.enabled } : a))
+    );
   }
 
   return (
@@ -563,7 +711,70 @@ export default function DeviceClient() {
             <div className="text-sm font-semibold text-white">Scenes</div>
             <div className="text-xs text-white/45">One-tap whole-home actions</div>
           </div>
+          <button
+            type="button"
+            onClick={() => setSceneFormOpen((v) => !v)}
+            className="rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs text-white hover:bg-white/15 transition"
+          >
+            {sceneFormOpen ? "Close" : "Add Scene"}
+          </button>
         </div>
+
+        {sceneFormOpen && (
+          <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-3">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <input
+                value={sceneName}
+                onChange={(e) => setSceneName(e.target.value)}
+                placeholder="Scene name"
+                className="rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-white outline-none"
+              />
+              <select
+                value={sceneTargetOn ? "on" : "off"}
+                onChange={(e) => setSceneTargetOn(e.target.value === "on")}
+                className="rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-white outline-none"
+              >
+                <option value="on">Action: Turn selected devices ON</option>
+                <option value="off">Action: Turn selected devices OFF</option>
+              </select>
+            </div>
+
+            <div className="mt-2 text-[11px] text-white/50">Select devices for this scene</div>
+            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 max-h-44 overflow-auto pr-1">
+              {items
+                .filter((d) => pickDbId(d))
+                .map((d) => {
+                  const sid = String(pickDbId(d));
+                  const selected = sceneDeviceIds.includes(sid);
+                  return (
+                    <button
+                      key={sid}
+                      type="button"
+                      onClick={() => toggleSceneDevice(sid)}
+                      className={`rounded-xl border px-3 py-2 text-left text-xs transition ${
+                        selected
+                          ? "border-cyan-400/30 bg-cyan-500/15 text-cyan-100"
+                          : "border-white/10 bg-white/5 text-white/75 hover:bg-white/10"
+                      }`}
+                    >
+                      <div className="font-semibold">{pickName(d)}</div>
+                      <div className="text-white/45">{pickRoomName(d) || "Unassigned"}</div>
+                    </button>
+                  );
+                })}
+            </div>
+
+            <div className="mt-3 flex justify-end">
+              <button
+                type="button"
+                onClick={createCustomScene}
+                className="rounded-xl bg-white text-black px-3 py-2 text-xs font-semibold hover:opacity-90"
+              >
+                Save Scene
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
           {[
@@ -585,13 +796,87 @@ export default function DeviceClient() {
               </div>
             </button>
           ))}
+          {customScenes.map((scene) => (
+            <button
+              key={scene.id}
+              type="button"
+              onClick={() => runCustomScene(scene)}
+              disabled={sceneBusy !== null}
+              className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 px-3 py-3 text-left transition hover:bg-cyan-500/15 disabled:opacity-60"
+            >
+              <div className="text-sm font-semibold text-white">{scene.name}</div>
+              <div className="mt-1 text-[11px] text-white/60">
+                {scene.targetOn ? "Turn On" : "Turn Off"} • {scene.deviceIds.length} devices
+              </div>
+              <div className="mt-1 text-[11px] text-white/55">
+                {sceneBusy === scene.id ? "Running…" : "Apply now"}
+              </div>
+            </button>
+          ))}
         </div>
       </div>
 
       {/* automations */}
       <div className="mt-4 rounded-3xl border border-white/10 bg-white/5 p-4">
-        <div className="text-sm font-semibold text-white">Automations</div>
-        <div className="text-xs text-white/45">Local quick toggles for home routines</div>
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <div className="text-sm font-semibold text-white">Automations</div>
+            <div className="text-xs text-white/45">Local quick toggles for home routines</div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setAutomationFormOpen((v) => !v)}
+            className="rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs text-white hover:bg-white/15 transition"
+          >
+            {automationFormOpen ? "Close" : "Add Automation"}
+          </button>
+        </div>
+
+        {automationFormOpen && (
+          <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-3">
+            <div className="grid gap-2 sm:grid-cols-3">
+              <input
+                value={automationName}
+                onChange={(e) => setAutomationName(e.target.value)}
+                placeholder="Automation name"
+                className="rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-white outline-none"
+              />
+              <input
+                value={automationSchedule}
+                onChange={(e) => setAutomationSchedule(e.target.value)}
+                placeholder="Schedule e.g. Every day • 7:00 PM"
+                className="rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-white outline-none"
+              />
+              <select
+                value={automationSceneId}
+                onChange={(e) => setAutomationSceneId(e.target.value)}
+                className="rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-white outline-none"
+              >
+                <option value="">Select scene</option>
+                <option value="welcome_home">Welcome</option>
+                <option value="evening">Evening</option>
+                <option value="all_off">All Off</option>
+                <option value="away_mode">Away Mode</option>
+                {customScenes.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="mt-3 flex justify-end">
+              <button
+                type="button"
+                onClick={createCustomAutomation}
+                className="rounded-xl bg-white text-black px-3 py-2 text-xs font-semibold hover:opacity-90"
+              >
+                Save Automation
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="mt-3 grid gap-2 sm:grid-cols-3">
           {[
             { key: "night_guard", title: "Night Guard", subtitle: "Keeps selected circuits active overnight" },
@@ -619,6 +904,44 @@ export default function DeviceClient() {
                   />
                 </div>
                 <div className="mt-1 text-[11px] text-white/55">{a.subtitle}</div>
+              </button>
+            );
+          })}
+          {customAutomations.map((a) => {
+            const linkedCustom = customScenes.find((s) => s.id === a.sceneId);
+            const linkedPreset =
+              a.sceneId === "welcome_home"
+                ? "Welcome"
+                : a.sceneId === "evening"
+                ? "Evening"
+                : a.sceneId === "all_off"
+                ? "All Off"
+                : a.sceneId === "away_mode"
+                ? "Away Mode"
+                : null;
+            const sceneLabel = linkedCustom?.name || linkedPreset || "Unknown Scene";
+
+            return (
+              <button
+                key={a.id}
+                type="button"
+                onClick={() => toggleCustomAutomation(a.id)}
+                className={`rounded-2xl border px-3 py-3 text-left transition ${
+                  a.enabled
+                    ? "border-emerald-400/25 bg-emerald-500/10"
+                    : "border-white/10 bg-black/20 hover:bg-white/5"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-sm font-semibold text-white">{a.name}</div>
+                  <div
+                    className={`h-2.5 w-2.5 rounded-full ${
+                      a.enabled ? "bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.5)]" : "bg-white/20"
+                    }`}
+                  />
+                </div>
+                <div className="mt-1 text-[11px] text-white/60">{a.schedule}</div>
+                <div className="mt-1 text-[11px] text-white/45">Scene: {sceneLabel}</div>
               </button>
             );
           })}
