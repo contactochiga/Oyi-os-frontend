@@ -19,6 +19,9 @@ import {
   ThumbsUp,
   MessageCircle,
   AlertCircle,
+  ImagePlus,
+  Video,
+  RadioTower,
 } from "lucide-react";
 
 // -------------------------------
@@ -277,9 +280,9 @@ export default function CommunityPage() {
   const [postDraft, setPostDraft] = useState("");
   const [attachments, setAttachments] = useState<PostAttachment[]>([]);
   const [liveLink, setLiveLink] = useState("");
-  const [linkDraft, setLinkDraft] = useState("");
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [mediaUploading, setMediaUploading] = useState(false);
+  const [composerExpanded, setComposerExpanded] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const [posting, setPosting] = useState(false);
@@ -447,24 +450,19 @@ export default function CommunityPage() {
     setAttachments((prev) => prev.filter((a) => a.id !== id));
   }
 
-  function addLinkAsAttachment() {
-    const url = linkDraft.trim();
-    if (!url) return;
-    if (!/^https?:\/\//i.test(url)) {
-      setMediaError("Link must start with http:// or https://");
+  function setupLiveLink() {
+    const next = window.prompt("Enter live stream URL", liveLink || "https://");
+    if (next === null) return;
+    const trimmed = next.trim();
+    if (!trimmed) {
+      setLiveLink("");
       return;
     }
-    const isVideo = /\.(mp4|webm|ogg|mov)(\?.*)?$/i.test(url);
-    setAttachments((prev) => [
-      ...prev,
-      {
-        id: `a-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        type: isVideo ? "video" : "image",
-        url,
-        name: "linked-media",
-      },
-    ]);
-    setLinkDraft("");
+    if (!/^https?:\/\//i.test(trimmed)) {
+      setMediaError("Live link must start with http:// or https://");
+      return;
+    }
+    setLiveLink(trimmed);
     setMediaError(null);
   }
 
@@ -508,8 +506,8 @@ export default function CommunityPage() {
       await load();
       setAttachments([]);
       setLiveLink("");
-      setLinkDraft("");
       setMediaError(null);
+      setComposerExpanded(false);
     } catch (e: any) {
       setErr(e?.message || "Failed to create post");
     } finally {
@@ -690,14 +688,25 @@ export default function CommunityPage() {
                 onChange={(e) => onPickMedia("video", e.target.files)}
               />
 
-              <textarea
-                value={postDraft}
-                onChange={(e) => setPostDraft(e.target.value)}
-                placeholder="What’s on your mind?"
-                rows={4}
-                className="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-3 text-sm text-white outline-none resize-none"
-                disabled={posting || !estateId}
-              />
+              {!composerExpanded ? (
+                <button
+                  type="button"
+                  onClick={() => setComposerExpanded(true)}
+                  className="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-3 text-left text-sm text-white/60 hover:bg-white/10 transition"
+                  disabled={posting || !estateId}
+                >
+                  What’s on your mind?
+                </button>
+              ) : (
+                <textarea
+                  value={postDraft}
+                  onChange={(e) => setPostDraft(e.target.value)}
+                  placeholder="What’s on your mind?"
+                  rows={5}
+                  className="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-3 text-sm text-white outline-none resize-none"
+                  disabled={posting || !estateId}
+                />
+              )}
 
               {attachments.length > 0 ? (
                 <div className="grid grid-cols-2 gap-2">
@@ -720,66 +729,45 @@ export default function CommunityPage() {
                 </div>
               ) : null}
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {composerExpanded ? (
+                <div className="grid grid-cols-3 gap-2">
                 <button
                   type="button"
                   onClick={() => imageInputRef.current?.click()}
                   disabled={mediaUploading || posting}
-                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/85 hover:bg-white/10 disabled:opacity-50"
+                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/85 hover:bg-white/10 disabled:opacity-50 inline-flex items-center justify-center gap-2"
                 >
-                  {mediaUploading ? "Uploading…" : "Add Image"}
+                  <ImagePlus className="h-4 w-4" />
+                  {mediaUploading ? "Uploading…" : "Image"}
                 </button>
                 <button
                   type="button"
                   onClick={() => videoInputRef.current?.click()}
                   disabled={mediaUploading || posting}
-                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/85 hover:bg-white/10 disabled:opacity-50"
+                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/85 hover:bg-white/10 disabled:opacity-50 inline-flex items-center justify-center gap-2"
                 >
-                  Add Video
+                  <Video className="h-4 w-4" />
+                  Video
                 </button>
                 <button
                   type="button"
-                  onClick={() => setLiveLink((v) => (v ? "" : "https://"))}
+                  onClick={setupLiveLink}
                   className={`rounded-xl border px-3 py-2 text-xs hover:bg-white/10 ${
                     liveLink ? "border-red-400/40 bg-red-500/15 text-red-100" : "border-white/10 bg-white/5 text-white/85"
-                  }`}
+                  } inline-flex items-center justify-center gap-2`}
                 >
-                  {liveLink ? "Live Enabled" : "Go Live"}
+                  <RadioTower className="h-4 w-4" />
+                  {liveLink ? "Live On" : "Go Live"}
                 </button>
-                <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/65">
-                  {attachments.length} media
                 </div>
-              </div>
-
-              <div className="grid sm:grid-cols-[1fr_auto] gap-2">
-                <input
-                  value={linkDraft}
-                  onChange={(e) => setLinkDraft(e.target.value)}
-                  placeholder="Paste image/video URL"
-                  className="w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-xs text-white outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={addLinkAsAttachment}
-                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/85 hover:bg-white/10"
-                >
-                  Add Link
-                </button>
-              </div>
-
-              {liveLink ? (
-                <input
-                  value={liveLink}
-                  onChange={(e) => setLiveLink(e.target.value)}
-                  placeholder="Live stream URL"
-                  className="w-full rounded-xl bg-white/5 border border-red-400/30 px-3 py-2 text-xs text-white outline-none"
-                />
               ) : null}
 
               {mediaError ? <div className="text-xs text-red-300">{mediaError}</div> : null}
 
               <div className="flex items-center justify-between gap-2">
-                <div className="text-[11px] text-white/45">Attach images, videos, or a live link.</div>
+                <div className="text-[11px] text-white/45">
+                  {attachments.length} media {liveLink ? "• live link added" : ""}
+                </div>
                 <button
                   onClick={createPost}
                   disabled={posting || mediaUploading || (!postDraft.trim() && !attachments.length && !liveLink.trim()) || !estateId}
