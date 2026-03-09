@@ -1,7 +1,7 @@
 // src/app/community/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import useAuth from "@/hooks/useAuth";
 import ConsumerShell from "@/app/components/ConsumerShell";
 import {
@@ -96,6 +96,63 @@ function pickCommentAuthor(c: any) {
 
 function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
+}
+
+type PostAttachment = {
+  id: string;
+  type: "image" | "video";
+  url: string;
+  name?: string;
+};
+
+type ParsedPostBody = {
+  text: string;
+  attachments: PostAttachment[];
+  liveLink?: string | null;
+};
+
+const BODY_META_PREFIX = "__OYI_POST_V1__:";
+
+function parsePostBody(raw: any): ParsedPostBody {
+  const body = String(raw ?? "");
+  if (!body.startsWith(BODY_META_PREFIX)) {
+    return { text: body, attachments: [], liveLink: null };
+  }
+
+  try {
+    const json = JSON.parse(body.slice(BODY_META_PREFIX.length));
+    const text = String(json?.text ?? "");
+    const attachments = Array.isArray(json?.attachments)
+      ? json.attachments
+          .map((a: any, idx: number) => ({
+            id: String(a?.id ?? `${idx}`),
+            type: a?.type === "video" ? "video" : "image",
+            url: String(a?.url ?? ""),
+            name: a?.name ? String(a.name) : undefined,
+          }))
+          .filter((a: PostAttachment) => !!a.url)
+      : [];
+    const liveLink = json?.liveLink ? String(json.liveLink) : null;
+    return { text, attachments, liveLink };
+  } catch {
+    return { text: body, attachments: [], liveLink: null };
+  }
+}
+
+function buildPostBody(text: string, attachments: PostAttachment[], liveLink?: string | null) {
+  return (
+    BODY_META_PREFIX +
+    JSON.stringify({
+      text,
+      attachments: attachments.map((a) => ({
+        id: a.id,
+        type: a.type,
+        url: a.url,
+        name: a.name ?? null,
+      })),
+      liveLink: liveLink ? String(liveLink).trim() : null,
+    })
+  );
 }
 
 // -------------------------------
@@ -218,6 +275,12 @@ export default function CommunityPage() {
 
   // Composer
   const [postDraft, setPostDraft] = useState("");
+  const [attachments, setAttachments] = useState<PostAttachment[]>([]);
+  const [liveLink, setLiveLink] = useState("");
+  const [linkDraft, setLinkDraft] = useState("");
+  const [mediaError, setMediaError] = useState<string | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
   const [posting, setPosting] = useState(false);
 
   // Per-post interaction state
@@ -326,9 +389,76 @@ export default function CommunityPage() {
     }
   }
 
+  async function toDataUrl(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error("Failed to read file"));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function onPickMedia(kind: "image" | "video", files: FileList | null) {
+    if (!files?.length) return;
+    setMediaError(null);
+
+    try {
+      const selected = Array.from(files).slice(0, 3);
+      const next: PostAttachment[] = [];
+      for (const file of selected) {
+        const max = kind === "image" ? 4 * 1024 * 1024 : 12 * 1024 * 1024;
+        if (file.size > max) {
+          setMediaError(
+            `${file.name} is too large. Max ${kind === "image" ? "4MB" : "12MB"}`
+          );
+          continue;
+        }
+        const dataUrl = await toDataUrl(file);
+        next.push({
+          id: `a-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          type: kind,
+          url: dataUrl,
+          name: file.name,
+        });
+      }
+      if (next.length) {
+        setAttachments((prev) => [...prev, ...next].slice(0, 6));
+      }
+    } catch {
+      setMediaError("Failed to attach media");
+    }
+  }
+
+  function removeAttachment(id: string) {
+    setAttachments((prev) => prev.filter((a) => a.id !== id));
+  }
+
+  function addLinkAsAttachment() {
+    const url = linkDraft.trim();
+    if (!url) return;
+    if (!/^https?:\/\//i.test(url)) {
+      setMediaError("Link must start with http:// or https://");
+      return;
+    }
+    const isVideo = /\.(mp4|webm|ogg|mov)(\?.*)?$/i.test(url);
+    setAttachments((prev) => [
+      ...prev,
+      {
+        id: `a-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        type: isVideo ? "video" : "image",
+        url,
+        name: "linked-media",
+      },
+    ]);
+    setLinkDraft("");
+    setMediaError(null);
+  }
+
   async function createPost() {
     const content = postDraft.trim();
-    if (!content) return setErr("Write something to share.");
+    if (!content && !attachments.length && !liveLink.trim()) {
+      return setErr("Write something or attach media to share.");
+    }
     if (!estateId) return setErr("No estate linked.");
 
     setPosting(true);
@@ -338,7 +468,7 @@ export default function CommunityPage() {
         content.length > 42 ? `${content.slice(0, 42).trimEnd()}…` : content;
       const res: any = await communityService.createPost({
         title: generatedTitle || "Update",
-        body: content,
+        body: buildPostBody(content, attachments, liveLink.trim() || null),
         estateId: String(estateId),
       });
 
@@ -362,6 +492,10 @@ export default function CommunityPage() {
         }));
       }
       await load();
+      setAttachments([]);
+      setLiveLink("");
+      setLinkDraft("");
+      setMediaError(null);
     } catch (e: any) {
       setErr(e?.message || "Failed to create post");
     } finally {
@@ -525,6 +659,23 @@ export default function CommunityPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(e) => onPickMedia("image", e.target.files)}
+              />
+              <input
+                ref={videoInputRef}
+                type="file"
+                accept="video/*"
+                multiple
+                className="hidden"
+                onChange={(e) => onPickMedia("video", e.target.files)}
+              />
+
               <textarea
                 value={postDraft}
                 onChange={(e) => setPostDraft(e.target.value)}
@@ -534,13 +685,88 @@ export default function CommunityPage() {
                 disabled={posting || !estateId}
               />
 
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-[11px] text-white/45">
-                  Image/Video/Live can be added next with media upload endpoints.
+              {attachments.length > 0 ? (
+                <div className="grid grid-cols-2 gap-2">
+                  {attachments.map((a) => (
+                    <div key={a.id} className="relative rounded-xl border border-white/10 bg-black/20 overflow-hidden">
+                      {a.type === "video" ? (
+                        <video src={a.url} className="h-28 w-full object-cover" controls />
+                      ) : (
+                        <img src={a.url} alt={a.name || "attachment"} className="h-28 w-full object-cover" />
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => removeAttachment(a.id)}
+                        className="absolute top-1 right-1 rounded-md bg-black/70 text-white text-[10px] px-1.5 py-0.5"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
                 </div>
+              ) : null}
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <button
+                  type="button"
+                  onClick={() => imageInputRef.current?.click()}
+                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/85 hover:bg-white/10"
+                >
+                  Add Image
+                </button>
+                <button
+                  type="button"
+                  onClick={() => videoInputRef.current?.click()}
+                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/85 hover:bg-white/10"
+                >
+                  Add Video
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLiveLink((v) => (v ? "" : "https://"))}
+                  className={`rounded-xl border px-3 py-2 text-xs hover:bg-white/10 ${
+                    liveLink ? "border-red-400/40 bg-red-500/15 text-red-100" : "border-white/10 bg-white/5 text-white/85"
+                  }`}
+                >
+                  {liveLink ? "Live Enabled" : "Go Live"}
+                </button>
+                <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/65">
+                  {attachments.length} media
+                </div>
+              </div>
+
+              <div className="grid sm:grid-cols-[1fr_auto] gap-2">
+                <input
+                  value={linkDraft}
+                  onChange={(e) => setLinkDraft(e.target.value)}
+                  placeholder="Paste image/video URL"
+                  className="w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-xs text-white outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={addLinkAsAttachment}
+                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/85 hover:bg-white/10"
+                >
+                  Add Link
+                </button>
+              </div>
+
+              {liveLink ? (
+                <input
+                  value={liveLink}
+                  onChange={(e) => setLiveLink(e.target.value)}
+                  placeholder="Live stream URL"
+                  className="w-full rounded-xl bg-white/5 border border-red-400/30 px-3 py-2 text-xs text-white outline-none"
+                />
+              ) : null}
+
+              {mediaError ? <div className="text-xs text-red-300">{mediaError}</div> : null}
+
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[11px] text-white/45">Attach images, videos, or a live link.</div>
                 <button
                   onClick={createPost}
-                  disabled={posting || !postDraft.trim() || !estateId}
+                  disabled={posting || (!postDraft.trim() && !attachments.length && !liveLink.trim()) || !estateId}
                   className="px-4 py-2.5 rounded-xl bg-white text-black text-sm font-semibold disabled:opacity-50 inline-flex items-center justify-center gap-2"
                   type="button"
                 >
@@ -587,6 +813,7 @@ export default function CommunityPage() {
             const isBusy = !!busyPost[id];
             const comments = commentMap[id] || [];
             const loadingComments = !!commentLoading[id];
+            const parsed = parsePostBody(p?.body ?? p?.content ?? "");
 
             const type: "announcement" | "discussion" | "event" =
               tab === "announcements" ? "announcement" : badge === "Admin" ? "announcement" : "discussion";
@@ -634,10 +861,35 @@ export default function CommunityPage() {
                 </CardHeader>
 
                 <CardContent className="space-y-4">
-                  {p.body ? (
+                  {parsed.text ? (
                     <p className="text-sm text-white/80 whitespace-pre-wrap">
-                      {String(p.body)}
+                      {parsed.text}
                     </p>
+                  ) : null}
+
+                  {parsed.attachments.length > 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {parsed.attachments.map((a) => (
+                        <div key={a.id} className="rounded-xl border border-white/10 bg-black/20 overflow-hidden">
+                          {a.type === "video" ? (
+                            <video src={a.url} controls className="w-full max-h-72 bg-black" />
+                          ) : (
+                            <img src={a.url} alt={a.name || "post media"} className="w-full max-h-72 object-cover" />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {parsed.liveLink ? (
+                    <a
+                      href={parsed.liveLink}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-2 rounded-xl border border-red-400/35 bg-red-500/10 px-3 py-2 text-xs text-red-100"
+                    >
+                      Live session link
+                    </a>
                   ) : null}
 
                   <div className="flex items-center gap-4 pt-3 border-t border-white/10">
