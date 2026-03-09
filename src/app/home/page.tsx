@@ -195,6 +195,28 @@ export default function HomePage() {
       (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null);
   }, [(user as any)?.estate_id]);
 
+  const aiContextDevices = useMemo(() => {
+    const normalize = (d: any) => ({
+      id: String(
+        d?.id ||
+          d?.external_id ||
+          d?.externalId ||
+          d?.device_id ||
+          d?.dev_id ||
+          d?.uuid ||
+          ""
+      ),
+      name: String(d?.name || d?.label || d?.type || "Device"),
+      type: d?.type ? String(d.type) : null,
+      room: d?.room_name || d?.room || null,
+      status: d?.status || null,
+    });
+
+    return [...assignedDevices, ...discoveryDevices]
+      .map(normalize)
+      .filter((d) => d.id);
+  }, [assignedDevices, discoveryDevices]);
+
   const dashScrollRef = useRef<HTMLDivElement | null>(null);
 
   async function refreshDevicePanelData() {
@@ -282,7 +304,10 @@ export default function HomePage() {
     ]);
 
     try {
-      const resp: any = await aiService.chat(command);
+      const resp: any = await aiService.chat(command, {
+        estateId: estateId || null,
+        devices: aiContextDevices,
+      });
 
       const reply =
         resp?.reply || `Got it. ${command.charAt(0).toUpperCase()}${command.slice(1)}.`;

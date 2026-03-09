@@ -47,9 +47,9 @@ function normalize(resp: any): AiChatResponse {
 }
 
 export const aiService = {
-  async chat(message: string): Promise<AiChatResponse> {
+  async chat(message: string, context?: Record<string, any>): Promise<AiChatResponse> {
     try {
-      const res = await API.post("/ai/chat", { message });
+      const res = await API.post("/ai/chat", { message, context });
       return normalize(res.data);
     } catch (err) {
       console.warn("aiService.chat error:", err);
