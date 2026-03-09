@@ -33,6 +33,13 @@ export type CommunityComment = {
   updated_at?: string | null;
 };
 
+export type CommunityUploadPayload = {
+  base64: string;
+  mime: string;
+  filename?: string;
+  mediaType?: "image" | "video";
+};
+
 function unwrapList(data: any) {
   if (!data) return [];
   if (Array.isArray(data)) return data;
@@ -121,6 +128,15 @@ export const communityService = {
       return res.data;
     } catch (err: any) {
       return { error: pickError(err, "Failed to react") } as any;
+    }
+  },
+
+  async uploadMedia(payload: CommunityUploadPayload) {
+    try {
+      const res = await API.post("/community/media/upload", payload);
+      return res.data as { ok?: boolean; url?: string; mime?: string; mediaType?: "image" | "video"; key?: string };
+    } catch (err: any) {
+      return { error: pickError(err, "Failed to upload media") } as any;
     }
   },
 };

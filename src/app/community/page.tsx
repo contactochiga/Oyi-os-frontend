@@ -279,6 +279,7 @@ export default function CommunityPage() {
   const [liveLink, setLiveLink] = useState("");
   const [linkDraft, setLinkDraft] = useState("");
   const [mediaError, setMediaError] = useState<string | null>(null);
+  const [mediaUploading, setMediaUploading] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const [posting, setPosting] = useState(false);
@@ -401,6 +402,7 @@ export default function CommunityPage() {
   async function onPickMedia(kind: "image" | "video", files: FileList | null) {
     if (!files?.length) return;
     setMediaError(null);
+    setMediaUploading(true);
 
     try {
       const selected = Array.from(files).slice(0, 3);
@@ -414,10 +416,20 @@ export default function CommunityPage() {
           continue;
         }
         const dataUrl = await toDataUrl(file);
+        const uploaded: any = await communityService.uploadMedia({
+          base64: dataUrl,
+          mime: file.type || (kind === "video" ? "video/mp4" : "image/jpeg"),
+          filename: file.name,
+          mediaType: kind,
+        });
+        if (uploaded?.error || !uploaded?.url) {
+          setMediaError(String(uploaded?.error || `Failed to upload ${file.name}`));
+          continue;
+        }
         next.push({
           id: `a-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           type: kind,
-          url: dataUrl,
+          url: String(uploaded.url),
           name: file.name,
         });
       }
@@ -426,6 +438,8 @@ export default function CommunityPage() {
       }
     } catch {
       setMediaError("Failed to attach media");
+    } finally {
+      setMediaUploading(false);
     }
   }
 
@@ -710,14 +724,16 @@ export default function CommunityPage() {
                 <button
                   type="button"
                   onClick={() => imageInputRef.current?.click()}
-                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/85 hover:bg-white/10"
+                  disabled={mediaUploading || posting}
+                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/85 hover:bg-white/10 disabled:opacity-50"
                 >
-                  Add Image
+                  {mediaUploading ? "Uploading…" : "Add Image"}
                 </button>
                 <button
                   type="button"
                   onClick={() => videoInputRef.current?.click()}
-                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/85 hover:bg-white/10"
+                  disabled={mediaUploading || posting}
+                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/85 hover:bg-white/10 disabled:opacity-50"
                 >
                   Add Video
                 </button>
@@ -766,7 +782,7 @@ export default function CommunityPage() {
                 <div className="text-[11px] text-white/45">Attach images, videos, or a live link.</div>
                 <button
                   onClick={createPost}
-                  disabled={posting || (!postDraft.trim() && !attachments.length && !liveLink.trim()) || !estateId}
+                  disabled={posting || mediaUploading || (!postDraft.trim() && !attachments.length && !liveLink.trim()) || !estateId}
                   className="px-4 py-2.5 rounded-xl bg-white text-black text-sm font-semibold disabled:opacity-50 inline-flex items-center justify-center gap-2"
                   type="button"
                 >
