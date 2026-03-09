@@ -113,6 +113,23 @@ function powerButtonClass(isOn: boolean | null) {
     : "bg-white/10 text-white/70 border-white/10";
 }
 
+type SceneKey = "welcome_home" | "evening" | "all_off" | "away_mode";
+type AutomationKey = "night_guard" | "energy_saver" | "presence_watch";
+
+function pickType(d: AnyDevice) {
+  return d?.type || d?.device_type || d?.category || d?.kind || "";
+}
+
+function inferFamily(d: AnyDevice) {
+  const source = `${pickType(d)} ${pickName(d)} ${pickVendor(d)}`.toLowerCase();
+  if (source.includes("light")) return "light";
+  if (source.includes("switch")) return "switch";
+  if (source.includes("outlet") || source.includes("plug") || source.includes("socket")) return "outlet";
+  if (source.includes("ac") || source.includes("air")) return "hvac";
+  if (source.includes("curtain") || source.includes("blind")) return "curtain";
+  return "generic";
+}
+
 export default function DeviceClient() {
   const { user } = useAuth();
 
@@ -143,13 +160,55 @@ export default function DeviceClient() {
   // bottom sheet for controls
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetDevice, setSheetDevice] = useState<AnyDevice | null>(null);
+  const [sceneBusy, setSceneBusy] = useState<SceneKey | null>(null);
+  const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
+  const [autoEnabled, setAutoEnabled] = useState<Record<AutomationKey, boolean>>({
+    night_guard: true,
+    energy_saver: true,
+    presence_watch: false,
+  });
+
+  async function hydrateStates(list: AnyDevice[]) {
+    if (!Array.isArray(list) || list.length === 0) {
+      setLastSyncAt(Date.now());
+      return;
+    }
+
+    const jobs = list
+      .map((d) => ({ sid: pickDbId(d) ? String(pickDbId(d)) : null }))
+      .filter((x) => x.sid)
+      .map(async ({ sid }) => {
+        try {
+          const res = await deviceService.getDeviceState(String(sid));
+          return { sid: String(sid), state: (res as any)?.state ?? res ?? {} };
+        } catch {
+          return null;
+        }
+      });
+
+    const settled = await Promise.allSettled(jobs);
+    const patch: Record<string, any> = {};
+
+    settled.forEach((s) => {
+      if (s.status !== "fulfilled") return;
+      if (!s.value?.sid) return;
+      patch[s.value.sid] = s.value.state;
+    });
+
+    if (Object.keys(patch).length) {
+      setStateMap((prev) => ({ ...prev, ...patch }));
+    }
+    setLastSyncAt(Date.now());
+  }
 
   async function load() {
     setLoading(true);
     setErr(null);
     try {
       const list = await deviceService.getDevices(estateId || undefined);
-      setItems(Array.isArray(list) ? list : []);
+      const nextList = Array.isArray(list) ? list : [];
+      setItems(nextList);
+      await hydrateStates(nextList);
     } catch (e: any) {
       setErr(e?.response?.data?.error || e?.message || "Failed to load devices");
       setItems([]);
@@ -162,6 +221,40 @@ export default function DeviceClient() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [estateId]);
+
+  useEffect(() => {
+    if (!items.length) return;
+    const t = window.setInterval(() => {
+      hydrateStates(items);
+    }, 20000);
+    return () => window.clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const key = `oyi_device_automation_${estateId || "global"}`;
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        setAutoEnabled((prev) => ({ ...prev, ...parsed }));
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }, [estateId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const key = `oyi_device_automation_${estateId || "global"}`;
+    try {
+      localStorage.setItem(key, JSON.stringify(autoEnabled));
+    } catch {
+      // ignore storage errors
+    }
+  }, [estateId, autoEnabled]);
 
   const filtered = useMemo(() => {
     const t = (q || "").trim().toLowerCase();
@@ -190,6 +283,16 @@ export default function DeviceClient() {
     } catch {
       // silent
     }
+  }
+
+  function buildPowerCommand(device: AnyDevice, state: any, next: boolean) {
+    const gangCount = guessGangCount(device, state);
+    if (gangCount === 1) return { switch: next };
+    const out: Record<string, boolean> = {};
+    for (let i = 1; i <= gangCount; i++) {
+      out[`switch_${i}`] = next;
+    }
+    return out;
   }
 
   function currentIsOn(device: AnyDevice, state: any): boolean | null {
@@ -269,19 +372,10 @@ export default function DeviceClient() {
       await warmState(device);
 
       const cached = stateMap[sid] || {};
-      const gangCount = guessGangCount(device, cached);
       const nowOn = currentIsOn(device, cached);
       const next = nowOn === null ? true : !nowOn;
-
-      const command: Record<string, any> = {};
-
-      if (gangCount === 1) {
-        command["switch"] = next;
-      } else {
-        for (let i = 1; i <= gangCount; i++) {
-          command[`switch_${i}`] = next;
-        }
-      }
+      const gangCount = guessGangCount(device, cached);
+      const command = buildPowerCommand(device, cached, next);
 
       await deviceService.commandDevice(sid, command);
 
@@ -299,6 +393,48 @@ export default function DeviceClient() {
       setErr(e?.response?.data?.error || e?.message || "Command failed (device may be offline)");
     } finally {
       setBusyId(null);
+    }
+  }
+
+  async function runScene(scene: SceneKey) {
+    if (!items.length) return;
+    setSceneBusy(scene);
+    setErr(null);
+    try {
+      const targetOn = scene === "all_off" || scene === "away_mode" ? false : true;
+      const candidates = items.filter((d) => isOnline(d) !== false && pickDbId(d));
+
+      const jobs = candidates.map(async (d) => {
+        const sid = String(pickDbId(d));
+        const cached = stateMap[sid] || {};
+        const family = inferFamily(d);
+        const command =
+          family === "curtain"
+            ? { open: targetOn }
+            : buildPowerCommand(d, cached, targetOn);
+
+        try {
+          await deviceService.commandDevice(sid, command);
+          return { sid, ok: true, command };
+        } catch {
+          return { sid, ok: false, command };
+        }
+      });
+
+      const results = await Promise.all(jobs);
+      const patch: Record<string, any> = {};
+      results.forEach((r) => {
+        if (!r.ok) return;
+        patch[r.sid] = { ...(stateMap[r.sid] || {}), ...r.command };
+      });
+      if (Object.keys(patch).length) {
+        setStateMap((prev) => ({ ...prev, ...patch }));
+      }
+      await hydrateStates(items);
+    } catch (e: any) {
+      setErr(e?.response?.data?.error || e?.message || "Scene command failed");
+    } finally {
+      setSceneBusy(null);
     }
   }
 
@@ -345,39 +481,168 @@ export default function DeviceClient() {
     } catch {}
   }
 
+  const onlineCount = useMemo(
+    () => items.reduce((acc, d) => (isOnline(d) === true ? acc + 1 : acc), 0),
+    [items]
+  );
+
+  const onStateCount = useMemo(() => {
+    return items.reduce((acc, d) => {
+      const dbId = pickDbId(d);
+      if (!dbId) return acc;
+      const sid = String(dbId);
+      return currentIsOn(d, stateMap[sid]) === true ? acc + 1 : acc;
+    }, 0);
+  }, [items, stateMap]);
+
+  const activeAutomations = useMemo(
+    () => Object.values(autoEnabled).filter(Boolean).length,
+    [autoEnabled]
+  );
+
+  function toggleAutomation(key: AutomationKey) {
+    setAutoEnabled((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
+
   return (
     <ConsumerShell title="Devices" subtitle="Command Center" showBack backHref="/home">
-      {/* header */}
-      <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
-        <div className="flex items-center justify-between gap-3">
-          <button
-            onClick={load}
-            disabled={loading}
-            className="ml-auto rounded-2xl px-3 py-2 text-sm bg-white text-black hover:opacity-90 disabled:opacity-50 transition"
-            type="button"
-          >
-            {loading ? "Refreshing…" : "Refresh"}
-          </button>
+      {/* command center hero */}
+      <div className="relative overflow-hidden rounded-3xl border border-cyan-500/20 bg-gradient-to-br from-cyan-500/15 via-sky-500/10 to-blue-700/20 p-5">
+        <div className="absolute -top-8 -right-8 h-32 w-32 rounded-full bg-cyan-300/20 blur-3xl" />
+        <div className="absolute -bottom-10 -left-8 h-36 w-36 rounded-full bg-blue-400/10 blur-3xl" />
+
+        <div className="relative flex flex-col gap-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="text-sm text-cyan-100/80">Smart Home Command Center</div>
+              <div className="mt-1 text-xl font-semibold text-white">Live Control Grid</div>
+            </div>
+
+            <button
+              onClick={load}
+              disabled={loading}
+              className="rounded-2xl px-3 py-2 text-sm bg-white text-black hover:opacity-90 disabled:opacity-50 transition"
+              type="button"
+            >
+              {loading ? "Refreshing…" : "Refresh"}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-2">
+              <div className="text-[11px] text-white/50">Devices</div>
+              <div className="text-lg font-semibold text-white">{items.length}</div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-2">
+              <div className="text-[11px] text-white/50">Online</div>
+              <div className="text-lg font-semibold text-emerald-300">{onlineCount}</div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-2">
+              <div className="text-[11px] text-white/50">Active</div>
+              <div className="text-lg font-semibold text-cyan-200">{onStateCount}</div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-2">
+              <div className="text-[11px] text-white/50">Automations</div>
+              <div className="text-lg font-semibold text-amber-200">{activeAutomations}</div>
+            </div>
+          </div>
+
+          <div className="text-[11px] text-white/60">
+            Live state sync:{" "}
+            <span className="text-white/85">
+              {lastSyncAt ? new Date(lastSyncAt).toLocaleTimeString() : "Waiting for first sync"}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* quick scenes */}
+      <div className="mt-4 rounded-3xl border border-white/10 bg-white/5 p-4">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <div className="text-sm font-semibold text-white">Scenes</div>
+            <div className="text-xs text-white/45">One-tap whole-home actions</div>
+          </div>
         </div>
 
-        <div className="mt-3">
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search devices…"
-            className="
-              w-full rounded-2xl
-              bg-white/5 border border-white/10
-              px-4 py-3
-              text-sm text-white/90 placeholder:text-white/35
-              outline-none focus:border-white/20
-            "
-          />
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {[
+            { key: "welcome_home", label: "Welcome", tint: "border-emerald-500/20 bg-emerald-500/10" },
+            { key: "evening", label: "Evening", tint: "border-indigo-500/20 bg-indigo-500/10" },
+            { key: "all_off", label: "All Off", tint: "border-white/15 bg-white/5" },
+            { key: "away_mode", label: "Away Mode", tint: "border-amber-500/20 bg-amber-500/10" },
+          ].map((scene) => (
+            <button
+              key={scene.key}
+              type="button"
+              onClick={() => runScene(scene.key as SceneKey)}
+              disabled={sceneBusy !== null}
+              className={`rounded-2xl border px-3 py-3 text-left transition hover:bg-white/10 disabled:opacity-60 ${scene.tint}`}
+            >
+              <div className="text-sm font-semibold text-white">{scene.label}</div>
+              <div className="mt-1 text-[11px] text-white/55">
+                {sceneBusy === scene.key ? "Running…" : "Apply now"}
+              </div>
+            </button>
+          ))}
         </div>
+      </div>
+
+      {/* automations */}
+      <div className="mt-4 rounded-3xl border border-white/10 bg-white/5 p-4">
+        <div className="text-sm font-semibold text-white">Automations</div>
+        <div className="text-xs text-white/45">Local quick toggles for home routines</div>
+        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+          {[
+            { key: "night_guard", title: "Night Guard", subtitle: "Keeps selected circuits active overnight" },
+            { key: "energy_saver", title: "Energy Saver", subtitle: "Reduces idle power draw across rooms" },
+            { key: "presence_watch", title: "Presence Watch", subtitle: "Auto-reacts when occupancy changes" },
+          ].map((a) => {
+            const enabled = autoEnabled[a.key as AutomationKey];
+            return (
+              <button
+                key={a.key}
+                type="button"
+                onClick={() => toggleAutomation(a.key as AutomationKey)}
+                className={`rounded-2xl border px-3 py-3 text-left transition ${
+                  enabled
+                    ? "border-cyan-400/25 bg-cyan-500/10"
+                    : "border-white/10 bg-black/20 hover:bg-white/5"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-sm font-semibold text-white">{a.title}</div>
+                  <div
+                    className={`h-2.5 w-2.5 rounded-full ${
+                      enabled ? "bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.5)]" : "bg-white/20"
+                    }`}
+                  />
+                </div>
+                <div className="mt-1 text-[11px] text-white/55">{a.subtitle}</div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* search / quick info */}
+      <div className="mt-4 rounded-3xl border border-white/10 bg-white/5 p-4">
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search by name, vendor, room, id…"
+          className="
+            w-full rounded-2xl
+            bg-white/5 border border-white/10
+            px-4 py-3
+            text-sm text-white/90 placeholder:text-white/35
+            outline-none focus:border-white/20
+          "
+        />
 
         <div className="mt-3 flex items-center justify-between text-xs text-white/45">
           <span>{filtered.length} device{filtered.length === 1 ? "" : "s"}</span>
-          <span className="text-white/30">Tap card for controls • Power button for full on/off</span>
+          <span className="text-white/30">Tap card for controls • Tap power for full on/off</span>
         </div>
       </div>
 
@@ -487,7 +752,7 @@ export default function DeviceClient() {
                   </div>
 
                   <div className="text-[11px] text-white/35">
-                    {busy ? "Working…" : "Open"}
+                    {busy ? "Working…" : nowOn === null ? "No state" : nowOn ? "On" : "Off"}
                   </div>
                 </div>
 
