@@ -37,9 +37,6 @@ import {
   Users,
   UserCheck,
   Wrench,
-  Bell,
-  Activity,
-  Clock,
   ChevronRight,
 } from "lucide-react";
 
@@ -409,10 +406,6 @@ export default function HomePage() {
 
   const openMaintenance = maintenance.length;
 
-  const unreadNotifications = useMemo(() => {
-    return notifications.filter((n) => String(n.status || "").toLowerCase() === "unread").length;
-  }, [notifications]);
-
   const communityCount = communityPosts.length;
 
   const unreadCommunity = useMemo(() => {
@@ -502,7 +495,7 @@ export default function HomePage() {
                     </div>
                   ) : null}
 
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
                     <StatCard
                       icon={<Zap className="w-4 h-4 text-sky-300" />}
                       label="Devices"
@@ -538,36 +531,12 @@ export default function HomePage() {
                       sub={`${communityCount} posts`}
                       onClick={() => router.push("/community")}
                     />
-                  </div>
-
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                     <StatCard
                       icon={<Wrench className="w-4 h-4 text-yellow-300" />}
                       label="Maintenance"
                       value={`${openMaintenance}`}
                       sub="Open tickets"
                       onClick={() => router.push("/maintenance")}
-                    />
-                    <StatCard
-                      icon={<Bell className="w-4 h-4 text-pink-300" />}
-                      label="Notifications"
-                      value={`${unreadNotifications}`}
-                      sub="Unread"
-                      onClick={() => router.push("/notifications")}
-                    />
-                    <StatCard
-                      icon={<Activity className="w-4 h-4 text-white/70" />}
-                      label="Discovery"
-                      value={`${discoveryDevices.length}`}
-                      sub="Devices found"
-                      onClick={() => router.push("/devices")}
-                    />
-                    <StatCard
-                      icon={<Clock className="w-4 h-4 text-white/70" />}
-                      label="Assistant"
-                      value="Ready"
-                      sub="Tap to chat"
-                      onClick={() => setChatOpen(true)}
                     />
                   </div>
 
