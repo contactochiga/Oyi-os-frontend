@@ -15,40 +15,35 @@ import { MdOutlinePerson, MdSettings } from "react-icons/md";
 import { decodeToken } from "@/lib/auth";
 
 // ✅ NEW: menu icons
-import { FiGrid, FiCpu, FiCreditCard, FiUsers, FiKey, FiTool } from "react-icons/fi";
+import { FiBox, FiSliders, FiShield, FiTool, FiSettings } from "react-icons/fi";
 
 type MenuKey =
-  | "home"
   | "rooms"
-  | "devices"
-  | "wallet"
-  | "visitors"
-  | "community"
+  | "utilities"
+  | "automation"
+  | "access_control"
+  | "integrations"
   | "maintenance";
 
-// ✅ KEEP ROUTES EXACTLY AS YOU HAD IT (DO NOT CHANGE)
 const ROUTES: Record<MenuKey, string> = {
-  home: "/home",
   rooms: "/rooms",
-  devices: "/devices",
-  wallet: "/wallet",
-  visitors: "/visitors",
-  community: "/community",
+  utilities: "/maintenance",
+  automation: "/devices",
+  access_control: "/settings?section=settings",
+  integrations: "/settings",
   maintenance: "/maintenance",
 };
 
-// ✅ UI-only menu (NO route changes): remove rooms from display
 const MENU_ITEMS: Array<{
-  key: Exclude<MenuKey, "rooms">;
+  key: MenuKey;
   label: string;
   icon: any;
-  badgeKey?: "devices" | "wallet" | "community" | "visitors" | "maintenance";
+  badgeKey?: "maintenance";
 }> = [
-  { key: "home", label: "Dashboard", icon: FiGrid },
-  { key: "devices", label: "Devices", icon: FiCpu, badgeKey: "devices" },
-  { key: "wallet", label: "Billing & Wallet", icon: FiCreditCard, badgeKey: "wallet" },
-  { key: "community", label: "Community", icon: FiUsers, badgeKey: "community" },
-  { key: "visitors", label: "Visitor Access", icon: FiKey, badgeKey: "visitors" },
+  { key: "utilities", label: "Utility", icon: FiBox },
+  { key: "rooms", label: "Home Spaces", icon: FiSliders },
+  { key: "automation", label: "Automation", icon: FiSettings },
+  { key: "access_control", label: "Access Control", icon: FiShield },
   { key: "maintenance", label: "Maintenance & Support", icon: FiTool, badgeKey: "maintenance" },
 ];
 
@@ -172,7 +167,7 @@ export default function HamburgerMenu() {
     return pushAndClose("/settings");
   };
 
-  const onMenuClick = (key: Exclude<MenuKey, "rooms">) => pushAndClose(ROUTES[key]);
+  const onMenuClick = (key: MenuKey) => pushAndClose(ROUTES[key]);
 
   const handleLogout = async () => {
     closeAll();
@@ -260,11 +255,11 @@ export default function HamburgerMenu() {
   useEffect(() => {
     if (!token) {
       setBadges({
-        devices: 0,
-        wallet: 0,
-        community: 0,
-        visitors: 0,
-        maintenance: 0,
+      devices: 0,
+      wallet: 0,
+      community: 0,
+      visitors: 0,
+      maintenance: 0,
       });
       return;
     }
@@ -273,8 +268,8 @@ export default function HamburgerMenu() {
     setBadges({
       devices: 0,
       wallet: 0,
-      community: 2,
-      visitors: 1,
+      community: 0,
+      visitors: 0,
       maintenance: 0,
     });
   }, [token]);

@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import InviteSuggestionBridge from "../components/InviteSuggestionBridge";
 import NotificationsBridge from "../components/NotificationsBridge";
 import TopBar from "../components/TopBar";
+import BottomNav from "../components/BottomNav";
 import LayoutWrapper from "../components/LayoutWrapper";
 
 // ✅ Dashboard UI (kept in-page to avoid breaking; you can separate later)
@@ -700,6 +701,8 @@ export default function HomePage() {
             devicesErr={devicesErr}
             refreshDevicePanelData={refreshDevicePanelData}
           />
+
+          <BottomNav />
         </div>
       </main>
     </LayoutWrapper>

@@ -7,6 +7,7 @@ import LayoutWrapper from "./LayoutWrapper";
 import InviteSuggestionBridge from "./InviteSuggestionBridge";
 import NotificationsBridge from "./NotificationsBridge";
 import TopBar from "./TopBar";
+import BottomNav from "./BottomNav";
 
 export default function ConsumerShell({
   children,
@@ -65,8 +66,8 @@ export default function ConsumerShell({
           style={{
             // top space: header(64px) + safe-area + spacing
             paddingTop: "calc(64px + var(--sat) + 16px)",
-            // bottom space: safe-area only (since no footer)
-            paddingBottom: "calc(16px + var(--sab))",
+            // bottom space: footer + safe-area
+            paddingBottom: "calc(88px + var(--sab))",
           }}
         >
           <div className="max-w-3xl mx-auto">
@@ -84,6 +85,8 @@ export default function ConsumerShell({
             {children}
           </div>
         </div>
+
+        <BottomNav />
       </main>
     </LayoutWrapper>
   );
