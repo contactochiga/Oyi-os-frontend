@@ -16,7 +16,6 @@ import RemotePanelRenderer from "../components/remotes/RemotePanelRenderer";
 import DeviceDiscoveryPanel from "../components/remotes/DeviceDiscoveryPanel";
 
 // ✅ NEW: AI Console separation
-import AiConsoleLauncher from "../components/ai-console/AiConsoleLauncher";
 import AiConsoleSheet from "../components/ai-console/AiConsoleSheet";
 
 // ✅ AI brain helpers (from your new separation)
@@ -505,6 +504,49 @@ export default function HomePage() {
                     </div>
                   ) : null}
 
+                  <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-white/10 to-white/5 p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-2xl bg-white/10 border border-white/15 overflow-hidden flex items-center justify-center">
+                        <img
+                          src="/oyi-logo-transparent.png"
+                          alt="Oyi"
+                          className="h-8 w-8 object-contain"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setChatOpen(true)}
+                        className="flex-1 text-left rounded-2xl border border-white/15 bg-black/20 px-4 py-3 text-sm text-white/75 hover:bg-black/30 transition"
+                      >
+                        How can I help?
+                      </button>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleSend("Turn on living room lights")}
+                        className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/80 hover:bg-white/10 transition text-left"
+                      >
+                        Turn on living room lights
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSend("Open devices")}
+                        className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/80 hover:bg-white/10 transition text-left"
+                      >
+                        Open devices
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSend("Show visitor access")}
+                        className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/80 hover:bg-white/10 transition text-left"
+                      >
+                        Show visitor access
+                      </button>
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
                     <StatCard
                       icon={<Zap className="w-4 h-4 text-sky-300" />}
@@ -681,9 +723,6 @@ export default function HomePage() {
               </div>
             </div>
           </div>
-
-          {/* ✅ NEW: Floating launcher (separated) */}
-          <AiConsoleLauncher onOpen={() => setChatOpen(true)} />
 
           {/* ✅ NEW: Bottom sheet AI console (separated) */}
           <AiConsoleSheet
