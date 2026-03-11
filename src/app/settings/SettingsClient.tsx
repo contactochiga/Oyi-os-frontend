@@ -8,6 +8,7 @@ import { useSettingsStore } from "@/store/useSettingsStore";
 import { deleteMyAccount, updateMyProfile } from "@/services/authService";
 import API from "@/services/api";
 import { roomsService, type RoomDTO } from "@/services/roomsService";
+import { getTuyaIntegration, saveTuyaIntegration } from "@/services/integrationsService";
 
 type AccessResident = {
   id: string;
@@ -45,6 +46,11 @@ export default function SettingsClient() {
     post_community: true,
     view_finance: false,
   });
+  const [tuyaUid, setTuyaUid] = useState("");
+  const [tuyaMasked, setTuyaMasked] = useState<string | null>(null);
+  const [tuyaConnected, setTuyaConnected] = useState(false);
+  const [tuyaBusy, setTuyaBusy] = useState(false);
+  const [tuyaError, setTuyaError] = useState<string | null>(null);
 
   const initials = useMemo(() => {
     const u = (user as any)?.username || (user as any)?.name || "User";
@@ -124,6 +130,17 @@ export default function SettingsClient() {
     run();
   }, [user]);
 
+  useEffect(() => {
+    const run = async () => {
+      const res: any = await getTuyaIntegration();
+      if (res?.error) return;
+      setTuyaConnected(!!res?.connected);
+      setTuyaMasked(res?.masked_uid || null);
+      setTuyaUid(String(res?.tuya_uid || ""));
+    };
+    run();
+  }, []);
+
   function togglePermission(key: keyof typeof permissions) {
     setPermissions((prev) => ({ ...prev, [key]: !prev[key] }));
   }
@@ -172,6 +189,23 @@ export default function SettingsClient() {
     }
   }
 
+  async function saveTuyaUid() {
+    if (!tuyaUid.trim()) {
+      setTuyaError("Tuya UID is required");
+      return;
+    }
+    setTuyaBusy(true);
+    setTuyaError(null);
+    const res: any = await saveTuyaIntegration(tuyaUid.trim());
+    setTuyaBusy(false);
+    if (res?.error) {
+      setTuyaError(String(res.error));
+      return;
+    }
+    setTuyaConnected(true);
+    setTuyaMasked(`${tuyaUid.trim().slice(0, 4)}***${tuyaUid.trim().slice(-3)}`);
+  }
+
   return (
     <div className="relative z-10 max-w-3xl mx-auto py-2 space-y-10">
       {/* PROFILE HEADER */}
@@ -206,6 +240,33 @@ export default function SettingsClient() {
         <Row label="Estate" value={(user as any)?.estate_name ?? "—"} />
         <Row label="Unit" value={(user as any)?.unit_name ?? "—"} />
         <Row label="Role" value={user?.role ?? "resident"} />
+      </section>
+
+      <section className="space-y-4">
+        <h3 className="text-sm text-gray-400">Smart Home Integration</h3>
+        <div className="rounded-xl border border-gray-800 bg-gray-900/70 p-4 space-y-3">
+          <div className="text-xs text-gray-400">
+            Link your own Tuya/Smart Life UID so discovery shows only your home devices.
+          </div>
+          <input
+            value={tuyaUid}
+            onChange={(e) => setTuyaUid(e.target.value)}
+            placeholder="Enter your Tuya UID"
+            className="w-full rounded-xl bg-black/30 border border-gray-700 px-3 py-2 text-sm text-white outline-none"
+          />
+          <button
+            type="button"
+            onClick={saveTuyaUid}
+            disabled={tuyaBusy || !tuyaUid.trim()}
+            className="w-full py-3 rounded-xl bg-white text-black text-sm font-semibold disabled:opacity-50"
+          >
+            {tuyaBusy ? "Saving..." : "Save Tuya UID"}
+          </button>
+          <div className="text-xs text-gray-400">
+            Status: {tuyaConnected ? `Connected (${tuyaMasked || "linked"})` : "Not connected"}
+          </div>
+          {tuyaError ? <div className="text-xs text-red-300">{tuyaError}</div> : null}
+        </div>
       </section>
 
       <section className="space-y-4">
