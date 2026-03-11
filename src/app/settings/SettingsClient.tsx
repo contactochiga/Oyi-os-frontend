@@ -245,27 +245,68 @@ export default function SettingsClient() {
       <section className="space-y-4">
         <h3 className="text-sm text-gray-400">Smart Home Integration</h3>
         <div className="rounded-xl border border-gray-800 bg-gray-900/70 p-4 space-y-3">
-          <div className="text-xs text-gray-400">
-            Link your own Tuya/Smart Life UID so discovery shows only your home devices.
+          <div className="text-xs text-gray-400">Manage partner integrations for full ecosystem control.</div>
+
+          <div className="grid gap-2 sm:grid-cols-3">
+            <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 p-3">
+              <div className="flex items-center gap-2">
+                <img
+                  src="https://cdn.simpleicons.org/tuya/ffffff"
+                  alt="Tuya"
+                  className="h-5 w-5"
+                />
+                <div className="text-sm font-semibold text-white">Tuya / Smart Life</div>
+              </div>
+              <div className="mt-1 text-[11px] text-white/65">
+                {tuyaConnected ? `Connected (${tuyaMasked || "linked"})` : "Not connected"}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-white/10 bg-black/30 p-3">
+              <div className="flex items-center gap-2">
+                <img
+                  src="https://cdn.simpleicons.org/amazonalexa/00CAFF"
+                  alt="Alexa"
+                  className="h-5 w-5"
+                />
+                <div className="text-sm font-semibold text-white">Amazon Alexa</div>
+              </div>
+              <div className="mt-1 text-[11px] text-white/55">OAuth linking next phase</div>
+            </div>
+
+            <div className="rounded-xl border border-white/10 bg-black/30 p-3">
+              <div className="flex items-center gap-2">
+                <img
+                  src="https://cdn.simpleicons.org/googleassistant/34A853"
+                  alt="Google Assistant"
+                  className="h-5 w-5"
+                />
+                <div className="text-sm font-semibold text-white">Google Assistant</div>
+              </div>
+              <div className="mt-1 text-[11px] text-white/55">OAuth linking next phase</div>
+            </div>
           </div>
-          <input
-            value={tuyaUid}
-            onChange={(e) => setTuyaUid(e.target.value)}
-            placeholder="Enter your Tuya UID"
-            className="w-full rounded-xl bg-black/30 border border-gray-700 px-3 py-2 text-sm text-white outline-none"
-          />
-          <button
-            type="button"
-            onClick={saveTuyaUid}
-            disabled={tuyaBusy || !tuyaUid.trim()}
-            className="w-full py-3 rounded-xl bg-white text-black text-sm font-semibold disabled:opacity-50"
-          >
-            {tuyaBusy ? "Saving..." : "Save Tuya UID"}
-          </button>
-          <div className="text-xs text-gray-400">
-            Status: {tuyaConnected ? `Connected (${tuyaMasked || "linked"})` : "Not connected"}
+
+          <div className="rounded-xl border border-gray-700 bg-black/30 p-3 space-y-2">
+            <div className="text-xs text-gray-400">
+              Link your own Tuya UID. Discovery and control will stay scoped to your home.
+            </div>
+            <input
+              value={tuyaUid}
+              onChange={(e) => setTuyaUid(e.target.value)}
+              placeholder="Enter your Tuya UID"
+              className="w-full rounded-xl bg-black/30 border border-gray-700 px-3 py-2 text-sm text-white outline-none"
+            />
+            <button
+              type="button"
+              onClick={saveTuyaUid}
+              disabled={tuyaBusy || !tuyaUid.trim()}
+              className="w-full py-3 rounded-xl bg-white text-black text-sm font-semibold disabled:opacity-50"
+            >
+              {tuyaBusy ? "Saving..." : "Save Tuya UID"}
+            </button>
+            {tuyaError ? <div className="text-xs text-red-300">{tuyaError}</div> : null}
           </div>
-          {tuyaError ? <div className="text-xs text-red-300">{tuyaError}</div> : null}
         </div>
       </section>
 

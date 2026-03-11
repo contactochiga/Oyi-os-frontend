@@ -209,10 +209,10 @@ export default function HomePage() {
       status: d?.status || null,
     });
 
-    return [...assignedDevices, ...discoveryDevices]
+    return [...assignedDevices]
       .map(normalize)
       .filter((d) => d.id);
-  }, [assignedDevices, discoveryDevices]);
+  }, [assignedDevices]);
 
   const dashScrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -306,12 +306,21 @@ export default function HomePage() {
         devices: aiContextDevices,
       });
 
-      const reply =
+      const replyBase =
         resp?.reply || `Got it. ${command.charAt(0).toUpperCase()}${command.slice(1)}.`;
       const panel = inferPanel(resp?.panel, command);
 
       const actions: DeviceAction[] | undefined = resp?.actions;
-      if (actions?.length) await executeActions(actions);
+      let actionFailure = "";
+      if (actions?.length) {
+        const results = await executeActions(actions);
+        const failed = results.filter((r) => !r.ok);
+        if (failed.length) {
+          actionFailure =
+            " I could not execute one or more device actions. Check device is assigned, online, and in your home.";
+        }
+      }
+      const reply = `${replyBase}${actionFailure}`;
 
       const openPanel = shouldOpenPanel(command, panel);
       const deviceId = resp?.deviceId;
