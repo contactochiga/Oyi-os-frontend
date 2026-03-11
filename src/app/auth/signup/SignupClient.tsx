@@ -83,7 +83,7 @@ function ResendIcon({ className = "" }: { className?: string }) {
 }
 
 function StatusDot({ ok }: { ok: boolean | null }) {
-  const title = ok === null ? "Checking connection" : ok ? "Backend connected" : "Backend offline";
+  const title = ok === null ? "Checking service health" : ok ? "Service healthy" : "Service unavailable";
   const cls =
     ok === null
       ? "bg-white/25"
@@ -172,7 +172,7 @@ function Otp6({
 export default function SignupClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { setSession } = useSessionStore();
+  const { setSession, hydrate, token } = useSessionStore();
 
   const next = useMemo(() => searchParams.get("next") || "/home", [searchParams]);
 
@@ -193,6 +193,17 @@ export default function SignupClient() {
   const [backendOk, setBackendOk] = useState<boolean | null>(null);
 
   const cleanEmail = email.trim().toLowerCase();
+
+  useEffect(() => {
+    hydrate();
+  }, [hydrate]);
+
+  useEffect(() => {
+    if (!token) return;
+    const decoded = decodeToken(token);
+    if (!decoded || isExpired(decoded)) return;
+    router.replace("/home");
+  }, [token, router]);
 
   useEffect(() => {
     const API = getApiBase();
@@ -324,8 +335,6 @@ export default function SignupClient() {
     setStep("form");
   }
 
-  const subtitle = step === "form" ? "Continue with email." : "Enter the verification code we sent.";
-
   return (
     <main className="min-h-screen text-white">
       <div className="relative min-h-screen flex items-center justify-center px-6 py-10 overflow-hidden bg-[#070A12]">
@@ -361,7 +370,7 @@ export default function SignupClient() {
         </div>
 
         <div className="relative w-full max-w-sm">
-          <div className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur shadow-[0_20px_90px_rgba(0,0,0,0.60)] overflow-hidden">
+          <div className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur p-6 shadow-[0_20px_90px_rgba(0,0,0,0.60)] overflow-hidden">
             <div
               className="pointer-events-none absolute inset-x-0 top-0 h-[2px]"
               style={{
@@ -371,13 +380,13 @@ export default function SignupClient() {
               }}
             />
 
-            <div className="relative p-6">
+            <div className="relative">
               <div className="flex flex-col items-center text-center">
                 <div className="h-16 w-16 rounded-2xl border border-white/10 bg-black/20 grid place-items-center overflow-hidden">
                   <div className="relative h-10 w-10">
                     <Image
                       src="/oyi-logo-transparent.png"
-                      alt="Oyi OS Logo"
+                      alt="OYI Logo"
                       fill
                       className="object-contain"
                       priority
@@ -385,12 +394,12 @@ export default function SignupClient() {
                   </div>
                 </div>
 
-                <div className="mt-5 text-xl font-semibold text-white">Create account</div>
-                <div className="mt-1 text-xs text-white/45">{subtitle}</div>
+                <div className="mt-5 text-xl font-semibold text-white tracking-wide">OYI</div>
+                <div className="mt-1 text-xs text-white/45">{step === "form" ? "Create account" : "Verify email"}</div>
 
                 <div className="mt-3 flex items-center gap-2 text-[11px] text-white/35">
                   <StatusDot ok={backendOk} />
-                  <span>{backendOk === null ? "Checking backend…" : backendOk ? "Backend connected" : "Backend offline"}</span>
+                  <span>{backendOk === null ? "Checking system…" : backendOk ? "System online" : "System limited"}</span>
                 </div>
               </div>
 
@@ -535,7 +544,7 @@ export default function SignupClient() {
               </div>
 
               <div className="mt-5 text-center text-[11px] text-white/30">
-                Infrastructure-grade estate control
+                Smart Home • Smart Estate
               </div>
             </div>
           </div>

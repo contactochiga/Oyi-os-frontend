@@ -138,7 +138,7 @@ export default function TopBar() {
             <MenuItem label="Profile" onClick={() => go("/settings?section=profile")} />
             <MenuItem label="Preferences" onClick={() => go("/settings?section=settings")} />
             <div className="h-px bg-white/10" />
-            <MenuItem label="Help" onClick={() => go("/support")} />
+            <MenuItem label="Help" onClick={() => go("/settings?section=settings")} />
             <MenuItem
               label="Log out"
               danger

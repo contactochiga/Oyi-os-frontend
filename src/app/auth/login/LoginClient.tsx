@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { loginWithEmail } from "@/services/authService";
@@ -22,13 +22,24 @@ function pickUserFromContext(payload: any) {
 export default function LoginClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { setSession } = useSessionStore();
+  const { setSession, hydrate, token } = useSessionStore();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    hydrate();
+  }, [hydrate]);
+
+  useEffect(() => {
+    if (!token) return;
+    const decoded = decodeToken(token);
+    if (!decoded || isExpired(decoded)) return;
+    router.replace("/home");
+  }, [token, router]);
 
   async function submit() {
     setErr(null);
@@ -104,7 +115,6 @@ export default function LoginClient() {
   return (
     <main className="min-h-screen text-white">
       <div className="relative min-h-screen flex items-center justify-center px-6 py-10 overflow-hidden bg-[#070A12]">
-        {/* Background */}
         <div className="pointer-events-none absolute inset-0">
           <div
             className="absolute -top-56 -left-56 h-[680px] w-[680px] rounded-full blur-3xl opacity-25"
@@ -139,9 +149,8 @@ export default function LoginClient() {
           />
         </div>
 
-        {/* Card */}
         <div className="relative w-full max-w-sm">
-          <div className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur shadow-[0_20px_90px_rgba(0,0,0,0.60)] overflow-hidden">
+          <div className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur p-6 shadow-[0_20px_90px_rgba(0,0,0,0.60)] overflow-hidden">
             <div
               className="pointer-events-none absolute inset-x-0 top-0 h-[2px]"
               style={{
@@ -151,13 +160,13 @@ export default function LoginClient() {
               }}
             />
 
-            <div className="relative p-6">
+            <div className="relative">
               <div className="flex flex-col items-center text-center">
                 <div className="h-16 w-16 rounded-2xl border border-white/10 bg-black/20 grid place-items-center overflow-hidden">
                   <div className="relative h-10 w-10">
                     <Image
                       src="/oyi-logo-transparent.png"
-                      alt="Oyi OS Logo"
+                      alt="OYI Logo"
                       fill
                       className="object-contain"
                       priority
@@ -165,8 +174,8 @@ export default function LoginClient() {
                   </div>
                 </div>
 
-                <div className="mt-5 text-xl font-semibold text-white">Sign in</div>
-                <div className="mt-1 text-xs text-white/45">Continue to your dashboard</div>
+                <div className="mt-5 text-xl font-semibold text-white tracking-wide">OYI</div>
+                <div className="mt-1 text-xs text-white/45">Sign in</div>
               </div>
 
               <div className="mt-6 space-y-3">
@@ -221,14 +230,10 @@ export default function LoginClient() {
                 </button>
 
                 <div className="pt-1 text-center text-[11px] text-white/35">
-                  Secure • Private • Estate-native
+                  Smart Home • Smart Estate
                 </div>
               </div>
             </div>
-          </div>
-
-          <div className="mt-4 text-center text-[11px] text-white/30">
-            Infrastructure-grade estate control
           </div>
         </div>
       </div>

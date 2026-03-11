@@ -1,10 +1,10 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { FiHome, FiCpu, FiCreditCard, FiUsers, FiKey } from "react-icons/fi";
+import { FiHome, FiCpu, FiCreditCard, FiUsers, FiGrid } from "react-icons/fi";
 
 type Item = {
-  key: "home" | "devices" | "wallet" | "community" | "visitors";
+  key: "home" | "devices" | "wallet" | "community" | "services";
   label: string;
   href: string;
   icon: any;
@@ -15,7 +15,7 @@ const ITEMS: Item[] = [
   { key: "devices", label: "Devices", href: "/devices", icon: FiCpu },
   { key: "wallet", label: "Wallet", href: "/wallet", icon: FiCreditCard },
   { key: "community", label: "Community", href: "/community", icon: FiUsers },
-  { key: "visitors", label: "Access", href: "/visitors", icon: FiKey },
+  { key: "services", label: "Services", href: "/services", icon: FiGrid },
 ];
 
 function isActive(pathname: string, href: string) {
@@ -57,4 +57,3 @@ export default function BottomNav() {
     </nav>
   );
 }
-

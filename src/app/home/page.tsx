@@ -38,6 +38,7 @@ import {
   UserCheck,
   Wrench,
   ChevronRight,
+  Sparkles,
 } from "lucide-react";
 
 import { motion } from "framer-motion";
@@ -483,7 +484,7 @@ export default function HomePage() {
                         Dashboard Overview
                       </div>
                       <div className="text-xs text-white/45 mt-1">
-                        Real counts • charts • quick actions (assistant pops up)
+                        Real counts • charts • direct quick actions
                       </div>
 
                     </div>
@@ -504,48 +505,18 @@ export default function HomePage() {
                     </div>
                   ) : null}
 
-                  <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-white/10 to-white/5 p-4">
+                  <button
+                    type="button"
+                    onClick={() => setChatOpen(true)}
+                    className="w-full rounded-3xl border border-white/10 bg-gradient-to-br from-white/10 to-white/5 p-4 text-left hover:from-white/15 hover:to-white/10 transition"
+                  >
                     <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-2xl bg-white/10 border border-white/15 overflow-hidden flex items-center justify-center">
-                        <img
-                          src="/oyi-logo-transparent.png"
-                          alt="Oyi"
-                          className="h-8 w-8 object-contain"
-                        />
+                      <div className="h-10 w-10 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center text-cyan-200">
+                        <Sparkles className="h-5 w-5" />
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => setChatOpen(true)}
-                        className="flex-1 text-left rounded-2xl border border-white/15 bg-black/20 px-4 py-3 text-sm text-white/75 hover:bg-black/30 transition"
-                      >
-                        How can I help?
-                      </button>
+                      <div className="text-sm text-white/80">How can I help you?</div>
                     </div>
-
-                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleSend("Turn on living room lights")}
-                        className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/80 hover:bg-white/10 transition text-left"
-                      >
-                        Turn on living room lights
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleSend("Open devices")}
-                        className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/80 hover:bg-white/10 transition text-left"
-                      >
-                        Open devices
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleSend("Show visitor access")}
-                        className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/80 hover:bg-white/10 transition text-left"
-                      >
-                        Show visitor access
-                      </button>
-                    </div>
-                  </div>
+                  </button>
 
                   <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
                     <StatCard

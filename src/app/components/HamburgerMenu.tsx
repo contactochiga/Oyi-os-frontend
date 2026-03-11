@@ -27,10 +27,10 @@ type MenuKey =
 
 const ROUTES: Record<MenuKey, string> = {
   rooms: "/rooms",
-  utilities: "/maintenance",
+  utilities: "/services",
   automation: "/devices",
-  access_control: "/settings?section=settings",
-  integrations: "/settings",
+  access_control: "/visitors",
+  integrations: "/settings?section=settings",
   maintenance: "/maintenance",
 };
 
@@ -40,10 +40,10 @@ const MENU_ITEMS: Array<{
   icon: any;
   badgeKey?: "maintenance";
 }> = [
-  { key: "utilities", label: "Utility", icon: FiBox },
+  { key: "utilities", label: "Services", icon: FiBox },
   { key: "rooms", label: "Home Spaces", icon: FiSliders },
   { key: "automation", label: "Automation", icon: FiSettings },
-  { key: "access_control", label: "Access Control", icon: FiShield },
+  { key: "access_control", label: "Visitor Access", icon: FiShield },
   { key: "maintenance", label: "Maintenance & Support", icon: FiTool, badgeKey: "maintenance" },
 ];
 
@@ -172,8 +172,6 @@ export default function HamburgerMenu() {
   const handleLogout = async () => {
     closeAll();
     await logout?.();
-    if (typeof window !== "undefined") localStorage.clear();
-    router.replace("/auth/login");
   };
 
   // lock scroll + sidebar-open class

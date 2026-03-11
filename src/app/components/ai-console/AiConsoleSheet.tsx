@@ -3,7 +3,7 @@
 import TypingIndicator from "./TypingIndicator";
 import React, { useEffect, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { MessageCircle, X } from "lucide-react";
+import { Sparkles, X } from "lucide-react";
 
 import DynamicSuggestionCard from "@/app/components/DynamicSuggestionCard";
 import ChatFooter from "@/app/components/ChatFooter";
@@ -118,14 +118,11 @@ export default function AiConsoleSheet(props: {
               >
                 {/* HEADER */}
                 <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
-                  <div>
-                    <div className="text-sm font-semibold text-white flex items-center gap-2">
-                      <MessageCircle className="w-4 h-4 text-white/70" />
-                      Oyi Assistant
+                  <div className="flex items-center gap-2 text-white/80">
+                    <div className="h-7 w-7 rounded-xl border border-white/10 bg-white/5 flex items-center justify-center">
+                      <Sparkles className="w-4 h-4 text-cyan-200" />
                     </div>
-                    <div className="text-xs text-white/45 mt-0.5">
-                      Chat • Panels • Commands
-                    </div>
+                    <div className="text-xs text-white/55">Ask anything</div>
                   </div>
 
                   <button

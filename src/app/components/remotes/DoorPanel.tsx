@@ -147,7 +147,7 @@ export default function DoorPanel({
             type="button"
             onClick={() => {
               touch();
-              router.push("/cctv"); // change route if yours is different
+              router.push("/devices");
             }}
             className="flex-1 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white/85 text-sm border border-white/10"
           >
@@ -159,7 +159,7 @@ export default function DoorPanel({
           type="button"
           onClick={() => {
             touch();
-            router.push("/access"); // change route to your access log page when ready
+            router.push("/visitors");
           }}
           className="flex-1 py-2.5 rounded-xl bg-white text-black text-sm font-semibold border border-white/20"
         >

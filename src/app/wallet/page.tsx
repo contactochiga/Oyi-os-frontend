@@ -31,16 +31,12 @@ export default function WalletPage() {
   const [loading, setLoading] = useState(false);
   const [funding, setFunding] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
 
   const [amount, setAmount] = useState<string>("");
 
-  const FUNDING_ENABLED = String(
-    process.env.NEXT_PUBLIC_WALLET_FUNDING_ENABLED ?? "true"
-  ).toLowerCase() === "true";
-
   async function load() {
     setLoading(true);
-    setErr(null);
     try {
       const res: any = await walletService.getWallet();
       if (res?.error) {
@@ -59,14 +55,12 @@ export default function WalletPage() {
 
   useEffect(() => {
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function fund() {
-    if (!FUNDING_ENABLED) {
-      return setErr("Wallet funding is temporarily disabled.");
-    }
-
     setErr(null);
+    setInfo(null);
 
     const n = safeNum(amount);
     if (!email) return setErr("No email found for this account.");
@@ -74,10 +68,24 @@ export default function WalletPage() {
 
     setFunding(true);
     try {
-      const res: any = await walletService.initPayment({ amount: n, email });
+      const callbackUrl =
+        typeof window !== "undefined"
+          ? `${window.location.origin}/wallet?funding=1`
+          : undefined;
+
+      const res: any = await walletService.initPayment({
+        amount: n,
+        email,
+        callback_url: callbackUrl,
+      });
 
       if (res?.error) {
-        setErr(String(res.error));
+        const text = String(res.error || "");
+        if (text.toLowerCase().includes("disabled")) {
+          setErr("Wallet funding is disabled on backend. Set WALLET_FUNDING_ENABLED=true and redeploy.");
+        } else {
+          setErr(text);
+        }
         return;
       }
 
@@ -101,6 +109,39 @@ export default function WalletPage() {
     }
   }
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    const funding = url.searchParams.get("funding");
+    const reference = url.searchParams.get("reference") || url.searchParams.get("trxref");
+    if (!funding || !reference) return;
+
+    let cancelled = false;
+
+    async function verifyAndRefresh() {
+      setErr(null);
+      setInfo("Verifying payment...");
+
+      const verifyRes: any = await walletService.verifyPayment(reference);
+      if (cancelled) return;
+
+      if (verifyRes?.error) {
+        setErr(String(verifyRes.error));
+        setInfo(null);
+      } else {
+        setInfo("Payment verified. Wallet updated.");
+      }
+
+      await load();
+    }
+
+    verifyAndRefresh();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const currency = wallet?.currency || "NGN";
   const balance = safeNum(wallet?.balance);
 
@@ -108,9 +149,9 @@ export default function WalletPage() {
 
   return (
     <ConsumerShell title="Wallet" subtitle="Fund account • pay dues">
-      {!FUNDING_ENABLED && (
-        <div className="mb-4 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-          Wallet funding is temporarily disabled.
+      {info && (
+        <div className="mb-4 rounded-2xl border border-cyan-500/20 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
+          {info}
         </div>
       )}
 
@@ -159,8 +200,7 @@ export default function WalletPage() {
                 key={q}
                 type="button"
                 onClick={() => setAmount(String(q))}
-                disabled={!FUNDING_ENABLED}
-                className="rounded-full px-3 py-2 text-xs bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 transition disabled:opacity-40 disabled:hover:bg-white/5 disabled:cursor-not-allowed"
+                className="rounded-full px-3 py-2 text-xs bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 transition"
               >
                 ₦{q.toLocaleString("en-NG")}
               </button>
@@ -176,13 +216,12 @@ export default function WalletPage() {
               onChange={(e) => setAmount(e.target.value)}
               inputMode="numeric"
               placeholder="Amount"
-              disabled={!FUNDING_ENABLED}
-              className="flex-1 bg-transparent outline-none text-sm text-white placeholder-white/30 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex-1 bg-transparent outline-none text-sm text-white placeholder-white/30"
             />
 
             <button
               onClick={fund}
-              disabled={!FUNDING_ENABLED || funding || !amount}
+              disabled={funding || !amount}
               type="button"
               className="rounded-xl px-4 py-2 text-sm font-medium
                          bg-white text-black hover:opacity-90
@@ -193,9 +232,7 @@ export default function WalletPage() {
           </div>
 
           <div className="mt-3 text-[11px] text-white/35">
-            {!FUNDING_ENABLED
-              ? "Funding will be enabled in a subsequent update."
-              : "Balance updates via webhook. If it doesn’t reflect instantly, tap refresh."}
+            Balance updates via webhook. If funding returns to this page, verification runs automatically.
           </div>
         </div>
       </div>

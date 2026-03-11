@@ -23,6 +23,14 @@ export type InitPaymentResponse = {
   reference?: string;
 };
 
+export type VerifyPaymentResponse = {
+  ok?: boolean;
+  applied?: boolean;
+  balance?: number;
+  reference?: string;
+  error?: string;
+};
+
 function pickError(err: any, fallback: string) {
   return (
     err?.response?.data?.error ||
@@ -44,7 +52,7 @@ export const walletService = {
   },
 
   // ✅ POST /wallets/init
-  async initPayment(payload: { amount: number; email: string }) {
+  async initPayment(payload: { amount: number; email: string; callback_url?: string }) {
     try {
       const res = await API.post("/wallets/init", payload);
       return res.data as InitPaymentResponse;
@@ -60,6 +68,16 @@ export const walletService = {
       return res.data as { balance: number };
     } catch (err: any) {
       return { error: pickError(err, "Failed to debit wallet") } as any;
+    }
+  },
+
+  // ✅ GET /wallets/verify/:reference (fallback when webhook is delayed)
+  async verifyPayment(reference: string) {
+    try {
+      const res = await API.get(`/wallets/verify/${encodeURIComponent(reference)}`);
+      return res.data as VerifyPaymentResponse;
+    } catch (err: any) {
+      return { error: pickError(err, "Failed to verify payment") } as VerifyPaymentResponse;
     }
   },
 };
