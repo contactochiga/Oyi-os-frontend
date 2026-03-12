@@ -625,6 +625,7 @@ export default function CommunityPage() {
       const res: any = await communityService.createComment(id, { content: text });
 
       if (res?.error) {
+        setErr(String(res.error));
         setReplyCounts((p) => ({ ...p, [key]: prev }));
         setReplyDraft((p) => ({ ...p, [key]: text }));
         setCommentMap((p) => ({
@@ -640,7 +641,8 @@ export default function CommunityPage() {
       }
       await loadComments(id, true);
       await load();
-    } catch {
+    } catch (e: any) {
+      setErr(e?.message || "Failed to post comment");
       setReplyCounts((p) => ({ ...p, [key]: prev }));
       setReplyDraft((p) => ({ ...p, [key]: text }));
       setCommentMap((p) => ({

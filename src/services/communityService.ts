@@ -50,12 +50,21 @@ function unwrapList(data: any) {
 }
 
 function pickError(err: any, fallback: string) {
-  return (
+  const msg =
     err?.response?.data?.error ||
     err?.response?.data?.message ||
     err?.message ||
-    fallback
-  );
+    fallback;
+
+  const lower = String(msg || "").toLowerCase();
+  if (lower.includes("community_reactions") && lower.includes("could not find the table")) {
+    return "Reactions are being configured. Please refresh shortly.";
+  }
+  if (lower.includes("community_comments") && lower.includes("could not find the table")) {
+    return "Comments are being configured. Please refresh shortly.";
+  }
+
+  return msg;
 }
 
 export const communityService = {
