@@ -1,9 +1,9 @@
 "use client";
 
 import TypingIndicator from "./TypingIndicator";
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Sparkles, X } from "lucide-react";
+import { Sparkles, Volume2, VolumeX, X } from "lucide-react";
 
 import DynamicSuggestionCard from "@/app/components/DynamicSuggestionCard";
 import ChatFooter from "@/app/components/ChatFooter";
@@ -77,6 +77,8 @@ export default function AiConsoleSheet(props: {
   } = props;
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const spokenRef = useRef<Set<string>>(new Set());
+  const [voiceReplyEnabled, setVoiceReplyEnabled] = useState(true);
 
   useEffect(() => {
     if (!open) return;
@@ -87,6 +89,30 @@ export default function AiConsoleSheet(props: {
       })
     );
   }, [messages.length, open]);
+
+  useEffect(() => {
+    if (!open) {
+      if (typeof window !== "undefined") window.speechSynthesis?.cancel();
+      return;
+    }
+
+    if (!voiceReplyEnabled || typeof window === "undefined" || !("speechSynthesis" in window)) return;
+
+    const latestAssistant = [...messages]
+      .reverse()
+      .find((m) => m.role === "assistant" && !m.pending && String(m.content || "").trim().length > 0);
+
+    if (!latestAssistant) return;
+    if (spokenRef.current.has(latestAssistant.id)) return;
+
+    spokenRef.current.add(latestAssistant.id);
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(String(latestAssistant.content));
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    window.speechSynthesis.speak(utterance);
+  }, [messages, open, voiceReplyEnabled]);
 
   return (
     <AnimatePresence>
@@ -125,13 +151,25 @@ export default function AiConsoleSheet(props: {
                     <div className="text-xs text-white/55">Ask anything</div>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="rounded-xl px-2.5 py-2 text-white/70 hover:bg-white/5 border border-white/10 bg-white/5"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setVoiceReplyEnabled((v) => !v)}
+                      className="rounded-xl px-2.5 py-2 text-white/70 hover:bg-white/5 border border-white/10 bg-white/5"
+                      aria-label={voiceReplyEnabled ? "Disable assistant voice" : "Enable assistant voice"}
+                      title={voiceReplyEnabled ? "Assistant voice on" : "Assistant voice off"}
+                    >
+                      {voiceReplyEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={onClose}
+                      className="rounded-xl px-2.5 py-2 text-white/70 hover:bg-white/5 border border-white/10 bg-white/5"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
 
                 {/* SUGGESTIONS */}
@@ -267,7 +305,7 @@ export default function AiConsoleSheet(props: {
                   <ChatFooter
                     input={input}
                     setInput={setInput}
-                    onSend={() => onSend()}
+                    onSend={onSend}
                   />
                 </div>
               </div>

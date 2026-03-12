@@ -3,6 +3,7 @@ import ReactQueryProvider from "@/services/queryClient";
 import { AuthProvider } from "@/hooks/useAuth";
 import CapacitorBoot from "@/app/components/CapacitorBoot";
 import ViewportKeyboardFix from "@/app/components/ViewportKeyboardFix";
+import PushNotificationsBridge from "@/app/components/PushNotificationsBridge";
 
 export const metadata = {
   title: "Oyi OS",
@@ -22,7 +23,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ViewportKeyboardFix />
         <CapacitorBoot />
         <ReactQueryProvider>
-          <AuthProvider>{children}</AuthProvider>
+          <AuthProvider>
+            <PushNotificationsBridge />
+            {children}
+          </AuthProvider>
         </ReactQueryProvider>
       </body>
     </html>

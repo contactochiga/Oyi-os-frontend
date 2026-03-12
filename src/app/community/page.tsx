@@ -43,16 +43,29 @@ function pickPostId(p: any) {
   return String(p?.id ?? p?.post_id ?? "");
 }
 
-function pickAuthor(p: any) {
-  return (
+function pickAuthor(p: any, me?: any) {
+  const explicit =
     p?.author_name ||
     p?.author?.full_name ||
     p?.author?.name ||
-    p?.author?.email ||
-    p?.created_by_email ||
-    p?.created_by ||
-    "Resident"
-  );
+    p?.author?.username ||
+    p?.created_by_name ||
+    p?.created_by_username ||
+    null;
+
+  if (explicit && String(explicit).trim()) return String(explicit).trim();
+
+  const postAuthorId = String(p?.author_id || p?.user_id || p?.created_by || "");
+  const meId = String(me?.id || "");
+  if (postAuthorId && meId && postAuthorId === meId) {
+    return (
+      String(me?.username || "").trim() ||
+      String(me?.full_name || "").trim() ||
+      "You"
+    );
+  }
+
+  return "Resident";
 }
 
 function pickRoleBadge(p: any) {
@@ -155,6 +168,21 @@ function buildPostBody(text: string, attachments: PostAttachment[], liveLink?: s
       })),
       liveLink: liveLink ? String(liveLink).trim() : null,
     })
+  );
+}
+
+function normalizeLine(text: string) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function localPostKey(p: any) {
+  return (
+    pickPostId(p) ||
+    String(p?.created_at || "") ||
+    `${normalizeLine(String(p?.title || ""))}:${normalizeLine(String(p?.body || p?.content || ""))}`
   );
 }
 
@@ -517,27 +545,26 @@ export default function CommunityPage() {
 
   async function reactLike(post: CommunityPost) {
     const id = pickPostId(post);
-    if (!id) return;
+    const key = localPostKey(post);
 
-    if (busyPost[id]) return;
-    setBusyPost((p) => ({ ...p, [id]: true }));
+    if (!id) {
+      setErr("This post cannot be reacted to right now.");
+      return;
+    }
+    if (busyPost[key]) return;
+    if (liked[key]) return; // keep like sticky (no auto unlike)
 
-    const wasLiked = !!liked[id];
-    const prevCount = likeCounts[id] ?? 0;
+    setBusyPost((p) => ({ ...p, [key]: true }));
+    const prevCount = likeCounts[key] ?? 0;
 
-    setLiked((p) => ({ ...p, [id]: !wasLiked }));
-    setLikeCounts((p) => ({
-      ...p,
-      [id]: Math.max(0, prevCount + (wasLiked ? -1 : 1)),
-    }));
+    setLiked((p) => ({ ...p, [key]: true }));
+    setLikeCounts((p) => ({ ...p, [key]: prevCount + 1 }));
 
     try {
-      const type = wasLiked ? "unlike" : "like";
-      const res: any = await communityService.reactToPost(id, type);
-
+      const res: any = await communityService.reactToPost(id, "like");
       if (res?.error) {
-        setLiked((p) => ({ ...p, [id]: wasLiked }));
-        setLikeCounts((p) => ({ ...p, [id]: prevCount }));
+        setErr(String(res.error));
+        // keep UI liked so it doesn't flash off for user
       } else {
         const serverCount =
           res?.like_count ??
@@ -545,39 +572,46 @@ export default function CommunityPage() {
           res?.reactions_count ??
           res?.data?.like_count;
         if (serverCount != null) {
-          setLikeCounts((p) => ({ ...p, [id]: clampCount(serverCount) }));
+          setLikeCounts((p) => ({ ...p, [key]: clampCount(serverCount) }));
         }
       }
     } catch {
-      setLiked((p) => ({ ...p, [id]: wasLiked }));
-      setLikeCounts((p) => ({ ...p, [id]: prevCount }));
+      // keep optimistic liked state; next refresh will reconcile counts
     } finally {
-      setBusyPost((p) => ({ ...p, [id]: false }));
+      setBusyPost((p) => ({ ...p, [key]: false }));
     }
   }
 
   function toggleReplyBox(post: CommunityPost) {
     const id = pickPostId(post);
-    if (!id) return;
-    const next = !replyOpen[id];
-    setReplyOpen((p) => ({ ...p, [id]: next }));
+    const key = localPostKey(post);
+    const next = !replyOpen[key];
+    setReplyOpen((p) => ({ ...p, [key]: next }));
+    if (!id) {
+      setErr("Comments are not available for this post right now.");
+      return;
+    }
     if (next) loadComments(id);
   }
 
   async function sendReply(post: CommunityPost) {
     const id = pickPostId(post);
-    if (!id) return;
+    const key = localPostKey(post);
+    if (!id) {
+      setErr("Comments are not available for this post right now.");
+      return;
+    }
 
-    const text = (replyDraft[id] || "").trim();
+    const text = (replyDraft[key] || "").trim();
     if (!text) return;
 
-    if (busyPost[id]) return;
-    setBusyPost((p) => ({ ...p, [id]: true }));
+    if (busyPost[key]) return;
+    setBusyPost((p) => ({ ...p, [key]: true }));
 
-    const prev = replyCounts[id] ?? 0;
+    const prev = replyCounts[key] ?? 0;
 
-    setReplyCounts((p) => ({ ...p, [id]: prev + 1 }));
-    setReplyDraft((p) => ({ ...p, [id]: "" }));
+    setReplyCounts((p) => ({ ...p, [key]: prev + 1 }));
+    setReplyDraft((p) => ({ ...p, [key]: "" }));
     const optimisticComment: CommunityComment = {
       id: `local-${Date.now()}`,
       post_id: id,
@@ -591,8 +625,8 @@ export default function CommunityPage() {
       const res: any = await communityService.createComment(id, { content: text });
 
       if (res?.error) {
-        setReplyCounts((p) => ({ ...p, [id]: prev }));
-        setReplyDraft((p) => ({ ...p, [id]: text }));
+        setReplyCounts((p) => ({ ...p, [key]: prev }));
+        setReplyDraft((p) => ({ ...p, [key]: text }));
         setCommentMap((p) => ({
           ...p,
           [id]: (p[id] || []).filter((c) => !String(c.id).startsWith("local-")),
@@ -602,19 +636,19 @@ export default function CommunityPage() {
 
       const serverCount = res?.reply_count ?? res?.replies_count ?? res?.comment_count;
       if (serverCount != null) {
-        setReplyCounts((p) => ({ ...p, [id]: clampCount(serverCount) }));
+        setReplyCounts((p) => ({ ...p, [key]: clampCount(serverCount) }));
       }
       await loadComments(id, true);
       await load();
     } catch {
-      setReplyCounts((p) => ({ ...p, [id]: prev }));
-      setReplyDraft((p) => ({ ...p, [id]: text }));
+      setReplyCounts((p) => ({ ...p, [key]: prev }));
+      setReplyDraft((p) => ({ ...p, [key]: text }));
       setCommentMap((p) => ({
         ...p,
         [id]: (p[id] || []).filter((c) => !String(c.id).startsWith("local-")),
       }));
     } finally {
-      setBusyPost((p) => ({ ...p, [id]: false }));
+      setBusyPost((p) => ({ ...p, [key]: false }));
     }
   }
 
@@ -806,24 +840,31 @@ export default function CommunityPage() {
         <div className="mt-4 space-y-3">
           {listForTab.map((p: any) => {
             const id = pickPostId(p);
-            const author = pickAuthor(p);
+            const postKey = localPostKey(p);
+            const author = pickAuthor(p, user);
             const badge = pickRoleBadge(p);
 
-            const likeCount = likeCounts[id] ?? clampCount(p?.like_count ?? p?.likes ?? 0);
-            const replyCount = replyCounts[id] ?? clampCount(p?.reply_count ?? p?.replies_count ?? 0);
+            const likeCount = likeCounts[postKey] ?? clampCount(p?.like_count ?? p?.likes ?? 0);
+            const replyCount = replyCounts[postKey] ?? clampCount(p?.reply_count ?? p?.replies_count ?? 0);
 
-            const isLiked = !!liked[id];
-            const replyIsOpen = !!replyOpen[id];
-            const isBusy = !!busyPost[id];
+            const isLiked = !!liked[postKey];
+            const replyIsOpen = !!replyOpen[postKey];
+            const isBusy = !!busyPost[postKey];
             const comments = commentMap[id] || [];
             const loadingComments = !!commentLoading[id];
             const parsed = parsePostBody(p?.body ?? p?.content ?? "");
+            const titleText = String(p?.title || "").trim();
+            const bodyText = String(parsed.text || "").trim();
+            const duplicateTitleAndBody =
+              !!titleText &&
+              !!bodyText &&
+              normalizeLine(titleText) === normalizeLine(bodyText);
 
             const type: "announcement" | "discussion" | "event" =
               tab === "announcements" ? "announcement" : badge === "Admin" ? "announcement" : "discussion";
 
             return (
-              <Card key={id || String(p?.created_at) || Math.random().toString(36)}>
+              <Card key={postKey}>
                 <CardHeader>
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
@@ -860,14 +901,14 @@ export default function CommunityPage() {
                   </div>
 
                   <div className="mt-3 text-[13px] font-semibold text-white">
-                    {p.title || "Update"}
+                    {titleText || "Update"}
                   </div>
                 </CardHeader>
 
                 <CardContent className="space-y-4">
-                  {parsed.text ? (
+                  {bodyText && !duplicateTitleAndBody ? (
                     <p className="text-sm text-white/80 whitespace-pre-wrap">
-                      {parsed.text}
+                      {bodyText}
                     </p>
                   ) : null}
 
@@ -922,7 +963,7 @@ export default function CommunityPage() {
                     </button>
                   </div>
 
-                  {replyIsOpen && tab === "feed" && (
+                  {replyIsOpen && (
                     <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
                       {loadingComments ? (
                         <div className="mb-2 text-xs text-white/50">Loading comments…</div>
@@ -949,9 +990,9 @@ export default function CommunityPage() {
                       )}
 
                       <textarea
-                        value={replyDraft[id] ?? ""}
+                        value={replyDraft[postKey] ?? ""}
                         onChange={(e) =>
-                          setReplyDraft((prev) => ({ ...prev, [id]: e.target.value }))
+                          setReplyDraft((prev) => ({ ...prev, [postKey]: e.target.value }))
                         }
                         placeholder="Write a reply…"
                         rows={3}
@@ -962,7 +1003,7 @@ export default function CommunityPage() {
                       <div className="mt-2 flex gap-2">
                         <button
                           type="button"
-                          onClick={() => setReplyOpen((prev) => ({ ...prev, [id]: false }))}
+                          onClick={() => setReplyOpen((prev) => ({ ...prev, [postKey]: false }))}
                           className="flex-1 py-2.5 rounded-xl bg-white/10 text-white text-sm"
                           disabled={isBusy}
                         >
@@ -972,7 +1013,7 @@ export default function CommunityPage() {
                         <button
                           type="button"
                           onClick={() => sendReply(p)}
-                          disabled={isBusy || !(replyDraft[id] || "").trim()}
+                          disabled={isBusy || !(replyDraft[postKey] || "").trim()}
                           className="flex-1 py-2.5 rounded-xl bg-white text-black text-sm font-semibold disabled:opacity-50 inline-flex items-center justify-center gap-2"
                         >
                           <Send className="h-4 w-4" />

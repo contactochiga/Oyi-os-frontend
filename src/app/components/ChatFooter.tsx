@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from "react";
 type VoiceState = "idle" | "recording" | "processing";
 type Intent = "default" | "light" | "ac" | "security" | "tv";
 
-const BAR_COUNT = 32;
+const BAR_COUNT = 64;
 const SMOOTHING = 0.85;
 
 const INTENT_COLORS: Record<Intent, string> = {
@@ -25,13 +25,16 @@ export default function ChatFooter({
 }: {
   input: string;
   setInput: (s: string) => void;
-  onSend: () => Promise<void> | void;
+  onSend: (text?: string) => Promise<void> | void;
 }) {
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
   const [isSending, setIsSending] = useState(false);
   const [intent, setIntent] = useState<Intent>("default");
+  const [voiceHint, setVoiceHint] = useState<string | null>(null);
 
   const recognitionRef = useRef<any>(null);
+  const shouldSendVoiceRef = useRef(false);
+  const finalTranscriptRef = useRef("");
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -41,6 +44,9 @@ export default function ChatFooter({
   const smoothValues = useRef<number[]>(Array(BAR_COUNT).fill(0));
 
   const canSend = input.trim().length > 0 && !isSending && voiceState === "idle";
+  const hasSpeechRecognition =
+    typeof window !== "undefined" &&
+    !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
 
   function vibrate(ms: number) {
     navigator.vibrate?.(ms);
@@ -57,50 +63,14 @@ export default function ChatFooter({
   }
 
   useEffect(() => {
-    const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-
-    if (!SpeechRecognition) return;
-
-    const recognition = new SpeechRecognition();
-    recognition.lang = "en-US";
-    recognition.continuous = true;
-    recognition.interimResults = true;
-
-    recognition.onresult = (e: any) => {
-      const transcript = Array.from(e.results)
-        .map((r: any) => r[0].transcript)
-        .join("");
-
-      if (voiceState === "idle" && transcript.toLowerCase().includes("hey oyi")) {
-        vibrate(30);
-        startRecording();
-        return;
-      }
-
-      if (voiceState === "recording") {
-        setInput(transcript);
-        setIntent(inferIntent(transcript));
-      }
-    };
-
-    recognition.onend = () => {
-      if (voiceState === "recording") stopRecording();
-    };
-
-    recognitionRef.current = recognition;
-
-    try {
-      recognition.start();
-    } catch {}
-
     return () => {
       try {
-        recognition.stop();
+        recognitionRef.current?.stop?.();
       } catch {}
+      stopAudio();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [voiceState]);
+  }, []);
 
   async function startAudio() {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -165,36 +135,98 @@ export default function ChatFooter({
     loop();
   }
 
-  function startRecording() {
+  async function startRecording() {
+    if (!hasSpeechRecognition) return;
+    setVoiceHint(null);
     vibrate(20);
     setIntent("default");
     setInput("");
+    finalTranscriptRef.current = "";
+    shouldSendVoiceRef.current = false;
     setVoiceState("recording");
 
     try {
-      recognitionRef.current?.start();
-    } catch {}
+      await startAudio();
+    } catch {
+      setVoiceState("idle");
+      setVoiceHint("Microphone permission is required for voice command.");
+      return;
+    }
 
-    startAudio().catch(() => {});
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    recognition.lang = "en-US";
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
+
+    recognition.onresult = (e: any) => {
+      let interim = "";
+      let finalText = "";
+
+      for (let i = e.resultIndex; i < e.results.length; i += 1) {
+        const part = String(e.results[i]?.[0]?.transcript || "").trim();
+        if (!part) continue;
+        if (e.results[i].isFinal) finalText += ` ${part}`;
+        else interim += ` ${part}`;
+      }
+
+      const merged = (finalText || interim).trim();
+      if (!merged) return;
+      if (finalText.trim()) finalTranscriptRef.current = finalText.trim();
+      setInput(merged);
+      setIntent(inferIntent(merged));
+    };
+
+    recognition.onerror = () => {
+      shouldSendVoiceRef.current = false;
+      setVoiceState("idle");
+      stopAudio();
+      setVoiceHint("Could not start voice recognition on this device.");
+    };
+
+    recognition.onend = () => {
+      stopAudio();
+      setVoiceState("idle");
+
+      if (!shouldSendVoiceRef.current) return;
+      shouldSendVoiceRef.current = false;
+
+      const text = finalTranscriptRef.current.trim() || input.trim();
+      if (!text) {
+        setVoiceHint("No speech detected. Try again.");
+        return;
+      }
+
+      setInput(text);
+      void handleSend(text);
+    };
+
+    recognitionRef.current = recognition;
+
+    try {
+      recognition.start();
+    } catch {}
   }
 
   function stopRecording() {
     vibrate(40);
     setVoiceState("processing");
+    shouldSendVoiceRef.current = true;
 
     try {
       recognitionRef.current?.stop();
     } catch {}
-
-    stopAudio();
-    setVoiceState("idle");
   }
 
-  async function handleSend() {
-    if (!canSend) return;
+  async function handleSend(overrideText?: string) {
+    const text = (overrideText ?? input).trim();
+    if (!text || isSending) return;
+    if (!overrideText && voiceState !== "idle") return;
     setIsSending(true);
     try {
-      await onSend();
+      await onSend(text);
     } finally {
       setIsSending(false);
     }
@@ -224,17 +256,22 @@ export default function ChatFooter({
         {/* mic */}
         <button
           type="button"
-          onClick={voiceState === "recording" ? stopRecording : startRecording}
+          onClick={() => {
+            if (voiceState === "recording") stopRecording();
+            else void startRecording();
+          }}
           className={`
             relative z-[1]
             w-10 h-10 rounded-2xl flex items-center justify-center
             border transition active:scale-[0.99]
+            ${!hasSpeechRecognition ? "opacity-45 cursor-not-allowed" : ""}
             ${
               voiceState === "recording"
-                ? "bg-white text-black border-white/20"
+                ? "bg-white text-black border-white/20 animate-pulse"
                 : "bg-white/5 text-white border-white/10 hover:bg-white/10"
             }
           `}
+          disabled={!hasSpeechRecognition}
           aria-label={voiceState === "recording" ? "Stop recording" : "Start recording"}
         >
           {voiceState === "recording" ? (
@@ -246,13 +283,16 @@ export default function ChatFooter({
 
         {/* middle */}
         {voiceState === "recording" ? (
-          <div className="relative z-[1] flex-1 h-9">
+          <div className="relative z-[1] flex-1 h-10">
             {/* bar bed (glass) */}
             <div className="absolute inset-0 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl" />
             <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-white/10 via-transparent to-transparent opacity-70" />
+            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-[11px] text-white/55">
+              Listening...
+            </div>
 
             {/* bars */}
-            <div className="relative h-9 flex items-end gap-[3px] px-3">
+            <div className="relative h-10 flex items-end justify-end gap-[2px] px-3">
               {Array.from({ length: BAR_COUNT }).map((_, i) => (
                 <div
                   key={i}
@@ -261,7 +301,6 @@ export default function ChatFooter({
                   }}
                   className="rounded-full transition-[height]"
                   style={{
-                    // ✅ thinner bars, same rhythm
                     width: 2,
                     height: 6,
                     backgroundColor: INTENT_COLORS[intent],
@@ -283,7 +322,7 @@ export default function ChatFooter({
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
-                handleSend();
+                void handleSend();
               }
             }}
             placeholder="Ask Oyi…"
@@ -294,7 +333,7 @@ export default function ChatFooter({
         {/* send */}
         <button
           type="button"
-          onClick={handleSend}
+          onClick={() => void handleSend()}
           disabled={!canSend}
           className={`
             relative z-[1]
@@ -311,6 +350,9 @@ export default function ChatFooter({
           <FaPaperPlane className="text-[13px]" />
         </button>
       </div>
+      {voiceHint ? (
+        <div className="mt-2 text-[11px] text-amber-200/90 px-2">{voiceHint}</div>
+      ) : null}
     </div>
   );
 }
