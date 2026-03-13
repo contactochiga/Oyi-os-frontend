@@ -6,6 +6,7 @@ import ConsumerShell from "@/app/components/ConsumerShell";
 import useAuth from "@/hooks/useAuth";
 import { deviceService } from "@/services/deviceService";
 import GangRingSwitch from "@/app/components/devices/GangRingSwitch";
+import CameraIntelPanel from "@/app/components/devices/CameraIntelPanel";
 
 type AnyDevice = Record<string, any>;
 type DiscoveryDevice = Record<string, any>;
@@ -154,6 +155,10 @@ function inferFamily(d: AnyDevice) {
   if (source.includes("outlet") || source.includes("plug") || source.includes("socket")) return "outlet";
   if (source.includes("ac") || source.includes("air")) return "hvac";
   if (source.includes("curtain") || source.includes("blind")) return "curtain";
+  if (source.includes("camera") || source.includes("cctv") || source.includes("onvif")) return "camera";
+  if (source.includes("lock") || source.includes("door")) return "access";
+  if (source.includes("sensor") || source.includes("motion") || source.includes("pir")) return "sensor";
+  if (source.includes("smoke") || source.includes("alarm")) return "safety";
   return "generic";
 }
 
@@ -179,6 +184,7 @@ export default function DeviceClient() {
   const [err, setErr] = useState<string | null>(null);
 
   const [q, setQ] = useState("");
+  const [familyFilter, setFamilyFilter] = useState<string>("all");
 
   // device state cache (by DB id)
   const [stateMap, setStateMap] = useState<Record<string, any>>({});
@@ -347,16 +353,35 @@ export default function DeviceClient() {
 
   const filtered = useMemo(() => {
     const t = (q || "").trim().toLowerCase();
-    if (!t) return items;
-
     return items.filter((d) => {
+      const family = inferFamily(d);
+      if (familyFilter !== "all" && family !== familyFilter) return false;
+      if (!t) return true;
       const name = String(pickName(d)).toLowerCase();
       const vendor = String(pickVendor(d)).toLowerCase();
       const room = String(pickRoomName(d) ?? "").toLowerCase();
       const ext = String(pickExternalId(d) ?? "").toLowerCase();
       return name.includes(t) || vendor.includes(t) || room.includes(t) || ext.includes(t);
     });
-  }, [q, items]);
+  }, [q, items, familyFilter]);
+
+  const familyCounts = useMemo(() => {
+    const out: Record<string, number> = {
+      all: items.length,
+      light: 0,
+      switch: 0,
+      hvac: 0,
+      camera: 0,
+      access: 0,
+      sensor: 0,
+      safety: 0,
+    };
+    items.forEach((d) => {
+      const f = inferFamily(d);
+      if (typeof out[f] === "number") out[f] += 1;
+    });
+    return out;
+  }, [items]);
 
   async function warmState(device: AnyDevice) {
     const dbId = pickDbId(device);
@@ -496,6 +521,8 @@ export default function DeviceClient() {
         if (!dbId) return false;
         const sid = String(dbId);
         if (allow && !allow.has(sid)) return false;
+        const family = inferFamily(d);
+        if (family === "camera" || family === "sensor" || family === "safety") return false;
         return isOnline(d) !== false;
       });
 
@@ -813,6 +840,8 @@ export default function DeviceClient() {
       </div>
 
       {/* quick scenes */}
+      <CameraIntelPanel estateId={estateId} />
+
       <div className="mt-4 rounded-3xl border border-white/10 bg-white/5 p-4">
         <div className="flex items-center justify-between gap-2">
           <div>
@@ -1070,6 +1099,32 @@ export default function DeviceClient() {
             outline-none focus:border-white/20
           "
         />
+
+        <div className="mt-3 flex gap-2 overflow-auto pb-1">
+          {[
+            { key: "all", label: "All" },
+            { key: "light", label: "Lights" },
+            { key: "switch", label: "Switches" },
+            { key: "hvac", label: "AC" },
+            { key: "camera", label: "CCTV" },
+            { key: "access", label: "Access" },
+            { key: "sensor", label: "Sensors" },
+            { key: "safety", label: "Safety" },
+          ].map((f) => (
+            <button
+              key={f.key}
+              type="button"
+              onClick={() => setFamilyFilter(f.key)}
+              className={`shrink-0 rounded-full border px-3 py-1.5 text-xs transition ${
+                familyFilter === f.key
+                  ? "border-cyan-400/30 bg-cyan-500/15 text-cyan-100"
+                  : "border-white/10 bg-white/5 text-white/75 hover:bg-white/10"
+              }`}
+            >
+              {f.label} • {familyCounts[f.key] ?? 0}
+            </button>
+          ))}
+        </div>
 
         <div className="mt-3 flex items-center justify-between text-xs text-white/45">
           <span>{filtered.length} device{filtered.length === 1 ? "" : "s"}</span>

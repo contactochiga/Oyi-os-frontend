@@ -73,6 +73,9 @@ export default function ChatFooter({
   }, []);
 
   async function startAudio() {
+    if (!navigator?.mediaDevices?.getUserMedia) {
+      throw new Error("Audio capture is not supported on this device.");
+    }
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     streamRef.current = stream;
 
@@ -147,9 +150,16 @@ export default function ChatFooter({
 
     try {
       await startAudio();
-    } catch {
+    } catch (e: any) {
       setVoiceState("idle");
-      setVoiceHint("Microphone permission is required for voice command.");
+      const name = String(e?.name || "");
+      if (name === "NotAllowedError" || name === "SecurityError") {
+        setVoiceHint("Microphone blocked. Enable microphone for Oyi in iPhone Settings and reopen the app.");
+      } else if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+        setVoiceHint("No microphone device found.");
+      } else {
+        setVoiceHint("Microphone permission is required for voice command.");
+      }
       return;
     }
 
@@ -179,11 +189,16 @@ export default function ChatFooter({
       setIntent(inferIntent(merged));
     };
 
-    recognition.onerror = () => {
+    recognition.onerror = (e: any) => {
       shouldSendVoiceRef.current = false;
       setVoiceState("idle");
       stopAudio();
-      setVoiceHint("Could not start voice recognition on this device.");
+      const code = String(e?.error || "");
+      if (code === "not-allowed" || code === "service-not-allowed") {
+        setVoiceHint("Speech recognition is blocked. Allow Speech Recognition in iPhone Settings.");
+      } else {
+        setVoiceHint("Could not start voice recognition on this device.");
+      }
     };
 
     recognition.onend = () => {
