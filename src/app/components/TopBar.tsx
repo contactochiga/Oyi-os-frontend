@@ -3,12 +3,34 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import HamburgerMenu from "@/app/components/HamburgerMenu";
 import NotificationBell from "@/app/components/NotificationBell";
 import { ChatBubbleOvalLeftEllipsisIcon } from "@heroicons/react/24/outline";
+import messagesService from "@/services/messagesService";
 
 export default function TopBar() {
   const router = useRouter();
+  const [unread, setUnread] = useState(0);
+
+  async function refreshUnread() {
+    try {
+      const list = await messagesService.listInbox();
+      const total = (Array.isArray(list) ? list : []).reduce(
+        (acc: number, t: any) => acc + Number(t?.unread_count || 0),
+        0
+      );
+      setUnread(total);
+    } catch {
+      setUnread(0);
+    }
+  }
+
+  useEffect(() => {
+    refreshUnread();
+    const tm = window.setInterval(refreshUnread, 15000);
+    return () => window.clearInterval(tm);
+  }, []);
 
   return (
     <header
@@ -55,10 +77,14 @@ export default function TopBar() {
             title="Messages"
           >
             <ChatBubbleOvalLeftEllipsisIcon className="h-5 w-5 text-zinc-300" />
+            {unread > 0 ? (
+              <span className="absolute -right-0.5 -top-0.5 min-w-[16px] h-4 rounded-full bg-cyan-500/90 px-1 text-[10px] leading-4 text-black font-semibold text-center">
+                {unread > 99 ? "99+" : unread}
+              </span>
+            ) : null}
           </button>
         </div>
       </div>
     </header>
   );
 }
-

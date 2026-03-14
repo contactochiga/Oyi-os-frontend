@@ -3,9 +3,26 @@
 import { useEffect, useMemo, useState } from "react";
 import ConsumerShell from "@/app/components/ConsumerShell";
 import { walletService } from "@/services/walletService";
-import { FiZap, FiWifi, FiGlobe, FiHome, FiPlusCircle, FiClock } from "react-icons/fi";
+import API from "@/services/api";
+import { FiClock, FiGlobe, FiHome, FiLayers, FiWifi, FiZap } from "react-icons/fi";
 
-type ServiceKey = "utility_token" | "internet_service" | "fiber_internet" | "service_charge";
+type ServiceKey =
+  | "utility_token"
+  | "internet_service"
+  | "fiber_internet"
+  | "service_charge"
+  | "other_facility_fees";
+
+type HomeContext = {
+  id: string;
+  name?: string | null;
+  block?: string | null;
+  unit?: string | null;
+  electricity_meter?: string | null;
+  internet_id?: string | null;
+  water_meter?: string | null;
+  gate_code?: string | null;
+};
 
 type ServiceItem = {
   key: ServiceKey;
@@ -14,43 +31,40 @@ type ServiceItem = {
   reason: string;
   suggested: number;
   icon: any;
-  info: string;
 };
 
 type LocalPayment = {
   id: string;
   serviceKey: ServiceKey;
   amount: number;
+  accountRef: string;
   createdAt: string;
 };
 
 const SERVICE_ITEMS: ServiceItem[] = [
   {
     key: "utility_token",
-    title: "Utility",
+    title: "Utility Token",
     subtitle: "Electricity token purchase",
     reason: "utility_token_purchase",
     suggested: 5000,
     icon: FiZap,
-    info: "Buy prepaid utility tokens linked to your home account.",
   },
   {
     key: "internet_service",
-    title: "Internet",
+    title: "Internet Service",
     subtitle: "Data bundles and monthly plans",
     reason: "internet_service_payment",
     suggested: 10000,
     icon: FiWifi,
-    info: "Pay internet bundles and renew home connectivity from wallet.",
   },
   {
     key: "fiber_internet",
-    title: "Fiber",
-    subtitle: "Fiber broadband payments",
+    title: "Fiber Internet",
+    subtitle: "Fiber broadband subscriptions",
     reason: "fiber_internet_payment",
     suggested: 15000,
     icon: FiGlobe,
-    info: "Manage fiber subscription charges and new package renewals.",
   },
   {
     key: "service_charge",
@@ -59,7 +73,14 @@ const SERVICE_ITEMS: ServiceItem[] = [
     reason: "estate_service_charge",
     suggested: 25000,
     icon: FiHome,
-    info: "Pay estate service charges directly from wallet balance.",
+  },
+  {
+    key: "other_facility_fees",
+    title: "Other Facility Fees",
+    subtitle: "Special estate fees and one-off charges",
+    reason: "other_facility_fees",
+    suggested: 5000,
+    icon: FiLayers,
   },
 ];
 
@@ -80,6 +101,16 @@ function parseAmount(raw: string) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function accountRefFor(serviceKey: ServiceKey, home: HomeContext | null) {
+  if (!home) return "";
+  if (serviceKey === "utility_token") return String(home.electricity_meter || "");
+  if (serviceKey === "internet_service" || serviceKey === "fiber_internet")
+    return String(home.internet_id || "");
+  if (serviceKey === "service_charge") return String(home.id || "");
+  if (serviceKey === "other_facility_fees") return String(home.id || "");
+  return "";
+}
+
 export default function ServicesPage() {
   const [walletBusy, setWalletBusy] = useState<Record<string, boolean>>({});
   const [amounts, setAmounts] = useState<Record<string, string>>(
@@ -89,10 +120,15 @@ export default function ServicesPage() {
   const [err, setErr] = useState<string | null>(null);
   const [activeServiceKey, setActiveServiceKey] = useState<ServiceKey | null>(null);
   const [history, setHistory] = useState<LocalPayment[]>([]);
+  const [home, setHome] = useState<HomeContext | null>(null);
 
   const activeService = useMemo(
     () => SERVICE_ITEMS.find((s) => s.key === activeServiceKey) || null,
     [activeServiceKey]
+  );
+  const activeAccountRef = useMemo(
+    () => (activeService ? accountRefFor(activeService.key, home) : ""),
+    [activeService, home]
   );
 
   useEffect(() => {
@@ -113,6 +149,18 @@ export default function ServicesPage() {
     }
   }, [history]);
 
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await API.get("/me/context");
+        const payload = (res as any)?.data || {};
+        setHome((payload?.home as HomeContext) || null);
+      } catch {
+        setHome(null);
+      }
+    })();
+  }, []);
+
   function setAmount(key: string, value: string) {
     setAmounts((prev) => ({ ...prev, [key]: value }));
   }
@@ -126,9 +174,16 @@ export default function ServicesPage() {
       return;
     }
 
+    const accountRef = accountRefFor(item.key, home);
+    if (!accountRef) {
+      setErr(`${item.title} account is not linked to this home yet.`);
+      return;
+    }
+
     setWalletBusy((prev) => ({ ...prev, [item.key]: true }));
     try {
-      const res: any = await walletService.debit({ amount, reason: item.reason });
+      const reason = `${item.reason}:${accountRef}`;
+      const res: any = await walletService.debit({ amount, reason });
       if (res?.error) {
         setErr(String(res.error));
         return;
@@ -138,11 +193,12 @@ export default function ServicesPage() {
           id: `svc_${Date.now()}`,
           serviceKey: item.key,
           amount,
+          accountRef,
           createdAt: new Date().toISOString(),
         },
         ...prev,
       ]);
-      setMsg(`${item.title} paid from wallet successfully.`);
+      setMsg(`${item.title} paid successfully from wallet.`);
     } catch (e: any) {
       setErr(e?.message || "Payment failed");
     } finally {
@@ -169,9 +225,10 @@ export default function ServicesPage() {
         </div>
       ) : null}
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-2 gap-3">
         {SERVICE_ITEMS.map((item) => {
           const Icon = item.icon;
+          const linkedRef = accountRefFor(item.key, home);
           return (
             <button
               key={item.key}
@@ -183,7 +240,15 @@ export default function ServicesPage() {
                 <div className="inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-cyan-500/15 text-cyan-200">
                   <Icon className="h-4 w-4" />
                 </div>
-                <div className="text-[11px] text-white/45">Open</div>
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[10px] border ${
+                    linkedRef
+                      ? "border-emerald-500/35 bg-emerald-500/10 text-emerald-200"
+                      : "border-amber-500/35 bg-amber-500/10 text-amber-200"
+                  }`}
+                >
+                  {linkedRef ? "Linked" : "Unlinked"}
+                </span>
               </div>
               <div className="mt-3 text-sm font-semibold text-white">{item.title}</div>
               <div className="mt-1 text-xs text-white/50">{item.subtitle}</div>
@@ -194,18 +259,10 @@ export default function ServicesPage() {
 
       {activeService ? (
         <div className="mt-4 rounded-3xl border border-white/10 bg-white/5 p-4">
-          <div className="flex items-start justify-between gap-2">
-            <div>
-              <div className="text-sm font-semibold text-white">{activeService.title}</div>
-              <div className="mt-1 text-xs text-white/55">{activeService.info}</div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setAmount(activeService.key, String(activeService.suggested))}
-              className="rounded-xl border border-white/10 bg-white/10 px-2.5 py-2 text-xs text-white/75 hover:bg-white/15"
-            >
-              Reset
-            </button>
+          <div className="text-sm font-semibold text-white">{activeService.title}</div>
+          <div className="mt-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+            <div className="text-[11px] text-white/50">Linked Account ID</div>
+            <div className="text-sm text-white mt-0.5">{activeAccountRef || "Not linked to this home yet"}</div>
           </div>
 
           <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-2.5 flex items-center gap-2">
@@ -223,17 +280,17 @@ export default function ServicesPage() {
             <button
               type="button"
               onClick={() => payFromWallet(activeService)}
-              disabled={!!walletBusy[activeService.key]}
+              disabled={!!walletBusy[activeService.key] || !activeAccountRef}
               className="rounded-2xl py-2.5 bg-white text-black text-sm font-semibold disabled:opacity-50"
             >
-              {walletBusy[activeService.key] ? "Processing..." : "Pay Now"}
+              {walletBusy[activeService.key] ? "Processing..." : "Pay From Wallet"}
             </button>
             <button
               type="button"
               onClick={() => setAmount(activeService.key, String(activeService.suggested))}
               className="rounded-2xl py-2.5 border border-white/10 bg-white/5 text-sm text-white/85 hover:bg-white/10"
             >
-              Buy New Bundle
+              Reset Amount
             </button>
           </div>
 
@@ -242,7 +299,6 @@ export default function ServicesPage() {
               <FiClock className="h-3.5 w-3.5" />
               Recent history
             </div>
-
             <div className="mt-2 space-y-2">
               {activeHistory.length === 0 ? (
                 <div className="text-xs text-white/45 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
@@ -252,6 +308,7 @@ export default function ServicesPage() {
                 activeHistory.map((h) => (
                   <div key={h.id} className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
                     <div className="text-xs text-white/90">{toNaira(h.amount)}</div>
+                    <div className="text-[11px] text-white/50">Account: {h.accountRef || "—"}</div>
                     <div className="text-[11px] text-white/50">{new Date(h.createdAt).toLocaleString()}</div>
                   </div>
                 ))
@@ -261,15 +318,9 @@ export default function ServicesPage() {
         </div>
       ) : (
         <div className="mt-4 rounded-3xl border border-dashed border-white/15 bg-white/5 p-4 text-sm text-white/60">
-          Select a service card to view details, history, and payment actions.
+          Select a service card to open payment.
         </div>
       )}
-
-      <div className="mt-4 rounded-2xl border border-cyan-500/20 bg-cyan-500/10 px-4 py-3 text-xs text-cyan-100 inline-flex items-center gap-2">
-        <FiPlusCircle className="h-4 w-4" />
-        Wallet-only flow is active: top up wallet, then pay all services in-app.
-      </div>
     </ConsumerShell>
   );
 }
-
