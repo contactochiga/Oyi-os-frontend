@@ -2,6 +2,7 @@ import API from "./api";
 
 export type ServiceKey =
   | "utility_token"
+  | "water_service"
   | "internet_service"
   | "fiber_internet"
   | "service_charge"

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import ConsumerShell from "@/app/components/ConsumerShell";
 import { servicesService, type ServiceConfig, type ServiceKey, type ServicePayment } from "@/services/servicesService";
 import useActiveContext from "@/hooks/useActiveContext";
-import { FiClock, FiHome, FiLayers, FiWifi, FiZap } from "react-icons/fi";
+import { FiClock, FiDroplet, FiHome, FiLayers, FiWifi, FiZap } from "react-icons/fi";
 
 type HomeContext = {
   id: string;
@@ -32,12 +32,18 @@ type ServicePreset = {
 
 const SERVICE_ITEMS: ServiceItem[] = [
   { key: "utility_token", title: "Utility Token", subtitle: "Electricity token purchase", icon: FiZap },
+  { key: "water_service", title: "Water Service", subtitle: "Water meter recharge and usage billing", icon: FiDroplet },
   { key: "internet_service", title: "Fiber Internet Service", subtitle: "Bundles and monthly fiber plans", icon: FiWifi },
   { key: "service_charge", title: "Service Charge", subtitle: "Estate operational dues", icon: FiHome },
   { key: "other_facility_fees", title: "Other Facility Fees", subtitle: "Partner and external estate services", icon: FiLayers },
 ];
 
 const SERVICE_PRESETS: Partial<Record<ServiceKey, ServicePreset[]>> = {
+  water_service: [
+    { label: "Starter Fill", amount: 5000, meta: { period_label: "Starter Water Fill" } },
+    { label: "Standard Fill", amount: 12000, meta: { period_label: "Standard Water Fill" } },
+    { label: "Bulk Fill", amount: 25000, meta: { period_label: "Bulk Water Fill" } },
+  ],
   internet_service: [
     { label: "20 Mbps", amount: 11500, meta: { bundle_name: "20 Mbps Fiber" } },
     { label: "25 Mbps", amount: 18000, meta: { bundle_name: "25 Mbps Fiber" } },
@@ -68,6 +74,7 @@ function parseAmount(raw: string) {
 function accountRefFor(serviceKey: ServiceKey, home: HomeContext | null) {
   if (!home) return "";
   if (serviceKey === "utility_token") return String(home.electricity_meter || "");
+  if (serviceKey === "water_service") return String(home.water_meter || "");
   if (serviceKey === "internet_service" || serviceKey === "fiber_internet") return String(home.internet_id || "");
   if (serviceKey === "service_charge") return String(home.id || "");
   if (serviceKey === "other_facility_fees") return String(home.id || "");
