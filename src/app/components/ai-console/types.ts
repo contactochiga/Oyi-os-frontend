@@ -17,7 +17,17 @@ export type AiPanel =
 
 export type DeviceAction =
   | { type: "device.command"; deviceId: string; command: Record<string, any> }
-  | { type: "open.panel"; panel: AiPanel; deviceId?: string };
+  | { type: "open.panel"; panel: AiPanel; deviceId?: string }
+  | {
+      type: "visitor.create";
+      payload: {
+        name?: string;
+        phone?: string;
+        purpose?: string;
+        expires_hours?: number;
+        navigation_mode?: "code" | "link";
+      };
+    };
 
 export type AiResponse = {
   reply: string;

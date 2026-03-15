@@ -302,6 +302,14 @@ export default function VisitorsPage() {
     return items;
   }, [tab, items, pendingVisitors, activeVisitors]);
 
+  const sortedTabItems = useMemo(() => {
+    return [...tabItems].sort((a, b) => {
+      const ta = new Date(a.created_at || 0).getTime();
+      const tb = new Date(b.created_at || 0).getTime();
+      return tb - ta;
+    });
+  }, [tabItems]);
+
   const pendingCount = vClampCount(pendingVisitors.length);
 
   return (
@@ -481,7 +489,7 @@ export default function VisitorsPage() {
             <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
             Loading…
           </div>
-        ) : tabItems.length === 0 ? (
+        ) : sortedTabItems.length === 0 ? (
           <div className="rounded-2xl border border-white/10 bg-white/5 p-5 text-sm text-white/60">
             {tab === "pending"
               ? "No pending visitor requests."
@@ -491,7 +499,7 @@ export default function VisitorsPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            {tabItems.slice(0, 50).map((v) => (
+            {sortedTabItems.slice(0, 50).map((v) => (
               <VisitorCard
                 key={v.id}
                 v={v}

@@ -15,11 +15,10 @@ import { MdOutlinePerson, MdSettings } from "react-icons/md";
 import { decodeToken } from "@/lib/auth";
 
 // ✅ NEW: menu icons
-import { FiBox, FiSliders, FiShield, FiTool, FiSettings } from "react-icons/fi";
+import { FiSliders, FiShield, FiTool, FiSettings } from "react-icons/fi";
 
 type MenuKey =
   | "rooms"
-  | "utilities"
   | "automation"
   | "access_control"
   | "integrations"
@@ -27,7 +26,6 @@ type MenuKey =
 
 const ROUTES: Record<MenuKey, string> = {
   rooms: "/rooms",
-  utilities: "/services",
   automation: "/devices",
   access_control: "/visitors",
   integrations: "/settings?section=settings",
@@ -40,7 +38,6 @@ const MENU_ITEMS: Array<{
   icon: any;
   badgeKey?: "maintenance";
 }> = [
-  { key: "utilities", label: "Services", icon: FiBox },
   { key: "rooms", label: "Home Spaces", icon: FiSliders },
   { key: "automation", label: "Automation", icon: FiSettings },
   { key: "access_control", label: "Visitor Access", icon: FiShield },
@@ -96,7 +93,7 @@ function BadgePill({ value }: { value: number }) {
 export default function HamburgerMenu() {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, token, logout } = useAuth();
+  const { user, token, logout, setSession } = useAuth();
 
   const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
@@ -105,6 +102,8 @@ export default function HamburgerMenu() {
 
   const [estateName, setEstateName] = useState<string | null>(null);
   const [homeLabel, setHomeLabel] = useState<string | null>(null);
+  const [availableContexts, setAvailableContexts] = useState<any[]>([]);
+  const [switchingHomeId, setSwitchingHomeId] = useState<string | null>(null);
 
   // ✅ NEW: notification-style badges (UI-only for now, wire later)
   const [badges, setBadges] = useState({
@@ -237,6 +236,7 @@ export default function HamburgerMenu() {
 
         setEstateName(estateNameResolved);
         setHomeLabel(home ? buildHomeLabel(home) : null);
+        setAvailableContexts(Array.isArray(root?.available_contexts) ? root.available_contexts : []);
       } catch {
         // silent
       }
@@ -276,6 +276,58 @@ export default function HamburgerMenu() {
     () => !!estateName || !!homeLabel,
     [estateName, homeLabel],
   );
+
+  async function switchContext(homeId: string) {
+    if (!token || !homeId || switchingHomeId === homeId) return;
+    setSwitchingHomeId(homeId);
+    try {
+      const api = getApiBase();
+      const res = await fetch(`${api}/me/context/select`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ home_id: homeId }),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "Failed to switch home");
+
+      const estate = data?.estate ?? null;
+      const home = data?.home ?? null;
+
+      setEstateName(estate?.name ? String(estate.name) : null);
+      setHomeLabel(home ? buildHomeLabel(home) : null);
+      setAvailableContexts((prev) =>
+        prev.map((ctx: any) => ({
+          ...ctx,
+          is_active: String(ctx.home_id) === String(homeId),
+        }))
+      );
+
+      const mergedUser = {
+        ...(user || {}),
+        estate_id: data?.estate_id ?? estate?.id ?? null,
+        home_id: data?.home_id ?? home?.id ?? null,
+      };
+      setSession(token, mergedUser as any);
+
+      if (typeof window !== "undefined") {
+        if (data?.estate_id) localStorage.setItem("ochiga_estate", String(data.estate_id));
+        if (data?.home_id) localStorage.setItem("ochiga_home", String(data.home_id));
+        window.dispatchEvent(new Event("oyi:context-changed"));
+      }
+
+      router.refresh();
+      closeAll();
+      router.push("/home");
+    } catch (e) {
+      console.error("switch context failed", e);
+    } finally {
+      setSwitchingHomeId(null);
+    }
+  }
 
   const OVERLAY_Z = 2147483646;
   const DRAWER_Z = 2147483647;
@@ -377,6 +429,36 @@ export default function HamburgerMenu() {
                         <div className="text-[11px] text-white/45 mt-1 truncate">
                           Home:{" "}
                           <span className="text-white/70">{homeLabel}</span>
+                        </div>
+                      ) : null}
+
+                      {availableContexts.length > 1 ? (
+                        <div className="mt-3 border-t border-white/10 pt-3">
+                          <div className="text-[11px] text-white/45 mb-2">Switch Home</div>
+                          <div className="space-y-2">
+                            {availableContexts.map((ctx: any) => {
+                              const label = buildHomeLabel(ctx) || ctx?.home_name || "Home";
+                              const active = Boolean(ctx?.is_active);
+                              return (
+                                <button
+                                  key={`${ctx.estate_id}:${ctx.home_id}`}
+                                  type="button"
+                                  onClick={() => switchContext(String(ctx.home_id))}
+                                  disabled={active || switchingHomeId === String(ctx.home_id)}
+                                  className={`w-full rounded-xl border px-3 py-2 text-left transition ${
+                                    active
+                                      ? "border-cyan-500/30 bg-cyan-500/10 text-white"
+                                      : "border-white/10 bg-black/20 text-white/80 hover:bg-white/10"
+                                  } disabled:opacity-60`}
+                                >
+                                  <div className="text-[12px] font-medium truncate">{label}</div>
+                                  <div className="mt-0.5 text-[10px] text-white/45 truncate">
+                                    {ctx?.estate_name || "Estate"} {active ? "• Active" : ""}
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
                       ) : null}
                     </div>

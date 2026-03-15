@@ -15,6 +15,8 @@ export type ChatResident = {
   full_name?: string | null;
   role?: string | null;
   home_id?: string | null;
+  is_online?: boolean;
+  last_seen_at?: string | null;
 };
 
 export type InboxThread = {
@@ -114,7 +116,15 @@ export const messagesService = {
       return { error: pickError(err, "Failed to report message") } as any;
     }
   },
+
+  async pingPresence() {
+    try {
+      const res = await API.post("/messages/presence/ping");
+      return res.data as { ok?: boolean; last_seen_at?: string };
+    } catch (err: any) {
+      return { error: pickError(err, "Failed to update presence") } as any;
+    }
+  },
 };
 
 export default messagesService;
-

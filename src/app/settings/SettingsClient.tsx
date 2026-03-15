@@ -8,12 +8,31 @@ import { useSettingsStore } from "@/store/useSettingsStore";
 import { deleteMyAccount, updateMyProfile } from "@/services/authService";
 import API from "@/services/api";
 import { roomsService, type RoomDTO } from "@/services/roomsService";
-import { getTuyaIntegration, saveTuyaIntegration } from "@/services/integrationsService";
+import {
+  getGenericIntegration,
+  getTuyaIntegration,
+  saveGenericIntegration,
+  saveTuyaIntegration,
+} from "@/services/integrationsService";
 
 type AccessResident = {
   id: string;
   label: string;
   email?: string;
+};
+
+type AssistantIntegrationState = {
+  provider: "alexa" | "google_assistant";
+  label: string;
+  placeholder: string;
+  icon: string;
+  alt: string;
+  accentClassName: string;
+  connected: boolean;
+  masked: string | null;
+  value: string;
+  busy: boolean;
+  error: string | null;
 };
 
 export default function SettingsClient() {
@@ -51,6 +70,34 @@ export default function SettingsClient() {
   const [tuyaConnected, setTuyaConnected] = useState(false);
   const [tuyaBusy, setTuyaBusy] = useState(false);
   const [tuyaError, setTuyaError] = useState<string | null>(null);
+  const [assistantIntegrations, setAssistantIntegrations] = useState<Record<"alexa" | "google_assistant", AssistantIntegrationState>>({
+    alexa: {
+      provider: "alexa",
+      label: "Amazon Alexa",
+      placeholder: "Enter your Alexa account ID",
+      icon: "https://cdn.simpleicons.org/amazonalexa/00CAFF",
+      alt: "Alexa",
+      accentClassName: "border-sky-400/30 bg-sky-500/10",
+      connected: false,
+      masked: null,
+      value: "",
+      busy: false,
+      error: null,
+    },
+    google_assistant: {
+      provider: "google_assistant",
+      label: "Google Assistant",
+      placeholder: "Enter your Google Assistant home ID",
+      icon: "https://cdn.simpleicons.org/googleassistant/34A853",
+      alt: "Google Assistant",
+      accentClassName: "border-emerald-400/30 bg-emerald-500/10",
+      connected: false,
+      masked: null,
+      value: "",
+      busy: false,
+      error: null,
+    },
+  });
 
   const initials = useMemo(() => {
     const u = (user as any)?.username || (user as any)?.name || "User";
@@ -145,6 +192,33 @@ export default function SettingsClient() {
     run();
   }, []);
 
+  useEffect(() => {
+    const run = async () => {
+      const providers: Array<"alexa" | "google_assistant"> = ["alexa", "google_assistant"];
+      const results = await Promise.all(providers.map((provider) => getGenericIntegration(provider)));
+
+      setAssistantIntegrations((prev) => {
+        const next = { ...prev };
+        providers.forEach((provider, index) => {
+          const res: any = results[index];
+          if (res?.error) {
+            next[provider] = { ...next[provider], error: String(res.error) };
+            return;
+          }
+          next[provider] = {
+            ...next[provider],
+            connected: !!res?.connected,
+            masked: res?.masked_external_user_id || null,
+            value: String(res?.external_user_id || ""),
+            error: null,
+          };
+        });
+        return next;
+      });
+    };
+    run();
+  }, []);
+
   function togglePermission(key: keyof typeof permissions) {
     setPermissions((prev) => ({ ...prev, [key]: !prev[key] }));
   }
@@ -208,6 +282,46 @@ export default function SettingsClient() {
     }
     setTuyaConnected(true);
     setTuyaMasked(`${tuyaUid.trim().slice(0, 4)}***${tuyaUid.trim().slice(-3)}`);
+  }
+
+  function updateAssistantValue(provider: "alexa" | "google_assistant", value: string) {
+    setAssistantIntegrations((prev) => ({
+      ...prev,
+      [provider]: { ...prev[provider], value, error: null },
+    }));
+  }
+
+  async function saveAssistantIntegration(provider: "alexa" | "google_assistant") {
+    const current = assistantIntegrations[provider];
+    const nextValue = current.value.trim();
+    if (!nextValue) {
+      setAssistantIntegrations((prev) => ({
+        ...prev,
+        [provider]: { ...prev[provider], error: "Account ID is required" },
+      }));
+      return;
+    }
+
+    setAssistantIntegrations((prev) => ({
+      ...prev,
+      [provider]: { ...prev[provider], busy: true, error: null },
+    }));
+
+    const res: any = await saveGenericIntegration(provider, nextValue);
+
+    setAssistantIntegrations((prev) => ({
+      ...prev,
+      [provider]: res?.error
+        ? { ...prev[provider], busy: false, error: String(res.error) }
+        : {
+            ...prev[provider],
+            busy: false,
+            connected: true,
+            masked: res?.masked_external_user_id || null,
+            value: nextValue,
+            error: null,
+          },
+    }));
   }
 
   return (
@@ -284,29 +398,23 @@ export default function SettingsClient() {
               </div>
             </div>
 
-            <div className="rounded-xl border border-white/10 bg-black/30 p-3">
-              <div className="flex items-center gap-2">
-                <img
-                  src="https://cdn.simpleicons.org/amazonalexa/00CAFF"
-                  alt="Alexa"
-                  className="h-5 w-5"
-                />
-                <div className="text-sm font-semibold text-white">Amazon Alexa</div>
-              </div>
-              <div className="mt-1 text-[11px] text-white/55">OAuth linking next phase</div>
-            </div>
-
-            <div className="rounded-xl border border-white/10 bg-black/30 p-3">
-              <div className="flex items-center gap-2">
-                <img
-                  src="https://cdn.simpleicons.org/googleassistant/34A853"
-                  alt="Google Assistant"
-                  className="h-5 w-5"
-                />
-                <div className="text-sm font-semibold text-white">Google Assistant</div>
-              </div>
-              <div className="mt-1 text-[11px] text-white/55">OAuth linking next phase</div>
-            </div>
+            {(["alexa", "google_assistant"] as const).map((provider) => {
+              const integration = assistantIntegrations[provider];
+              return (
+                <div
+                  key={provider}
+                  className={`rounded-xl border p-3 ${integration.connected ? integration.accentClassName : "border-white/10 bg-black/30"}`}
+                >
+                  <div className="flex items-center gap-2">
+                    <img src={integration.icon} alt={integration.alt} className="h-5 w-5" />
+                    <div className="text-sm font-semibold text-white">{integration.label}</div>
+                  </div>
+                  <div className="mt-1 text-[11px] text-white/65">
+                    {integration.connected ? `Connected (${integration.masked || "linked"})` : "Not connected"}
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           <div className="rounded-xl border border-gray-700 bg-black/30 p-3 space-y-2">
@@ -328,6 +436,34 @@ export default function SettingsClient() {
               {tuyaBusy ? "Saving..." : "Save Tuya UID"}
             </button>
             {tuyaError ? <div className="text-xs text-red-300">{tuyaError}</div> : null}
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            {(["alexa", "google_assistant"] as const).map((provider) => {
+              const integration = assistantIntegrations[provider];
+              return (
+                <div key={`${provider}-form`} className="rounded-xl border border-gray-700 bg-black/30 p-3 space-y-2">
+                  <div className="text-xs text-gray-400">
+                    Save the account identifier you want OYI to use when syncing assistant routines for this home.
+                  </div>
+                  <input
+                    value={integration.value}
+                    onChange={(e) => updateAssistantValue(provider, e.target.value)}
+                    placeholder={integration.placeholder}
+                    className="w-full rounded-xl bg-black/30 border border-gray-700 px-3 py-2 text-sm text-white outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => saveAssistantIntegration(provider)}
+                    disabled={integration.busy || !integration.value.trim()}
+                    className="w-full py-3 rounded-xl bg-white text-black text-sm font-semibold disabled:opacity-50"
+                  >
+                    {integration.busy ? "Saving..." : `Save ${integration.label}`}
+                  </button>
+                  {integration.error ? <div className="text-xs text-red-300">{integration.error}</div> : null}
+                </div>
+              );
+            })}
           </div>
         </div>
       </section>

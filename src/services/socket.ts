@@ -20,6 +20,15 @@ function getCookie(name: string): string | null {
   return match ? decodeURIComponent(match.split("=")[1]) : null;
 }
 
+function getLS(key: string): string | null {
+  try {
+    if (typeof window === "undefined") return null;
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Get (or create) the singleton socket.
  * - attaches Authorization header from cookie token
@@ -28,7 +37,10 @@ function getCookie(name: string): string | null {
 export function getSocket() {
   if (typeof window === "undefined") return null;
 
-  const token = getCookie("oyi_consumer_token");
+  const token =
+    getLS("oyi_consumer_token_ls") ||
+    getLS("oyi_consumer_token") ||
+    getCookie("oyi_consumer_token");
   const baseURL = getBaseURL();
 
   // If socket exists but token changed, rebuild it cleanly

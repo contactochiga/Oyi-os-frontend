@@ -11,6 +11,16 @@ export type AiAction =
       type: "open.panel";
       panel: string;
       deviceId?: string;
+    }
+  | {
+      type: "visitor.create";
+      payload: {
+        name?: string;
+        phone?: string;
+        purpose?: string;
+        expires_hours?: number;
+        navigation_mode?: "code" | "link";
+      };
     };
 
 export type AiChatResponse = {

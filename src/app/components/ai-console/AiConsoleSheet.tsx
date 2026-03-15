@@ -131,7 +131,7 @@ export default function AiConsoleSheet(props: {
             exit={{ y: 40, opacity: 0 }}
             transition={{ type: "spring", stiffness: 260, damping: 26 }}
             className="absolute left-0 right-0 bottom-0"
-            style={{ paddingBottom: "calc(10px + var(--sab))" }}
+            style={{ paddingBottom: "calc(10px + var(--sab) + var(--kb))" }}
           >
             <div className="max-w-3xl mx-auto px-4">
               <div

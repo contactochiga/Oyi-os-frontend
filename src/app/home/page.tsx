@@ -21,6 +21,7 @@ import AiConsoleSheet from "../components/ai-console/AiConsoleSheet";
 // ✅ AI brain helpers (from your new separation)
 import { aiService } from "../../services/aiService";
 import { deviceService } from "../../services/deviceService";
+import { walletService } from "@/services/walletService";
 
 import { visitorService, type VisitorAccess } from "@/services/visitorService";
 import { communityService, type CommunityPost } from "@/services/communityService";
@@ -174,6 +175,7 @@ export default function HomePage() {
   const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>([]);
   const [maintenance, setMaintenance] = useState<MaintenanceTicket[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [dashErr, setDashErr] = useState<string | null>(null);
   const [dashBusy, setDashBusy] = useState(false);
 
@@ -251,11 +253,13 @@ export default function HomePage() {
         listMyNotifications(),
         estateId ? communityService.listByEstate(String(estateId)) : Promise.resolve([]),
       ]);
+      const wallet = await walletService.getWallet();
 
       setVisitors(Array.isArray(v) ? v : []);
       setMaintenance(Array.isArray(m as any) ? (m as any) : []);
       setNotifications(Array.isArray(n) ? n : []);
       setCommunityPosts(Array.isArray(c) ? c : []);
+      setWalletBalance(wallet?.error ? null : Number(wallet?.balance ?? 0));
     } catch (e: any) {
       setDashErr(e?.message || "Failed to load dashboard data");
     } finally {
@@ -534,8 +538,12 @@ export default function HomePage() {
                     <StatCard
                       icon={<DollarSign className="w-4 h-4 text-emerald-300" />}
                       label="Wallet"
-                      value={"—"}
-                      sub="Tap to open"
+                      value={
+                        walletBalance == null
+                          ? "₦0"
+                          : `₦${Number(walletBalance).toLocaleString()}`
+                      }
+                      sub="Available balance"
                       onClick={() => router.push("/wallet")}
                     />
 

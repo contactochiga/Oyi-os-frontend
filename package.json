@@ -17,6 +17,7 @@
     "cap:update": "npx cap update"
   },
   "dependencies": {
+    "@capacitor-community/speech-recognition": "^6.0.0",
     "@capacitor/core": "^6.1.0",
     "@capacitor/keyboard": "^6.0.4",
     "@heroicons/react": "^2.1.5",

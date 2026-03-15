@@ -361,6 +361,7 @@ export default function CommunityPage() {
 
       const nextLikes: Record<string, number> = {};
       const nextReplies: Record<string, number> = {};
+      const nextLiked: Record<string, boolean> = {};
 
       for (const p of arr as any[]) {
         const id = pickPostId(p);
@@ -376,12 +377,15 @@ export default function CommunityPage() {
 
         nextLikes[id] = clampCount(l);
         nextReplies[id] = clampCount(r);
+        nextLiked[id] = !!(p?.reacted_by_me ?? p?.liked_by_me ?? false);
       }
 
       if (Object.keys(nextLikes).length)
         setLikeCounts((prev) => ({ ...prev, ...nextLikes }));
       if (Object.keys(nextReplies).length)
         setReplyCounts((prev) => ({ ...prev, ...nextReplies }));
+      if (Object.keys(nextLiked).length)
+        setLiked((prev) => ({ ...prev, ...nextLiked }));
       setLastLiveAt(Date.now());
     } catch (e: any) {
       setErr(e?.message || "Failed to load community");

@@ -7,6 +7,24 @@ export type ServiceKey =
   | "service_charge"
   | "other_facility_fees";
 
+export type ServiceConfig = {
+  estate_id: string;
+  service_key: ServiceKey;
+  title: string;
+  description: string;
+  suggested_amount: number;
+  currency: string;
+  active: boolean;
+  account_label: string;
+  account_hint: string;
+  payment_mode: "wallet_only";
+  unit_cost?: number | null;
+  unit_name?: string | null;
+  billing_mode?: "wallet_only" | "metered" | "fixed";
+  created_at?: string;
+  updated_at?: string;
+};
+
 export type ServicePayment = {
   id: string;
   amount: number;
@@ -47,6 +65,18 @@ export const servicesService = {
       return (res.data?.payments || []) as ServicePayment[];
     } catch {
       return [];
+    }
+  },
+
+  async configs(params?: { estate_id?: string }) {
+    try {
+      const res = await API.get("/services/config", { params });
+      return {
+        configs: (res.data?.configs || []) as ServiceConfig[],
+        using_fallback: Boolean(res.data?.using_fallback),
+      };
+    } catch (err: any) {
+      return { configs: [] as ServiceConfig[], using_fallback: false, error: pickError(err, "Failed to load service configs") } as any;
     }
   },
 };

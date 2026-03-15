@@ -2,6 +2,7 @@
 
 import { ReactNode, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import useActiveContext from "@/hooks/useActiveContext";
 
 import LayoutWrapper from "./LayoutWrapper";
 import InviteSuggestionBridge from "./InviteSuggestionBridge";
@@ -23,11 +24,21 @@ export default function ConsumerShell({
   backHref?: string;
 }) {
   const router = useRouter();
+  const { estate, home, available_contexts } = useActiveContext();
 
   const canGoBack = useMemo(() => {
     if (typeof window === "undefined") return false;
     return window.history.length > 1;
   }, []);
+
+  const homeLabel = useMemo(() => {
+    const block = String(home?.block || "").trim();
+    const unit = String(home?.unit || "").trim();
+    if (block && unit) return `${block} / ${unit}`;
+    if (block) return block;
+    if (unit) return unit;
+    return String(home?.name || "").trim() || null;
+  }, [home]);
 
   function handleBack() {
     if (canGoBack) router.back();
@@ -66,8 +77,8 @@ export default function ConsumerShell({
           style={{
             // top space: header(64px) + safe-area + spacing
             paddingTop: "calc(64px + var(--sat) + 16px)",
-            // bottom space: footer + safe-area
-            paddingBottom: "calc(88px + var(--sab))",
+            // bottom space: footer + safe-area + keyboard offset
+            paddingBottom: "calc(88px + var(--sab) + var(--kb))",
           }}
         >
           <div className="max-w-3xl mx-auto">
@@ -79,6 +90,29 @@ export default function ConsumerShell({
                 {subtitle && (
                   <div className="text-white/60 text-sm mt-1">{subtitle}</div>
                 )}
+              </div>
+            )}
+
+            {(estate?.name || homeLabel) && (
+              <div className="mb-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
+                      Active Home
+                    </div>
+                    <div className="mt-1 text-sm font-medium text-white truncate">
+                      {homeLabel || "Home not selected"}
+                    </div>
+                    <div className="mt-1 text-xs text-white/45 truncate">
+                      {estate?.name || "Estate"}{available_contexts.length > 1 ? ` • ${available_contexts.length} homes available` : ""}
+                    </div>
+                  </div>
+                  {available_contexts.length > 1 ? (
+                    <div className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2.5 py-1 text-[10px] text-cyan-100">
+                      Switch in menu
+                    </div>
+                  ) : null}
+                </div>
               </div>
             )}
 

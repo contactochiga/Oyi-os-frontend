@@ -27,6 +27,13 @@ function shortTime(iso?: string | null) {
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+function presenceLabel(r?: ChatResident | null) {
+  if (!r) return "Offline";
+  if (r.is_online) return "Online";
+  if (r.last_seen_at) return `Seen ${shortTime(r.last_seen_at)}`;
+  return "Offline";
+}
+
 export default function MessagesPage() {
   const { user } = useAuth();
   const myId = useMemo(() => String((user as any)?.id || ""), [user]);
@@ -205,6 +212,7 @@ export default function MessagesPage() {
                       className="w-full rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 px-3 py-2 text-left"
                     >
                       <div className="text-sm text-white">{displayName(r)}</div>
+                      <div className="mt-0.5 text-[11px] text-white/45">{presenceLabel(r)}</div>
                     </button>
                   ))}
                   {filteredResidents.length === 0 ? (
@@ -238,7 +246,10 @@ export default function MessagesPage() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
-                        <div className="text-sm text-white font-medium truncate">{displayName(t.peer)}</div>
+                        <div className="min-w-0">
+                          <div className="text-sm text-white font-medium truncate">{displayName(t.peer)}</div>
+                          <div className="text-[11px] text-white/40">{presenceLabel(t.peer)}</div>
+                        </div>
                         <div className="text-[10px] text-white/45 shrink-0">{shortTime(t.last_message_at)}</div>
                       </div>
                       <div className="mt-0.5 text-xs text-white/55 truncate">
@@ -257,7 +268,10 @@ export default function MessagesPage() {
           </div>
         </div>
       ) : (
-        <div className="rounded-3xl border border-white/10 bg-white/5 p-3 min-h-[65vh] flex flex-col">
+        <div
+          className="rounded-3xl border border-white/10 bg-white/5 p-3 min-h-[65vh] flex flex-col"
+          style={{ paddingBottom: "calc(12px + var(--kb))" }}
+        >
           <div className="border-b border-white/10 pb-2 flex items-center gap-3">
             <button
               type="button"
@@ -270,7 +284,10 @@ export default function MessagesPage() {
             <div className="h-8 w-8 rounded-full bg-white/10 border border-white/10 flex items-center justify-center text-white/90 text-sm">
               {initials(activeThread?.peer)}
             </div>
-            <div className="text-sm text-white font-semibold">{displayName(activeThread?.peer)}</div>
+            <div className="min-w-0">
+              <div className="text-sm text-white font-semibold truncate">{displayName(activeThread?.peer)}</div>
+              <div className="text-[11px] text-white/45">{presenceLabel(activeThread?.peer)}</div>
+            </div>
           </div>
 
           <div className="flex-1 overflow-auto py-3 space-y-2">
@@ -295,7 +312,10 @@ export default function MessagesPage() {
             )}
           </div>
 
-          <div className="border-t border-white/10 pt-2 flex items-center gap-2">
+          <div
+            className="border-t border-white/10 pt-2 flex items-center gap-2 sticky bottom-0 bg-[rgba(15,23,42,0.88)] backdrop-blur-xl"
+            style={{ paddingBottom: "calc(6px + var(--kb))" }}
+          >
             <input
               value={compose}
               onChange={(e) => setCompose(e.target.value)}
@@ -322,4 +342,3 @@ export default function MessagesPage() {
     </ConsumerShell>
   );
 }
-

@@ -4,6 +4,8 @@ import { AuthProvider } from "@/hooks/useAuth";
 import CapacitorBoot from "@/app/components/CapacitorBoot";
 import ViewportKeyboardFix from "@/app/components/ViewportKeyboardFix";
 import PushNotificationsBridge from "@/app/components/PushNotificationsBridge";
+import PresenceBridge from "@/app/components/PresenceBridge";
+import GeoFenceBridge from "@/app/components/GeoFenceBridge";
 
 export const metadata = {
   title: "Oyi OS",
@@ -25,6 +27,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ReactQueryProvider>
           <AuthProvider>
             <PushNotificationsBridge />
+            <PresenceBridge />
+            <GeoFenceBridge />
             {children}
           </AuthProvider>
         </ReactQueryProvider>
