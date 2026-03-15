@@ -31,30 +31,10 @@ type ServicePreset = {
 };
 
 const SERVICE_ITEMS: ServiceItem[] = [
-  {
-    key: "utility_token",
-    title: "Utility Token",
-    subtitle: "Electricity token purchase",
-    icon: FiZap,
-  },
-  {
-    key: "internet_service",
-    title: "Fiber Internet Service",
-    subtitle: "Bundles and monthly fiber plans",
-    icon: FiWifi,
-  },
-  {
-    key: "service_charge",
-    title: "Service Charge",
-    subtitle: "Estate operational dues",
-    icon: FiHome,
-  },
-  {
-    key: "other_facility_fees",
-    title: "Other Facility Fees",
-    subtitle: "Partner and external estate services",
-    icon: FiLayers,
-  },
+  { key: "utility_token", title: "Utility Token", subtitle: "Electricity token purchase", icon: FiZap },
+  { key: "internet_service", title: "Fiber Internet Service", subtitle: "Bundles and monthly fiber plans", icon: FiWifi },
+  { key: "service_charge", title: "Service Charge", subtitle: "Estate operational dues", icon: FiHome },
+  { key: "other_facility_fees", title: "Other Facility Fees", subtitle: "Partner and external estate services", icon: FiLayers },
 ];
 
 const SERVICE_PRESETS: Partial<Record<ServiceKey, ServicePreset[]>> = {
@@ -94,6 +74,20 @@ function accountRefFor(serviceKey: ServiceKey, home: HomeContext | null) {
   return "";
 }
 
+function mergedServiceItem(item: ServiceItem, configs: Partial<Record<ServiceKey, ServiceConfig>>) {
+  const cfg = configs[item.key];
+  return {
+    ...item,
+    title: cfg?.title || item.title,
+    subtitle: cfg?.description || item.subtitle,
+    active: cfg?.active ?? true,
+    accountLabel: cfg?.account_label || "Account Reference",
+    accountHint: cfg?.account_hint || "Linked to your assigned home",
+    unitCost: cfg?.unit_cost ?? null,
+    unitName: cfg?.unit_name || null,
+  };
+}
+
 export default function ServicesPage() {
   const { estate_id: estateId, home } = useActiveContext();
   const [walletBusy, setWalletBusy] = useState<Record<string, boolean>>({});
@@ -106,43 +100,29 @@ export default function ServicesPage() {
   const [configsFallback, setConfigsFallback] = useState(false);
   const [lastReceipt, setLastReceipt] = useState<ServicePayment | null>(null);
 
-  const activeService = useMemo(
-    () => SERVICE_ITEMS.find((s) => s.key === activeServiceKey) || null,
-    [activeServiceKey]
-  );
-  const activeAccountRef = useMemo(
-    () => (activeService ? accountRefFor(activeService.key, home) : ""),
-    [activeService, home]
-  );
-  const activeServiceView = useMemo(
-    () => (activeService ? mergedServiceItem(activeService, configs) : null),
-    [activeService, configs]
-  );
-  const activePresets = useMemo(
-    () => (activeServiceKey ? SERVICE_PRESETS[activeServiceKey] || [] : []),
-    [activeServiceKey]
-  );
+  const activeService = useMemo(() => SERVICE_ITEMS.find((s) => s.key === activeServiceKey) || null, [activeServiceKey]);
+  const activeAccountRef = useMemo(() => (activeService ? accountRefFor(activeService.key, home) : ""), [activeService, home]);
+  const activeServiceView = useMemo(() => (activeService ? mergedServiceItem(activeService, configs) : null), [activeService, configs]);
+  const activePresets = useMemo(() => (activeServiceKey ? SERVICE_PRESETS[activeServiceKey] || [] : []), [activeServiceKey]);
+  const activeHistory = useMemo(() => {
+    if (!activeServiceKey) return [];
+    return history.filter((h) => h.service_key === activeServiceKey).slice(0, 8);
+  }, [activeServiceKey, history]);
 
   useEffect(() => {
     let cancelled = false;
-
     async function loadConfigs() {
       if (!estateId) {
         setConfigs({});
         setConfigsFallback(false);
         return;
       }
-
       const cfgRes: any = await servicesService.configs({ estate_id: estateId });
       if (cancelled || cfgRes?.error) return;
-
-      const mapped = Object.fromEntries(
-        (cfgRes.configs || []).map((cfg: ServiceConfig) => [cfg.service_key, cfg])
-      ) as Partial<Record<ServiceKey, ServiceConfig>>;
+      const mapped = Object.fromEntries((cfgRes.configs || []).map((cfg: ServiceConfig) => [cfg.service_key, cfg])) as Partial<Record<ServiceKey, ServiceConfig>>;
       setConfigs(mapped);
       setConfigsFallback(Boolean(cfgRes.using_fallback));
     }
-
     void loadConfigs();
     return () => {
       cancelled = true;
@@ -162,6 +142,10 @@ export default function ServicesPage() {
 
   function setAmount(key: string, value: string) {
     setAmounts((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function closeSheet() {
+    setActiveServiceKey(null);
   }
 
   async function payFromWallet(item: ServiceItem, meta?: Record<string, any>) {
@@ -204,25 +188,10 @@ export default function ServicesPage() {
     }
   }
 
-  const activeHistory = useMemo(() => {
-    if (!activeServiceKey) return [];
-    return history.filter((h) => h.service_key === activeServiceKey).slice(0, 8);
-  }, [activeServiceKey, history]);
-
   return (
     <ConsumerShell title="Services" subtitle="Utility • fiber internet • estate charges">
-      {err ? (
-        <div className="mb-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-          {err}
-        </div>
-      ) : null}
-
-      {msg ? (
-        <div className="mb-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
-          {msg}
-        </div>
-      ) : null}
-
+      {err ? <div className="mb-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">{err}</div> : null}
+      {msg ? <div className="mb-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">{msg}</div> : null}
       {configsFallback ? (
         <div className="mb-4 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
           Estate service pricing is using fallback defaults until facility billing configuration is saved.
@@ -245,21 +214,13 @@ export default function ServicesPage() {
               key={merged.key}
               type="button"
               onClick={() => merged.active && setActiveServiceKey(merged.key)}
-              className={`text-left rounded-3xl border p-4 transition ${
-                merged.active
-                  ? "border-white/10 bg-white/5 hover:bg-white/10"
-                  : "border-white/5 bg-white/[0.03] opacity-60"
-              }`}
+              className={`text-left rounded-3xl border p-4 transition ${merged.active ? "border-white/10 bg-white/5 hover:bg-white/10" : "border-white/5 bg-white/[0.03] opacity-60"}`}
             >
               <div className="flex items-center justify-between gap-2">
                 <div className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl transition ${iconTone}`}>
                   <Icon className="h-4 w-4" />
                 </div>
-                {!merged.active ? (
-                  <span className="rounded-full border border-zinc-500/35 bg-zinc-500/10 px-2 py-0.5 text-[10px] text-zinc-300">
-                    Disabled
-                  </span>
-                ) : null}
+                {!merged.active ? <span className="rounded-full border border-zinc-500/35 bg-zinc-500/10 px-2 py-0.5 text-[10px] text-zinc-300">Disabled</span> : null}
               </div>
               <div className="mt-3 text-sm font-semibold text-white">{merged.title}</div>
               <div className="mt-1 text-xs text-white/50">{merged.subtitle}</div>
@@ -269,194 +230,143 @@ export default function ServicesPage() {
       </div>
 
       {!activeService ? (
-        <div className="mt-4 rounded-3xl border border-dashed border-white/15 bg-white/5 p-4 text-sm text-white/60">
-          Select a service card to open payment.
-        </div>
+        <div className="mt-4 rounded-3xl border border-dashed border-white/15 bg-white/5 p-4 text-sm text-white/60">Select a service card to open payment.</div>
       ) : null}
 
       {activeService ? (
         <div className="fixed inset-0 z-[120]">
-          <button
-            type="button"
-            aria-label="Close payment panel"
-            onClick={() => setActiveServiceKey(null)}
-            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-          />
-          <div className="absolute inset-x-0 bottom-0">
-            <div className="mx-auto max-w-xl rounded-t-[32px] border border-white/10 bg-zinc-950 px-4 pb-6 pt-4 shadow-2xl">
-              <div className="mx-auto mb-4 h-1.5 w-14 rounded-full bg-white/15" />
-
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-base font-semibold text-white">{activeServiceView?.title}</div>
-                  <div className="mt-1 text-xs text-white/45">{activeServiceView?.subtitle}</div>
+          <button type="button" aria-label="Close payment panel" onClick={closeSheet} className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+          <div className="absolute inset-x-0 bottom-0 top-16 flex items-end justify-center p-2">
+            <div className="flex max-h-full w-full max-w-xl flex-col overflow-hidden rounded-t-[32px] border border-white/10 bg-zinc-950 shadow-2xl">
+              <div className="mx-auto mt-3 h-1.5 w-14 rounded-full bg-white/15" />
+              <div className="sticky top-0 z-10 border-b border-white/10 bg-zinc-950/95 px-4 pb-4 pt-3 backdrop-blur">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">Service Payment</div>
+                    <div className="text-base font-semibold text-white">{activeServiceView?.title}</div>
+                    <div className="mt-1 text-xs text-white/45">{activeServiceView?.subtitle}</div>
+                  </div>
+                  <button type="button" onClick={closeSheet} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/70">
+                    Done
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setActiveServiceKey(null)}
-                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/70"
-                >
-                  Close
-                </button>
               </div>
 
-              <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
-                <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
-                  {activeServiceView?.accountLabel}
-                </div>
-                <div className="mt-2 text-sm font-medium text-white">
-                  {activeAccountRef || "Not linked yet"}
-                </div>
-                <div className="mt-1 text-xs text-white/45">{activeServiceView?.accountHint}</div>
-              </div>
-
-              <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
-                <div className="text-[11px] text-white/45">Home</div>
-                <div className="mt-1 text-sm text-white">
-                  {home?.name || [home?.block, home?.unit].filter(Boolean).join(" / ") || "Linked home"}
-                </div>
-                <div className="mt-3 text-[11px] text-white/45">Linked Account ID</div>
-                <div className="mt-1 text-sm text-white">{activeAccountRef || "Not linked to this home yet"}</div>
-                {activeServiceView?.unitCost != null ? (
-                  <>
-                    <div className="mt-3 text-[11px] text-white/45">Configured Unit Cost</div>
-                    <div className="mt-1 text-sm text-white">
-                      {toNaira(Number(activeServiceView.unitCost || 0))}
-                      {activeServiceView.unitName ? ` / ${activeServiceView.unitName}` : ""}
+              <div className="overflow-y-auto px-4 pb-6">
+                <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">{activeServiceView?.accountLabel}</div>
+                      <div className="mt-2 text-sm font-medium text-white">{activeAccountRef || "Not linked yet"}</div>
                     </div>
-                  </>
+                    <div className="text-right text-[11px] text-white/45">{home?.name || [home?.block, home?.unit].filter(Boolean).join(" / ") || "Linked home"}</div>
+                  </div>
+                  <div className="mt-1 text-xs text-white/45">{activeServiceView?.accountHint}</div>
+                </div>
+
+                {activePresets.length ? (
+                  <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-3">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">Plan Options</div>
+                    <div className="mt-3 grid gap-2">
+                      {activePresets.map((preset) => (
+                        <button
+                          key={`${activeService.key}:${preset.label}`}
+                          type="button"
+                          onClick={() => setAmount(activeService.key, String(preset.amount))}
+                          className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-left hover:bg-white/10 transition"
+                        >
+                          <div>
+                            <div className="text-sm text-white">{preset.label}</div>
+                            <div className="text-[11px] text-white/45">Tap to load amount</div>
+                          </div>
+                          <div className="text-sm font-medium text-white">{toNaira(preset.amount)}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-3 flex items-center gap-2">
+                  <div className="text-xs text-white/45">NGN</div>
+                  <input
+                    inputMode="numeric"
+                    value={amounts[activeService.key] || ""}
+                    onChange={(e) => setAmount(activeService.key, e.target.value)}
+                    placeholder="Enter amount"
+                    className="flex-1 bg-transparent outline-none text-sm text-white"
+                  />
+                </div>
+
+                {activeServiceView?.unitCost != null ? (
+                  <div className="mt-2 text-[11px] text-white/45">
+                    Unit cost: {toNaira(Number(activeServiceView.unitCost || 0))}
+                    {activeServiceView.unitName ? ` / ${activeServiceView.unitName}` : ""}
+                  </div>
+                ) : null}
+
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const selectedPreset = activePresets.find((preset) => String(preset.amount) === String(parseAmount(amounts[activeService.key] || ""))) || null;
+                      void payFromWallet(activeService, selectedPreset?.meta);
+                    }}
+                    disabled={Boolean(walletBusy[activeService.key]) || !activeAccountRef || activeService.key === "other_facility_fees"}
+                    className="rounded-2xl py-3 bg-white text-black text-sm font-semibold disabled:opacity-50"
+                  >
+                    {walletBusy[activeService.key] ? "Processing..." : activeService.key === "other_facility_fees" ? "Coming Soon" : "Pay from Wallet"}
+                  </button>
+                  <button type="button" onClick={closeSheet} className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-xs text-white/65">
+                    Back to services
+                  </button>
+                </div>
+
+                <div className="mt-2 text-[11px] text-white/45">Payment receipt is stored in wallet history and notifications.</div>
+
+                {lastReceipt?.service_key === activeService.key ? (
+                  <div className="mt-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-200">Latest Receipt</div>
+                    <div className="mt-2 text-sm font-medium text-white">{lastReceipt.service_title || activeServiceView?.title}</div>
+                    <div className="mt-1 text-sm text-emerald-100">{toNaira(lastReceipt.amount)}</div>
+                    <div className="mt-1 text-[11px] text-emerald-50/80">{lastReceipt.reference}</div>
+                    {lastReceipt.token_code ? <div className="mt-2 rounded-xl border border-emerald-400/20 bg-black/20 px-3 py-3 text-sm font-semibold tracking-[0.2em] text-emerald-100">{lastReceipt.token_code}</div> : null}
+                    {lastReceipt.bundle_name ? <div className="mt-2 text-[11px] text-emerald-50/80">{lastReceipt.bundle_name}</div> : null}
+                    {lastReceipt.period_label ? <div className="mt-1 text-[11px] text-emerald-50/80">{lastReceipt.period_label}</div> : null}
+                    {lastReceipt.computed_units != null && lastReceipt.unit_name ? (
+                      <div className="mt-1 text-[11px] text-emerald-50/80">{lastReceipt.computed_units} {lastReceipt.unit_name} @ {toNaira(Number(lastReceipt.unit_cost || 0))}</div>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {activeHistory.length ? (
+                  <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-3">
+                    <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-white/35">
+                      <FiClock className="h-3.5 w-3.5" />
+                      Recent Receipts
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      {activeHistory.map((payment) => (
+                        <div key={payment.id} className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3">
+                          <div className="text-sm text-white">{payment.service_title || activeServiceView?.title}</div>
+                          <div className="mt-1 text-sm text-cyan-100">{toNaira(payment.amount)}</div>
+                          <div className="mt-1 text-[11px] text-white/45">{payment.reference}</div>
+                          {payment.token_code ? <div className="mt-2 text-[11px] font-semibold tracking-[0.18em] text-emerald-200">{payment.token_code}</div> : null}
+                          {payment.bundle_name ? <div className="mt-1 text-[11px] text-white/45">{payment.bundle_name}</div> : null}
+                          {payment.period_label ? <div className="mt-1 text-[11px] text-white/45">{payment.period_label}</div> : null}
+                          {payment.computed_units != null && payment.unit_name ? (
+                            <div className="mt-1 text-[11px] text-white/45">{payment.computed_units} {payment.unit_name} @ {toNaira(Number(payment.unit_cost || 0))}</div>
+                          ) : null}
+                          <div className="mt-1 text-[11px] text-white/35">{payment.created_at ? new Date(payment.created_at).toLocaleString() : "—"}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 ) : null}
               </div>
-
-              {activePresets.length ? (
-                <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-3">
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">Plan Options</div>
-                  <div className="mt-3 grid gap-2">
-                    {activePresets.map((preset) => (
-                      <button
-                        key={`${activeService.key}:${preset.label}`}
-                        type="button"
-                        onClick={() => setAmount(activeService.key, String(preset.amount))}
-                        className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-left hover:bg-white/10 transition"
-                      >
-                        <div>
-                          <div className="text-sm text-white">{preset.label}</div>
-                          <div className="text-[11px] text-white/45">Tap to load amount</div>
-                        </div>
-                        <div className="text-sm font-medium text-white">{toNaira(preset.amount)}</div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-3 flex items-center gap-2">
-                <div className="text-xs text-white/45">NGN</div>
-                <input
-                  inputMode="numeric"
-                  value={amounts[activeService.key] || ""}
-                  onChange={(e) => setAmount(activeService.key, e.target.value)}
-                  placeholder="Enter amount"
-                  className="flex-1 bg-transparent outline-none text-sm text-white"
-                />
-              </div>
-
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const selectedPreset =
-                      activePresets.find((preset) => String(preset.amount) === String(parseAmount(amounts[activeService.key] || ""))) || null;
-                    void payFromWallet(activeService, selectedPreset?.meta);
-                  }}
-                  disabled={Boolean(walletBusy[activeService.key]) || !activeAccountRef || activeService.key === "other_facility_fees"}
-                  className="rounded-2xl py-3 bg-white text-black text-sm font-semibold disabled:opacity-50"
-                >
-                  {walletBusy[activeService.key]
-                    ? "Processing..."
-                    : activeService.key === "other_facility_fees"
-                    ? "Coming Soon"
-                    : "Pay from Wallet"}
-                </button>
-                <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-xs text-white/55">
-                  Wallet-only service flow. Receipt is stored against your account.
-                </div>
-              </div>
-
-              {lastReceipt?.service_key === activeService.key ? (
-                <div className="mt-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-200">Latest Receipt</div>
-                  <div className="mt-2 text-sm font-medium text-white">{lastReceipt.service_title || activeServiceView?.title}</div>
-                  <div className="mt-1 text-sm text-emerald-100">{toNaira(lastReceipt.amount)}</div>
-                  <div className="mt-1 text-[11px] text-emerald-50/80">{lastReceipt.reference}</div>
-                  {lastReceipt.bundle_name ? (
-                    <div className="mt-2 text-[11px] text-emerald-50/80">{lastReceipt.bundle_name}</div>
-                  ) : null}
-                  {lastReceipt.period_label ? (
-                    <div className="mt-1 text-[11px] text-emerald-50/80">{lastReceipt.period_label}</div>
-                  ) : null}
-                  {lastReceipt.computed_units != null && lastReceipt.unit_name ? (
-                    <div className="mt-1 text-[11px] text-emerald-50/80">
-                      {lastReceipt.computed_units} {lastReceipt.unit_name} @ {toNaira(Number(lastReceipt.unit_cost || 0))}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-
-              {activeHistory.length ? (
-                <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-3">
-                  <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-white/35">
-                    <FiClock className="h-3.5 w-3.5" />
-                    Recent Receipts
-                  </div>
-                  <div className="mt-3 space-y-2">
-                    {activeHistory.map((payment) => (
-                      <div key={payment.id} className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3">
-                        <div className="text-sm text-white">{payment.service_title || activeServiceView?.title}</div>
-                        <div className="mt-1 text-sm text-cyan-100">{toNaira(payment.amount)}</div>
-                        <div className="mt-1 text-[11px] text-white/45">{payment.reference}</div>
-                        {payment.bundle_name ? (
-                          <div className="mt-1 text-[11px] text-white/45">{payment.bundle_name}</div>
-                        ) : null}
-                        {payment.period_label ? (
-                          <div className="mt-1 text-[11px] text-white/45">{payment.period_label}</div>
-                        ) : null}
-                        {payment.computed_units != null && payment.unit_name ? (
-                          <div className="mt-1 text-[11px] text-white/45">
-                            {payment.computed_units} {payment.unit_name} @ {toNaira(Number(payment.unit_cost || 0))}
-                          </div>
-                        ) : null}
-                        <div className="mt-1 text-[11px] text-white/35">
-                          {payment.created_at ? new Date(payment.created_at).toLocaleString() : "—"}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
             </div>
           </div>
         </div>
       ) : null}
     </ConsumerShell>
   );
-}
-
-function mergedServiceItem(
-  item: ServiceItem,
-  configs: Partial<Record<ServiceKey, ServiceConfig>>
-) {
-  const cfg = configs[item.key];
-  return {
-    ...item,
-    title: cfg?.title || item.title,
-    subtitle: cfg?.description || item.subtitle,
-    active: cfg?.active ?? true,
-    accountLabel: cfg?.account_label || "Account Reference",
-    accountHint: cfg?.account_hint || "Linked to your assigned home",
-    currency: cfg?.currency || "NGN",
-    unitCost: cfg?.unit_cost ?? null,
-    unitName: cfg?.unit_name || null,
-    billingMode: cfg?.billing_mode || "wallet_only",
-  };
 }

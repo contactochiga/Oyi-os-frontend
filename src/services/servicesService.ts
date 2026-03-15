@@ -41,6 +41,7 @@ export type ServicePayment = {
   billing_mode?: string | null;
   bundle_name?: string | null;
   period_label?: string | null;
+  token_code?: string | null;
 };
 
 function pickError(err: any, fallback: string) {
