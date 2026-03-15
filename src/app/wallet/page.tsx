@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import ConsumerShell from "@/app/components/ConsumerShell";
 import useAuth from "@/hooks/useAuth";
 import { walletService, type WalletDTO } from "@/services/walletService";
+import { servicesService, type ServicePayment } from "@/services/servicesService";
 
 function formatMoney(amount: number, currency = "NGN") {
   try {
@@ -34,6 +35,7 @@ export default function WalletPage() {
   const [info, setInfo] = useState<string | null>(null);
 
   const [amount, setAmount] = useState<string>("");
+  const [servicePayments, setServicePayments] = useState<ServicePayment[]>([]);
 
   async function load() {
     setLoading(true);
@@ -56,6 +58,13 @@ export default function WalletPage() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      const rows = await servicesService.history({ limit: 5 });
+      setServicePayments(Array.isArray(rows) ? rows : []);
+    })();
   }, []);
 
   async function fund() {
@@ -242,11 +251,23 @@ export default function WalletPage() {
           <div>
             <div className="text-sm font-medium text-white">Estate dues</div>
             <div className="text-xs text-white/40 mt-1">
-              Bills will appear here for direct payment from wallet.
+              Recent wallet-paid services tied to this account.
             </div>
           </div>
-
-          <div className="text-xs text-white/40">Coming soon</div>
+        </div>
+        <div className="mt-3 space-y-2">
+          {servicePayments.length ? (
+            servicePayments.map((p) => (
+              <div key={p.id} className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                <div className="text-xs text-white/90">
+                  {p.service_key.replaceAll("_", " ")} • {formatMoney(p.amount, currency)}
+                </div>
+                <div className="text-[11px] text-white/50">{p.reference}</div>
+              </div>
+            ))
+          ) : (
+            <div className="text-xs text-white/40">No service payments yet.</div>
+          )}
         </div>
       </div>
     </ConsumerShell>

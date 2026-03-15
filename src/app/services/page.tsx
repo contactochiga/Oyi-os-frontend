@@ -2,16 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import ConsumerShell from "@/app/components/ConsumerShell";
-import { walletService } from "@/services/walletService";
 import API from "@/services/api";
+import { servicesService, type ServiceKey, type ServicePayment } from "@/services/servicesService";
 import { FiClock, FiGlobe, FiHome, FiLayers, FiWifi, FiZap } from "react-icons/fi";
-
-type ServiceKey =
-  | "utility_token"
-  | "internet_service"
-  | "fiber_internet"
-  | "service_charge"
-  | "other_facility_fees";
 
 type HomeContext = {
   id: string;
@@ -31,14 +24,6 @@ type ServiceItem = {
   reason: string;
   suggested: number;
   icon: any;
-};
-
-type LocalPayment = {
-  id: string;
-  serviceKey: ServiceKey;
-  amount: number;
-  accountRef: string;
-  createdAt: string;
 };
 
 const SERVICE_ITEMS: ServiceItem[] = [
@@ -119,7 +104,7 @@ export default function ServicesPage() {
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [activeServiceKey, setActiveServiceKey] = useState<ServiceKey | null>(null);
-  const [history, setHistory] = useState<LocalPayment[]>([]);
+  const [history, setHistory] = useState<ServicePayment[]>([]);
   const [home, setHome] = useState<HomeContext | null>(null);
 
   const activeService = useMemo(
@@ -132,24 +117,6 @@ export default function ServicesPage() {
   );
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem("oyi_service_payments");
-      const parsed = raw ? JSON.parse(raw) : [];
-      setHistory(Array.isArray(parsed) ? parsed : []);
-    } catch {
-      setHistory([]);
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem("oyi_service_payments", JSON.stringify(history));
-    } catch {
-      // ignore storage failure
-    }
-  }, [history]);
-
-  useEffect(() => {
     (async () => {
       try {
         const res = await API.get("/me/context");
@@ -158,6 +125,13 @@ export default function ServicesPage() {
       } catch {
         setHome(null);
       }
+    })();
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      const rows = await servicesService.history({ limit: 80 });
+      setHistory(Array.isArray(rows) ? rows : []);
     })();
   }, []);
 
@@ -182,22 +156,17 @@ export default function ServicesPage() {
 
     setWalletBusy((prev) => ({ ...prev, [item.key]: true }));
     try {
-      const reason = `${item.reason}:${accountRef}`;
-      const res: any = await walletService.debit({ amount, reason });
+      const res: any = await servicesService.pay({
+        service_key: item.key,
+        amount,
+        account_ref: accountRef,
+      });
       if (res?.error) {
         setErr(String(res.error));
         return;
       }
-      setHistory((prev) => [
-        {
-          id: `svc_${Date.now()}`,
-          serviceKey: item.key,
-          amount,
-          accountRef,
-          createdAt: new Date().toISOString(),
-        },
-        ...prev,
-      ]);
+      const receipt = res?.receipt as ServicePayment | undefined;
+      if (receipt?.id) setHistory((prev) => [receipt, ...prev]);
       setMsg(`${item.title} paid successfully from wallet.`);
     } catch (e: any) {
       setErr(e?.message || "Payment failed");
@@ -208,7 +177,7 @@ export default function ServicesPage() {
 
   const activeHistory = useMemo(() => {
     if (!activeServiceKey) return [];
-    return history.filter((h) => h.serviceKey === activeServiceKey).slice(0, 8);
+    return history.filter((h) => h.service_key === activeServiceKey).slice(0, 8);
   }, [activeServiceKey, history]);
 
   return (
@@ -308,8 +277,11 @@ export default function ServicesPage() {
                 activeHistory.map((h) => (
                   <div key={h.id} className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
                     <div className="text-xs text-white/90">{toNaira(h.amount)}</div>
-                    <div className="text-[11px] text-white/50">Account: {h.accountRef || "—"}</div>
-                    <div className="text-[11px] text-white/50">{new Date(h.createdAt).toLocaleString()}</div>
+                    <div className="text-[11px] text-white/50">Account: {h.account_ref || "—"}</div>
+                    <div className="text-[11px] text-white/50">{h.reference || "—"}</div>
+                    <div className="text-[11px] text-white/50">
+                      {h.created_at ? new Date(h.created_at).toLocaleString() : "—"}
+                    </div>
                   </div>
                 ))
               )}
