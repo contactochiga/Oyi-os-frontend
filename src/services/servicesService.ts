@@ -32,8 +32,15 @@ export type ServicePayment = {
   status: string;
   created_at: string | null;
   service_key: ServiceKey;
+  service_title?: string;
   account_ref: string;
   home_id: string;
+  unit_cost?: number | null;
+  unit_name?: string | null;
+  computed_units?: number | null;
+  billing_mode?: string | null;
+  bundle_name?: string | null;
+  period_label?: string | null;
 };
 
 function pickError(err: any, fallback: string) {
@@ -46,7 +53,7 @@ function pickError(err: any, fallback: string) {
 }
 
 export const servicesService = {
-  async pay(payload: { service_key: ServiceKey; amount: number; account_ref: string }) {
+  async pay(payload: { service_key: ServiceKey; amount: number; account_ref: string; bundle_name?: string; period_label?: string }) {
     try {
       const res = await API.post("/services/pay", payload);
       return res.data as {

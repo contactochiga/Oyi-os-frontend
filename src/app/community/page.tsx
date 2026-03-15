@@ -9,6 +9,7 @@ import {
   type CommunityComment,
   type CommunityPost,
 } from "@/services/communityService";
+import { useNotificationStore } from "@/store/useNotificationStore";
 
 // Icons (same style you referenced)
 import {
@@ -328,6 +329,7 @@ export default function CommunityPage() {
 
   // Tabs
   const [tab, setTab] = useState<"feed" | "announcements">("feed");
+  const notificationItems = useNotificationStore((s) => s.items);
 
   // Announcements derived from same posts (no new endpoints)
   const announcements = useMemo(() => {
@@ -347,7 +349,19 @@ export default function CommunityPage() {
     return arr.filter(isAnnouncement);
   }, [items]);
 
-  const unreadCount = announcements.length;
+  const unreadCount = useMemo(() => {
+    return notificationItems.filter((n: any) => {
+      if (String(n?.status || "").toLowerCase() === "read") return false;
+      const type = String(n?.type || "").toLowerCase();
+      const title = String(n?.title || "").toLowerCase();
+      const message = String(n?.message || "").toLowerCase();
+      return (
+        type.includes("community") ||
+        title.includes("announcement") ||
+        message.includes("announcement")
+      );
+    }).length;
+  }, [notificationItems]);
 
   async function load() {
     if (!estateId) return;

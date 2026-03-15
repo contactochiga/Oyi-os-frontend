@@ -260,9 +260,20 @@ export default function WalletPage() {
             servicePayments.map((p) => (
               <div key={p.id} className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
                 <div className="text-xs text-white/90">
-                  {p.service_key.replaceAll("_", " ")} • {formatMoney(p.amount, currency)}
+                  {(p.service_title || p.service_key.replaceAll("_", " "))} • {formatMoney(p.amount, currency)}
                 </div>
                 <div className="text-[11px] text-white/50">{p.reference}</div>
+                {p.bundle_name ? (
+                  <div className="text-[11px] text-white/45">{p.bundle_name}</div>
+                ) : null}
+                {p.period_label ? (
+                  <div className="text-[11px] text-white/45">{p.period_label}</div>
+                ) : null}
+                {p.computed_units != null && p.unit_name ? (
+                  <div className="text-[11px] text-white/45">
+                    {p.computed_units} {p.unit_name} @ {formatMoney(Number(p.unit_cost || 0), currency)}
+                  </div>
+                ) : null}
               </div>
             ))
           ) : (

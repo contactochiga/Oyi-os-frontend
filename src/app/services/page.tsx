@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import ConsumerShell from "@/app/components/ConsumerShell";
 import { servicesService, type ServiceConfig, type ServiceKey, type ServicePayment } from "@/services/servicesService";
 import useActiveContext from "@/hooks/useActiveContext";
-import { FiClock, FiGlobe, FiHome, FiLayers, FiWifi, FiZap } from "react-icons/fi";
+import { FiClock, FiHome, FiLayers, FiWifi, FiZap } from "react-icons/fi";
 
 type HomeContext = {
   id: string;
@@ -21,8 +21,13 @@ type ServiceItem = {
   key: ServiceKey;
   title: string;
   subtitle: string;
-  suggested: number;
   icon: any;
+};
+
+type ServicePreset = {
+  label: string;
+  amount: number;
+  meta?: Record<string, any>;
 };
 
 const SERVICE_ITEMS: ServiceItem[] = [
@@ -30,38 +35,38 @@ const SERVICE_ITEMS: ServiceItem[] = [
     key: "utility_token",
     title: "Utility Token",
     subtitle: "Electricity token purchase",
-    suggested: 5000,
     icon: FiZap,
   },
   {
     key: "internet_service",
-    title: "Internet Service",
-    subtitle: "Data bundles and monthly plans",
-    suggested: 10000,
+    title: "Fiber Internet Service",
+    subtitle: "Bundles and monthly fiber plans",
     icon: FiWifi,
-  },
-  {
-    key: "fiber_internet",
-    title: "Fiber Internet",
-    subtitle: "Fiber broadband subscriptions",
-    suggested: 15000,
-    icon: FiGlobe,
   },
   {
     key: "service_charge",
     title: "Service Charge",
     subtitle: "Estate operational dues",
-    suggested: 25000,
     icon: FiHome,
   },
   {
     key: "other_facility_fees",
     title: "Other Facility Fees",
-    subtitle: "Special estate fees and one-off charges",
-    suggested: 5000,
+    subtitle: "Partner and external estate services",
     icon: FiLayers,
   },
 ];
+
+const SERVICE_PRESETS: Partial<Record<ServiceKey, ServicePreset[]>> = {
+  internet_service: [
+    { label: "20 Mbps", amount: 11500, meta: { bundle_name: "20 Mbps Fiber" } },
+    { label: "25 Mbps", amount: 18000, meta: { bundle_name: "25 Mbps Fiber" } },
+    { label: "50 Mbps", amount: 32500, meta: { bundle_name: "50 Mbps Fiber" } },
+  ],
+  service_charge: [
+    { label: "Monthly Flat Rate", amount: 500000, meta: { period_label: "Monthly Flat Rate" } },
+  ],
+};
 
 function toNaira(amount: number) {
   try {
@@ -83,8 +88,7 @@ function parseAmount(raw: string) {
 function accountRefFor(serviceKey: ServiceKey, home: HomeContext | null) {
   if (!home) return "";
   if (serviceKey === "utility_token") return String(home.electricity_meter || "");
-  if (serviceKey === "internet_service" || serviceKey === "fiber_internet")
-    return String(home.internet_id || "");
+  if (serviceKey === "internet_service" || serviceKey === "fiber_internet") return String(home.internet_id || "");
   if (serviceKey === "service_charge") return String(home.id || "");
   if (serviceKey === "other_facility_fees") return String(home.id || "");
   return "";
@@ -93,15 +97,14 @@ function accountRefFor(serviceKey: ServiceKey, home: HomeContext | null) {
 export default function ServicesPage() {
   const { estate_id: estateId, home } = useActiveContext();
   const [walletBusy, setWalletBusy] = useState<Record<string, boolean>>({});
-  const [amounts, setAmounts] = useState<Record<string, string>>(
-    Object.fromEntries(SERVICE_ITEMS.map((s) => [s.key, String(s.suggested)]))
-  );
+  const [amounts, setAmounts] = useState<Record<string, string>>({});
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [activeServiceKey, setActiveServiceKey] = useState<ServiceKey | null>(null);
   const [history, setHistory] = useState<ServicePayment[]>([]);
   const [configs, setConfigs] = useState<Partial<Record<ServiceKey, ServiceConfig>>>({});
   const [configsFallback, setConfigsFallback] = useState(false);
+  const [lastReceipt, setLastReceipt] = useState<ServicePayment | null>(null);
 
   const activeService = useMemo(
     () => SERVICE_ITEMS.find((s) => s.key === activeServiceKey) || null,
@@ -112,8 +115,12 @@ export default function ServicesPage() {
     [activeService, home]
   );
   const activeServiceView = useMemo(
-    () => (activeService ? mergedServiceItem(activeService) : null),
+    () => (activeService ? mergedServiceItem(activeService, configs) : null),
     [activeService, configs]
+  );
+  const activePresets = useMemo(
+    () => (activeServiceKey ? SERVICE_PRESETS[activeServiceKey] || [] : []),
+    [activeServiceKey]
   );
 
   useEffect(() => {
@@ -157,7 +164,7 @@ export default function ServicesPage() {
     setAmounts((prev) => ({ ...prev, [key]: value }));
   }
 
-  async function payFromWallet(item: ServiceItem) {
+  async function payFromWallet(item: ServiceItem, meta?: Record<string, any>) {
     setErr(null);
     setMsg(null);
     const amount = parseAmount(amounts[item.key]);
@@ -178,13 +185,17 @@ export default function ServicesPage() {
         service_key: item.key,
         amount,
         account_ref: accountRef,
+        ...(meta || {}),
       });
       if (res?.error) {
         setErr(String(res.error));
         return;
       }
       const receipt = res?.receipt as ServicePayment | undefined;
-      if (receipt?.id) setHistory((prev) => [receipt, ...prev]);
+      if (receipt?.id) {
+        setHistory((prev) => [receipt, ...prev]);
+        setLastReceipt(receipt);
+      }
       setMsg(`${item.title} paid successfully from wallet.`);
     } catch (e: any) {
       setErr(e?.message || "Payment failed");
@@ -198,25 +209,8 @@ export default function ServicesPage() {
     return history.filter((h) => h.service_key === activeServiceKey).slice(0, 8);
   }, [activeServiceKey, history]);
 
-  function mergedServiceItem(item: ServiceItem) {
-    const cfg = configs[item.key];
-    return {
-      ...item,
-      title: cfg?.title || item.title,
-      subtitle: cfg?.description || item.subtitle,
-      suggested: Number(cfg?.suggested_amount ?? item.suggested),
-      active: cfg?.active ?? true,
-      accountLabel: cfg?.account_label || "Account Reference",
-      accountHint: cfg?.account_hint || "Linked to your assigned home",
-      currency: cfg?.currency || "NGN",
-      unitCost: cfg?.unit_cost ?? null,
-      unitName: cfg?.unit_name || null,
-      billingMode: cfg?.billing_mode || "wallet_only",
-    };
-  }
-
   return (
-    <ConsumerShell title="Services" subtitle="Utility • internet • fiber • service charge">
+    <ConsumerShell title="Services" subtitle="Utility • fiber internet • estate charges">
       {err ? (
         <div className="mb-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
           {err}
@@ -237,9 +231,15 @@ export default function ServicesPage() {
 
       <div className="grid grid-cols-2 gap-3">
         {SERVICE_ITEMS.map((item) => {
-          const merged = mergedServiceItem(item);
+          const merged = mergedServiceItem(item, configs);
           const Icon = merged.icon;
           const linkedRef = accountRefFor(merged.key, home);
+          const iconTone = !merged.active
+            ? "bg-white/5 text-white/25"
+            : linkedRef
+            ? "bg-cyan-400/20 text-cyan-100 shadow-[0_0_30px_rgba(34,211,238,0.25)]"
+            : "bg-white/10 text-white/45";
+
           return (
             <button
               key={merged.key}
@@ -252,26 +252,17 @@ export default function ServicesPage() {
               }`}
             >
               <div className="flex items-center justify-between gap-2">
-                <div className="inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-cyan-500/15 text-cyan-200">
+                <div className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl transition ${iconTone}`}>
                   <Icon className="h-4 w-4" />
                 </div>
-                <span
-                  className={`rounded-full px-2 py-0.5 text-[10px] border ${
-                    !merged.active
-                      ? "border-zinc-500/35 bg-zinc-500/10 text-zinc-300"
-                      : linkedRef
-                      ? "border-emerald-500/35 bg-emerald-500/10 text-emerald-200"
-                      : "border-amber-500/35 bg-amber-500/10 text-amber-200"
-                  }`}
-                >
-                  {!merged.active ? "Disabled" : linkedRef ? "Linked" : "Unlinked"}
-                </span>
+                {!merged.active ? (
+                  <span className="rounded-full border border-zinc-500/35 bg-zinc-500/10 px-2 py-0.5 text-[10px] text-zinc-300">
+                    Disabled
+                  </span>
+                ) : null}
               </div>
               <div className="mt-3 text-sm font-semibold text-white">{merged.title}</div>
               <div className="mt-1 text-xs text-white/50">{merged.subtitle}</div>
-              <div className="mt-3 text-[11px] text-white/35">
-                Default {toNaira(merged.suggested)}
-              </div>
             </button>
           );
         })}
@@ -337,13 +328,35 @@ export default function ServicesPage() {
                 ) : null}
               </div>
 
+              {activePresets.length ? (
+                <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-3">
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">Plan Options</div>
+                  <div className="mt-3 grid gap-2">
+                    {activePresets.map((preset) => (
+                      <button
+                        key={`${activeService.key}:${preset.label}`}
+                        type="button"
+                        onClick={() => setAmount(activeService.key, String(preset.amount))}
+                        className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-left hover:bg-white/10 transition"
+                      >
+                        <div>
+                          <div className="text-sm text-white">{preset.label}</div>
+                          <div className="text-[11px] text-white/45">Tap to load amount</div>
+                        </div>
+                        <div className="text-sm font-medium text-white">{toNaira(preset.amount)}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
               <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-3 flex items-center gap-2">
                 <div className="text-xs text-white/45">NGN</div>
                 <input
                   inputMode="numeric"
                   value={amounts[activeService.key] || ""}
                   onChange={(e) => setAmount(activeService.key, e.target.value)}
-                  placeholder={String(activeServiceView?.suggested || activeService.suggested)}
+                  placeholder="Enter amount"
                   className="flex-1 bg-transparent outline-none text-sm text-white"
                 />
               </div>
@@ -351,49 +364,99 @@ export default function ServicesPage() {
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 <button
                   type="button"
-                  onClick={() => payFromWallet(activeService)}
-                  disabled={!!walletBusy[activeService.key] || !activeAccountRef}
+                  onClick={() => {
+                    const selectedPreset =
+                      activePresets.find((preset) => String(preset.amount) === String(parseAmount(amounts[activeService.key] || ""))) || null;
+                    void payFromWallet(activeService, selectedPreset?.meta);
+                  }}
+                  disabled={Boolean(walletBusy[activeService.key]) || !activeAccountRef || activeService.key === "other_facility_fees"}
                   className="rounded-2xl py-3 bg-white text-black text-sm font-semibold disabled:opacity-50"
                 >
-                  {walletBusy[activeService.key] ? "Processing..." : "Pay From Wallet"}
+                  {walletBusy[activeService.key]
+                    ? "Processing..."
+                    : activeService.key === "other_facility_fees"
+                    ? "Coming Soon"
+                    : "Pay from Wallet"}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setAmount(activeService.key, String(activeServiceView?.suggested || activeService.suggested))}
-                  className="rounded-2xl py-3 border border-white/10 bg-white/5 text-sm text-white/85 hover:bg-white/10"
-                >
-                  Reset Amount
-                </button>
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-xs text-white/55">
+                  Wallet-only service flow. Receipt is stored against your account.
+                </div>
               </div>
 
-              <div className="mt-4">
-                <div className="flex items-center gap-2 text-xs text-white/50">
-                  <FiClock className="h-3.5 w-3.5" />
-                  Recent history
-                </div>
-                <div className="mt-2 space-y-2 max-h-52 overflow-auto pr-1">
-                  {activeHistory.length === 0 ? (
-                    <div className="text-xs text-white/45 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
-                      No payment history yet for this service.
+              {lastReceipt?.service_key === activeService.key ? (
+                <div className="mt-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-200">Latest Receipt</div>
+                  <div className="mt-2 text-sm font-medium text-white">{lastReceipt.service_title || activeServiceView?.title}</div>
+                  <div className="mt-1 text-sm text-emerald-100">{toNaira(lastReceipt.amount)}</div>
+                  <div className="mt-1 text-[11px] text-emerald-50/80">{lastReceipt.reference}</div>
+                  {lastReceipt.bundle_name ? (
+                    <div className="mt-2 text-[11px] text-emerald-50/80">{lastReceipt.bundle_name}</div>
+                  ) : null}
+                  {lastReceipt.period_label ? (
+                    <div className="mt-1 text-[11px] text-emerald-50/80">{lastReceipt.period_label}</div>
+                  ) : null}
+                  {lastReceipt.computed_units != null && lastReceipt.unit_name ? (
+                    <div className="mt-1 text-[11px] text-emerald-50/80">
+                      {lastReceipt.computed_units} {lastReceipt.unit_name} @ {toNaira(Number(lastReceipt.unit_cost || 0))}
                     </div>
-                  ) : (
-                    activeHistory.map((h) => (
-                      <div key={h.id} className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
-                        <div className="text-xs text-white/90">{toNaira(h.amount)}</div>
-                        <div className="text-[11px] text-white/50">Account: {h.account_ref || "—"}</div>
-                        <div className="text-[11px] text-white/50">{h.reference || "—"}</div>
-                        <div className="text-[11px] text-white/50">
-                          {h.created_at ? new Date(h.created_at).toLocaleString() : "—"}
+                  ) : null}
+                </div>
+              ) : null}
+
+              {activeHistory.length ? (
+                <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-3">
+                  <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-white/35">
+                    <FiClock className="h-3.5 w-3.5" />
+                    Recent Receipts
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {activeHistory.map((payment) => (
+                      <div key={payment.id} className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3">
+                        <div className="text-sm text-white">{payment.service_title || activeServiceView?.title}</div>
+                        <div className="mt-1 text-sm text-cyan-100">{toNaira(payment.amount)}</div>
+                        <div className="mt-1 text-[11px] text-white/45">{payment.reference}</div>
+                        {payment.bundle_name ? (
+                          <div className="mt-1 text-[11px] text-white/45">{payment.bundle_name}</div>
+                        ) : null}
+                        {payment.period_label ? (
+                          <div className="mt-1 text-[11px] text-white/45">{payment.period_label}</div>
+                        ) : null}
+                        {payment.computed_units != null && payment.unit_name ? (
+                          <div className="mt-1 text-[11px] text-white/45">
+                            {payment.computed_units} {payment.unit_name} @ {toNaira(Number(payment.unit_cost || 0))}
+                          </div>
+                        ) : null}
+                        <div className="mt-1 text-[11px] text-white/35">
+                          {payment.created_at ? new Date(payment.created_at).toLocaleString() : "—"}
                         </div>
                       </div>
-                    ))
-                  )}
+                    ))}
+                  </div>
                 </div>
-              </div>
+              ) : null}
             </div>
           </div>
         </div>
       ) : null}
     </ConsumerShell>
   );
+}
+
+function mergedServiceItem(
+  item: ServiceItem,
+  configs: Partial<Record<ServiceKey, ServiceConfig>>
+) {
+  const cfg = configs[item.key];
+  return {
+    ...item,
+    title: cfg?.title || item.title,
+    subtitle: cfg?.description || item.subtitle,
+    active: cfg?.active ?? true,
+    accountLabel: cfg?.account_label || "Account Reference",
+    accountHint: cfg?.account_hint || "Linked to your assigned home",
+    currency: cfg?.currency || "NGN",
+    unitCost: cfg?.unit_cost ?? null,
+    unitName: cfg?.unit_name || null,
+    billingMode: cfg?.billing_mode || "wallet_only",
+  };
 }

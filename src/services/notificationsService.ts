@@ -24,7 +24,9 @@ function pickError(err: any, fallback: string) {
 export async function listMyNotifications() {
   try {
     const res = await API.get("/notifications");
-    return res.data as AppNotification[];
+    if (Array.isArray(res.data)) return res.data as AppNotification[];
+    if (Array.isArray(res.data?.items)) return res.data.items as AppNotification[];
+    return [];
   } catch (err: any) {
     return { error: pickError(err, "Failed to load notifications") } as any;
   }
@@ -36,7 +38,7 @@ export async function listMyNotifications() {
 export async function markNotificationRead(id: string) {
   try {
     const res = await API.post(`/notifications/read/${id}`);
-    return res.data as AppNotification;
+    return (res.data?.item || res.data) as AppNotification;
   } catch (err: any) {
     return { error: pickError(err, "Failed to mark notification as read") } as any;
   }
