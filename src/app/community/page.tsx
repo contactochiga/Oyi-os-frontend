@@ -156,6 +156,28 @@ function parsePostBody(raw: any): ParsedPostBody {
   }
 }
 
+function parsePostContent(post: any): ParsedPostBody {
+  const directMedia = Array.isArray(post?.media)
+    ? post.media
+        .map((a: any, idx: number) => ({
+          id: String(a?.id ?? `${idx}`),
+          type: a?.type === "video" || a?.mediaType === "video" ? "video" : "image",
+          url: String(a?.url ?? ""),
+          name: a?.name ? String(a.name) : undefined,
+        }))
+        .filter((a: PostAttachment) => !!a.url)
+    : [];
+  const directLiveLink = post?.live_link ? String(post.live_link) : null;
+  if (directMedia.length || directLiveLink) {
+    return {
+      text: String(post?.content ?? post?.body ?? ""),
+      attachments: directMedia,
+      liveLink: directLiveLink,
+    };
+  }
+  return parsePostBody(post?.body ?? post?.content ?? "");
+}
+
 function buildPostBody(text: string, attachments: PostAttachment[], liveLink?: string | null) {
   return (
     BODY_META_PREFIX +
@@ -526,7 +548,9 @@ export default function CommunityPage() {
         content.length > 42 ? `${content.slice(0, 42).trimEnd()}…` : content;
       const res: any = await communityService.createPost({
         title: generatedTitle || "Update",
-        body: buildPostBody(content, attachments, liveLink.trim() || null),
+        content,
+        media: attachments,
+        liveLink: liveLink.trim() || null,
         estateId: String(estateId),
       });
 
@@ -872,7 +896,7 @@ export default function CommunityPage() {
             const isBusy = !!busyPost[postKey];
             const comments = commentMap[id] || [];
             const loadingComments = !!commentLoading[id];
-            const parsed = parsePostBody(p?.body ?? p?.content ?? "");
+            const parsed = parsePostContent(p);
             const titleText = String(p?.title || "").trim();
             const bodyText = String(parsed.text || "").trim();
             const duplicateTitleAndBody =

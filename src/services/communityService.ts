@@ -17,7 +17,10 @@ export type CommunityPost = {
 
 export type CreatePostPayload = {
   title: string;
+  content?: string | null;
   body?: string | null;
+  media?: Array<{ id?: string; type?: "image" | "video"; url: string; name?: string | null }>;
+  liveLink?: string | null;
   // optional: backend can derive from user.estate_id
   estateId?: string;
   estate_id?: string;
