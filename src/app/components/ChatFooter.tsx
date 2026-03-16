@@ -221,6 +221,70 @@ export default function ChatFooter({
     loop();
   }
 
+  function startWebRecognition() {
+    const BrowserSpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!BrowserSpeechRecognition) {
+      setVoiceState("idle");
+      stopAudio();
+      setVoiceHint("Could not start voice recognition on this device.");
+      return;
+    }
+
+    const recognition = new BrowserSpeechRecognition();
+    recognition.lang = "en-US";
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
+
+    recognition.onresult = (e: any) => {
+      let interim = "";
+      let finalText = "";
+
+      for (let i = e.resultIndex; i < e.results.length; i += 1) {
+        const part = String(e.results[i]?.[0]?.transcript || "").trim();
+        if (!part) continue;
+        if (e.results[i].isFinal) finalText += ` ${part}`;
+        else interim += ` ${part}`;
+      }
+
+      const merged = (finalText || interim).trim();
+      if (!merged) return;
+      finalTranscriptRef.current = merged;
+      setInput(merged);
+      setIntent(inferIntent(merged));
+    };
+
+    recognition.onerror = (e: any) => {
+      shouldSendVoiceRef.current = false;
+      setVoiceState("idle");
+      stopAudio();
+      activeEngineRef.current = null;
+      const code = String(e?.error || "");
+      if (code === "not-allowed" || code === "service-not-allowed") {
+        setVoiceHint("Speech recognition is blocked. Allow Speech Recognition in iPhone Settings.");
+      } else {
+        setVoiceHint("Could not start voice recognition on this device.");
+      }
+    };
+
+    recognition.onend = () => {
+      if (!shouldSendVoiceRef.current) return;
+      finalizeVoiceAndSend();
+    };
+
+    activeEngineRef.current = "web";
+    recognitionRef.current = recognition;
+
+    try {
+      recognition.start();
+    } catch {
+      setVoiceState("idle");
+      stopAudio();
+      setVoiceHint("Could not start voice recognition on this device.");
+    }
+  }
+
   async function startRecording() {
     if (!hasVoiceEngine) {
       setVoiceHint("Voice command is not available on this device.");
@@ -295,64 +359,18 @@ export default function ChatFooter({
           setIntent(inferIntent(immediate));
         }
       } catch {
-        setVoiceState("idle");
         stopSyntheticWave();
+        if (hasSpeechRecognition) {
+          startWebRecognition();
+          return;
+        }
+        setVoiceState("idle");
         stopAudio();
         setVoiceHint("Could not start native voice recognition.");
       }
       return;
     }
-
-    const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    const recognition = new SpeechRecognition();
-    recognition.lang = "en-US";
-    recognition.continuous = false;
-    recognition.interimResults = true;
-    recognition.maxAlternatives = 1;
-
-    recognition.onresult = (e: any) => {
-      let interim = "";
-      let finalText = "";
-
-      for (let i = e.resultIndex; i < e.results.length; i += 1) {
-        const part = String(e.results[i]?.[0]?.transcript || "").trim();
-        if (!part) continue;
-        if (e.results[i].isFinal) finalText += ` ${part}`;
-        else interim += ` ${part}`;
-      }
-
-      const merged = (finalText || interim).trim();
-      if (!merged) return;
-      finalTranscriptRef.current = merged;
-      setInput(merged);
-      setIntent(inferIntent(merged));
-    };
-
-    recognition.onerror = (e: any) => {
-      shouldSendVoiceRef.current = false;
-      setVoiceState("idle");
-      stopAudio();
-      activeEngineRef.current = null;
-      const code = String(e?.error || "");
-      if (code === "not-allowed" || code === "service-not-allowed") {
-        setVoiceHint("Speech recognition is blocked. Allow Speech Recognition in iPhone Settings.");
-      } else {
-        setVoiceHint("Could not start voice recognition on this device.");
-      }
-    };
-
-    recognition.onend = () => {
-      if (!shouldSendVoiceRef.current) return;
-      finalizeVoiceAndSend();
-    };
-
-    activeEngineRef.current = "web";
-    recognitionRef.current = recognition;
-
-    try {
-      recognition.start();
-    } catch {}
+    startWebRecognition();
   }
 
   function stopRecording() {

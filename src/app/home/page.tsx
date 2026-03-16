@@ -617,20 +617,13 @@ export default function HomePage() {
                         </ResponsiveContainer>
                       </div>
 
-                      <div className="mt-3 grid grid-cols-2 gap-2">
+                      <div className="mt-3 grid grid-cols-1 gap-2">
                         <button
                           type="button"
                           onClick={() => router.push("/visitors")}
                           className="py-2.5 rounded-2xl bg-white text-black text-sm font-medium hover:opacity-90 transition"
                         >
                           Open Visitors
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleSend("open visitor")}
-                          className="py-2.5 rounded-2xl bg-white/10 text-white text-sm border border-white/10 hover:bg-white/15 transition"
-                        >
-                          Open via Chat
                         </button>
                       </div>
                     </PanelCard>

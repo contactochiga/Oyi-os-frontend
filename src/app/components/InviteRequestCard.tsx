@@ -15,10 +15,12 @@ export default function InviteRequestCard({
   invite,
   onDone,
   autoCloseMs = 1200,
+  readOnly = false,
 }: {
   invite: HomeInvite;
   onDone?: () => void;
   autoCloseMs?: number;
+  readOnly?: boolean;
 }) {
   const [state, setState] = useState<ActionState>({ status: "idle" });
 
@@ -35,7 +37,9 @@ export default function InviteRequestCard({
   );
 
   const busy = state.status === "loading";
-  const isSuccess = state.status === "success";
+  const passiveState = String((invite as any)?.status || "").toLowerCase();
+  const isPassive = readOnly || passiveState === "accepted" || passiveState === "active" || passiveState === "declined";
+  const isSuccess = state.status === "success" || isPassive;
 
   // Auto close after success (so the notification list clears cleanly)
   useEffect(() => {
@@ -45,7 +49,7 @@ export default function InviteRequestCard({
   }, [isSuccess, onDone, autoCloseMs]);
 
   async function onAccept() {
-    if (busy) return;
+    if (busy || isPassive) return;
     setState({ status: "loading", action: "accept" });
 
     try {
@@ -72,7 +76,7 @@ export default function InviteRequestCard({
   }
 
   async function onDecline() {
-    if (busy) return;
+    if (busy || isPassive) return;
     setState({ status: "loading", action: "decline" });
 
     try {
@@ -131,7 +135,7 @@ export default function InviteRequestCard({
       )}
 
       {/* Actions */}
-      <div className="mt-4 flex gap-2">
+      {!isPassive ? <div className="mt-4 flex gap-2">
         {/* Accept */}
         <button
           type="button"
@@ -164,12 +168,12 @@ export default function InviteRequestCard({
             ? "Declined ✓"
             : "Decline"}
         </button>
-      </div>
+      </div> : null}
 
       {/* success hint (optional) */}
       {isSuccess && (
         <div className="mt-3 text-[11px] text-emerald-200/80">
-          Updated. Closing…
+          {passiveState === "declined" ? "Invite already declined." : "Invite already processed."}
         </div>
       )}
     </div>

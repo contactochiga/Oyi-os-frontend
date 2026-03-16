@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ConsumerShell from "@/app/components/ConsumerShell";
 import useAuth from "@/hooks/useAuth";
 import messagesService, {
@@ -8,7 +8,8 @@ import messagesService, {
   ChatResident,
   InboxThread,
 } from "@/services/messagesService";
-import { FiChevronLeft, FiEdit2, FiRefreshCw, FiSearch, FiSend } from "react-icons/fi";
+import { getSocket } from "@/services/socket";
+import { FiChevronLeft, FiEdit2, FiImage, FiPaperclip, FiRefreshCw, FiSearch, FiSend } from "react-icons/fi";
 
 function displayName(r?: ChatResident | null) {
   if (!r) return "Resident";
@@ -34,6 +35,17 @@ function presenceLabel(r?: ChatResident | null) {
   return "Offline";
 }
 
+function pickMessageMedia(message: ChatMessage) {
+  const meta = message?.metadata || {};
+  const mediaUrl = typeof meta?.media_url === "string" ? meta.media_url : "";
+  if (!mediaUrl) return null;
+  return {
+    url: mediaUrl,
+    type: message?.message_type === "video" ? "video" : "image",
+    caption: typeof meta?.caption === "string" ? meta.caption : "",
+  };
+}
+
 export default function MessagesPage() {
   const { user } = useAuth();
   const myId = useMemo(() => String((user as any)?.id || ""), [user]);
@@ -48,10 +60,13 @@ export default function MessagesPage() {
   const [compose, setCompose] = useState("");
   const [showPeople, setShowPeople] = useState(false);
   const [view, setView] = useState<"list" | "chat">("list");
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [pendingAttachment, setPendingAttachment] = useState<{ url: string; type: "image" | "video"; name?: string } | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   async function loadInbox() {
     const list = await messagesService.listInbox();
@@ -121,6 +136,31 @@ export default function MessagesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeThread?.id]);
 
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+
+    const onDm = (message: ChatMessage) => {
+      if (!message?.thread_id) return;
+      const threadId = String(message.thread_id);
+      if (threadId === String(activeThread?.id || "")) {
+        setMessages((prev) => {
+          if (prev.some((item) => String(item.id) === String(message.id))) return prev;
+          return [...prev, message];
+        });
+        void messagesService.markRead(threadId);
+      }
+      void loadInbox();
+    };
+
+    socket.on("dm:new", onDm);
+    if (activeThread?.id) socket.emit("subscribe:thread", activeThread.id);
+
+    return () => {
+      socket.off("dm:new", onDm);
+    };
+  }, [activeThread?.id]);
+
   const filteredThreads = useMemo(() => {
     const t = listQuery.trim().toLowerCase();
     if (!t) return threads;
@@ -139,17 +179,66 @@ export default function MessagesPage() {
   async function send() {
     if (!activeThread?.id) return;
     const text = compose.trim();
-    if (!text) return;
+    if (!text && !pendingAttachment) return;
     setSending(true);
     setErr(null);
-    const res: any = await messagesService.sendMessage(activeThread.id, text);
+    const res: any = pendingAttachment
+      ? await messagesService.sendMediaMessage(activeThread.id, {
+          body: text,
+          message_type: pendingAttachment.type,
+          metadata: {
+            media_url: pendingAttachment.url,
+            filename: pendingAttachment.name || null,
+            caption: text || null,
+          },
+        })
+      : await messagesService.sendMessage(activeThread.id, text);
     setSending(false);
     if (res?.error) {
       setErr(String(res.error));
       return;
     }
     setCompose("");
+    setPendingAttachment(null);
+    if (res?.message) {
+      setMessages((prev) => (prev.some((item) => item.id === res.message.id) ? prev : [...prev, res.message]));
+    }
     await loadThreadMessages(activeThread);
+  }
+
+  async function toBase64(file: File) {
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error("Failed to read file"));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function onPickMedia(files: FileList | null) {
+    const file = files?.[0];
+    if (!file) return;
+    setUploadingMedia(true);
+    setErr(null);
+    try {
+      const mediaType = file.type.startsWith("video/") ? "video" : "image";
+      const uploaded: any = await messagesService.uploadMedia({
+        base64: await toBase64(file),
+        mime: file.type || (mediaType === "video" ? "video/mp4" : "image/jpeg"),
+        filename: file.name,
+        mediaType,
+      });
+      if (uploaded?.error || !uploaded?.url) {
+        setErr(String(uploaded?.error || "Failed to upload media"));
+        return;
+      }
+      setPendingAttachment({ url: uploaded.url, type: mediaType, name: file.name });
+    } catch (e: any) {
+      setErr(e?.message || "Failed to upload media");
+    } finally {
+      setUploadingMedia(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   }
 
   return (
@@ -296,15 +385,27 @@ export default function MessagesPage() {
             ) : (
               messages.map((m) => {
                 const mine = String(m.sender_id || "") === myId;
+                const media = pickMessageMedia(m);
                 return (
                   <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
                     <div
-                      className={`max-w-[82%] rounded-2xl px-3 py-2 ${
-                        mine ? "bg-cyan-500/20 text-cyan-100" : "bg-black/30 text-white border border-white/10"
+                      className={`max-w-[82%] rounded-[22px] px-3 py-2.5 ${
+                        mine
+                          ? "bg-emerald-500/20 text-emerald-50 border border-emerald-400/20"
+                          : "bg-black/30 text-white border border-white/10"
                       }`}
                     >
-                      <div className="text-sm whitespace-pre-wrap break-words">{m.body}</div>
-                      <div className="mt-1 text-[10px] text-white/45">{shortTime(m.created_at)}</div>
+                      {media ? (
+                        <div className="mb-2 overflow-hidden rounded-2xl border border-white/10 bg-black/30">
+                          {media.type === "video" ? (
+                            <video src={media.url} controls className="max-h-72 w-full bg-black object-cover" />
+                          ) : (
+                            <img src={media.url} alt={media.caption || "Shared image"} className="max-h-72 w-full object-cover" />
+                          )}
+                        </div>
+                      ) : null}
+                      {m.body ? <div className="text-sm whitespace-pre-wrap break-words">{m.body}</div> : null}
+                      <div className="mt-1 text-[10px] text-white/45 text-right">{shortTime(m.created_at)}</div>
                     </div>
                   </div>
                 );
@@ -312,10 +413,42 @@ export default function MessagesPage() {
             )}
           </div>
 
+          {pendingAttachment ? (
+            <div className="mb-2 rounded-2xl border border-white/10 bg-black/20 p-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="text-xs text-white/70">Attachment ready</div>
+                <button type="button" onClick={() => setPendingAttachment(null)} className="text-xs text-white/45">
+                  Remove
+                </button>
+              </div>
+              {pendingAttachment.type === "video" ? (
+                <video src={pendingAttachment.url} controls className="max-h-48 w-full rounded-2xl bg-black object-cover" />
+              ) : (
+                <img src={pendingAttachment.url} alt="Pending attachment" className="max-h-48 w-full rounded-2xl object-cover" />
+              )}
+            </div>
+          ) : null}
+
           <div
             className="border-t border-white/10 pt-2 flex items-center gap-2 sticky bottom-0 bg-[rgba(15,23,42,0.88)] backdrop-blur-xl"
             style={{ paddingBottom: "calc(6px + var(--kb))" }}
           >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,video/*"
+              className="hidden"
+              onChange={(e) => onPickMedia(e.target.files)}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadingMedia}
+              className="rounded-2xl border border-white/10 bg-white/8 px-3 py-2.5 text-white/85"
+              title="Attach image or video"
+            >
+              {uploadingMedia ? <FiRefreshCw className="animate-spin" /> : <FiPaperclip />}
+            </button>
             <input
               value={compose}
               onChange={(e) => setCompose(e.target.value)}
@@ -331,7 +464,7 @@ export default function MessagesPage() {
             <button
               type="button"
               onClick={() => void send()}
-              disabled={sending || !compose.trim()}
+              disabled={sending || (!compose.trim() && !pendingAttachment)}
               className="rounded-2xl px-3 py-2.5 bg-white text-black text-sm font-semibold disabled:opacity-50 inline-flex items-center gap-2"
             >
               <FiSend className="h-4 w-4" />

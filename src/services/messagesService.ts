@@ -38,8 +38,18 @@ export type ChatMessage = {
   thread_id: string;
   sender_id?: string | null;
   body: string;
+  message_type?: "text" | "image" | "video" | "file" | string;
+  metadata?: Record<string, any> | null;
   created_at?: string | null;
   is_hidden?: boolean;
+};
+
+export type UploadedMessageMedia = {
+  ok?: boolean;
+  url: string;
+  mime?: string;
+  mediaType?: "image" | "video";
+  key?: string;
 };
 
 export const messagesService = {
@@ -93,6 +103,36 @@ export const messagesService = {
       return res.data as { ok?: boolean; message?: ChatMessage };
     } catch (err: any) {
       return { error: pickError(err, "Failed to send message") } as any;
+    }
+  },
+
+  async sendMediaMessage(
+    threadId: string,
+    payload: {
+      body?: string;
+      message_type: "image" | "video";
+      metadata: Record<string, any>;
+    }
+  ) {
+    try {
+      const res = await API.post(`/messages/thread/${encodeURIComponent(threadId)}/messages`, payload);
+      return res.data as { ok?: boolean; message?: ChatMessage };
+    } catch (err: any) {
+      return { error: pickError(err, "Failed to send media message") } as any;
+    }
+  },
+
+  async uploadMedia(input: {
+    base64: string;
+    mime: string;
+    filename?: string;
+    mediaType?: "image" | "video";
+  }): Promise<UploadedMessageMedia> {
+    try {
+      const res = await API.post("/messages/media/upload", input);
+      return res.data as UploadedMessageMedia;
+    } catch (err: any) {
+      return { error: pickError(err, "Failed to upload media") } as any;
     }
   },
 

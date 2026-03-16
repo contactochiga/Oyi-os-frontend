@@ -2,62 +2,105 @@
 
 import { useEffect } from "react";
 import { Capacitor } from "@capacitor/core";
+import { PushNotifications } from "@capacitor/push-notifications";
+import { Device } from "@capacitor/device";
+import { LocalNotifications } from "@capacitor/local-notifications";
+import { Haptics, ImpactStyle } from "@capacitor/haptics";
 import useAuth from "@/hooks/useAuth";
 import API from "@/services/api";
+import { useNotificationStore } from "@/store/useNotificationStore";
 
 export default function PushNotificationsBridge() {
   const { token, ready } = useAuth();
+  const upsert = useNotificationStore((s) => s.upsert);
 
   useEffect(() => {
     if (!ready || !token) return;
     if (typeof window === "undefined") return;
     if (!Capacitor.isNativePlatform()) return;
 
-    const push = (window as any)?.Capacitor?.Plugins?.PushNotifications;
-    const device = (window as any)?.Capacitor?.Plugins?.Device;
-    if (!push) return;
-
     let unmounted = false;
     const listeners: Array<{ remove: () => Promise<void> }> = [];
 
     async function registerToken(rawToken: string) {
-      const t = String(rawToken || "").trim();
-      if (!t) return;
+      const cleanToken = String(rawToken || "").trim();
+      if (!cleanToken) return;
       let deviceInfo: any = null;
       try {
-        deviceInfo = await device?.getInfo?.();
+        deviceInfo = await Device.getInfo();
       } catch {}
 
       await API.post("/push/register", {
-        token: t,
+        token: cleanToken,
         platform: Capacitor.getPlatform(),
         device_id: deviceInfo?.identifier || deviceInfo?.model || null,
         app_version: deviceInfo?.appVersion || null,
       }).catch(() => {});
     }
 
+    async function presentForegroundNotification(notification: any) {
+      const title = String(notification?.title || notification?.data?.title || "Oyi");
+      const body = String(notification?.body || notification?.data?.body || "");
+      if (!title && !body) return;
+
+      try {
+        await LocalNotifications.schedule({
+          notifications: [
+            {
+              id: Date.now(),
+              title,
+              body,
+              schedule: { at: new Date(Date.now() + 250) },
+              sound: "default",
+            },
+          ],
+        });
+      } catch {}
+
+      try {
+        await Haptics.impact({ style: ImpactStyle.Medium });
+      } catch {}
+    }
+
     async function init() {
       try {
-        const registrationListener = await push.addListener("registration", (result: any) => {
-          if (unmounted) return;
-          const value = result?.value || result?.token || "";
-          void registerToken(String(value));
-        });
-        listeners.push(registrationListener);
-
-        const errorListener = await push.addListener("registrationError", () => {});
-        listeners.push(errorListener);
-
-        const receivedListener = await push.addListener("pushNotificationReceived", () => {});
-        listeners.push(receivedListener);
-
-        const actionListener = await push.addListener("pushNotificationActionPerformed", () => {});
-        listeners.push(actionListener);
-
-        const perm = await push.requestPermissions();
-        if (perm?.receive === "granted") {
-          await push.register();
+        const localPerms = await LocalNotifications.requestPermissions().catch(() => null);
+        const pushPerms = await PushNotifications.requestPermissions();
+        if (pushPerms.receive !== "granted") return;
+        if (localPerms && localPerms.display !== "granted") {
+          // fail soft: remote push can still work
         }
+
+        listeners.push(
+          await PushNotifications.addListener("registration", (tokenInfo) => {
+            if (unmounted) return;
+            const value = String(tokenInfo?.value || "");
+            void registerToken(value);
+          })
+        );
+
+        listeners.push(
+          await PushNotifications.addListener("registrationError", () => {})
+        );
+
+        listeners.push(
+          await PushNotifications.addListener("pushNotificationReceived", (notification) => {
+            if (unmounted) return;
+            const payload = notification?.data || {};
+            if (payload?.id) upsert(payload);
+            void presentForegroundNotification(notification);
+          })
+        );
+
+        listeners.push(
+          await PushNotifications.addListener("pushNotificationActionPerformed", (action) => {
+            if (unmounted) return;
+            const payload = action?.notification?.data || {};
+            if (payload?.id) upsert(payload);
+          })
+        );
+
+        await PushNotifications.register();
       } catch {
         // fail-soft
       }
@@ -67,12 +110,11 @@ export default function PushNotificationsBridge() {
 
     return () => {
       unmounted = true;
-      for (const l of listeners) {
-        l.remove().catch(() => {});
+      for (const listener of listeners) {
+        listener.remove().catch(() => {});
       }
     };
-  }, [ready, token]);
+  }, [ready, token, upsert]);
 
   return null;
 }
-

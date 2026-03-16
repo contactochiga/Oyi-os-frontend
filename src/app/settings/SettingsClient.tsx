@@ -35,6 +35,11 @@ type AssistantIntegrationState = {
   error: string | null;
 };
 
+type AccountContextState = {
+  estate?: { id: string; name: string } | null;
+  home?: { id: string; name?: string | null; block?: string | null; unit?: string | null } | null;
+};
+
 export default function SettingsClient() {
   const { user, token, setSession, logout } = useAuth();
   const params = useSearchParams();
@@ -98,6 +103,12 @@ export default function SettingsClient() {
       error: null,
     },
   });
+  const [accountContext, setAccountContext] = useState<AccountContextState>({});
+  const unitLabel =
+    accountContext.home?.name ||
+    [accountContext.home?.block, accountContext.home?.unit].filter(Boolean).join(" ") ||
+    (user as any)?.unit_name ||
+    "—";
 
   const initials = useMemo(() => {
     const u = (user as any)?.username || (user as any)?.name || "User";
@@ -106,8 +117,6 @@ export default function SettingsClient() {
 
   const role = String((user as any)?.role || "resident").toLowerCase();
   const canManageAccess = ["admin", "estate_admin", "owner", "manager", "operator"].includes(role);
-  const contextMode = canManageAccess ? "Operations" : "Resident";
-
   /* --------------------------------
      AUTO SCROLL BASED ON ENTRY
   --------------------------------- */
@@ -119,6 +128,22 @@ export default function SettingsClient() {
       profileRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }, [params]);
+
+  useEffect(() => {
+    const run = async () => {
+      try {
+        const res = await API.get("/me/context");
+        const payload = (res?.data || {}) as any;
+        setAccountContext({
+          estate: payload?.estate || null,
+          home: payload?.home || null,
+        });
+      } catch {
+        setAccountContext({});
+      }
+    };
+    run();
+  }, []);
 
   useEffect(() => {
     const homeId =
@@ -355,27 +380,9 @@ export default function SettingsClient() {
         <h3 className="text-sm text-gray-400">Account</h3>
 
         <Row label="Email" value={user?.email} />
-        <Row label="Estate" value={(user as any)?.estate_name ?? "—"} />
-        <Row label="Unit" value={(user as any)?.unit_name ?? "—"} />
+        <Row label="Estate" value={accountContext.estate?.name ?? (user as any)?.estate_name ?? "—"} />
+        <Row label="Unit" value={unitLabel} />
         <Row label="Role" value={user?.role ?? "resident"} />
-      </section>
-
-      <section className="space-y-4">
-        <h3 className="text-sm text-gray-400">Context</h3>
-        <div className="grid gap-2 sm:grid-cols-3">
-          <div className="rounded-xl border border-gray-800 bg-gray-900/70 px-3 py-3">
-            <div className="text-[11px] text-gray-500">Mode</div>
-            <div className="text-sm text-white">{contextMode}</div>
-          </div>
-          <div className="rounded-xl border border-gray-800 bg-gray-900/70 px-3 py-3">
-            <div className="text-[11px] text-gray-500">Estate Linked</div>
-            <div className="text-sm text-white">{(user as any)?.estate_id ? "Yes" : "No"}</div>
-          </div>
-          <div className="rounded-xl border border-gray-800 bg-gray-900/70 px-3 py-3">
-            <div className="text-[11px] text-gray-500">Home Linked</div>
-            <div className="text-sm text-white">{(user as any)?.home_id ? "Yes" : "No"}</div>
-          </div>
-        </div>
       </section>
 
       <section className="space-y-4">

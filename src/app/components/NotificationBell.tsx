@@ -144,6 +144,12 @@ export default function NotificationBell() {
                       const isInvite = n.type === "invite" || n.payload?.inviteId;
 
                       if (isInvite) {
+                        const inviteStatus =
+                          String(
+                            n.payload?.status ||
+                            n.payload?.home_membership_status ||
+                            (n.status === "read" ? "accepted" : "pending")
+                          ).toLowerCase();
                         const invite = {
                           id:
                             n.payload?.inviteId ||
@@ -153,7 +159,7 @@ export default function NotificationBell() {
                           estate_id: n.payload?.estate_id || n.payload?.estateId,
                           home_id: n.payload?.home_id || n.payload?.homeId,
                           role: n.payload?.role || "member",
-                          status: "pending",
+                          status: inviteStatus,
                           invited_email: n.payload?.invited_email,
                         };
 
@@ -161,6 +167,7 @@ export default function NotificationBell() {
                           <div key={n.id} className="space-y-2">
                             <InviteRequestCard
                               invite={invite as any}
+                              readOnly={inviteStatus !== "pending"}
                               onDone={async () => {
                                 await handleMarkRead(n.id);
                               }}
