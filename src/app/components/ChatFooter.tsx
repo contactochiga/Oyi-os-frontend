@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { Capacitor } from "@capacitor/core";
 import { SpeechRecognition } from "@capacitor-community/speech-recognition";
 
-type VoiceState = "idle" | "recording" | "processing";
+type VoiceState = "idle" | "recording" | "processing" | "review";
 type Intent = "default" | "light" | "ac" | "security" | "tv";
 
 const BAR_COUNT = 64;
@@ -36,7 +36,7 @@ export default function ChatFooter({
   const [hasNativeSpeech, setHasNativeSpeech] = useState(false);
 
   const recognitionRef = useRef<any>(null);
-  const shouldSendVoiceRef = useRef(false);
+  const voiceActionRef = useRef<"review" | "send">("review");
   const finalTranscriptRef = useRef("");
   const activeEngineRef = useRef<"web" | "native" | null>(null);
   const finalizingRef = useRef(false);
@@ -50,7 +50,11 @@ export default function ChatFooter({
   const barsRef = useRef<HTMLDivElement[]>([]);
   const smoothValues = useRef<number[]>(Array(BAR_COUNT).fill(0));
 
-  const canSend = input.trim().length > 0 && !isSending && voiceState === "idle";
+  const canSend =
+    input.trim().length > 0 &&
+    !isSending &&
+    voiceState !== "recording" &&
+    voiceState !== "processing";
   const isNativePlatform = Capacitor.isNativePlatform();
   const hasSpeechRecognition =
     typeof window !== "undefined" &&
@@ -121,6 +125,26 @@ export default function ChatFooter({
     }
   }
 
+  function finalizeVoiceReview() {
+    if (finalizingRef.current) return;
+    finalizingRef.current = true;
+    stopSyntheticWave();
+    stopAudio();
+    const text = finalTranscriptRef.current.trim();
+    activeEngineRef.current = null;
+    voiceActionRef.current = "review";
+
+    if (!text) {
+      setVoiceState("idle");
+      setVoiceHint("No speech detected. Try again.");
+      finalizingRef.current = false;
+      return;
+    }
+    setInput(text);
+    setVoiceState("review");
+    finalizingRef.current = false;
+  }
+
   function finalizeVoiceAndSend() {
     if (finalizingRef.current) return;
     finalizingRef.current = true;
@@ -129,8 +153,8 @@ export default function ChatFooter({
     setVoiceState("idle");
 
     const text = finalTranscriptRef.current.trim();
-    shouldSendVoiceRef.current = false;
     activeEngineRef.current = null;
+    voiceActionRef.current = "review";
 
     if (!text) {
       setVoiceHint("No speech detected. Try again.");
@@ -256,7 +280,7 @@ export default function ChatFooter({
     };
 
     recognition.onerror = (e: any) => {
-      shouldSendVoiceRef.current = false;
+      voiceActionRef.current = "review";
       setVoiceState("idle");
       stopAudio();
       activeEngineRef.current = null;
@@ -269,8 +293,8 @@ export default function ChatFooter({
     };
 
     recognition.onend = () => {
-      if (!shouldSendVoiceRef.current) return;
-      finalizeVoiceAndSend();
+      if (voiceActionRef.current === "send") finalizeVoiceAndSend();
+      else finalizeVoiceReview();
     };
 
     activeEngineRef.current = "web";
@@ -296,7 +320,7 @@ export default function ChatFooter({
     setInput("");
     finalTranscriptRef.current = "";
     finalizingRef.current = false;
-    shouldSendVoiceRef.current = false;
+    voiceActionRef.current = "review";
     setVoiceState("recording");
 
     if (!shouldPreferNativeSpeech) {
@@ -339,8 +363,9 @@ export default function ChatFooter({
           setIntent(inferIntent(transcript));
         });
         const p2 = await SpeechRecognition.addListener("listeningState", (state) => {
-          if (state?.status === "stopped" && shouldSendVoiceRef.current) {
-            finalizeVoiceAndSend();
+          if (state?.status === "stopped") {
+            if (voiceActionRef.current === "send") finalizeVoiceAndSend();
+            else finalizeVoiceReview();
           }
         });
         nativeListenerHandlesRef.current = [p1, p2];
@@ -373,19 +398,21 @@ export default function ChatFooter({
     startWebRecognition();
   }
 
-  function stopRecording() {
+  function stopRecording(mode: "review" | "send" = "review") {
     vibrate(40);
     setVoiceState("processing");
-    shouldSendVoiceRef.current = true;
+    voiceActionRef.current = mode;
 
     try {
       if (activeEngineRef.current === "native") {
         stopSyntheticWave();
         void SpeechRecognition.stop().catch(() => {
-          finalizeVoiceAndSend();
+          if (mode === "send") finalizeVoiceAndSend();
+          else finalizeVoiceReview();
         });
         window.setTimeout(() => {
-          if (shouldSendVoiceRef.current) finalizeVoiceAndSend();
+          if (mode === "send") finalizeVoiceAndSend();
+          else finalizeVoiceReview();
         }, 1200);
       } else {
         recognitionRef.current?.stop();
@@ -396,7 +423,7 @@ export default function ChatFooter({
   async function handleSend(overrideText?: string) {
     const text = (overrideText ?? input).trim();
     if (!text || isSending) return;
-    if (!overrideText && voiceState !== "idle") return;
+    if (!overrideText && (voiceState === "recording" || voiceState === "processing")) return;
     setIsSending(true);
     try {
       await onSend(text);
@@ -430,7 +457,7 @@ export default function ChatFooter({
         <button
           type="button"
           onClick={() => {
-            if (voiceState === "recording") stopRecording();
+            if (voiceState === "recording") stopRecording("review");
             else void startRecording();
           }}
           className={`
@@ -456,16 +483,16 @@ export default function ChatFooter({
 
         {/* middle */}
         {voiceState === "recording" ? (
-          <div className="relative z-[1] flex-1 h-10">
+          <div className="relative z-[1] flex-1 h-12">
             {/* bar bed (glass) */}
             <div className="absolute inset-0 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl" />
             <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-white/10 via-transparent to-transparent opacity-70" />
             <div className="absolute left-3 top-1/2 -translate-y-1/2 text-[11px] text-white/55">
-              Listening...
+              Listening now...
             </div>
 
             {/* bars */}
-            <div className="relative h-10 flex items-end justify-end gap-[2px] px-3">
+            <div className="relative h-12 flex items-end justify-end gap-[2px] px-3">
               {Array.from({ length: BAR_COUNT }).map((_, i) => (
                 <div
                   key={i}
@@ -498,30 +525,40 @@ export default function ChatFooter({
                 void handleSend();
               }
             }}
-            placeholder="Ask Oyi…"
+            placeholder={voiceState === "review" ? "Review voice command before sending" : "Ask Oyi…"}
             className="relative z-[1] flex-1 bg-transparent outline-none px-2 text-[16px] leading-[20px] text-white/90 placeholder-white/35"
           />
         )}
 
-        {/* send */}
-        <button
-          type="button"
-          onClick={() => void handleSend()}
-          disabled={!canSend}
-          className={`
-            relative z-[1]
-            w-10 h-10 rounded-2xl flex items-center justify-center
-            border transition active:scale-[0.99]
-            ${
-              canSend
-                ? "bg-white text-black border-white/20"
-                : "bg-white/5 text-white/40 border-white/10 opacity-60"
-            }
-          `}
-          aria-label="Send"
-        >
-          <FaPaperPlane className="text-[13px]" />
-        </button>
+        {voiceState === "recording" ? (
+          <button
+            type="button"
+            onClick={() => stopRecording("send")}
+            className="relative z-[1] h-10 rounded-2xl border border-white/20 bg-white px-4 text-[13px] font-semibold text-black transition active:scale-[0.99]"
+            aria-label="Send voice command"
+          >
+            Send
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => void handleSend()}
+            disabled={!canSend}
+            className={`
+              relative z-[1]
+              w-10 h-10 rounded-2xl flex items-center justify-center
+              border transition active:scale-[0.99]
+              ${
+                canSend
+                  ? "bg-white text-black border-white/20"
+                  : "bg-white/5 text-white/40 border-white/10 opacity-60"
+              }
+            `}
+            aria-label="Send"
+          >
+            <FaPaperPlane className="text-[13px]" />
+          </button>
+        )}
       </div>
       {voiceHint ? (
         <div className="mt-2 text-[11px] text-amber-200/90 px-2">{voiceHint}</div>
