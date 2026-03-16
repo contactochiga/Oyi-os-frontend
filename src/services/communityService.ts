@@ -13,6 +13,9 @@ export type CommunityPost = {
   updated_at?: string | null;
 
   author_id?: string | null;
+  views?: number;
+  view_count?: number;
+  viewed_by_me?: boolean;
 };
 
 export type CreatePostPayload = {
@@ -140,6 +143,15 @@ export const communityService = {
       return res.data;
     } catch (err: any) {
       return { error: pickError(err, "Failed to react") } as any;
+    }
+  },
+
+  async trackView(postId: string) {
+    try {
+      const res = await API.post(`/community/post/${encodeURIComponent(postId)}/view`);
+      return res.data;
+    } catch (err: any) {
+      return { error: pickError(err, "Failed to track view") } as any;
     }
   },
 

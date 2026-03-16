@@ -44,6 +44,11 @@ export type ChatMessage = {
   is_hidden?: boolean;
 };
 
+export type ThreadMessagesResponse = {
+  messages: ChatMessage[];
+  peer_last_read_at?: string | null;
+};
+
 export type UploadedMessageMedia = {
   ok?: boolean;
   url: string;
@@ -82,7 +87,7 @@ export const messagesService = {
     }
   },
 
-  async listMessages(threadId: string, before?: string, limit = 50): Promise<ChatMessage[]> {
+  async listMessages(threadId: string, before?: string, limit = 50): Promise<ThreadMessagesResponse> {
     try {
       const res = await API.get(`/messages/thread/${encodeURIComponent(threadId)}/messages`, {
         params: {
@@ -90,10 +95,13 @@ export const messagesService = {
           ...(before ? { before } : {}),
         },
       });
-      return res.data?.messages ?? [];
+      return {
+        messages: res.data?.messages ?? [],
+        peer_last_read_at: res.data?.peer_last_read_at ?? null,
+      };
     } catch (err) {
       console.warn("messagesService.listMessages error:", err);
-      return [];
+      return { messages: [], peer_last_read_at: null };
     }
   },
 

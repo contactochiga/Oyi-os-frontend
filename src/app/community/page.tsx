@@ -19,6 +19,7 @@ import {
   Send,
   ThumbsUp,
   MessageCircle,
+  Eye,
   AlertCircle,
   ImagePlus,
   Video,
@@ -344,10 +345,14 @@ export default function CommunityPage() {
   const [replyOpen, setReplyOpen] = useState<Record<string, boolean>>({});
   const [replyDraft, setReplyDraft] = useState<Record<string, string>>({});
   const [replyCounts, setReplyCounts] = useState<Record<string, number>>({});
+  const [viewCounts, setViewCounts] = useState<Record<string, number>>({});
+  const [viewed, setViewed] = useState<Record<string, boolean>>({});
   const [busyPost, setBusyPost] = useState<Record<string, boolean>>({});
   const [commentMap, setCommentMap] = useState<Record<string, CommunityComment[]>>({});
   const [commentLoading, setCommentLoading] = useState<Record<string, boolean>>({});
   const [lastLiveAt, setLastLiveAt] = useState<number | null>(null);
+  const postRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const sessionViewedRef = useRef<Set<string>>(new Set());
 
   // Tabs
   const [tab, setTab] = useState<"feed" | "announcements">("feed");
@@ -398,6 +403,8 @@ export default function CommunityPage() {
       const nextLikes: Record<string, number> = {};
       const nextReplies: Record<string, number> = {};
       const nextLiked: Record<string, boolean> = {};
+      const nextViews: Record<string, number> = {};
+      const nextViewed: Record<string, boolean> = {};
 
       for (const p of arr as any[]) {
         const id = pickPostId(p);
@@ -410,10 +417,13 @@ export default function CommunityPage() {
           p?.comment_count ??
           p?.comments ??
           0;
+        const v = p?.view_count ?? p?.views ?? 0;
 
         nextLikes[id] = clampCount(l);
         nextReplies[id] = clampCount(r);
         nextLiked[id] = !!(p?.reacted_by_me ?? p?.liked_by_me ?? false);
+        nextViews[id] = clampCount(v);
+        nextViewed[id] = !!(p?.viewed_by_me ?? false);
       }
 
       if (Object.keys(nextLikes).length)
@@ -422,6 +432,10 @@ export default function CommunityPage() {
         setReplyCounts((prev) => ({ ...prev, ...nextReplies }));
       if (Object.keys(nextLiked).length)
         setLiked((prev) => ({ ...prev, ...nextLiked }));
+      if (Object.keys(nextViews).length)
+        setViewCounts((prev) => ({ ...prev, ...nextViews }));
+      if (Object.keys(nextViewed).length)
+        setViewed((prev) => ({ ...prev, ...nextViewed }));
       setLastLiveAt(Date.now());
     } catch (e: any) {
       setErr(e?.message || "Failed to load community");
@@ -698,6 +712,39 @@ export default function CommunityPage() {
 
   const listForTab = tab === "announcements" ? announcements : items;
 
+  useEffect(() => {
+    if (!listForTab.length || typeof IntersectionObserver === "undefined") return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          const postId = String((entry.target as HTMLElement).dataset.postId || "");
+          if (!postId || sessionViewedRef.current.has(postId)) continue;
+          sessionViewedRef.current.add(postId);
+          void (async () => {
+            const res: any = await communityService.trackView(postId);
+            if (res?.error) return;
+            const nextCount = clampCount(res?.view_count ?? res?.views ?? 0);
+            setViewCounts((prev) => ({ ...prev, [postId]: nextCount }));
+            setViewed((prev) => ({ ...prev, [postId]: true }));
+          })();
+          observer.unobserve(entry.target);
+        }
+      },
+      { threshold: 0.65 }
+    );
+
+    for (const post of listForTab as any[]) {
+      const id = pickPostId(post);
+      const node = postRefs.current[id];
+      if (!id || !node || sessionViewedRef.current.has(id)) continue;
+      observer.observe(node);
+    }
+
+    return () => observer.disconnect();
+  }, [listForTab]);
+
   return (
     <ConsumerShell title="Community" subtitle="Estate updates • announcements • resident posts">
       {/* Top row (kept) */}
@@ -908,7 +955,13 @@ export default function CommunityPage() {
               tab === "announcements" ? "announcement" : badge === "Admin" ? "announcement" : "discussion";
 
             return (
-              <Card key={postKey}>
+              <Card key={postKey} className={viewed[id] ? "ring-1 ring-white/5" : undefined}>
+                <div
+                  ref={(node) => {
+                    postRefs.current[id] = node;
+                  }}
+                  data-post-id={id}
+                />
                 <CardHeader>
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
@@ -981,7 +1034,12 @@ export default function CommunityPage() {
                     </a>
                   ) : null}
 
-                  <div className="flex items-center gap-4 pt-3 border-t border-white/10">
+                  <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-white/10">
+                    <div className="inline-flex items-center gap-2 text-sm px-3 py-2 rounded-xl border border-white/10 bg-white/5 text-white/65">
+                      <Eye className="h-4 w-4" />
+                      {viewCounts[id] ?? clampCount(p?.view_count ?? p?.views ?? 0)}
+                    </div>
+
                     <button
                       type="button"
                       onClick={() => reactLike(p)}

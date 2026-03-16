@@ -9,7 +9,7 @@ import messagesService, {
   InboxThread,
 } from "@/services/messagesService";
 import { getSocket } from "@/services/socket";
-import { FiChevronLeft, FiEdit2, FiImage, FiPaperclip, FiRefreshCw, FiSearch, FiSend } from "react-icons/fi";
+import { FiCheck, FiCheckCircle, FiChevronLeft, FiEdit2, FiPaperclip, FiRefreshCw, FiSearch, FiSend } from "react-icons/fi";
 
 function displayName(r?: ChatResident | null) {
   if (!r) return "Resident";
@@ -46,6 +46,11 @@ function pickMessageMedia(message: ChatMessage) {
   };
 }
 
+function wasReadByPeer(message: ChatMessage, peerLastReadAt?: string | null) {
+  if (!peerLastReadAt || !message?.created_at) return false;
+  return new Date(peerLastReadAt).getTime() >= new Date(message.created_at).getTime();
+}
+
 export default function MessagesPage() {
   const { user } = useAuth();
   const myId = useMemo(() => String((user as any)?.id || ""), [user]);
@@ -54,6 +59,7 @@ export default function MessagesPage() {
   const [residents, setResidents] = useState<ChatResident[]>([]);
   const [activeThread, setActiveThread] = useState<InboxThread | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [peerLastReadAt, setPeerLastReadAt] = useState<string | null>(null);
 
   const [listQuery, setListQuery] = useState("");
   const [peopleQuery, setPeopleQuery] = useState("");
@@ -67,6 +73,7 @@ export default function MessagesPage() {
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
 
   async function loadInbox() {
     const list = await messagesService.listInbox();
@@ -81,10 +88,12 @@ export default function MessagesPage() {
   async function loadThreadMessages(thread: InboxThread | null) {
     if (!thread?.id) {
       setMessages([]);
+      setPeerLastReadAt(null);
       return;
     }
-    const list = await messagesService.listMessages(thread.id, undefined, 80);
-    setMessages(Array.isArray(list) ? list : []);
+    const res = await messagesService.listMessages(thread.id, undefined, 80);
+    setMessages(Array.isArray(res?.messages) ? res.messages : []);
+    setPeerLastReadAt(res?.peer_last_read_at || null);
     await messagesService.markRead(thread.id);
     await loadInbox();
   }
@@ -160,6 +169,12 @@ export default function MessagesPage() {
       socket.off("dm:new", onDm);
     };
   }, [activeThread?.id]);
+
+  useEffect(() => {
+    const node = scrollRef.current;
+    if (!node) return;
+    node.scrollTop = node.scrollHeight;
+  }, [messages.length, pendingAttachment]);
 
   const filteredThreads = useMemo(() => {
     const t = listQuery.trim().toLowerCase();
@@ -358,8 +373,8 @@ export default function MessagesPage() {
         </div>
       ) : (
         <div
-          className="rounded-3xl border border-white/10 bg-white/5 p-3 min-h-[65vh] flex flex-col"
-          style={{ paddingBottom: "calc(12px + var(--kb))" }}
+          className="rounded-3xl border border-white/10 bg-white/5 p-3 min-h-[65vh] flex flex-col overflow-hidden"
+          style={{ minHeight: "calc(65vh - var(--kb) * 0.15)" }}
         >
           <div className="border-b border-white/10 pb-2 flex items-center gap-3">
             <button
@@ -379,20 +394,30 @@ export default function MessagesPage() {
             </div>
           </div>
 
-          <div className="flex-1 overflow-auto py-3 space-y-2">
+          <div
+            ref={scrollRef}
+            className="flex-1 overflow-auto py-4 pr-1 space-y-3"
+            style={{ paddingBottom: "calc(18px + var(--kb) * 0.4)" }}
+          >
             {messages.length === 0 ? (
               <div className="text-xs text-white/50">No messages yet.</div>
             ) : (
               messages.map((m) => {
                 const mine = String(m.sender_id || "") === myId;
                 const media = pickMessageMedia(m);
+                const readByPeer = wasReadByPeer(m, peerLastReadAt);
                 return (
-                  <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+                  <div key={m.id} className={`flex items-end gap-2 ${mine ? "justify-end" : "justify-start"}`}>
+                    {!mine ? (
+                      <div className="mb-1 h-8 w-8 shrink-0 rounded-full border border-white/10 bg-white/10 text-[11px] font-semibold text-white/80 flex items-center justify-center">
+                        {initials(activeThread?.peer)}
+                      </div>
+                    ) : null}
                     <div
-                      className={`max-w-[82%] rounded-[22px] px-3 py-2.5 ${
+                      className={`max-w-[82%] rounded-[24px] px-3.5 py-2.5 shadow-[0_12px_28px_rgba(0,0,0,0.18)] ${
                         mine
-                          ? "bg-emerald-500/20 text-emerald-50 border border-emerald-400/20"
-                          : "bg-black/30 text-white border border-white/10"
+                          ? "bg-emerald-500/20 text-emerald-50 border border-emerald-400/20 rounded-br-[8px]"
+                          : "bg-black/30 text-white border border-white/10 rounded-bl-[8px]"
                       }`}
                     >
                       {media ? (
@@ -405,7 +430,19 @@ export default function MessagesPage() {
                         </div>
                       ) : null}
                       {m.body ? <div className="text-sm whitespace-pre-wrap break-words">{m.body}</div> : null}
-                      <div className="mt-1 text-[10px] text-white/45 text-right">{shortTime(m.created_at)}</div>
+                      <div className={`mt-1.5 flex items-center gap-1 text-[10px] ${mine ? "justify-end text-emerald-100/65" : "justify-end text-white/45"}`}>
+                        <span>{shortTime(m.created_at)}</span>
+                        {mine ? (
+                          readByPeer ? (
+                            <FiCheckCircle className="h-3.5 w-3.5 text-cyan-300" />
+                          ) : (
+                            <span className="inline-flex items-center">
+                              <FiCheck className="h-3 w-3 translate-x-[2px]" />
+                              <FiCheck className="h-3 w-3 -ml-1" />
+                            </span>
+                          )
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                 );
@@ -430,45 +467,47 @@ export default function MessagesPage() {
           ) : null}
 
           <div
-            className="border-t border-white/10 pt-2 flex items-center gap-2 sticky bottom-0 bg-[rgba(15,23,42,0.88)] backdrop-blur-xl"
-            style={{ paddingBottom: "calc(6px + var(--kb))" }}
+            className="border-t border-white/10 pt-3 sticky bottom-0 bg-[rgba(8,12,20,0.96)] backdrop-blur-xl"
+            style={{ paddingBottom: "calc(10px + var(--sab) + var(--kb))" }}
           >
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*,video/*"
-              className="hidden"
-              onChange={(e) => onPickMedia(e.target.files)}
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploadingMedia}
-              className="rounded-2xl border border-white/10 bg-white/8 px-3 py-2.5 text-white/85"
-              title="Attach image or video"
-            >
-              {uploadingMedia ? <FiRefreshCw className="animate-spin" /> : <FiPaperclip />}
-            </button>
-            <input
-              value={compose}
-              onChange={(e) => setCompose(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  void send();
-                }
-              }}
-              placeholder="Message..."
-              className="flex-1 rounded-2xl border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none"
-            />
-            <button
-              type="button"
-              onClick={() => void send()}
-              disabled={sending || (!compose.trim() && !pendingAttachment)}
-              className="rounded-2xl px-3 py-2.5 bg-white text-black text-sm font-semibold disabled:opacity-50 inline-flex items-center gap-2"
-            >
-              <FiSend className="h-4 w-4" />
-            </button>
+            <div className="flex items-end gap-2 rounded-[26px] border border-white/10 bg-black/25 p-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,video/*"
+                className="hidden"
+                onChange={(e) => onPickMedia(e.target.files)}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadingMedia}
+                className="shrink-0 rounded-2xl border border-white/10 bg-white/8 px-3 py-3 text-white/85"
+                title="Attach image or video"
+              >
+                {uploadingMedia ? <FiRefreshCw className="animate-spin" /> : <FiPaperclip />}
+              </button>
+              <input
+                value={compose}
+                onChange={(e) => setCompose(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void send();
+                  }
+                }}
+                placeholder="Type a message"
+                className="min-h-[48px] flex-1 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => void send()}
+                disabled={sending || (!compose.trim() && !pendingAttachment)}
+                className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white text-black text-sm font-semibold disabled:opacity-50"
+              >
+                <FiSend className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         </div>
       )}

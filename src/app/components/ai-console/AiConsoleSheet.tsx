@@ -131,15 +131,16 @@ export default function AiConsoleSheet(props: {
             exit={{ y: 40, opacity: 0 }}
             transition={{ type: "spring", stiffness: 260, damping: 26 }}
             className="absolute left-0 right-0 bottom-0"
-            style={{ paddingBottom: "calc(10px + var(--sab) + var(--kb))" }}
+            style={{ paddingBottom: "calc(10px + var(--sab))", transform: "translateY(calc(var(--kb) * -1))" }}
           >
             <div className="max-w-3xl mx-auto px-4">
               <div
-                className="rounded-t-3xl border border-white/10 overflow-hidden"
+                className="rounded-t-3xl border border-white/10 overflow-hidden flex flex-col"
                 style={{
                   background: "rgba(10,12,18,0.86)",
                   backdropFilter: "blur(22px)",
                   WebkitBackdropFilter: "blur(22px)",
+                  maxHeight: "min(82vh, calc(100dvh - 24px - var(--sat) - var(--kb)))",
                 }}
               >
                 {/* HEADER */}
@@ -179,9 +180,9 @@ export default function AiConsoleSheet(props: {
 
                 {/* MESSAGES */}
                 <div
-                  className="px-4 pt-3 overflow-y-auto"
+                  className="px-4 pt-3 overflow-y-auto flex-1"
                   style={{
-                    height: "min(54vh, 520px)",
+                    minHeight: 0,
                     WebkitOverflowScrolling: "touch",
                   }}
                 >
@@ -301,7 +302,7 @@ export default function AiConsoleSheet(props: {
                 </div>
 
                 {/* FOOTER */}
-                <div className="border-t border-white/10 px-4 py-3">
+                <div className="border-t border-white/10 px-4 py-3 bg-[rgba(8,12,20,0.96)] sticky bottom-0">
                   <ChatFooter
                     input={input}
                     setInput={setInput}

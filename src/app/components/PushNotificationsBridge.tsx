@@ -15,11 +15,18 @@ export default function PushNotificationsBridge() {
   const upsert = useNotificationStore((s) => s.upsert);
   const [status, setStatus] = useState<string>("idle");
   const [detail, setDetail] = useState<string>("");
+  const [mounted, setMounted] = useState(false);
+  const [isNative, setIsNative] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    setIsNative(Capacitor.isNativePlatform());
+  }, []);
 
   useEffect(() => {
     if (!ready || !token) return;
     if (typeof window === "undefined") return;
-    if (!Capacitor.isNativePlatform()) return;
+    if (!mounted || !isNative) return;
 
     let unmounted = false;
     const listeners: Array<{ remove: () => Promise<void> }> = [];
@@ -154,9 +161,9 @@ export default function PushNotificationsBridge() {
         listener.remove().catch(() => {});
       }
     };
-  }, [ready, token, upsert]);
+  }, [ready, token, upsert, mounted, isNative]);
 
-  if (!Capacitor.isNativePlatform()) return null;
+  if (!mounted || !isNative) return null;
 
   return status && status !== "registered" ? (
     <div className="pointer-events-none fixed bottom-24 left-1/2 z-[250] -translate-x-1/2 rounded-full border border-amber-400/30 bg-black/80 px-3 py-1.5 text-[11px] text-amber-100 shadow-lg backdrop-blur">

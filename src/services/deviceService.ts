@@ -29,7 +29,9 @@ export const deviceService = {
     try {
       const res = await API.get("/devices/discover");
       return res.data?.devices ?? res.data ?? [];
-    } catch (err) {
+    } catch (err: any) {
+      const status = Number(err?.response?.status || 0);
+      if (status && status < 500) return [];
       console.warn("deviceService.discoverDevices error:", err);
       return [];
     }

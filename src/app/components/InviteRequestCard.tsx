@@ -40,6 +40,12 @@ export default function InviteRequestCard({
   const passiveState = String((invite as any)?.status || "").toLowerCase();
   const isPassive = readOnly || passiveState === "accepted" || passiveState === "active" || passiveState === "declined";
   const isSuccess = state.status === "success" || isPassive;
+  const passiveLabel =
+    passiveState === "declined"
+      ? "Declined"
+      : passiveState === "accepted" || passiveState === "active"
+        ? "Added to home"
+        : "Processed";
 
   // Auto close after success (so the notification list clears cleanly)
   useEffect(() => {
@@ -105,7 +111,7 @@ export default function InviteRequestCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-sm font-semibold text-white">
-            {isSuccess ? "Invite updated" : "Home invite"}
+            {isSuccess ? passiveLabel : "Home invite"}
           </div>
 
           <div className="mt-1 text-xs text-white/60">
@@ -115,7 +121,9 @@ export default function InviteRequestCard({
         </div>
 
         {isSuccess ? (
-          <div className="shrink-0 text-emerald-200 text-sm font-semibold">✓</div>
+          <div className="shrink-0 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-200">
+            {passiveLabel}
+          </div>
         ) : null}
       </div>
 
@@ -173,7 +181,7 @@ export default function InviteRequestCard({
       {/* success hint (optional) */}
       {isSuccess && (
         <div className="mt-3 text-[11px] text-emerald-200/80">
-          {passiveState === "declined" ? "Invite already declined." : "Invite already processed."}
+          {passiveState === "declined" ? "This invite was already declined." : "This invite has already been completed."}
         </div>
       )}
     </div>

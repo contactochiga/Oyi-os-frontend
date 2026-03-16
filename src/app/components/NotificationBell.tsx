@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { FiBell } from "react-icons/fi";
 import { markNotificationRead } from "@/services/notificationsService";
 import { useNotificationStore } from "@/store/useNotificationStore";
@@ -23,8 +22,8 @@ function timeAgo(ts?: string) {
 }
 
 export default function NotificationBell() {
-  const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
 
   const items = useNotificationStore((s) => s.items);
   const unreadCount = useNotificationStore((s) => s.unreadCount);
@@ -33,27 +32,25 @@ export default function NotificationBell() {
   const dragStartX = useRef<number | null>(null);
   const dragDelta = useRef<number>(0);
 
-  useEffect(() => setMounted(true), []);
-
   useEffect(() => {
-    if (!open) {
-      document.body.style.overflow = "";
-      document.body.classList.remove("sidebar-open");
-      return;
-    }
-
-    document.body.style.overflow = "hidden";
-    document.body.classList.add("sidebar-open");
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    const onPointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node | null;
+      if (rootRef.current && target && !rootRef.current.contains(target)) {
+        setOpen(false);
+      }
     };
     window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("touchstart", onPointerDown);
 
     return () => {
-      document.body.style.overflow = "";
-      document.body.classList.remove("sidebar-open");
       window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("touchstart", onPointerDown);
     };
   }, [open]);
 
@@ -64,55 +61,41 @@ export default function NotificationBell() {
     if (res?.id) upsert(res);
   }
 
-  const OVERLAY_Z = 2147483646;
-  const DRAWER_Z = 2147483647;
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="relative p-2 rounded-xl hover:bg-white/10 text-white/80"
+        aria-label="Open notifications"
+      >
+        <FiBell className="h-5 w-5" />
+        {unreadCount > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-white text-black text-[11px] flex items-center justify-center">
+            {unreadCount > 99 ? "99+" : unreadCount}
+          </span>
+        )}
+      </button>
 
-  const drawer =
-    mounted && open
-      ? createPortal(
-          <>
-            <div
-              className="fixed inset-0"
-              style={{
-                zIndex: OVERLAY_Z,
-                backgroundColor: "rgba(0,0,0,0.52)",
-                backdropFilter: "blur(18px)",
-                WebkitBackdropFilter: "blur(18px)",
-              }}
-              onClick={() => setOpen(false)}
-              aria-label="Close notifications overlay"
-            />
-
-            <aside
-              className="fixed right-0 top-0 bottom-0 w-[380px] max-w-[92vw]
-                         border-l border-white/10 bg-[#06080e]/96"
-              style={{
-                zIndex: DRAWER_Z,
-                paddingTop: "var(--sat)",
-                paddingRight: "var(--sar)",
-              }}
-              onTouchStart={(e) => {
-                dragStartX.current = e.touches[0]?.clientX ?? null;
-                dragDelta.current = 0;
-              }}
-              onTouchMove={(e) => {
-                if (dragStartX.current === null) return;
-                const x = e.touches[0]?.clientX ?? 0;
-                dragDelta.current = x - dragStartX.current;
-              }}
-              onTouchEnd={() => {
-                if (dragDelta.current > 55) setOpen(false);
-                dragStartX.current = null;
-                dragDelta.current = 0;
-              }}
-            >
-              <div
-                className="flex flex-col"
-                style={{
-                  height: "calc(100dvh - var(--sat) - var(--kb))",
-                  paddingBottom: "calc(var(--sab) + var(--kb))",
-                }}
-              >
+      {open ? (
+        <aside
+          className="absolute right-0 top-[calc(100%+10px)] z-[220] w-[min(380px,calc(100vw-24px))] overflow-hidden rounded-[28px] border border-white/10 bg-[#06080e]/97 shadow-[0_28px_80px_rgba(0,0,0,0.45)]"
+          onTouchStart={(e) => {
+            dragStartX.current = e.touches[0]?.clientX ?? null;
+            dragDelta.current = 0;
+          }}
+          onTouchMove={(e) => {
+            if (dragStartX.current === null) return;
+            const x = e.touches[0]?.clientX ?? 0;
+            dragDelta.current = x - dragStartX.current;
+          }}
+          onTouchEnd={() => {
+            if (dragDelta.current > 55) setOpen(false);
+            dragStartX.current = null;
+            dragDelta.current = 0;
+          }}
+        >
+          <div className="flex flex-col max-h-[min(72vh,640px)]">
                 <div className="px-4 pt-4 pb-3 border-b border-white/10">
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
@@ -223,35 +206,14 @@ export default function NotificationBell() {
                   )}
                 </div>
 
-                <div className="px-4 py-3 border-t border-white/10 bg-white/[0.03]">
+                <div className="px-4 py-3 border-t border-white/10 bg-white/[0.03] rounded-b-[28px]">
                   <div className="text-[11px] text-white/40">
                     Tip: tap a card to mark it read.
                   </div>
                 </div>
-              </div>
-            </aside>
-          </>,
-          document.body
-        )
-      : null;
-
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="relative p-2 rounded-xl hover:bg-white/10 text-white/80"
-        aria-label="Open notifications"
-      >
-        <FiBell className="h-5 w-5" />
-        {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-white text-black text-[11px] flex items-center justify-center">
-            {unreadCount > 99 ? "99+" : unreadCount}
-          </span>
-        )}
-      </button>
-
-      {drawer}
-    </>
+          </div>
+        </aside>
+      ) : null}
+    </div>
   );
 }

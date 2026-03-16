@@ -484,49 +484,48 @@ export default function ChatFooter({
         {/* middle */}
         {voiceState === "recording" ? (
           <div className="relative z-[1] flex-1 h-12">
-            {/* bar bed (glass) */}
             <div className="absolute inset-0 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl" />
-            <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-white/10 via-transparent to-transparent opacity-70" />
-            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-[11px] text-white/55">
-              Listening now...
+            <div className="absolute inset-x-3 top-2 text-[11px] text-white/55">
+              Recording...
             </div>
-
-            {/* bars */}
-            <div className="relative h-12 flex items-end justify-end gap-[2px] px-3">
-              {Array.from({ length: BAR_COUNT }).map((_, i) => (
+            <div className="absolute inset-x-3 bottom-2 flex items-end gap-[2px]">
+              {Array.from({ length: 28 }).map((_, i) => (
                 <div
                   key={i}
                   ref={(el) => {
                     if (el) barsRef.current[i] = el;
                   }}
-                  className="rounded-full transition-[height]"
+                  className="flex-1 rounded-full transition-[height]"
                   style={{
-                    width: 2,
                     height: 6,
+                    minWidth: 3,
                     backgroundColor: INTENT_COLORS[intent],
-                    opacity: intent === "default" ? 0.55 : 0.85,
-                    boxShadow: "0 0 10px rgba(255,255,255,0.10)",
+                    opacity: intent === "default" ? 0.55 : 0.88,
+                    boxShadow: "0 0 8px rgba(255,255,255,0.08)",
                   }}
                 />
               ))}
             </div>
           </div>
         ) : (
-          <input
+          <textarea
             value={input}
             onChange={(e) => {
               const v = e.target.value;
               setInput(v);
               setIntent(inferIntent(v));
+              e.currentTarget.style.height = "0px";
+              e.currentTarget.style.height = `${Math.min(e.currentTarget.scrollHeight, 112)}px`;
             }}
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
+              if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 void handleSend();
               }
             }}
+            rows={1}
             placeholder={voiceState === "review" ? "Review voice command before sending" : "Ask Oyi…"}
-            className="relative z-[1] flex-1 bg-transparent outline-none px-2 text-[16px] leading-[20px] text-white/90 placeholder-white/35"
+            className="relative z-[1] max-h-28 min-h-[40px] flex-1 resize-none bg-transparent outline-none px-2 py-2 text-[16px] leading-[20px] text-white/90 placeholder-white/35"
           />
         )}
 
