@@ -8,6 +8,7 @@ import { useSettingsStore } from "@/store/useSettingsStore";
 import { deleteMyAccount, updateMyProfile } from "@/services/authService";
 import API from "@/services/api";
 import { roomsService, type RoomDTO } from "@/services/roomsService";
+import { homeAccessService, type HomeAccessMember } from "@/services/homeAccessService";
 import {
   getGenericIntegration,
   getTuyaIntegration,
@@ -38,6 +39,13 @@ type AssistantIntegrationState = {
 type AccountContextState = {
   estate?: { id: string; name: string } | null;
   home?: { id: string; name?: string | null; block?: string | null; unit?: string | null } | null;
+  activeRole?: string | null;
+  availableContexts?: Array<{
+    estate_id: string;
+    home_id: string;
+    role?: string | null;
+    status?: string | null;
+  }>;
 };
 
 export default function SettingsClient() {
@@ -57,13 +65,19 @@ export default function SettingsClient() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [rooms, setRooms] = useState<RoomDTO[]>([]);
   const [residents, setResidents] = useState<AccessResident[]>([]);
+  const [homeMembers, setHomeMembers] = useState<HomeAccessMember[]>([]);
   const [accessLoading, setAccessLoading] = useState(false);
   const [accessError, setAccessError] = useState<string | null>(null);
+  const [accessNotice, setAccessNotice] = useState<string | null>(null);
   const [assigningAccess, setAssigningAccess] = useState(false);
   const [selectedRoomId, setSelectedRoomId] = useState("");
   const [selectedResidentId, setSelectedResidentId] = useState("");
   const [customResidentId, setCustomResidentId] = useState("");
   const [assignRole, setAssignRole] = useState("member");
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("member");
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [latestInviteUrl, setLatestInviteUrl] = useState<string | null>(null);
   const [permissions, setPermissions] = useState({
     control_devices: true,
     manage_visitors: false,
@@ -116,7 +130,8 @@ export default function SettingsClient() {
   }, [user]);
 
   const role = String((user as any)?.role || "resident").toLowerCase();
-  const canManageAccess = ["admin", "estate_admin", "owner", "manager", "operator"].includes(role);
+  const activeHomeRole = String(accountContext.activeRole || "").toLowerCase();
+  const canManageAccess = ["admin", "estate_admin", "owner", "manager", "operator"].includes(activeHomeRole || role);
   /* --------------------------------
      AUTO SCROLL BASED ON ENTRY
   --------------------------------- */
@@ -134,9 +149,17 @@ export default function SettingsClient() {
       try {
         const res = await API.get("/me/context");
         const payload = (res?.data || {}) as any;
+        const availableContexts = Array.isArray(payload?.available_contexts) ? payload.available_contexts : [];
+        const activeContext = availableContexts.find(
+          (ctx: any) =>
+            String(ctx?.estate_id || "") === String(payload?.estate_id || "") &&
+            String(ctx?.home_id || "") === String(payload?.home_id || "")
+        );
         setAccountContext({
           estate: payload?.estate || null,
           home: payload?.home || null,
+          activeRole: activeContext?.role ? String(activeContext.role) : null,
+          availableContexts,
         });
       } catch {
         setAccountContext({});
@@ -147,50 +170,41 @@ export default function SettingsClient() {
 
   useEffect(() => {
     const homeId =
-      (user as any)?.home_id ??
+      accountContext.home?.id ||
+      (user as any)?.home_id ||
       (typeof window !== "undefined" ? localStorage.getItem("ochiga_home") : null);
 
     if (!homeId) return;
 
-    const parseResidentList = (ctx: any): AccessResident[] => {
-      const buckets = [
-        ctx?.members,
-        ctx?.residents,
-        ctx?.users,
-        ctx?.home?.members,
-        ctx?.home?.residents,
-        ctx?.home?.users,
-        ctx?.estate?.members,
-      ];
-      const firstList = buckets.find((arr) => Array.isArray(arr)) || [];
-      return (firstList as any[])
-        .map((m) => {
-          const id = String(m?.id ?? m?.user_id ?? m?.resident_id ?? "").trim();
-          if (!id) return null;
-          const label =
-            m?.full_name ||
-            m?.name ||
-            m?.username ||
-            m?.email ||
-            `Resident ${id.slice(0, 6)}`;
-          return { id, label: String(label), email: m?.email ? String(m.email) : undefined };
-        })
-        .filter(Boolean) as AccessResident[];
-    };
-
     const run = async () => {
       setAccessLoading(true);
       setAccessError(null);
+      setAccessNotice(null);
       try {
-        const [roomList, ctxRes] = await Promise.all([
+        const [roomList, memberList] = await Promise.all([
           roomsService.getRooms(String(homeId)),
-          API.get("/me/context").catch(() => null),
+          homeAccessService.listHomeUsers(String(homeId)).catch(() => []),
         ]);
 
         setRooms(Array.isArray(roomList) ? roomList : []);
-
-        const ctxPayload = (ctxRes as any)?.data?.data ?? (ctxRes as any)?.data ?? null;
-        const parsedResidents = parseResidentList(ctxPayload);
+        setHomeMembers(Array.isArray(memberList) ? memberList : []);
+        const parsedResidents = (Array.isArray(memberList) ? memberList : [])
+          .map((member: any) => {
+            const linkedUser = member?.users || {};
+            const id = String(linkedUser?.id || "").trim();
+            if (!id) return null;
+            const label =
+              linkedUser?.full_name ||
+              linkedUser?.username ||
+              linkedUser?.email ||
+              `Resident ${id.slice(0, 6)}`;
+            return {
+              id,
+              label: String(label),
+              email: linkedUser?.email ? String(linkedUser.email) : undefined,
+            };
+          })
+          .filter(Boolean) as AccessResident[];
         setResidents(parsedResidents);
 
         if (Array.isArray(roomList) && roomList[0]?.id) {
@@ -204,7 +218,7 @@ export default function SettingsClient() {
     };
 
     run();
-  }, [user]);
+  }, [accountContext.home?.id, user]);
 
   useEffect(() => {
     const run = async () => {
@@ -285,10 +299,58 @@ export default function SettingsClient() {
       );
 
       setCustomResidentId("");
+      setAccessNotice("Room access updated.");
     } catch (e: any) {
       setAccessError(e?.response?.data?.error || e?.message || "Failed to assign resident to room");
     } finally {
       setAssigningAccess(false);
+    }
+  }
+
+  async function inviteResidentToHome() {
+    const homeId = String(accountContext.home?.id || "").trim();
+    const email = inviteEmail.trim().toLowerCase();
+    if (!homeId) {
+      setAccessError("No active home selected");
+      return;
+    }
+    if (!email || !email.includes("@")) {
+      setAccessError("Enter a valid email address");
+      return;
+    }
+
+    setInviteBusy(true);
+    setAccessError(null);
+    setAccessNotice(null);
+    try {
+      const res = await homeAccessService.inviteHomeUser(homeId, {
+        email,
+        role: inviteRole,
+        permissions,
+      });
+      setInviteEmail("");
+      setLatestInviteUrl(res?.inviteUrl || null);
+      setAccessNotice("Resident invite sent to this home.");
+      const nextMembers = await homeAccessService.listHomeUsers(homeId).catch(() => []);
+      setHomeMembers(Array.isArray(nextMembers) ? nextMembers : []);
+      setResidents(
+        (Array.isArray(nextMembers) ? nextMembers : [])
+          .map((member: any) => {
+            const linkedUser = member?.users || {};
+            const id = String(linkedUser?.id || "").trim();
+            if (!id) return null;
+            return {
+              id,
+              label: String(linkedUser?.full_name || linkedUser?.username || linkedUser?.email || `Resident ${id.slice(0, 6)}`),
+              email: linkedUser?.email ? String(linkedUser.email) : undefined,
+            };
+          })
+          .filter(Boolean) as AccessResident[]
+      );
+    } catch (e: any) {
+      setAccessError(e?.response?.data?.error || e?.message || "Failed to invite resident");
+    } finally {
+      setInviteBusy(false);
     }
   }
 
@@ -480,17 +542,112 @@ export default function SettingsClient() {
 
         <div className="rounded-xl border border-gray-800 bg-gray-900/70 p-4 space-y-3">
           <div className="text-xs text-gray-400">
-            Assign residents to specific rooms and set role-based permissions.
+            Manage who belongs to this home, then assign room-level control for devices, visitors, and finance visibility.
           </div>
 
           {!canManageAccess ? (
             <div className="text-sm text-gray-400">
-              Your role is resident-level. Access assignment is managed by estate operations.
+              Access assignment is available to the active home owner or estate operations for this home.
             </div>
           ) : accessLoading ? (
             <div className="text-sm text-gray-400">Loading access manager…</div>
           ) : (
             <>
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-4 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-white">Home members</div>
+                    <div className="text-xs text-gray-400">
+                      Invite residents into {unitLabel === "—" ? "this home" : unitLabel} and keep the access list clean.
+                    </div>
+                  </div>
+                  <div className="rounded-full border border-white/10 px-3 py-1 text-xs text-white/70">
+                    {homeMembers.length} member(s)
+                  </div>
+                </div>
+
+                <div className="grid gap-2 sm:grid-cols-[1.6fr_1fr]">
+                  <input
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    placeholder="Invite by email"
+                    className="w-full rounded-xl bg-black/30 border border-gray-700 px-3 py-2 text-sm text-white outline-none"
+                  />
+                  <select
+                    value={inviteRole}
+                    onChange={(e) => setInviteRole(e.target.value)}
+                    className="w-full rounded-xl bg-black/30 border border-gray-700 px-3 py-2 text-sm text-white outline-none"
+                  >
+                    <option value="member">Member</option>
+                    <option value="owner">Owner</option>
+                    <option value="viewer">Viewer</option>
+                    <option value="guest">Guest</option>
+                    <option value="staff">Staff</option>
+                  </select>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={inviteResidentToHome}
+                  disabled={inviteBusy}
+                  className="w-full py-3 rounded-xl bg-white text-black text-sm font-semibold disabled:opacity-50"
+                >
+                  {inviteBusy ? "Sending invite..." : "Invite Resident to Home"}
+                </button>
+
+                {latestInviteUrl ? (
+                  <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100 break-all">
+                    Invite link generated: {latestInviteUrl}
+                  </div>
+                ) : null}
+
+                <div className="space-y-2">
+                  {homeMembers.length > 0 ? (
+                    homeMembers.map((member) => {
+                      const linkedUser = member.users || null;
+                      const memberLabel =
+                        linkedUser?.full_name ||
+                        linkedUser?.username ||
+                        linkedUser?.email ||
+                        "Resident";
+                      return (
+                        <div
+                          key={String(member.id)}
+                          className="rounded-xl border border-gray-800 bg-black/20 px-3 py-3"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="text-sm font-medium text-white truncate">{memberLabel}</div>
+                              <div className="text-xs text-gray-400 truncate">
+                                {linkedUser?.email || "No email attached"}
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-xs uppercase tracking-wide text-white/70">
+                                {String(member.role || "member")}
+                              </div>
+                              <div className="text-[11px] text-gray-500">
+                                {String(member.status || "pending")}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="rounded-xl border border-gray-800 bg-black/20 px-3 py-3 text-xs text-gray-400">
+                      No home members linked yet.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-4 space-y-3">
+                <div className="text-sm font-semibold text-white">Room permissions</div>
+                <div className="text-xs text-gray-400">
+                  Assign existing home members to rooms and define what they can operate.
+                </div>
+
               <select
                 value={selectedRoomId}
                 onChange={(e) => setSelectedRoomId(e.target.value)}
@@ -566,7 +723,9 @@ export default function SettingsClient() {
               >
                 {assigningAccess ? "Applying access..." : "Assign Room Access"}
               </button>
+              </div>
 
+              {accessNotice ? <div className="text-xs text-emerald-300">{accessNotice}</div> : null}
               {accessError ? <div className="text-xs text-red-300">{accessError}</div> : null}
             </>
           )}
