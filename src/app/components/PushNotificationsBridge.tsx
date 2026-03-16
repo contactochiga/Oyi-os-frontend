@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Capacitor } from "@capacitor/core";
 import { PushNotifications } from "@capacitor/push-notifications";
 import { Device } from "@capacitor/device";
@@ -13,6 +13,8 @@ import { useNotificationStore } from "@/store/useNotificationStore";
 export default function PushNotificationsBridge() {
   const { token, ready } = useAuth();
   const upsert = useNotificationStore((s) => s.upsert);
+  const [status, setStatus] = useState<string>("idle");
+  const [detail, setDetail] = useState<string>("");
 
   useEffect(() => {
     if (!ready || !token) return;
@@ -22,9 +24,27 @@ export default function PushNotificationsBridge() {
     let unmounted = false;
     const listeners: Array<{ remove: () => Promise<void> }> = [];
 
+    function updateStatus(next: string, nextDetail = "") {
+      if (unmounted) return;
+      setStatus(next);
+      setDetail(nextDetail);
+      try {
+        localStorage.setItem(
+          "oyi_push_debug",
+          JSON.stringify({
+            status: next,
+            detail: nextDetail,
+            at: new Date().toISOString(),
+          })
+        );
+      } catch {}
+      console.log("[push]", next, nextDetail);
+    }
+
     async function registerToken(rawToken: string) {
       const cleanToken = String(rawToken || "").trim();
       if (!cleanToken) return;
+      updateStatus("registering-token", cleanToken.slice(0, 12));
       let deviceInfo: any = null;
       try {
         deviceInfo = await Device.getInfo();
@@ -35,7 +55,15 @@ export default function PushNotificationsBridge() {
         platform: Capacitor.getPlatform(),
         device_id: deviceInfo?.identifier || deviceInfo?.model || null,
         app_version: deviceInfo?.appVersion || null,
-      }).catch(() => {});
+      })
+        .then(() => updateStatus("registered", cleanToken.slice(0, 12)))
+        .catch((err) => {
+          const msg =
+            err?.response?.data?.error ||
+            err?.message ||
+            "Failed to POST /push/register";
+          updateStatus("register-api-failed", String(msg));
+        });
     }
 
     async function presentForegroundNotification(notification: any) {
@@ -64,23 +92,34 @@ export default function PushNotificationsBridge() {
 
     async function init() {
       try {
+        updateStatus("requesting-permission");
         const localPerms = await LocalNotifications.requestPermissions().catch(() => null);
         const pushPerms = await PushNotifications.requestPermissions();
-        if (pushPerms.receive !== "granted") return;
+        if (pushPerms.receive !== "granted") {
+          updateStatus("permission-denied", String(pushPerms.receive || "not-granted"));
+          return;
+        }
         if (localPerms && localPerms.display !== "granted") {
           // fail soft: remote push can still work
         }
+        updateStatus("permission-granted");
 
         listeners.push(
           await PushNotifications.addListener("registration", (tokenInfo) => {
             if (unmounted) return;
             const value = String(tokenInfo?.value || "");
+            updateStatus("native-token-received", value.slice(0, 12));
             void registerToken(value);
           })
         );
 
         listeners.push(
-          await PushNotifications.addListener("registrationError", () => {})
+          await PushNotifications.addListener("registrationError", (error) => {
+            updateStatus(
+              "registration-error",
+              String((error as any)?.error || (error as any)?.message || "unknown")
+            );
+          })
         );
 
         listeners.push(
@@ -100,9 +139,10 @@ export default function PushNotificationsBridge() {
           })
         );
 
+        updateStatus("calling-register");
         await PushNotifications.register();
       } catch {
-        // fail-soft
+        updateStatus("bridge-failed", "Push initialization crashed");
       }
     }
 
@@ -116,5 +156,12 @@ export default function PushNotificationsBridge() {
     };
   }, [ready, token, upsert]);
 
-  return null;
+  if (!Capacitor.isNativePlatform()) return null;
+
+  return status && status !== "registered" ? (
+    <div className="pointer-events-none fixed bottom-24 left-1/2 z-[250] -translate-x-1/2 rounded-full border border-amber-400/30 bg-black/80 px-3 py-1.5 text-[11px] text-amber-100 shadow-lg backdrop-blur">
+      Push: {status}
+      {detail ? ` • ${detail}` : ""}
+    </div>
+  ) : null;
 }
