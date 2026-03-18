@@ -104,6 +104,7 @@ export default function HamburgerMenu() {
   const [homeLabel, setHomeLabel] = useState<string | null>(null);
   const [availableContexts, setAvailableContexts] = useState<any[]>([]);
   const [switchingHomeId, setSwitchingHomeId] = useState<string | null>(null);
+  const [showOtherHomes, setShowOtherHomes] = useState(false);
 
   // ✅ NEW: notification-style badges (UI-only for now, wire later)
   const [badges, setBadges] = useState({
@@ -425,40 +426,51 @@ export default function HamburgerMenu() {
                         {estateName || "—"}
                       </div>
 
-                      {homeLabel ? (
-                        <div className="text-[11px] text-white/45 mt-1 truncate">
-                          Home:{" "}
-                          <span className="text-white/70">{homeLabel}</span>
-                        </div>
-                      ) : null}
-
                       {availableContexts.length > 1 ? (
                         <div className="mt-3 border-t border-white/10 pt-3">
-                          <div className="text-[11px] text-white/45 mb-2">Switch Home</div>
-                          <div className="space-y-2">
-                            {availableContexts.map((ctx: any) => {
+                          <button
+                            type="button"
+                            onClick={() => setShowOtherHomes((value) => !value)}
+                            className="flex w-full items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-left"
+                          >
+                            <div className="min-w-0">
+                              <div className="text-[13px] text-white truncate font-medium">
+                                {homeLabel || "Home"}
+                              </div>
+                              <div className="mt-0.5 text-[10px] text-white/45 truncate">
+                                {Math.max(availableContexts.length - 1, 0)} other homes available
+                              </div>
+                            </div>
+                            {showOtherHomes ? <FiChevronUp className="shrink-0 text-white/65" /> : <FiChevronDown className="shrink-0 text-white/65" />}
+                          </button>
+                          {showOtherHomes ? (
+                            <div className="mt-2 space-y-2">
+                            {availableContexts
+                              .filter((ctx: any) => !ctx?.is_active)
+                              .map((ctx: any) => {
                               const label = buildHomeLabel(ctx) || ctx?.home_name || "Home";
-                              const active = Boolean(ctx?.is_active);
                               return (
                                 <button
                                   key={`${ctx.estate_id}:${ctx.home_id}`}
                                   type="button"
                                   onClick={() => switchContext(String(ctx.home_id))}
-                                  disabled={active || switchingHomeId === String(ctx.home_id)}
-                                  className={`w-full rounded-xl border px-3 py-2 text-left transition ${
-                                    active
-                                      ? "border-cyan-500/30 bg-cyan-500/10 text-white"
-                                      : "border-white/10 bg-black/20 text-white/80 hover:bg-white/10"
-                                  } disabled:opacity-60`}
+                                  disabled={switchingHomeId === String(ctx.home_id)}
+                                  className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-left text-white/80 transition hover:bg-white/10 disabled:opacity-60"
                                 >
                                   <div className="text-[12px] font-medium truncate">{label}</div>
                                   <div className="mt-0.5 text-[10px] text-white/45 truncate">
-                                    {ctx?.estate_name || "Estate"} {active ? "• Active" : ""}
+                                    {ctx?.estate_name || "Estate"}
                                   </div>
                                 </button>
                               );
                             })}
-                          </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : homeLabel ? (
+                        <div className="mt-1 text-[11px] text-white/45 truncate">
+                          Home:{" "}
+                          <span className="text-white/70">{homeLabel}</span>
                         </div>
                       ) : null}
                     </div>

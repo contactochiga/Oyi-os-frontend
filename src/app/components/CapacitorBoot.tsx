@@ -20,7 +20,7 @@ export default function CapacitorBoot() {
         const { Keyboard, KeyboardResize } = kb;
 
         await Keyboard.setResizeMode({ mode: KeyboardResize.None });
-        await Keyboard.setScroll({ isDisabled: true });
+        await Keyboard.setScroll({ isDisabled: false });
         await Keyboard.setAccessoryBarVisible({ isVisible: false });
       } catch {
         // ignore

@@ -16,12 +16,14 @@ export default function ConsumerShell({
   subtitle,
   showBack = true,
   backHref = "/home",
+  disableContentScroll = false,
 }: {
   children: ReactNode;
   title?: string;
   subtitle?: string;
   showBack?: boolean;
   backHref?: string;
+  disableContentScroll?: boolean;
 }) {
   const router = useRouter();
   const { estate, home, available_contexts } = useActiveContext();
@@ -73,12 +75,14 @@ export default function ConsumerShell({
 
         {/* ✅ Scrollable content area (NO footer here) */}
         <div
-          className="flex-1 overflow-y-auto px-4"
+          className={`flex-1 px-4 ${disableContentScroll ? "overflow-hidden" : "overflow-y-auto"}`}
           style={{
             // top space: header(64px) + safe-area + spacing
             paddingTop: "calc(64px + var(--sat) + 16px)",
             // bottom space: footer + safe-area + keyboard offset
-            paddingBottom: "calc(88px + var(--sab) + var(--kb))",
+            paddingBottom: disableContentScroll
+              ? "calc(88px + var(--sab))"
+              : "calc(88px + var(--sab) + var(--kb))",
           }}
         >
           <div className="max-w-3xl mx-auto">

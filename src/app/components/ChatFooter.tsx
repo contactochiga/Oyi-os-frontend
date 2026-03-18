@@ -34,6 +34,7 @@ export default function ChatFooter({
   const [intent, setIntent] = useState<Intent>("default");
   const [voiceHint, setVoiceHint] = useState<string | null>(null);
   const [hasNativeSpeech, setHasNativeSpeech] = useState(false);
+  const [liveTranscript, setLiveTranscript] = useState("");
 
   const recognitionRef = useRef<any>(null);
   const voiceActionRef = useRef<"review" | "send">("review");
@@ -41,8 +42,6 @@ export default function ChatFooter({
   const activeEngineRef = useRef<"web" | "native" | null>(null);
   const finalizingRef = useRef(false);
   const nativeListenerHandlesRef = useRef<Array<{ remove: () => Promise<void> }>>([]);
-  const syntheticWaveTimerRef = useRef<number | null>(null);
-
   const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -105,34 +104,14 @@ export default function ChatFooter({
     } catch {}
   }
 
-  function startSyntheticWave() {
-    stopSyntheticWave();
-    syntheticWaveTimerRef.current = window.setInterval(() => {
-      for (let i = 0; i < BAR_COUNT; i += 1) {
-        const bar = barsRef.current[i];
-        if (!bar) continue;
-        const phase = (Date.now() / 180 + i * 0.7) % (Math.PI * 2);
-        const height = 6 + Math.abs(Math.sin(phase)) * 18 + (i % 4);
-        bar.style.height = `${height}px`;
-      }
-    }, 90);
-  }
-
-  function stopSyntheticWave() {
-    if (syntheticWaveTimerRef.current != null) {
-      window.clearInterval(syntheticWaveTimerRef.current);
-      syntheticWaveTimerRef.current = null;
-    }
-  }
-
   function finalizeVoiceReview() {
     if (finalizingRef.current) return;
     finalizingRef.current = true;
-    stopSyntheticWave();
     stopAudio();
     const text = finalTranscriptRef.current.trim();
     activeEngineRef.current = null;
     voiceActionRef.current = "review";
+    setLiveTranscript("");
 
     if (!text) {
       setVoiceState("idle");
@@ -148,21 +127,22 @@ export default function ChatFooter({
   function finalizeVoiceAndSend() {
     if (finalizingRef.current) return;
     finalizingRef.current = true;
-    stopSyntheticWave();
     stopAudio();
     setVoiceState("idle");
 
     const text = finalTranscriptRef.current.trim();
     activeEngineRef.current = null;
     voiceActionRef.current = "review";
+    setLiveTranscript("");
 
     if (!text) {
       setVoiceHint("No speech detected. Try again.");
       finalizingRef.current = false;
       return;
     }
-    setInput(text);
-    void handleSend(text).finally(() => {
+    setInput("");
+    finalTranscriptRef.current = "";
+    void handleSend(text, { clearComposer: true }).finally(() => {
       finalizingRef.current = false;
     });
   }
@@ -173,7 +153,6 @@ export default function ChatFooter({
         recognitionRef.current?.stop?.();
       } catch {}
       void cleanupNativeListeners();
-      stopSyntheticWave();
       stopAudio();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -275,7 +254,7 @@ export default function ChatFooter({
       const merged = (finalText || interim).trim();
       if (!merged) return;
       finalTranscriptRef.current = merged;
-      setInput(merged);
+      setLiveTranscript(merged);
       setIntent(inferIntent(merged));
     };
 
@@ -318,15 +297,16 @@ export default function ChatFooter({
     vibrate(20);
     setIntent("default");
     setInput("");
+    setLiveTranscript("");
     finalTranscriptRef.current = "";
     finalizingRef.current = false;
     voiceActionRef.current = "review";
     setVoiceState("recording");
 
-    if (!shouldPreferNativeSpeech) {
-      try {
-        await startAudio();
-      } catch (e: any) {
+    try {
+      await startAudio();
+    } catch (e: any) {
+      if (!shouldPreferNativeSpeech) {
         setVoiceState("idle");
         const name = String(e?.name || "");
         if (name === "NotAllowedError" || name === "SecurityError") {
@@ -354,12 +334,11 @@ export default function ChatFooter({
           return;
         }
 
-        startSyntheticWave();
         const p1 = await SpeechRecognition.addListener("partialResults", (data) => {
           const transcript = String(data?.matches?.[0] || "").trim();
           if (!transcript) return;
           finalTranscriptRef.current = transcript;
-          setInput(transcript);
+          setLiveTranscript(transcript);
           setIntent(inferIntent(transcript));
         });
         const p2 = await SpeechRecognition.addListener("listeningState", (state) => {
@@ -380,11 +359,10 @@ export default function ChatFooter({
         const immediate = String(started?.matches?.[0] || "").trim();
         if (immediate) {
           finalTranscriptRef.current = immediate;
-          setInput(immediate);
+          setLiveTranscript(immediate);
           setIntent(inferIntent(immediate));
         }
       } catch {
-        stopSyntheticWave();
         if (hasSpeechRecognition) {
           startWebRecognition();
           return;
@@ -405,7 +383,6 @@ export default function ChatFooter({
 
     try {
       if (activeEngineRef.current === "native") {
-        stopSyntheticWave();
         void SpeechRecognition.stop().catch(() => {
           if (mode === "send") finalizeVoiceAndSend();
           else finalizeVoiceReview();
@@ -420,13 +397,16 @@ export default function ChatFooter({
     } catch {}
   }
 
-  async function handleSend(overrideText?: string) {
+  async function handleSend(overrideText?: string, options?: { clearComposer?: boolean }) {
     const text = (overrideText ?? input).trim();
     if (!text || isSending) return;
     if (!overrideText && (voiceState === "recording" || voiceState === "processing")) return;
     setIsSending(true);
     try {
       await onSend(text);
+      if (options?.clearComposer || overrideText) {
+        setInput("");
+      }
     } finally {
       setIsSending(false);
     }
@@ -436,11 +416,9 @@ export default function ChatFooter({
     <div className="max-w-3xl mx-auto">
       <div
         className="
-          relative flex items-center gap-3
-          rounded-3xl px-3 py-2
+          relative rounded-[28px]
           border border-white/10 bg-white/5
-          backdrop-blur-xl
-          overflow-hidden
+          backdrop-blur-xl overflow-hidden
         "
       >
         {/* glass sheen */}
@@ -453,110 +431,110 @@ export default function ChatFooter({
         {/* subtle inner highlight */}
         <div className="pointer-events-none absolute inset-0 ring-1 ring-white/5 rounded-3xl" />
 
-        {/* mic */}
-        <button
-          type="button"
-          onClick={() => {
-            if (voiceState === "recording") stopRecording("review");
-            else void startRecording();
-          }}
-          className={`
-            relative z-[1]
-            w-10 h-10 rounded-2xl flex items-center justify-center
-            border transition active:scale-[0.99]
-            ${!hasVoiceEngine ? "opacity-45 cursor-not-allowed" : ""}
-            ${
-              voiceState === "recording"
-                ? "bg-white text-black border-white/20 animate-pulse"
-                : "bg-white/5 text-white border-white/10 hover:bg-white/10"
-            }
-          `}
-          disabled={!hasVoiceEngine}
-          aria-label={voiceState === "recording" ? "Stop recording" : "Start recording"}
-        >
-          {voiceState === "recording" ? (
-            <FaStop className="text-[14px]" />
-          ) : (
-            <FaMicrophone className="text-[14px]" />
-          )}
-        </button>
-
-        {/* middle */}
         {voiceState === "recording" ? (
-          <div className="relative z-[1] flex-1 h-12">
-            <div className="absolute inset-0 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl" />
-            <div className="absolute inset-x-3 top-2 text-[11px] text-white/55">
-              Recording...
+          <div className="relative z-[1] space-y-2 px-3 py-2.5">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => stopRecording("review")}
+                className="h-10 w-10 shrink-0 rounded-2xl border border-white/20 bg-white text-black flex items-center justify-center transition active:scale-[0.99]"
+                aria-label="Stop recording"
+              >
+                <FaStop className="text-[14px]" />
+              </button>
+              <div className="min-w-0 flex-1">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/45">
+                  Recording
+                </div>
+                <div className="mt-0.5 truncate text-sm text-white/80">
+                  {liveTranscript || "Speak naturally. Oyi is listening."}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => stopRecording("send")}
+                className="h-10 rounded-2xl border border-white/20 bg-white px-4 text-sm font-semibold text-black transition active:scale-[0.99]"
+                aria-label="Send voice command"
+              >
+                Send
+              </button>
             </div>
-            <div className="absolute inset-x-3 bottom-2 flex items-end gap-[2px]">
-              {Array.from({ length: 28 }).map((_, i) => (
-                <div
-                  key={i}
-                  ref={(el) => {
-                    if (el) barsRef.current[i] = el;
-                  }}
-                  className="flex-1 rounded-full transition-[height]"
-                  style={{
-                    height: 6,
-                    minWidth: 3,
-                    backgroundColor: INTENT_COLORS[intent],
-                    opacity: intent === "default" ? 0.55 : 0.88,
-                    boxShadow: "0 0 8px rgba(255,255,255,0.08)",
-                  }}
-                />
-              ))}
+
+            <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2.5">
+              <div className="flex h-8 items-end gap-[3px]">
+                {Array.from({ length: 28 }).map((_, i) => (
+                  <div
+                    key={i}
+                    ref={(el) => {
+                      if (el) barsRef.current[i] = el;
+                    }}
+                    className="flex-1 rounded-full transition-[height] duration-75"
+                    style={{
+                      height: 6,
+                      minWidth: 3,
+                      backgroundColor: INTENT_COLORS[intent],
+                      opacity: intent === "default" ? 0.6 : 0.92,
+                      boxShadow: "0 0 8px rgba(255,255,255,0.08)",
+                    }}
+                  />
+                ))}
+              </div>
             </div>
           </div>
         ) : (
-          <textarea
-            value={input}
-            onChange={(e) => {
-              const v = e.target.value;
-              setInput(v);
-              setIntent(inferIntent(v));
-              e.currentTarget.style.height = "0px";
-              e.currentTarget.style.height = `${Math.min(e.currentTarget.scrollHeight, 112)}px`;
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void handleSend();
-              }
-            }}
-            rows={1}
-            placeholder={voiceState === "review" ? "Review voice command before sending" : "Ask Oyi…"}
-            className="relative z-[1] max-h-28 min-h-[40px] flex-1 resize-none bg-transparent outline-none px-2 py-2 text-[16px] leading-[20px] text-white/90 placeholder-white/35"
-          />
-        )}
+          <div className="relative z-[1] flex items-end gap-3 px-3 py-2">
+            <button
+              type="button"
+              onClick={() => void startRecording()}
+              className={`
+                w-10 h-10 rounded-2xl flex items-center justify-center
+                border transition active:scale-[0.99]
+                ${!hasVoiceEngine ? "opacity-45 cursor-not-allowed" : "bg-white/5 text-white border-white/10 hover:bg-white/10"}
+              `}
+              disabled={!hasVoiceEngine}
+              aria-label="Start recording"
+            >
+              <FaMicrophone className="text-[14px]" />
+            </button>
 
-        {voiceState === "recording" ? (
-          <button
-            type="button"
-            onClick={() => stopRecording("send")}
-            className="relative z-[1] h-10 rounded-2xl border border-white/20 bg-white px-4 text-[13px] font-semibold text-black transition active:scale-[0.99]"
-            aria-label="Send voice command"
-          >
-            Send
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={() => void handleSend()}
-            disabled={!canSend}
-            className={`
-              relative z-[1]
-              w-10 h-10 rounded-2xl flex items-center justify-center
-              border transition active:scale-[0.99]
-              ${
-                canSend
-                  ? "bg-white text-black border-white/20"
-                  : "bg-white/5 text-white/40 border-white/10 opacity-60"
-              }
-            `}
-            aria-label="Send"
-          >
-            <FaPaperPlane className="text-[13px]" />
-          </button>
+            <textarea
+              value={input}
+              onChange={(e) => {
+                const v = e.target.value;
+                setInput(v);
+                setIntent(inferIntent(v));
+                e.currentTarget.style.height = "0px";
+                e.currentTarget.style.height = `${Math.min(e.currentTarget.scrollHeight, 112)}px`;
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void handleSend();
+                }
+              }}
+              rows={1}
+              placeholder={voiceState === "review" ? "Review voice command before sending" : "Ask Oyi…"}
+              className="max-h-24 min-h-[44px] flex-1 resize-none rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-[15px] leading-[20px] text-white/90 outline-none placeholder-white/35"
+            />
+
+            <button
+              type="button"
+              onClick={() => void handleSend()}
+              disabled={!canSend}
+              className={`
+                w-10 h-10 rounded-2xl flex items-center justify-center
+                border transition active:scale-[0.99]
+                ${
+                  canSend
+                    ? "bg-white text-black border-white/20"
+                    : "bg-white/5 text-white/40 border-white/10 opacity-60"
+                }
+              `}
+              aria-label="Send"
+            >
+              <FaPaperPlane className="text-[13px]" />
+            </button>
+          </div>
         )}
       </div>
       {voiceHint ? (

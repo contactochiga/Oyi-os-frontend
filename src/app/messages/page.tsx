@@ -9,7 +9,7 @@ import messagesService, {
   InboxThread,
 } from "@/services/messagesService";
 import { getSocket } from "@/services/socket";
-import { FiCheck, FiCheckCircle, FiChevronLeft, FiEdit2, FiPaperclip, FiRefreshCw, FiSearch, FiSend } from "react-icons/fi";
+import { FiCheck, FiChevronLeft, FiEdit2, FiPaperclip, FiRefreshCw, FiSearch, FiSend } from "react-icons/fi";
 
 function displayName(r?: ChatResident | null) {
   if (!r) return "Resident";
@@ -74,6 +74,8 @@ export default function MessagesPage() {
   const [err, setErr] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const chatFrameRef = useRef<HTMLDivElement | null>(null);
+  const [chatViewportHeight, setChatViewportHeight] = useState<number | null>(null);
 
   async function loadInbox() {
     const list = await messagesService.listInbox();
@@ -176,6 +178,37 @@ export default function MessagesPage() {
     node.scrollTop = node.scrollHeight;
   }, [messages.length, pendingAttachment]);
 
+  useEffect(() => {
+    if (view !== "chat") {
+      setChatViewportHeight(null);
+      return;
+    }
+
+    const measure = () => {
+      const node = chatFrameRef.current;
+      if (!node) return;
+      const rect = node.getBoundingClientRect();
+      const root = document.documentElement;
+      const safeBottom = Number.parseFloat(
+        getComputedStyle(root).getPropertyValue("--sab") || "0"
+      );
+      const bottomNavReserve = 86 + (Number.isFinite(safeBottom) ? safeBottom : 0);
+      const available = Math.floor(window.innerHeight - rect.top - bottomNavReserve);
+      setChatViewportHeight(Math.max(280, available));
+    };
+
+    measure();
+    window.addEventListener("resize", measure);
+    window.visualViewport?.addEventListener("resize", measure);
+    window.visualViewport?.addEventListener("scroll", measure);
+
+    return () => {
+      window.removeEventListener("resize", measure);
+      window.visualViewport?.removeEventListener("resize", measure);
+      window.visualViewport?.removeEventListener("scroll", measure);
+    };
+  }, [view, activeThread?.id]);
+
   const filteredThreads = useMemo(() => {
     const t = listQuery.trim().toLowerCase();
     if (!t) return threads;
@@ -257,7 +290,7 @@ export default function MessagesPage() {
   }
 
   return (
-    <ConsumerShell title="Messages" subtitle="Direct messages">
+    <ConsumerShell title="Messages" subtitle="Direct messages" disableContentScroll={view === "chat"}>
       {err ? (
         <div className="mb-3 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
           {err}
@@ -373,8 +406,14 @@ export default function MessagesPage() {
         </div>
       ) : (
         <div
-          className="rounded-3xl border border-white/10 bg-white/5 p-3 min-h-[65vh] flex flex-col overflow-hidden"
-          style={{ minHeight: "calc(65vh - var(--kb) * 0.15)" }}
+          ref={chatFrameRef}
+          className="rounded-3xl border border-white/10 bg-white/5 p-3 flex h-full flex-col overflow-hidden"
+          style={{
+            height:
+              chatViewportHeight != null
+                ? `${chatViewportHeight}px`
+                : "calc(100dvh - 240px - var(--sat) - var(--sab))",
+          }}
         >
           <div className="border-b border-white/10 pb-2 flex items-center gap-3">
             <button
@@ -397,7 +436,7 @@ export default function MessagesPage() {
           <div
             ref={scrollRef}
             className="flex-1 overflow-auto py-4 pr-1 space-y-3"
-            style={{ paddingBottom: "calc(18px + var(--kb) * 0.4)" }}
+            style={{ minHeight: 0, paddingBottom: "18px", WebkitOverflowScrolling: "touch" }}
           >
             {messages.length === 0 ? (
               <div className="text-xs text-white/50">No messages yet.</div>
@@ -434,12 +473,12 @@ export default function MessagesPage() {
                         <span>{shortTime(m.created_at)}</span>
                         {mine ? (
                           readByPeer ? (
-                            <FiCheckCircle className="h-3.5 w-3.5 text-cyan-300" />
-                          ) : (
-                            <span className="inline-flex items-center">
+                            <span className="inline-flex items-center text-emerald-300">
                               <FiCheck className="h-3 w-3 translate-x-[2px]" />
                               <FiCheck className="h-3 w-3 -ml-1" />
                             </span>
+                          ) : (
+                            <FiCheck className="h-3 w-3 text-white/55" />
                           )
                         ) : null}
                       </div>
@@ -467,8 +506,8 @@ export default function MessagesPage() {
           ) : null}
 
           <div
-            className="border-t border-white/10 pt-3 sticky bottom-0 bg-[rgba(8,12,20,0.96)] backdrop-blur-xl"
-            style={{ paddingBottom: "calc(10px + var(--sab) + var(--kb))" }}
+            className="border-t border-white/10 pt-3 bg-[rgba(8,12,20,0.96)] backdrop-blur-xl"
+            style={{ transform: "translateY(calc(var(--kb) * -1))", paddingBottom: "calc(10px + var(--sab))" }}
           >
             <div className="flex items-end gap-2 rounded-[26px] border border-white/10 bg-black/25 p-2">
               <input
@@ -487,17 +526,22 @@ export default function MessagesPage() {
               >
                 {uploadingMedia ? <FiRefreshCw className="animate-spin" /> : <FiPaperclip />}
               </button>
-              <input
+              <textarea
                 value={compose}
-                onChange={(e) => setCompose(e.target.value)}
+                onChange={(e) => {
+                  setCompose(e.target.value);
+                  e.currentTarget.style.height = "0px";
+                  e.currentTarget.style.height = `${Math.min(e.currentTarget.scrollHeight, 128)}px`;
+                }}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") {
+                  if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
                     void send();
                   }
                 }}
+                rows={1}
                 placeholder="Type a message"
-                className="min-h-[48px] flex-1 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none"
+                className="min-h-[48px] max-h-32 flex-1 resize-none rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none"
               />
               <button
                 type="button"

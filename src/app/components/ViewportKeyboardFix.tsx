@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { Capacitor } from "@capacitor/core";
 
 /**
  * Fixes iOS keyboard “screen expands” issue in WKWebView/PWA by using VisualViewport.
@@ -13,6 +14,8 @@ export default function ViewportKeyboardFix() {
     if (typeof window === "undefined") return;
 
     const root = document.documentElement;
+    let latestNativeKb = 0;
+    let keyboardListeners: Array<{ remove: () => Promise<void> }> = [];
 
     const setVars = () => {
       const vv = window.visualViewport;
@@ -25,9 +28,9 @@ export default function ViewportKeyboardFix() {
       // This is what makes “fixed bottom” elements float correctly above keyboard.
       if (vv) {
         const keyboard = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-        root.style.setProperty("--kb", `${Math.round(keyboard)}px`);
+        root.style.setProperty("--kb", `${Math.round(Math.max(keyboard, latestNativeKb))}px`);
       } else {
-        root.style.setProperty("--kb", `0px`);
+        root.style.setProperty("--kb", `${Math.round(latestNativeKb)}px`);
       }
     };
 
@@ -38,10 +41,49 @@ export default function ViewportKeyboardFix() {
     vv?.addEventListener("scroll", setVars);
     window.addEventListener("resize", setVars);
 
+    async function bindNativeKeyboard() {
+      if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "ios") return;
+      try {
+        const mod = await import("@capacitor/keyboard");
+        const { Keyboard } = mod;
+        keyboardListeners.push(
+          await Keyboard.addListener("keyboardWillShow", (info) => {
+            latestNativeKb = Math.max(0, Number(info?.keyboardHeight || 0));
+            root.style.setProperty("--kb", `${Math.round(latestNativeKb)}px`);
+          })
+        );
+        keyboardListeners.push(
+          await Keyboard.addListener("keyboardDidShow", (info) => {
+            latestNativeKb = Math.max(0, Number(info?.keyboardHeight || 0));
+            root.style.setProperty("--kb", `${Math.round(latestNativeKb)}px`);
+          })
+        );
+        keyboardListeners.push(
+          await Keyboard.addListener("keyboardWillHide", () => {
+            latestNativeKb = 0;
+            root.style.setProperty("--kb", "0px");
+          })
+        );
+        keyboardListeners.push(
+          await Keyboard.addListener("keyboardDidHide", () => {
+            latestNativeKb = 0;
+            root.style.setProperty("--kb", "0px");
+          })
+        );
+      } catch {
+        // ignore
+      }
+    }
+
+    void bindNativeKeyboard();
+
     return () => {
       vv?.removeEventListener("resize", setVars);
       vv?.removeEventListener("scroll", setVars);
       window.removeEventListener("resize", setVars);
+      for (const listener of keyboardListeners) {
+        listener.remove().catch(() => {});
+      }
     };
   }, []);
 

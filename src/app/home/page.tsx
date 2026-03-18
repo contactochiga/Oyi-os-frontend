@@ -184,7 +184,7 @@ export default function HomePage() {
     {
       id: "sys-1",
       role: "assistant",
-      content: "Hello! I’m Oyi — how can I help?",
+      content: "I’m Oyi — how can I help?",
       ...nowMeta(),
       lastUpdated: Date.now(),
     },
@@ -518,7 +518,7 @@ export default function HomePage() {
                       <div className="h-10 w-10 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center text-cyan-200">
                         <Sparkles className="h-5 w-5" />
                       </div>
-                      <div className="text-sm text-white/80">How can I help you?</div>
+                      <div className="text-sm text-white/80">I&apos;m Oyi, how can I help?</div>
                     </div>
                   </button>
 

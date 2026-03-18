@@ -21,7 +21,7 @@ export default function AiConsoleLauncher({ onOpen }: { onOpen: () => void }) {
             <MessageCircle className="w-5 h-5 text-white/85" />
           </div>
           <div className="flex-1 text-left">
-            <div className="text-sm text-white/90 font-medium">How can I help?</div>
+            <div className="text-sm text-white/90 font-medium">I&apos;m Oyi, how can I help?</div>
             <div className="text-[11px] text-white/45">Tap to open assistant</div>
           </div>
           <div className="text-xs text-white/45">Open</div>

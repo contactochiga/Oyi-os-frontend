@@ -131,7 +131,7 @@ export default function AiConsoleSheet(props: {
             exit={{ y: 40, opacity: 0 }}
             transition={{ type: "spring", stiffness: 260, damping: 26 }}
             className="absolute left-0 right-0 bottom-0"
-            style={{ paddingBottom: "calc(10px + var(--sab))", transform: "translateY(calc(var(--kb) * -1))" }}
+            style={{ bottom: "var(--kb)", paddingBottom: "calc(10px + var(--sab))" }}
           >
             <div className="max-w-3xl mx-auto px-4">
               <div
@@ -149,7 +149,7 @@ export default function AiConsoleSheet(props: {
                     <div className="h-7 w-7 rounded-xl border border-white/10 bg-white/5 flex items-center justify-center">
                       <Sparkles className="w-4 h-4 text-cyan-200" />
                     </div>
-                    <div className="text-xs text-white/55">Ask anything</div>
+                    <div className="text-xs text-white/55">I&apos;m Oyi, how can I help?</div>
                   </div>
 
                   <div className="flex items-center gap-2">

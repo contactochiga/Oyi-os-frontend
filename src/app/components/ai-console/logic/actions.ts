@@ -16,7 +16,17 @@ export async function executeActions(actions: DeviceAction[] | undefined) {
   for (const a of actions) {
     try {
       if (a.type === "device.command") {
-        await deviceService.commandDevice(a.deviceId, a.command);
+        const result = await deviceService.commandDevice(a.deviceId, a.command);
+        if (!result?.ok || result?.status !== "command_executed") {
+          out.push({
+            action: a,
+            ok: false,
+            error: result?.status === "command_queued"
+              ? "Command was queued but not executed."
+              : String(result?.error || "Command did not execute."),
+          });
+          continue;
+        }
         out.push({ action: a, ok: true });
         continue;
       }

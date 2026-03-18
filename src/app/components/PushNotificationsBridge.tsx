@@ -14,7 +14,6 @@ export default function PushNotificationsBridge() {
   const { token, ready } = useAuth();
   const upsert = useNotificationStore((s) => s.upsert);
   const [status, setStatus] = useState<string>("idle");
-  const [detail, setDetail] = useState<string>("");
   const [mounted, setMounted] = useState(false);
   const [isNative, setIsNative] = useState(false);
 
@@ -34,7 +33,6 @@ export default function PushNotificationsBridge() {
     function updateStatus(next: string, nextDetail = "") {
       if (unmounted) return;
       setStatus(next);
-      setDetail(nextDetail);
       try {
         localStorage.setItem(
           "oyi_push_debug",
@@ -165,10 +163,5 @@ export default function PushNotificationsBridge() {
 
   if (!mounted || !isNative) return null;
 
-  return status && status !== "registered" ? (
-    <div className="pointer-events-none fixed bottom-24 left-1/2 z-[250] -translate-x-1/2 rounded-full border border-amber-400/30 bg-black/80 px-3 py-1.5 text-[11px] text-amber-100 shadow-lg backdrop-blur">
-      Push: {status}
-      {detail ? ` • ${detail}` : ""}
-    </div>
-  ) : null;
+  return null;
 }

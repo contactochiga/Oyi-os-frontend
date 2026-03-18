@@ -109,6 +109,6 @@ export const deviceService = {
    */
   async commandDevice(deviceId: string, command: Record<string, any>) {
     const res = await API.post(`/devices/${encodeURIComponent(deviceId)}/command`, { command });
-    return res.data as { ok?: boolean; status?: string };
+    return res.data as { ok?: boolean; status?: string; error?: string; details?: string; state?: Record<string, any> };
   },
 };

@@ -335,6 +335,7 @@ export default function CommunityPage() {
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [mediaUploading, setMediaUploading] = useState(false);
   const [composerExpanded, setComposerExpanded] = useState(false);
+  const [showLiveInput, setShowLiveInput] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const [posting, setPosting] = useState(false);
@@ -532,12 +533,11 @@ export default function CommunityPage() {
     setAttachments((prev) => prev.filter((a) => a.id !== id));
   }
 
-  function setupLiveLink() {
-    const next = window.prompt("Enter live stream URL", liveLink || "https://");
-    if (next === null) return;
-    const trimmed = next.trim();
+  function setupLiveLink(nextValue?: string) {
+    const trimmed = String(nextValue ?? liveLink).trim();
     if (!trimmed) {
       setLiveLink("");
+      setShowLiveInput(false);
       return;
     }
     if (!/^https?:\/\//i.test(trimmed)) {
@@ -545,6 +545,7 @@ export default function CommunityPage() {
       return;
     }
     setLiveLink(trimmed);
+    setShowLiveInput(true);
     setMediaError(null);
   }
 
@@ -590,6 +591,7 @@ export default function CommunityPage() {
       await load();
       setAttachments([]);
       setLiveLink("");
+      setShowLiveInput(false);
       setMediaError(null);
       setComposerExpanded(false);
     } catch (e: any) {
@@ -876,7 +878,16 @@ export default function CommunityPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={setupLiveLink}
+                  onClick={() => {
+                    setShowLiveInput((prev) => {
+                      const next = !prev;
+                      if (!next) {
+                        setLiveLink("");
+                        setMediaError(null);
+                      }
+                      return next;
+                    });
+                  }}
                   className={`rounded-xl border px-3 py-2 text-xs hover:bg-white/10 ${
                     liveLink ? "border-red-400/40 bg-red-500/15 text-red-100" : "border-white/10 bg-white/5 text-white/85"
                   } inline-flex items-center justify-center gap-2`}
@@ -884,6 +895,23 @@ export default function CommunityPage() {
                   <RadioTower className="h-4 w-4" />
                   {liveLink ? "Live On" : "Go Live"}
                 </button>
+                </div>
+              ) : null}
+
+              {showLiveInput ? (
+                <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                  <div className="mb-2 text-xs text-white/55">Live stream URL</div>
+                  <input
+                    value={liveLink}
+                    onChange={(e) => {
+                      setLiveLink(e.target.value);
+                      if (mediaError) setMediaError(null);
+                    }}
+                    onBlur={() => setupLiveLink(liveLink)}
+                    placeholder="https://your-stream-url"
+                    className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none"
+                    disabled={posting || !estateId}
+                  />
                 </div>
               ) : null}
 
