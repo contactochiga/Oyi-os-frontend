@@ -10,6 +10,8 @@ import {
   type CommunityPost,
 } from "@/services/communityService";
 import { useNotificationStore } from "@/store/useNotificationStore";
+import LiveBroadcastComposer from "@/app/components/community/LiveBroadcastComposer";
+import LiveSessionPlayer from "@/app/components/community/LiveSessionPlayer";
 
 // Icons (same style you referenced)
 import {
@@ -321,6 +323,7 @@ export default function CommunityPage() {
   const [mediaUploading, setMediaUploading] = useState(false);
   const [activeUploadKind, setActiveUploadKind] = useState<"image" | "video" | "live" | null>(null);
   const [composerExpanded, setComposerExpanded] = useState(false);
+  const [liveComposerOpen, setLiveComposerOpen] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
@@ -527,9 +530,9 @@ export default function CommunityPage() {
   }
 
   function setupLiveLink() {
-    setActiveUploadKind("live");
-    setMediaError("Live camera streaming is being prepared as a separate feature.");
-    window.setTimeout(() => setActiveUploadKind((current) => (current === "live" ? null : current)), 1200);
+    setMediaError(null);
+    setComposerExpanded(false);
+    setLiveComposerOpen(true);
   }
 
   const latestImage = [...attachments].reverse().find((item) => item.type === "image");
@@ -699,6 +702,22 @@ export default function CommunityPage() {
 
   return (
     <ConsumerShell title="Community" subtitle="Estate updates • announcements • resident posts">
+      <LiveBroadcastComposer
+        open={liveComposerOpen}
+        estateId={estateId ? String(estateId) : null}
+        draft={postDraft}
+        onClose={() => setLiveComposerOpen(false)}
+        onStarted={(post) => {
+          setItems((prev) => [post, ...prev]);
+          setPostDraft("");
+          setComposerExpanded(false);
+          setLiveComposerOpen(false);
+          void load();
+        }}
+        onStopped={() => {
+          void load();
+        }}
+      />
       {/* Tabs */}
       <div>
         <div className="grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-white/5 p-2">
@@ -913,6 +932,8 @@ export default function CommunityPage() {
             const comments = commentMap[id] || [];
             const loadingComments = !!commentLoading[id];
             const parsed = parsePostContent(p);
+            const liveSession = (p as any)?.live_session || null;
+            const isInternalLive = String(parsed.liveLink || "").startsWith("oyi-live://");
             const titleText = String(p?.title || "").trim();
             const bodyText = String(parsed.text || "").trim();
             const duplicateTitleAndBody =
@@ -980,7 +1001,14 @@ export default function CommunityPage() {
                     </div>
                   ) : null}
 
-                  {parsed.liveLink ? (
+                  {isInternalLive ? (
+                    <LiveSessionPlayer
+                      postId={id}
+                      userId={String((user as any)?.id || "") || null}
+                      isLive={Boolean(liveSession?.is_live || liveSession?.status === "live")}
+                      initialViewerCount={Number(liveSession?.viewer_count || 0)}
+                    />
+                  ) : parsed.liveLink ? (
                     <a
                       href={parsed.liveLink}
                       target="_blank"

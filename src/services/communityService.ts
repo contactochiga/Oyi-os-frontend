@@ -16,6 +16,17 @@ export type CommunityPost = {
   views?: number;
   view_count?: number;
   viewed_by_me?: boolean;
+  live_link?: string | null;
+  live_session?: {
+    post_id: string;
+    estate_id?: string | null;
+    host_user_id?: string | null;
+    status?: "starting" | "live" | "ended" | string;
+    viewer_count?: number;
+    created_at?: string | null;
+    updated_at?: string | null;
+    is_live?: boolean;
+  } | null;
 };
 
 export type CreatePostPayload = {
@@ -63,11 +74,18 @@ function pickError(err: any, fallback: string) {
     fallback;
 
   const lower = String(msg || "").toLowerCase();
+  const url = String(err?.config?.url || "").toLowerCase();
   if (lower.includes("community_reactions") && lower.includes("could not find the table")) {
     return "Reactions are being configured. Please refresh shortly.";
   }
   if (lower.includes("community_comments") && lower.includes("could not find the table")) {
     return "Comments are being configured. Please refresh shortly.";
+  }
+  if (
+    err?.response?.status === 404 &&
+    (url.includes("/community/live/") || lower.includes("route not found"))
+  ) {
+    return "Live streaming backend is not deployed yet. Redeploy the backend and try again.";
   }
 
   return msg;
@@ -163,6 +181,33 @@ export const communityService = {
       return res.data as { ok?: boolean; url?: string; mime?: string; mediaType?: "image" | "video"; key?: string };
     } catch (err: any) {
       return { error: pickError(err, "Failed to upload media") } as any;
+    }
+  },
+
+  async startLiveSession(payload: { title?: string | null; content?: string | null; estateId?: string }) {
+    try {
+      const res = await API.post("/community/live/start", payload);
+      return res.data as CommunityPost;
+    } catch (err: any) {
+      return { error: pickError(err, "Failed to start live session") } as any;
+    }
+  },
+
+  async stopLiveSession(postId: string) {
+    try {
+      const res = await API.post(`/community/live/${encodeURIComponent(postId)}/stop`);
+      return res.data as CommunityPost;
+    } catch (err: any) {
+      return { error: pickError(err, "Failed to stop live session") } as any;
+    }
+  },
+
+  async getLiveSession(postId: string) {
+    try {
+      const res = await API.get(`/community/live/${encodeURIComponent(postId)}`);
+      return res.data as any;
+    } catch (err: any) {
+      return { error: pickError(err, "Failed to load live session") } as any;
     }
   },
 };
