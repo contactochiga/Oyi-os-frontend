@@ -19,11 +19,13 @@ import {
   Send,
   ThumbsUp,
   MessageCircle,
-  Eye,
   AlertCircle,
   ImagePlus,
   Video,
   RadioTower,
+  Check,
+  LoaderCircle,
+  Play,
 } from "lucide-react";
 
 // -------------------------------
@@ -179,22 +181,6 @@ function parsePostContent(post: any): ParsedPostBody {
   return parsePostBody(post?.body ?? post?.content ?? "");
 }
 
-function buildPostBody(text: string, attachments: PostAttachment[], liveLink?: string | null) {
-  return (
-    BODY_META_PREFIX +
-    JSON.stringify({
-      text,
-      attachments: attachments.map((a) => ({
-        id: a.id,
-        type: a.type,
-        url: a.url,
-        name: a.name ?? null,
-      })),
-      liveLink: liveLink ? String(liveLink).trim() : null,
-    })
-  );
-}
-
 function normalizeLine(text: string) {
   return String(text || "")
     .toLowerCase()
@@ -331,13 +317,13 @@ export default function CommunityPage() {
   // Composer
   const [postDraft, setPostDraft] = useState("");
   const [attachments, setAttachments] = useState<PostAttachment[]>([]);
-  const [liveLink, setLiveLink] = useState("");
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [mediaUploading, setMediaUploading] = useState(false);
+  const [activeUploadKind, setActiveUploadKind] = useState<"image" | "video" | "live" | null>(null);
   const [composerExpanded, setComposerExpanded] = useState(false);
-  const [showLiveInput, setShowLiveInput] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
+  const composerRef = useRef<HTMLDivElement>(null);
   const [posting, setPosting] = useState(false);
 
   // Per-post interaction state
@@ -346,14 +332,9 @@ export default function CommunityPage() {
   const [replyOpen, setReplyOpen] = useState<Record<string, boolean>>({});
   const [replyDraft, setReplyDraft] = useState<Record<string, string>>({});
   const [replyCounts, setReplyCounts] = useState<Record<string, number>>({});
-  const [viewCounts, setViewCounts] = useState<Record<string, number>>({});
-  const [viewed, setViewed] = useState<Record<string, boolean>>({});
   const [busyPost, setBusyPost] = useState<Record<string, boolean>>({});
   const [commentMap, setCommentMap] = useState<Record<string, CommunityComment[]>>({});
   const [commentLoading, setCommentLoading] = useState<Record<string, boolean>>({});
-  const [lastLiveAt, setLastLiveAt] = useState<number | null>(null);
-  const postRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  const sessionViewedRef = useRef<Set<string>>(new Set());
 
   // Tabs
   const [tab, setTab] = useState<"feed" | "announcements">("feed");
@@ -404,9 +385,6 @@ export default function CommunityPage() {
       const nextLikes: Record<string, number> = {};
       const nextReplies: Record<string, number> = {};
       const nextLiked: Record<string, boolean> = {};
-      const nextViews: Record<string, number> = {};
-      const nextViewed: Record<string, boolean> = {};
-
       for (const p of arr as any[]) {
         const id = pickPostId(p);
         if (!id) continue;
@@ -418,13 +396,9 @@ export default function CommunityPage() {
           p?.comment_count ??
           p?.comments ??
           0;
-        const v = p?.view_count ?? p?.views ?? 0;
-
         nextLikes[id] = clampCount(l);
         nextReplies[id] = clampCount(r);
         nextLiked[id] = !!(p?.reacted_by_me ?? p?.liked_by_me ?? false);
-        nextViews[id] = clampCount(v);
-        nextViewed[id] = !!(p?.viewed_by_me ?? false);
       }
 
       if (Object.keys(nextLikes).length)
@@ -433,11 +407,6 @@ export default function CommunityPage() {
         setReplyCounts((prev) => ({ ...prev, ...nextReplies }));
       if (Object.keys(nextLiked).length)
         setLiked((prev) => ({ ...prev, ...nextLiked }));
-      if (Object.keys(nextViews).length)
-        setViewCounts((prev) => ({ ...prev, ...nextViews }));
-      if (Object.keys(nextViewed).length)
-        setViewed((prev) => ({ ...prev, ...nextViewed }));
-      setLastLiveAt(Date.now());
     } catch (e: any) {
       setErr(e?.message || "Failed to load community");
       setItems([]);
@@ -464,6 +433,28 @@ export default function CommunityPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [estateId, replyOpen]);
 
+  useEffect(() => {
+    if (!composerExpanded) return;
+
+    const onPointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (composerRef.current?.contains(target)) return;
+      setComposerExpanded(false);
+    };
+
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("touchstart", onPointerDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("touchstart", onPointerDown);
+    };
+  }, [composerExpanded]);
+
+  useEffect(() => {
+    setComposerExpanded(false);
+  }, [tab]);
+
   async function loadComments(postId: string, force = false) {
     if (!postId) return;
     if (!force && commentMap[postId]) return;
@@ -489,15 +480,16 @@ export default function CommunityPage() {
     if (!files?.length) return;
     setMediaError(null);
     setMediaUploading(true);
+    setActiveUploadKind(kind);
 
     try {
       const selected = Array.from(files).slice(0, 3);
       const next: PostAttachment[] = [];
       for (const file of selected) {
-        const max = kind === "image" ? 4 * 1024 * 1024 : 12 * 1024 * 1024;
+        const max = kind === "image" ? 6 * 1024 * 1024 : 15 * 1024 * 1024;
         if (file.size > max) {
           setMediaError(
-            `${file.name} is too large. Max ${kind === "image" ? "4MB" : "12MB"}`
+            `${file.name} is too large. Max ${kind === "image" ? "6MB" : "15MB"}`
           );
           continue;
         }
@@ -526,6 +518,7 @@ export default function CommunityPage() {
       setMediaError("Failed to attach media");
     } finally {
       setMediaUploading(false);
+      setActiveUploadKind(null);
     }
   }
 
@@ -533,25 +526,18 @@ export default function CommunityPage() {
     setAttachments((prev) => prev.filter((a) => a.id !== id));
   }
 
-  function setupLiveLink(nextValue?: string) {
-    const trimmed = String(nextValue ?? liveLink).trim();
-    if (!trimmed) {
-      setLiveLink("");
-      setShowLiveInput(false);
-      return;
-    }
-    if (!/^https?:\/\//i.test(trimmed)) {
-      setMediaError("Live link must start with http:// or https://");
-      return;
-    }
-    setLiveLink(trimmed);
-    setShowLiveInput(true);
-    setMediaError(null);
+  function setupLiveLink() {
+    setActiveUploadKind("live");
+    setMediaError("Live camera streaming is being prepared as a separate feature.");
+    window.setTimeout(() => setActiveUploadKind((current) => (current === "live" ? null : current)), 1200);
   }
+
+  const latestImage = [...attachments].reverse().find((item) => item.type === "image");
+  const latestVideo = [...attachments].reverse().find((item) => item.type === "video");
 
   async function createPost() {
     const content = postDraft.trim();
-    if (!content && !attachments.length && !liveLink.trim()) {
+    if (!content && !attachments.length) {
       return setErr("Write something or attach media to share.");
     }
     if (!estateId) return setErr("No estate linked.");
@@ -565,7 +551,6 @@ export default function CommunityPage() {
         title: generatedTitle || "Update",
         content,
         media: attachments,
-        liveLink: liveLink.trim() || null,
         estateId: String(estateId),
       });
 
@@ -590,8 +575,6 @@ export default function CommunityPage() {
       }
       await load();
       setAttachments([]);
-      setLiveLink("");
-      setShowLiveInput(false);
       setMediaError(null);
       setComposerExpanded(false);
     } catch (e: any) {
@@ -714,62 +697,10 @@ export default function CommunityPage() {
 
   const listForTab = tab === "announcements" ? announcements : items;
 
-  useEffect(() => {
-    if (!listForTab.length || typeof IntersectionObserver === "undefined") return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (!entry.isIntersecting) continue;
-          const postId = String((entry.target as HTMLElement).dataset.postId || "");
-          if (!postId || sessionViewedRef.current.has(postId)) continue;
-          sessionViewedRef.current.add(postId);
-          void (async () => {
-            const res: any = await communityService.trackView(postId);
-            if (res?.error) return;
-            const nextCount = clampCount(res?.view_count ?? res?.views ?? 0);
-            setViewCounts((prev) => ({ ...prev, [postId]: nextCount }));
-            setViewed((prev) => ({ ...prev, [postId]: true }));
-          })();
-          observer.unobserve(entry.target);
-        }
-      },
-      { threshold: 0.65 }
-    );
-
-    for (const post of listForTab as any[]) {
-      const id = pickPostId(post);
-      const node = postRefs.current[id];
-      if (!id || !node || sessionViewedRef.current.has(id)) continue;
-      observer.observe(node);
-    }
-
-    return () => observer.disconnect();
-  }, [listForTab]);
-
   return (
     <ConsumerShell title="Community" subtitle="Estate updates • announcements • resident posts">
-      {/* Top row (kept) */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="inline-flex items-center gap-2 text-[11px] text-emerald-200 bg-emerald-500/10 border border-emerald-500/25 rounded-full px-2.5 py-1">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          Live activity
-          <span className="text-white/60">
-            {lastLiveAt ? `• updated ${new Date(lastLiveAt).toLocaleTimeString()}` : ""}
-          </span>
-        </div>
-        <button
-          onClick={load}
-          disabled={!estateId || loading}
-          className="ml-auto px-3 py-2 rounded-xl bg-white/10 text-white text-sm disabled:opacity-50"
-          type="button"
-        >
-          {loading ? "..." : "Refresh"}
-        </button>
-      </div>
-
       {/* Tabs */}
-      <div className="mt-4">
+      <div>
         <div className="grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-white/5 p-2">
           <TabPill
             active={tab === "feed"}
@@ -789,13 +720,10 @@ export default function CommunityPage() {
 
       {/* Composer (feed only) */}
       {tab === "feed" && (
-        <div className="mt-4">
+        <div ref={composerRef} className="mt-4">
           <Card className="bg-white/5">
             <CardHeader>
               <div className="text-sm font-semibold text-white">Share with the community</div>
-              <div className="text-[11px] text-white/40 mt-1">
-                One post box. Just type and publish.
-              </div>
             </CardHeader>
             <CardContent className="space-y-3">
               <input
@@ -857,80 +785,93 @@ export default function CommunityPage() {
               ) : null}
 
               {composerExpanded ? (
-                <div className="grid grid-cols-3 gap-2">
-                <button
-                  type="button"
-                  onClick={() => imageInputRef.current?.click()}
-                  disabled={mediaUploading || posting}
-                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/85 hover:bg-white/10 disabled:opacity-50 inline-flex items-center justify-center gap-2"
-                >
-                  <ImagePlus className="h-4 w-4" />
-                  {mediaUploading ? "Uploading…" : "Image"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => videoInputRef.current?.click()}
-                  disabled={mediaUploading || posting}
-                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/85 hover:bg-white/10 disabled:opacity-50 inline-flex items-center justify-center gap-2"
-                >
-                  <Video className="h-4 w-4" />
-                  Video
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowLiveInput((prev) => {
-                      const next = !prev;
-                      if (!next) {
-                        setLiveLink("");
-                        setMediaError(null);
-                      }
-                      return next;
-                    });
-                  }}
-                  className={`rounded-xl border px-3 py-2 text-xs hover:bg-white/10 ${
-                    liveLink ? "border-red-400/40 bg-red-500/15 text-red-100" : "border-white/10 bg-white/5 text-white/85"
-                  } inline-flex items-center justify-center gap-2`}
-                >
-                  <RadioTower className="h-4 w-4" />
-                  {liveLink ? "Live On" : "Go Live"}
-                </button>
-                </div>
-              ) : null}
-
-              {showLiveInput ? (
-                <div className="rounded-xl border border-white/10 bg-black/20 p-3">
-                  <div className="mb-2 text-xs text-white/55">Live stream URL</div>
-                  <input
-                    value={liveLink}
-                    onChange={(e) => {
-                      setLiveLink(e.target.value);
-                      if (mediaError) setMediaError(null);
-                    }}
-                    onBlur={() => setupLiveLink(liveLink)}
-                    placeholder="https://your-stream-url"
-                    className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none"
-                    disabled={posting || !estateId}
-                  />
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => imageInputRef.current?.click()}
+                      disabled={mediaUploading || posting}
+                      className="relative inline-flex h-11 w-11 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/5 text-white/85 transition hover:bg-white/10 disabled:opacity-50"
+                      title={mediaUploading ? "Uploading image" : "Add image"}
+                    >
+                      {latestImage?.url ? (
+                        <img
+                          src={latestImage.url}
+                          alt="Latest image upload"
+                          className="absolute inset-0 h-full w-full object-cover"
+                        />
+                      ) : null}
+                      <span className="relative z-[1]">
+                        {activeUploadKind === "image" && mediaUploading ? (
+                          <LoaderCircle className="h-4 w-4 animate-spin" />
+                        ) : latestImage?.url ? (
+                          <Check className="h-4 w-4 rounded-full bg-black/55 p-[2px] text-white" />
+                        ) : (
+                          <ImagePlus className="h-4 w-4" />
+                        )}
+                      </span>
+                      {activeUploadKind === "image" && mediaUploading ? (
+                        <span className="pointer-events-none absolute inset-0 rounded-full border-2 border-transparent border-t-cyan-300 animate-spin" />
+                      ) : null}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => videoInputRef.current?.click()}
+                      disabled={mediaUploading || posting}
+                      className="relative inline-flex h-11 w-11 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/5 text-white/85 transition hover:bg-white/10 disabled:opacity-50"
+                      title="Add video"
+                    >
+                      {latestVideo?.url ? (
+                        <video
+                          src={latestVideo.url}
+                          className="absolute inset-0 h-full w-full object-cover"
+                          muted
+                          playsInline
+                        />
+                      ) : null}
+                      <span className="relative z-[1]">
+                        {activeUploadKind === "video" && mediaUploading ? (
+                          <LoaderCircle className="h-4 w-4 animate-spin" />
+                        ) : latestVideo?.url ? (
+                          <Play className="h-4 w-4 rounded-full bg-black/55 p-[2px] text-white" />
+                        ) : (
+                          <Video className="h-4 w-4" />
+                        )}
+                      </span>
+                      {activeUploadKind === "video" && mediaUploading ? (
+                        <span className="pointer-events-none absolute inset-0 rounded-full border-2 border-transparent border-t-cyan-300 animate-spin" />
+                      ) : null}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={setupLiveLink}
+                      disabled={posting}
+                      className="relative inline-flex h-11 w-11 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/5 text-white/85 transition hover:bg-white/10 disabled:opacity-50"
+                      title="Go live"
+                    >
+                      {activeUploadKind === "live" ? (
+                        <>
+                          <LoaderCircle className="relative z-[1] h-4 w-4 animate-spin" />
+                          <span className="pointer-events-none absolute inset-0 rounded-full border-2 border-transparent border-t-red-300 animate-spin" />
+                        </>
+                      ) : (
+                        <RadioTower className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
+                  <button
+                    onClick={createPost}
+                    disabled={posting || mediaUploading || (!postDraft.trim() && !attachments.length) || !estateId}
+                    className="px-4 py-2.5 rounded-xl bg-white text-black text-sm font-semibold disabled:opacity-50 inline-flex items-center justify-center gap-2"
+                    type="button"
+                  >
+                    <Send className="h-4 w-4" />
+                    {posting ? "Posting..." : "Post"}
+                  </button>
                 </div>
               ) : null}
 
               {mediaError ? <div className="text-xs text-red-300">{mediaError}</div> : null}
-
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-[11px] text-white/45">
-                  {attachments.length} media {liveLink ? "• live link added" : ""}
-                </div>
-                <button
-                  onClick={createPost}
-                  disabled={posting || mediaUploading || (!postDraft.trim() && !attachments.length && !liveLink.trim()) || !estateId}
-                  className="px-4 py-2.5 rounded-xl bg-white text-black text-sm font-semibold disabled:opacity-50 inline-flex items-center justify-center gap-2"
-                  type="button"
-                >
-                  <Send className="h-4 w-4" />
-                  {posting ? "Posting..." : "Post"}
-                </button>
-              </div>
             </CardContent>
           </Card>
         </div>
@@ -983,13 +924,7 @@ export default function CommunityPage() {
               tab === "announcements" ? "announcement" : badge === "Admin" ? "announcement" : "discussion";
 
             return (
-              <Card key={postKey} className={viewed[id] ? "ring-1 ring-white/5" : undefined}>
-                <div
-                  ref={(node) => {
-                    postRefs.current[id] = node;
-                  }}
-                  data-post-id={id}
-                />
+              <Card key={postKey}>
                 <CardHeader>
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
@@ -1031,12 +966,6 @@ export default function CommunityPage() {
                 </CardHeader>
 
                 <CardContent className="space-y-4">
-                  {bodyText && !duplicateTitleAndBody ? (
-                    <p className="text-sm text-white/80 whitespace-pre-wrap">
-                      {bodyText}
-                    </p>
-                  ) : null}
-
                   {parsed.attachments.length > 0 ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {parsed.attachments.map((a) => (
@@ -1062,12 +991,13 @@ export default function CommunityPage() {
                     </a>
                   ) : null}
 
-                  <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-white/10">
-                    <div className="inline-flex items-center gap-2 text-sm px-3 py-2 rounded-xl border border-white/10 bg-white/5 text-white/65">
-                      <Eye className="h-4 w-4" />
-                      {viewCounts[id] ?? clampCount(p?.view_count ?? p?.views ?? 0)}
-                    </div>
+                  {bodyText && !duplicateTitleAndBody ? (
+                    <p className="text-sm text-white/80 whitespace-pre-wrap">
+                      {bodyText}
+                    </p>
+                  ) : null}
 
+                  <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-white/10">
                     <button
                       type="button"
                       onClick={() => reactLike(p)}

@@ -24,6 +24,12 @@
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Oyi uses your microphone for voice commands and smart-home control.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Oyi uses your camera for community photo, video, and live capture.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Oyi needs access to your photo library so you can attach images and videos.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Oyi may save media generated during sharing and live capture.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Oyi uses speech recognition to convert your voice commands into actions.</string>
 	<key>UIBackgroundModes</key>

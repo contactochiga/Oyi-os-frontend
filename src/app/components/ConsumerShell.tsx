@@ -105,10 +105,7 @@ export default function ConsumerShell({
                       Active Home
                     </div>
                     <div className="mt-1 text-sm font-medium text-white truncate">
-                      {homeLabel || "Home not selected"}
-                    </div>
-                    <div className="mt-1 text-xs text-white/45 truncate">
-                      {estate?.name || "Estate"}{available_contexts.length > 1 ? ` • ${available_contexts.length} homes available` : ""}
+                      {String(home?.name || "").trim() || estate?.name || homeLabel || "Home not selected"}
                     </div>
                   </div>
                   {available_contexts.length > 1 ? (

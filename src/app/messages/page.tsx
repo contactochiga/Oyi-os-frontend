@@ -193,7 +193,10 @@ export default function MessagesPage() {
         getComputedStyle(root).getPropertyValue("--sab") || "0"
       );
       const bottomNavReserve = 86 + (Number.isFinite(safeBottom) ? safeBottom : 0);
-      const available = Math.floor(window.innerHeight - rect.top - bottomNavReserve);
+      const composerReserve = 112 + (Number.isFinite(safeBottom) ? safeBottom : 0);
+      const available = Math.floor(
+        window.innerHeight - rect.top - bottomNavReserve - composerReserve
+      );
       setChatViewportHeight(Math.max(280, available));
     };
 
@@ -288,6 +291,80 @@ export default function MessagesPage() {
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }
+
+  const composerDock = view === "chat" ? (
+    <div
+      className="fixed left-0 right-0 z-[85] px-4"
+      style={{ bottom: "calc(72px + var(--sab) + var(--kb))" }}
+    >
+      <div className="mx-auto max-w-3xl">
+        {pendingAttachment ? (
+          <div className="mb-2 rounded-2xl border border-white/10 bg-[rgba(8,12,20,0.94)] p-3 backdrop-blur-xl">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div className="text-xs text-white/70">Attachment ready</div>
+              <button type="button" onClick={() => setPendingAttachment(null)} className="text-xs text-white/45">
+                Remove
+              </button>
+            </div>
+            {pendingAttachment.type === "video" ? (
+              <video src={pendingAttachment.url} controls className="max-h-48 w-full rounded-2xl bg-black object-cover" />
+            ) : (
+              <img src={pendingAttachment.url} alt="Pending attachment" className="max-h-48 w-full rounded-2xl object-cover" />
+            )}
+          </div>
+        ) : null}
+
+        <div
+          className="rounded-[28px] border border-white/10 bg-[rgba(8,12,20,0.96)] p-2 backdrop-blur-xl"
+          style={{ paddingBottom: "max(8px, env(safe-area-inset-bottom))" }}
+        >
+          <div className="flex items-end gap-2 rounded-[24px] border border-white/10 bg-black/25 p-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,video/*"
+              className="hidden"
+              onChange={(e) => onPickMedia(e.target.files)}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadingMedia}
+              className="shrink-0 rounded-2xl border border-white/10 bg-white/8 px-3 py-3 text-white/85"
+              title="Attach image or video"
+            >
+              {uploadingMedia ? <FiRefreshCw className="animate-spin" /> : <FiPaperclip />}
+            </button>
+            <textarea
+              value={compose}
+              onChange={(e) => {
+                setCompose(e.target.value);
+                e.currentTarget.style.height = "0px";
+                e.currentTarget.style.height = `${Math.min(e.currentTarget.scrollHeight, 128)}px`;
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void send();
+                }
+              }}
+              rows={1}
+              placeholder="Type a message"
+              className="min-h-[48px] max-h-32 flex-1 resize-none rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none"
+            />
+            <button
+              type="button"
+              onClick={() => void send()}
+              disabled={sending || (!compose.trim() && !pendingAttachment)}
+              className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white text-black text-sm font-semibold disabled:opacity-50"
+            >
+              <FiSend className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  ) : null;
 
   return (
     <ConsumerShell title="Messages" subtitle="Direct messages" disableContentScroll={view === "chat"}>
@@ -412,7 +489,7 @@ export default function MessagesPage() {
             height:
               chatViewportHeight != null
                 ? `${chatViewportHeight}px`
-                : "calc(100dvh - 240px - var(--sat) - var(--sab))",
+                : "calc(100dvh - 240px - var(--sat) - var(--sab) - 112px)",
           }}
         >
           <div className="border-b border-white/10 pb-2 flex items-center gap-3">
@@ -436,7 +513,7 @@ export default function MessagesPage() {
           <div
             ref={scrollRef}
             className="flex-1 overflow-auto py-4 pr-1 space-y-3"
-            style={{ minHeight: 0, paddingBottom: "18px", WebkitOverflowScrolling: "touch" }}
+            style={{ minHeight: 0, paddingBottom: "28px", WebkitOverflowScrolling: "touch" }}
           >
             {messages.length === 0 ? (
               <div className="text-xs text-white/50">No messages yet.</div>
@@ -489,72 +566,9 @@ export default function MessagesPage() {
             )}
           </div>
 
-          {pendingAttachment ? (
-            <div className="mb-2 rounded-2xl border border-white/10 bg-black/20 p-3">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <div className="text-xs text-white/70">Attachment ready</div>
-                <button type="button" onClick={() => setPendingAttachment(null)} className="text-xs text-white/45">
-                  Remove
-                </button>
-              </div>
-              {pendingAttachment.type === "video" ? (
-                <video src={pendingAttachment.url} controls className="max-h-48 w-full rounded-2xl bg-black object-cover" />
-              ) : (
-                <img src={pendingAttachment.url} alt="Pending attachment" className="max-h-48 w-full rounded-2xl object-cover" />
-              )}
-            </div>
-          ) : null}
-
-          <div
-            className="border-t border-white/10 pt-3 bg-[rgba(8,12,20,0.96)] backdrop-blur-xl"
-            style={{ transform: "translateY(calc(var(--kb) * -1))", paddingBottom: "calc(10px + var(--sab))" }}
-          >
-            <div className="flex items-end gap-2 rounded-[26px] border border-white/10 bg-black/25 p-2">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*,video/*"
-                className="hidden"
-                onChange={(e) => onPickMedia(e.target.files)}
-              />
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploadingMedia}
-                className="shrink-0 rounded-2xl border border-white/10 bg-white/8 px-3 py-3 text-white/85"
-                title="Attach image or video"
-              >
-                {uploadingMedia ? <FiRefreshCw className="animate-spin" /> : <FiPaperclip />}
-              </button>
-              <textarea
-                value={compose}
-                onChange={(e) => {
-                  setCompose(e.target.value);
-                  e.currentTarget.style.height = "0px";
-                  e.currentTarget.style.height = `${Math.min(e.currentTarget.scrollHeight, 128)}px`;
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    void send();
-                  }
-                }}
-                rows={1}
-                placeholder="Type a message"
-                className="min-h-[48px] max-h-32 flex-1 resize-none rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none"
-              />
-              <button
-                type="button"
-                onClick={() => void send()}
-                disabled={sending || (!compose.trim() && !pendingAttachment)}
-                className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white text-black text-sm font-semibold disabled:opacity-50"
-              >
-                <FiSend className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
         </div>
       )}
+      {composerDock}
     </ConsumerShell>
   );
 }

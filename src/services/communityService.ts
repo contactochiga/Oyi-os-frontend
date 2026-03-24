@@ -157,7 +157,9 @@ export const communityService = {
 
   async uploadMedia(payload: CommunityUploadPayload) {
     try {
-      const res = await API.post("/community/media/upload", payload);
+      const res = await API.post("/community/media/upload", payload, {
+        timeout: 120000,
+      });
       return res.data as { ok?: boolean; url?: string; mime?: string; mediaType?: "image" | "video"; key?: string };
     } catch (err: any) {
       return { error: pickError(err, "Failed to upload media") } as any;
