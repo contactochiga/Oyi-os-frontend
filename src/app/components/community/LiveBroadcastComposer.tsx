@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Camera, CameraOff, LoaderCircle, Mic, MicOff, RadioTower, RefreshCcw, Square, Users } from "lucide-react";
 import { getSocket } from "@/services/socket";
-import { communityService, type CommunityPost } from "@/services/communityService";
+import { communityService, type CommunityPost, type LiveRtcConfig } from "@/services/communityService";
 
 type Props = {
   open: boolean;
@@ -14,7 +14,7 @@ type Props = {
   onStopped?: (post: CommunityPost | null) => void;
 };
 
-const RTC_CONFIG: RTCConfiguration = {
+const DEFAULT_RTC_CONFIG: RTCConfiguration = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
 };
 
@@ -30,12 +30,14 @@ export default function LiveBroadcastComposer({
   const streamRef = useRef<MediaStream | null>(null);
   const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const activePostIdRef = useRef<string | null>(null);
+  const rtcConfigRef = useRef<RTCConfiguration>(DEFAULT_RTC_CONFIG);
   const [status, setStatus] = useState<"idle" | "preparing" | "starting" | "live" | "stopping">("idle");
   const [viewerCount, setViewerCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [facingMode, setFacingMode] = useState<"user" | "environment">("user");
   const [micEnabled, setMicEnabled] = useState(true);
   const [cameraEnabled, setCameraEnabled] = useState(true);
+  const [rtcConfig, setRtcConfig] = useState<RTCConfiguration>(DEFAULT_RTC_CONFIG);
 
   const socket = useMemo(() => getSocket(), []);
 
@@ -54,6 +56,19 @@ export default function LiveBroadcastComposer({
     } catch {}
     streamRef.current = null;
     if (previewRef.current) previewRef.current.srcObject = null;
+  }
+
+  function applyRtcConfig(input?: LiveRtcConfig | null) {
+    const next = !input
+      ? DEFAULT_RTC_CONFIG
+      : {
+      iceServers: Array.isArray(input.iceServers) && input.iceServers.length
+        ? input.iceServers
+        : DEFAULT_RTC_CONFIG.iceServers,
+      iceTransportPolicy: input.iceTransportPolicy === "relay" ? "relay" : "all",
+    };
+    rtcConfigRef.current = next;
+    setRtcConfig(next);
   }
 
   async function replaceVideoTrack(nextTrack: MediaStreamTrack) {
@@ -90,6 +105,10 @@ export default function LiveBroadcastComposer({
       try {
         setError(null);
         setStatus("preparing");
+        const liveConfig: any = await communityService.getLiveRtcConfig();
+        if (!cancelled && !liveConfig?.error) {
+          applyRtcConfig(liveConfig?.rtc_config || null);
+        }
         const media = await acquireStream(facingMode);
         if (cancelled) {
           media.getTracks().forEach((track) => track.stop());
@@ -137,7 +156,7 @@ export default function LiveBroadcastComposer({
       const viewerSocketId = String(event?.viewerSocketId || "");
       if (!postId || !viewerSocketId || postId !== activePostIdRef.current || !streamRef.current) return;
 
-      const pc = new RTCPeerConnection(RTC_CONFIG);
+      const pc = new RTCPeerConnection(rtcConfigRef.current);
       peersRef.current.set(viewerSocketId, pc);
 
       streamRef.current.getTracks().forEach((track) => {
@@ -215,7 +234,7 @@ export default function LiveBroadcastComposer({
       socket.off("community-live:viewer-left", onViewerLeft);
       socket.off("community-live:stats");
     };
-  }, [socket]);
+  }, [socket, rtcConfig]);
 
   async function start() {
     if (!estateId) {
@@ -240,6 +259,8 @@ export default function LiveBroadcastComposer({
       setError(String(res?.error || "Failed to start live"));
       return;
     }
+
+    applyRtcConfig((res as any)?.rtc_config || null);
 
     activePostIdRef.current = String(res.id);
     socket?.emit("community-live:host:join", { postId: String(res.id) });

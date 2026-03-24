@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LoaderCircle, RadioTower, Users } from "lucide-react";
 import { getSocket } from "@/services/socket";
+import { communityService, type LiveRtcConfig } from "@/services/communityService";
 
 type Props = {
   postId: string;
@@ -11,7 +12,7 @@ type Props = {
   initialViewerCount?: number;
 };
 
-const RTC_CONFIG: RTCConfiguration = {
+const DEFAULT_RTC_CONFIG: RTCConfiguration = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
 };
 
@@ -25,10 +26,12 @@ export default function LiveSessionPlayer({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const currentHostSocketRef = useRef<string | null>(null);
+  const rtcConfigRef = useRef<RTCConfiguration>(DEFAULT_RTC_CONFIG);
   const [joining, setJoining] = useState(false);
   const [joined, setJoined] = useState(false);
   const [viewerCount, setViewerCount] = useState(initialViewerCount);
   const [error, setError] = useState<string | null>(null);
+  const [rtcConfig, setRtcConfig] = useState<RTCConfiguration>(DEFAULT_RTC_CONFIG);
 
   function cleanup() {
     try {
@@ -37,6 +40,18 @@ export default function LiveSessionPlayer({
     pcRef.current = null;
     currentHostSocketRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
+  }
+
+  function applyRtcConfig(input?: LiveRtcConfig | null) {
+    const next = {
+      iceServers:
+        Array.isArray(input?.iceServers) && input.iceServers.length
+          ? input.iceServers
+          : DEFAULT_RTC_CONFIG.iceServers,
+      iceTransportPolicy: input?.iceTransportPolicy === "relay" ? "relay" : "all",
+    };
+    rtcConfigRef.current = next;
+    setRtcConfig(next);
   }
 
   useEffect(() => {
@@ -53,7 +68,7 @@ export default function LiveSessionPlayer({
       if (!sourceSocketId) return;
 
       if (!pcRef.current) {
-        const pc = new RTCPeerConnection(RTC_CONFIG);
+        const pc = new RTCPeerConnection(rtcConfigRef.current);
         currentHostSocketRef.current = sourceSocketId;
         pcRef.current = pc;
         pc.ontrack = (trackEvent) => {
@@ -115,7 +130,7 @@ export default function LiveSessionPlayer({
       socket.off("community-live:stats", onStats);
       socket.off("community-live:ended", onEnded);
     };
-  }, [socket, joined, postId]);
+  }, [socket, joined, postId, rtcConfig]);
 
   useEffect(() => {
     return () => {
@@ -134,6 +149,10 @@ export default function LiveSessionPlayer({
     setError(null);
     setJoining(true);
     setJoined(true);
+    const config: any = await communityService.getLiveRtcConfig();
+    if (!config?.error) {
+      applyRtcConfig(config?.rtc_config || null);
+    }
     socket.emit("community-live:viewer:join", { postId, userId });
   }
 
@@ -184,4 +203,3 @@ export default function LiveSessionPlayer({
     </div>
   );
 }
-

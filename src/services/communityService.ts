@@ -27,6 +27,16 @@ export type CommunityPost = {
     updated_at?: string | null;
     is_live?: boolean;
   } | null;
+  rtc_config?: LiveRtcConfig | null;
+};
+
+export type LiveRtcConfig = {
+  iceServers?: Array<{
+    urls: string | string[];
+    username?: string;
+    credential?: string;
+  }>;
+  iceTransportPolicy?: "all" | "relay";
 };
 
 export type CreatePostPayload = {
@@ -208,6 +218,15 @@ export const communityService = {
       return res.data as any;
     } catch (err: any) {
       return { error: pickError(err, "Failed to load live session") } as any;
+    }
+  },
+
+  async getLiveRtcConfig() {
+    try {
+      const res = await API.get("/community/live/config");
+      return res.data as { ok?: boolean; rtc_config?: LiveRtcConfig | null };
+    } catch (err: any) {
+      return { error: pickError(err, "Failed to load live configuration") } as any;
     }
   },
 };
