@@ -21,8 +21,12 @@ export type CommunityPost = {
     post_id: string;
     estate_id?: string | null;
     host_user_id?: string | null;
+    guest_user_id?: string | null;
+    guest_display_name?: string | null;
     status?: "starting" | "live" | "ended" | string;
     viewer_count?: number;
+    has_guest?: boolean;
+    pending_request_count?: number;
     created_at?: string | null;
     updated_at?: string | null;
     is_live?: boolean;

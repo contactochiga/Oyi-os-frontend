@@ -711,10 +711,10 @@ export default function CommunityPage() {
           setItems((prev) => [post, ...prev]);
           setPostDraft("");
           setComposerExpanded(false);
-          setLiveComposerOpen(false);
           void load();
         }}
         onStopped={() => {
+          setLiveComposerOpen(false);
           void load();
         }}
       />
@@ -933,7 +933,9 @@ export default function CommunityPage() {
             const loadingComments = !!commentLoading[id];
             const parsed = parsePostContent(p);
             const liveSession = (p as any)?.live_session || null;
-            const isInternalLive = String(parsed.liveLink || "").startsWith("oyi-live://");
+            const resolvedLiveLink = String(parsed.liveLink || (p as any)?.live_link || "");
+            const isInternalLive = resolvedLiveLink.startsWith("oyi-live://");
+            const liveEnded = String(liveSession?.status || "").toLowerCase() === "ended";
             const titleText = String(p?.title || "").trim();
             const bodyText = String(parsed.text || "").trim();
             const duplicateTitleAndBody =
@@ -1005,12 +1007,21 @@ export default function CommunityPage() {
                     <LiveSessionPlayer
                       postId={id}
                       userId={String((user as any)?.id || "") || null}
-                      isLive={Boolean(liveSession?.is_live || liveSession?.status === "live")}
+                      userName={
+                        String(
+                          (user as any)?.full_name ||
+                            (user as any)?.username ||
+                            (user as any)?.name ||
+                            ""
+                        ) || null
+                      }
+                      isLive={!liveEnded}
                       initialViewerCount={Number(liveSession?.viewer_count || 0)}
+                      hasGuest={Boolean(liveSession?.has_guest)}
                     />
-                  ) : parsed.liveLink ? (
+                  ) : resolvedLiveLink ? (
                     <a
-                      href={parsed.liveLink}
+                      href={resolvedLiveLink}
                       target="_blank"
                       rel="noreferrer"
                       className="inline-flex items-center gap-2 rounded-xl border border-red-400/35 bg-red-500/10 px-3 py-2 text-xs text-red-100"
