@@ -1,9 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Camera, CameraOff, LoaderCircle, Mic, MicOff, RadioTower, RefreshCcw, Square, Users } from "lucide-react";
+import { Camera, CameraOff, LoaderCircle, Mic, MicOff, RadioTower, RefreshCcw, Send, Square, Users } from "lucide-react";
 import { getSocket } from "@/services/socket";
-import { communityService, type CommunityPost, type LiveRtcConfig } from "@/services/communityService";
+import {
+  communityService,
+  type CommunityPost,
+  type LiveChatMessage,
+  type LiveGuestRequest,
+  type LiveRtcConfig,
+} from "@/services/communityService";
 
 type Props = {
   open: boolean;
@@ -18,7 +24,7 @@ const DEFAULT_RTC_CONFIG: RTCConfiguration = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
 };
 
-type GuestRequest = {
+type LiveViewer = {
   socketId: string;
   userId?: string;
   userName?: string;
@@ -45,10 +51,13 @@ export default function LiveBroadcastComposer({
   const [micEnabled, setMicEnabled] = useState(true);
   const [cameraEnabled, setCameraEnabled] = useState(true);
   const [rtcConfig, setRtcConfig] = useState<RTCConfiguration>(DEFAULT_RTC_CONFIG);
-  const [pendingRequests, setPendingRequests] = useState<GuestRequest[]>([]);
+  const [pendingRequests, setPendingRequests] = useState<LiveGuestRequest[]>([]);
   const [guestDisplayName, setGuestDisplayName] = useState<string | null>(null);
   const [guestConnected, setGuestConnected] = useState(false);
   const [hostNotice, setHostNotice] = useState<string | null>(null);
+  const [viewers, setViewers] = useState<LiveViewer[]>([]);
+  const [chatMessages, setChatMessages] = useState<LiveChatMessage[]>([]);
+  const [chatDraft, setChatDraft] = useState("");
 
   const socket = useMemo(() => getSocket(), []);
 
@@ -205,6 +214,15 @@ export default function LiveBroadcastComposer({
 
       setViewerCount(Number(event?.live_session?.viewer_count || 0));
       setGuestDisplayName(String(event?.live_session?.guest_display_name || "") || null);
+      setViewers((prev) => {
+        const next = prev.filter((item) => item.socketId !== viewerSocketId);
+        next.push({
+          socketId: viewerSocketId,
+          userId: String(event?.userId || ""),
+          userName: String(event?.userName || "Resident"),
+        });
+        return next;
+      });
     };
 
     const onSignal = async (event: any) => {
@@ -275,6 +293,7 @@ export default function LiveBroadcastComposer({
       }
       setViewerCount(Number(event?.live_session?.viewer_count || 0));
       setGuestDisplayName(String(event?.live_session?.guest_display_name || "") || null);
+      setViewers((prev) => prev.filter((item) => item.socketId !== viewerSocketId));
     };
 
     const onGuestRequests = (event: any) => {
@@ -306,6 +325,16 @@ export default function LiveBroadcastComposer({
       setHostNotice(requests.length ? `${requests[0]?.userName || "Resident"} wants to join` : "New guest request");
     };
 
+    const onChat = (event: any) => {
+      if (String(event?.postId || "") !== String(activePostIdRef.current || "")) return;
+      const message = event?.message;
+      if (!message?.id) return;
+      setChatMessages((prev) => {
+        const next = [...prev.filter((item) => item.id !== message.id), message];
+        return next.slice(-16);
+      });
+    };
+
     socket.on("community-live:viewer-joined", onViewerJoined);
     socket.on("community-live:signal", onSignal);
     socket.on("community-live:viewer-left", onViewerLeft);
@@ -313,6 +342,7 @@ export default function LiveBroadcastComposer({
     socket.on("community-live:guest-active", onGuestActive);
     socket.on("community-live:publisher-left", onPublisherLeft);
     socket.on("community-live:guest-requested-for-host", onGuestRequestForHost);
+    socket.on("community-live:chat", onChat);
     socket.on("community-live:stats", (event: any) => {
       const postId = String(event?.postId || "");
       if (postId && postId === activePostIdRef.current) {
@@ -329,9 +359,51 @@ export default function LiveBroadcastComposer({
       socket.off("community-live:guest-active", onGuestActive);
       socket.off("community-live:publisher-left", onPublisherLeft);
       socket.off("community-live:guest-requested-for-host", onGuestRequestForHost);
+      socket.off("community-live:chat", onChat);
       socket.off("community-live:stats");
     };
   }, [socket, rtcConfig]);
+
+  useEffect(() => {
+    if (status !== "live" || !activePostIdRef.current) return;
+    let cancelled = false;
+    const tick = async () => {
+      const [requestRes, chatRes]: any = await Promise.all([
+        communityService.getLiveRequests(activePostIdRef.current as string),
+        communityService.getLiveChat(activePostIdRef.current as string),
+      ]);
+      if (cancelled) return;
+      if (!requestRes?.error) {
+        const requests = Array.isArray(requestRes?.requests) ? requestRes.requests : [];
+        setPendingRequests(requests);
+        setHostNotice(requests.length ? `${requests[0]?.userName || "Resident"} wants to join` : null);
+      }
+      if (!chatRes?.error) {
+        setChatMessages(Array.isArray(chatRes?.chat) ? chatRes.chat.slice(-16) : []);
+      }
+    };
+    void tick();
+    const timer = window.setInterval(() => {
+      void tick();
+    }, 2500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [status]);
+
+  useEffect(() => {
+    if (!socket) return;
+    const onConnect = () => {
+      if (status === "live" && activePostIdRef.current) {
+        socket.emit("community-live:host:join", { postId: activePostIdRef.current });
+      }
+    };
+    socket.on("connect", onConnect);
+    return () => {
+      socket.off("connect", onConnect);
+    };
+  }, [socket, status]);
 
   async function start() {
     if (!estateId) {
@@ -366,6 +438,9 @@ export default function LiveBroadcastComposer({
     setPendingRequests([]);
     setGuestDisplayName(null);
     setHostNotice(null);
+    setViewers([]);
+    setChatMessages([]);
+    setChatDraft("");
     onStarted(res as CommunityPost);
   }
 
@@ -385,6 +460,9 @@ export default function LiveBroadcastComposer({
     setPendingRequests([]);
     setGuestDisplayName(null);
     setHostNotice(null);
+    setViewers([]);
+    setChatMessages([]);
+    setChatDraft("");
     setStatus("idle");
     onStopped?.(res?.error ? null : (res as CommunityPost));
     onClose();
@@ -411,6 +489,19 @@ export default function LiveBroadcastComposer({
     socket.emit("community-live:guest:remove", {
       postId: activePostIdRef.current,
     });
+  }
+
+  function sendChat() {
+    if (!socket || !activePostIdRef.current) return;
+    const text = chatDraft.trim();
+    if (!text) return;
+    socket.emit("community-live:chat:send", {
+      postId: activePostIdRef.current,
+      text,
+      userId: "host",
+      userName: "Host",
+    });
+    setChatDraft("");
   }
 
   async function flipCamera() {
@@ -484,37 +575,46 @@ export default function LiveBroadcastComposer({
                 )}
               </div>
             ) : null}
+            <div className="pointer-events-none absolute inset-x-3 bottom-3 space-y-1">
+              {chatMessages.slice(-5).map((message) => (
+                <div
+                  key={message.id}
+                  className="max-w-[80%] rounded-2xl bg-black/55 px-3 py-1.5 text-xs text-white/90 backdrop-blur"
+                >
+                  <span className="mr-1 text-[10px] uppercase tracking-[0.14em] text-white/50">
+                    {message.userName}
+                  </span>
+                  {message.text}
+                </div>
+              ))}
+            </div>
+            <div className="absolute left-3 top-3 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => void flipCamera()}
+                disabled={status === "preparing" || status === "starting" || status === "stopping"}
+                className="pointer-events-auto inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-black/45 text-white/85 backdrop-blur disabled:opacity-50"
+              >
+                <RefreshCcw className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setMicEnabled((prev) => !prev)}
+                disabled={status === "preparing" || status === "starting" || status === "stopping"}
+                className="pointer-events-auto inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-black/45 text-white/85 backdrop-blur disabled:opacity-50"
+              >
+                {micEnabled ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4 text-red-300" />}
+              </button>
+              <button
+                type="button"
+                onClick={() => setCameraEnabled((prev) => !prev)}
+                disabled={status === "preparing" || status === "starting" || status === "stopping"}
+                className="pointer-events-auto inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-black/45 text-white/85 backdrop-blur disabled:opacity-50"
+              >
+                {cameraEnabled ? <Camera className="h-4 w-4" /> : <CameraOff className="h-4 w-4 text-red-300" />}
+              </button>
+            </div>
           </div>
-        </div>
-
-        <div className="mt-3 flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => void flipCamera()}
-            disabled={status === "preparing" || status === "starting" || status === "stopping"}
-            className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 text-sm text-white/80 disabled:opacity-50"
-          >
-            <RefreshCcw className="h-4 w-4" />
-            Flip
-          </button>
-          <button
-            type="button"
-            onClick={() => setMicEnabled((prev) => !prev)}
-            disabled={status === "preparing" || status === "starting" || status === "stopping"}
-            className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 text-sm text-white/80 disabled:opacity-50"
-          >
-            {micEnabled ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4 text-red-300" />}
-            {micEnabled ? "Mic on" : "Mic off"}
-          </button>
-          <button
-            type="button"
-            onClick={() => setCameraEnabled((prev) => !prev)}
-            disabled={status === "preparing" || status === "starting" || status === "stopping"}
-            className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 text-sm text-white/80 disabled:opacity-50"
-          >
-            {cameraEnabled ? <Camera className="h-4 w-4" /> : <CameraOff className="h-4 w-4 text-red-300" />}
-            {cameraEnabled ? "Camera on" : "Camera off"}
-          </button>
         </div>
 
         <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
@@ -577,10 +677,49 @@ export default function LiveBroadcastComposer({
                 </div>
               </div>
             ) : null}
+            {viewers.length ? (
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                <div className="mb-2 text-xs font-medium uppercase tracking-[0.24em] text-white/45">
+                  In live
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {viewers.map((viewer) => (
+                    <span
+                      key={viewer.socketId}
+                      className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-xs text-white/75"
+                    >
+                      {viewer.userName || "Resident"}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : null}
 
         {error ? <div className="mt-3 text-sm text-red-300">{error}</div> : null}
+
+        <div className="mt-3 flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
+          <input
+            value={chatDraft}
+            onChange={(e) => setChatDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                sendChat();
+              }
+            }}
+            placeholder="Say something…"
+            className="flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/35"
+          />
+          <button
+            type="button"
+            onClick={sendChat}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-black"
+          >
+            <Send className="h-4 w-4" />
+          </button>
+        </div>
 
         <div className="mt-4 flex gap-3">
           {status === "live" ? (

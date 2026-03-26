@@ -43,6 +43,21 @@ export type LiveRtcConfig = {
   iceTransportPolicy?: "all" | "relay";
 };
 
+export type LiveGuestRequest = {
+  socketId: string;
+  userId?: string;
+  userName?: string;
+};
+
+export type LiveChatMessage = {
+  id: string;
+  postId: string;
+  userId: string;
+  userName: string;
+  text: string;
+  createdAt: string;
+};
+
 export type CreatePostPayload = {
   title: string;
   content?: string | null;
@@ -222,6 +237,24 @@ export const communityService = {
       return res.data as any;
     } catch (err: any) {
       return { error: pickError(err, "Failed to load live session") } as any;
+    }
+  },
+
+  async getLiveRequests(postId: string) {
+    try {
+      const res = await API.get(`/community/live/${encodeURIComponent(postId)}/requests`);
+      return res.data as { ok?: boolean; requests?: LiveGuestRequest[]; live_session?: CommunityPost["live_session"] };
+    } catch (err: any) {
+      return { error: pickError(err, "Failed to load live requests") } as any;
+    }
+  },
+
+  async getLiveChat(postId: string) {
+    try {
+      const res = await API.get(`/community/live/${encodeURIComponent(postId)}/chat`);
+      return res.data as { ok?: boolean; chat?: LiveChatMessage[]; live_session?: CommunityPost["live_session"] };
+    } catch (err: any) {
+      return { error: pickError(err, "Failed to load live chat") } as any;
     }
   },
 

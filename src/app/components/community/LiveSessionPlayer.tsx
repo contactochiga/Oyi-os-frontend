@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { LoaderCircle, Mic, MicOff, RadioTower, Users, Video, VideoOff } from "lucide-react";
+import { LoaderCircle, Mic, MicOff, RadioTower, Send, Users, Video, VideoOff } from "lucide-react";
 import { getSocket } from "@/services/socket";
-import { communityService, type LiveRtcConfig } from "@/services/communityService";
+import { communityService, type LiveChatMessage, type LiveRtcConfig } from "@/services/communityService";
 
 type Props = {
   postId: string;
@@ -47,6 +47,8 @@ export default function LiveSessionPlayer({
   const [cameraEnabled, setCameraEnabled] = useState(true);
   const [guestActive, setGuestActive] = useState(hasGuest);
   const localPreviewRef = useRef<HTMLVideoElement | null>(null);
+  const [chatMessages, setChatMessages] = useState<LiveChatMessage[]>([]);
+  const [chatDraft, setChatDraft] = useState("");
 
   function cleanupRemotePeer(socketId: string) {
     const pc = pcsRef.current.get(socketId);
@@ -314,6 +316,16 @@ export default function LiveSessionPlayer({
       }
     };
 
+    const onChat = (event: any) => {
+      if (String(event?.postId || "") !== String(postId || "")) return;
+      const message = event?.message;
+      if (!message?.id) return;
+      setChatMessages((prev) => {
+        const next = [...prev.filter((item) => item.id !== message.id), message];
+        return next.slice(-18);
+      });
+    };
+
     socket.on("community-live:signal", onSignal);
     socket.on("community-live:stats", onStats);
     socket.on("community-live:ended", onEnded);
@@ -324,6 +336,7 @@ export default function LiveSessionPlayer({
     socket.on("community-live:guest-requested", onGuestRequested);
     socket.on("community-live:guest-rejected", onGuestRejected);
     socket.on("community-live:guest-removed", onGuestRemoved);
+    socket.on("community-live:chat", onChat);
 
     return () => {
       socket.off("community-live:signal", onSignal);
@@ -336,8 +349,22 @@ export default function LiveSessionPlayer({
       socket.off("community-live:guest-requested", onGuestRequested);
       socket.off("community-live:guest-rejected", onGuestRejected);
       socket.off("community-live:guest-removed", onGuestRemoved);
+      socket.off("community-live:chat", onChat);
     };
   }, [socket, joined, postId, rtcConfig, requestState, userId, userName]);
+
+  useEffect(() => {
+    if (!joined) return;
+    let cancelled = false;
+    (async () => {
+      const res: any = await communityService.getLiveChat(postId);
+      if (cancelled || res?.error) return;
+      setChatMessages(Array.isArray(res?.chat) ? res.chat.slice(-18) : []);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [joined, postId]);
 
   useEffect(() => {
     return () => {
@@ -372,6 +399,19 @@ export default function LiveSessionPlayer({
       userName,
     });
     setRequestState("pending");
+  }
+
+  function sendChat() {
+    if (!socket || !joined) return;
+    const text = chatDraft.trim();
+    if (!text) return;
+    socket.emit("community-live:chat:send", {
+      postId,
+      text,
+      userId,
+      userName,
+    });
+    setChatDraft("");
   }
 
   function leaveBox() {
@@ -438,6 +478,19 @@ export default function LiveSessionPlayer({
                 />
               </div>
             ) : null}
+            <div className="pointer-events-none absolute inset-x-3 bottom-3 space-y-1">
+              {chatMessages.slice(-5).map((message) => (
+                <div
+                  key={message.id}
+                  className="max-w-[80%] rounded-2xl bg-black/55 px-3 py-1.5 text-xs text-white/90 backdrop-blur"
+                >
+                  <span className="mr-1 text-[10px] uppercase tracking-[0.14em] text-white/50">
+                    {message.userName}
+                  </span>
+                  {message.text}
+                </div>
+              ))}
+            </div>
           </div>
         ) : (
           <button
@@ -454,6 +507,27 @@ export default function LiveSessionPlayer({
 
       {joined ? (
         <div className="mt-3 space-y-3">
+          <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
+            <input
+              value={chatDraft}
+              onChange={(e) => setChatDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  sendChat();
+                }
+              }}
+              placeholder="Chat with everyone…"
+              className="flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/35"
+            />
+            <button
+              type="button"
+              onClick={sendChat}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-black"
+            >
+              <Send className="h-4 w-4" />
+            </button>
+          </div>
           {requestState === "publishing" ? (
             <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
               <div className="mb-2 text-xs uppercase tracking-[0.24em] text-white/45">You are in the box</div>
