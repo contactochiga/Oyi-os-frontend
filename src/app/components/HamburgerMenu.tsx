@@ -15,33 +15,46 @@ import { MdOutlinePerson, MdSettings } from "react-icons/md";
 import { decodeToken } from "@/lib/auth";
 
 // ✅ NEW: menu icons
-import { FiSliders, FiShield, FiTool, FiSettings } from "react-icons/fi";
+import { FiGrid, FiCpu, FiCreditCard, FiUsers, FiKey, FiTool, FiHome, FiZap } from "react-icons/fi";
 
 type MenuKey =
+  | "home"
   | "rooms"
-  | "automation"
-  | "access_control"
-  | "integrations"
-  | "maintenance";
+  | "devices"
+  | "wallet"
+  | "visitors"
+  | "community"
+  | "maintenance"
+  | "ai";
 
+// ✅ KEEP ROUTES EXACTLY AS YOU HAD IT (DO NOT CHANGE)
 const ROUTES: Record<MenuKey, string> = {
+  home: "/home",
   rooms: "/rooms",
-  automation: "/devices",
-  access_control: "/visitors",
-  integrations: "/settings?section=settings",
+  devices: "/devices",
+  wallet: "/wallet",
+  visitors: "/visitors",
+  community: "/community",
   maintenance: "/maintenance",
+  ai: "/home?oyi=ai",
 };
 
+// Domain-aligned resident runtime menu. Routes stay backward-compatible.
 const MENU_ITEMS: Array<{
   key: MenuKey;
+  domain: string;
   label: string;
   icon: any;
-  badgeKey?: "maintenance";
+  badgeKey?: "devices" | "wallet" | "community" | "visitors" | "maintenance";
 }> = [
-  { key: "rooms", label: "Home Spaces", icon: FiSliders },
-  { key: "automation", label: "Automation", icon: FiSettings },
-  { key: "access_control", label: "Visitor Access", icon: FiShield },
-  { key: "maintenance", label: "Maintenance & Support", icon: FiTool, badgeKey: "maintenance" },
+  { domain: "Home Overview", key: "home", label: "Home Dashboard", icon: FiGrid },
+  { domain: "Rooms & Spaces", key: "rooms", label: "Rooms", icon: FiHome },
+  { domain: "Smart Devices", key: "devices", label: "Smart Devices", icon: FiCpu, badgeKey: "devices" },
+  { domain: "Visitors & Access", key: "visitors", label: "Visitor QR & Access", icon: FiKey, badgeKey: "visitors" },
+  { domain: "Community", key: "community", label: "Community Feed", icon: FiUsers, badgeKey: "community" },
+  { domain: "Wallet & Services", key: "wallet", label: "Wallet & Services", icon: FiCreditCard, badgeKey: "wallet" },
+  { domain: "Support & Maintenance", key: "maintenance", label: "Tickets & Requests", icon: FiTool, badgeKey: "maintenance" },
+  { domain: "AI & Automation", key: "ai", label: "Oyi AI & Scenes", icon: FiZap },
 ];
 
 function getApiBase() {
@@ -93,7 +106,7 @@ function BadgePill({ value }: { value: number }) {
 export default function HamburgerMenu() {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, token, logout, setSession } = useAuth();
+  const { user, token, logout } = useAuth();
 
   const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
@@ -102,9 +115,6 @@ export default function HamburgerMenu() {
 
   const [estateName, setEstateName] = useState<string | null>(null);
   const [homeLabel, setHomeLabel] = useState<string | null>(null);
-  const [availableContexts, setAvailableContexts] = useState<any[]>([]);
-  const [switchingHomeId, setSwitchingHomeId] = useState<string | null>(null);
-  const [showOtherHomes, setShowOtherHomes] = useState(false);
 
   // ✅ NEW: notification-style badges (UI-only for now, wire later)
   const [badges, setBadges] = useState({
@@ -114,6 +124,25 @@ export default function HamburgerMenu() {
     visitors: 0,
     maintenance: 0,
   });
+  const [openDomains, setOpenDomains] = useState<Record<string, boolean>>({});
+
+  const groupedMenu = useMemo(() => {
+    return MENU_ITEMS.reduce<Array<{ domain: string; items: typeof MENU_ITEMS }>>((groups, item) => {
+      const last = groups[groups.length - 1];
+      if (last?.domain === item.domain) {
+        last.items.push(item);
+      } else {
+        groups.push({ domain: item.domain, items: [item] as typeof MENU_ITEMS });
+      }
+      return groups;
+    }, []);
+  }, []);
+
+  function toggleDomain(group: { domain: string; items: typeof MENU_ITEMS }) {
+    const first = group.items[0];
+    if (first?.key) pushAndClose(ROUTES[first.key]);
+    setOpenDomains((current) => ({ ...current, [group.domain]: !current[group.domain] }));
+  }
 
   // swipe-to-close
   const dragStartX = useRef<number | null>(null);
@@ -172,6 +201,8 @@ export default function HamburgerMenu() {
   const handleLogout = async () => {
     closeAll();
     await logout?.();
+    if (typeof window !== "undefined") localStorage.clear();
+    router.replace("/auth/login");
   };
 
   // lock scroll + sidebar-open class
@@ -237,7 +268,6 @@ export default function HamburgerMenu() {
 
         setEstateName(estateNameResolved);
         setHomeLabel(home ? buildHomeLabel(home) : null);
-        setAvailableContexts(Array.isArray(root?.available_contexts) ? root.available_contexts : []);
       } catch {
         // silent
       }
@@ -254,11 +284,11 @@ export default function HamburgerMenu() {
   useEffect(() => {
     if (!token) {
       setBadges({
-      devices: 0,
-      wallet: 0,
-      community: 0,
-      visitors: 0,
-      maintenance: 0,
+        devices: 0,
+        wallet: 0,
+        community: 0,
+        visitors: 0,
+        maintenance: 0,
       });
       return;
     }
@@ -267,8 +297,8 @@ export default function HamburgerMenu() {
     setBadges({
       devices: 0,
       wallet: 0,
-      community: 0,
-      visitors: 0,
+      community: 2,
+      visitors: 1,
       maintenance: 0,
     });
   }, [token]);
@@ -277,58 +307,6 @@ export default function HamburgerMenu() {
     () => !!estateName || !!homeLabel,
     [estateName, homeLabel],
   );
-
-  async function switchContext(homeId: string) {
-    if (!token || !homeId || switchingHomeId === homeId) return;
-    setSwitchingHomeId(homeId);
-    try {
-      const api = getApiBase();
-      const res = await fetch(`${api}/me/context/select`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ home_id: homeId }),
-      });
-
-      const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(data?.error || "Failed to switch home");
-
-      const estate = data?.estate ?? null;
-      const home = data?.home ?? null;
-
-      setEstateName(estate?.name ? String(estate.name) : null);
-      setHomeLabel(home ? buildHomeLabel(home) : null);
-      setAvailableContexts((prev) =>
-        prev.map((ctx: any) => ({
-          ...ctx,
-          is_active: String(ctx.home_id) === String(homeId),
-        }))
-      );
-
-      const mergedUser = {
-        ...(user || {}),
-        estate_id: data?.estate_id ?? estate?.id ?? null,
-        home_id: data?.home_id ?? home?.id ?? null,
-      };
-      setSession(token, mergedUser as any);
-
-      if (typeof window !== "undefined") {
-        if (data?.estate_id) localStorage.setItem("ochiga_estate", String(data.estate_id));
-        if (data?.home_id) localStorage.setItem("ochiga_home", String(data.home_id));
-        window.dispatchEvent(new Event("oyi:context-changed"));
-      }
-
-      router.refresh();
-      closeAll();
-      router.push("/home");
-    } catch (e) {
-      console.error("switch context failed", e);
-    } finally {
-      setSwitchingHomeId(null);
-    }
-  }
 
   const OVERLAY_Z = 2147483646;
   const DRAWER_Z = 2147483647;
@@ -426,49 +404,8 @@ export default function HamburgerMenu() {
                         {estateName || "—"}
                       </div>
 
-                      {availableContexts.length > 1 ? (
-                        <div className="mt-3 border-t border-white/10 pt-3">
-                          <button
-                            type="button"
-                            onClick={() => setShowOtherHomes((value) => !value)}
-                            className="flex w-full items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-left"
-                          >
-                            <div className="min-w-0">
-                              <div className="text-[13px] text-white truncate font-medium">
-                                {homeLabel || "Home"}
-                              </div>
-                              <div className="mt-0.5 text-[10px] text-white/45 truncate">
-                                {Math.max(availableContexts.length - 1, 0)} other homes available
-                              </div>
-                            </div>
-                            {showOtherHomes ? <FiChevronUp className="shrink-0 text-white/65" /> : <FiChevronDown className="shrink-0 text-white/65" />}
-                          </button>
-                          {showOtherHomes ? (
-                            <div className="mt-2 space-y-2">
-                            {availableContexts
-                              .filter((ctx: any) => !ctx?.is_active)
-                              .map((ctx: any) => {
-                              const label = buildHomeLabel(ctx) || ctx?.home_name || "Home";
-                              return (
-                                <button
-                                  key={`${ctx.estate_id}:${ctx.home_id}`}
-                                  type="button"
-                                  onClick={() => switchContext(String(ctx.home_id))}
-                                  disabled={switchingHomeId === String(ctx.home_id)}
-                                  className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-left text-white/80 transition hover:bg-white/10 disabled:opacity-60"
-                                >
-                                  <div className="text-[12px] font-medium truncate">{label}</div>
-                                  <div className="mt-0.5 text-[10px] text-white/45 truncate">
-                                    {ctx?.estate_name || "Estate"}
-                                  </div>
-                                </button>
-                              );
-                            })}
-                            </div>
-                          ) : null}
-                        </div>
-                      ) : homeLabel ? (
-                        <div className="mt-1 text-[11px] text-white/45 truncate">
+                      {homeLabel ? (
+                        <div className="text-[11px] text-white/45 mt-1 truncate">
                           Home:{" "}
                           <span className="text-white/70">{homeLabel}</span>
                         </div>
@@ -480,60 +417,85 @@ export default function HamburgerMenu() {
                 {/* Menu */}
                 <nav className="flex-1 overflow-y-auto px-2 py-3">
                   <div className="px-2 pb-2 text-[11px] text-white/35">
-                    Navigation
+                    Home Runtime Domains
                   </div>
 
                   <div className="space-y-1">
-                    {MENU_ITEMS.map((item) => {
-                      const href = ROUTES[item.key]; // ✅ same routes
-                      const active = isActivePath(pathname || "/", href);
-                      const Icon = item.icon;
-
-                      const badgeValue =
-                        item.badgeKey ? clampBadge((badges as any)[item.badgeKey]) : 0;
+                    {groupedMenu.map((group, groupIndex) => {
+                      const collapsed = !openDomains[group.domain];
+                      const PrimaryIcon = group.items[0]?.icon || FiGrid;
 
                       return (
-                        <button
-                          key={item.key}
-                          onClick={() => onMenuClick(item.key)}
-                          className={`w-full text-left rounded-2xl px-4 py-3 text-[14px] transition border
-                            ${
-                              active
-                                ? "bg-white/10 text-white border-white/10"
-                                : "bg-transparent text-white/75 border-transparent hover:bg-white/5 hover:border-white/10"
-                            }
-                          `}
-                          type="button"
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-3 min-w-0">
-                              <span
-                                className={`w-9 h-9 rounded-2xl border flex items-center justify-center shrink-0
-                                  ${
-                                    active
-                                      ? "bg-white/10 border-white/10 text-white"
-                                      : "bg-white/5 border-white/10 text-white/70"
-                                  }
-                                `}
-                              >
-                                <Icon className="text-[18px]" />
-                              </span>
-
-                              <span className="font-medium truncate">
-                                {item.label}
-                              </span>
-                            </div>
-
-                            <div className="flex items-center gap-2 shrink-0">
-                              <BadgePill value={badgeValue} />
-                              {active ? (
-                                <span className="text-[11px] text-white/50">
-                                  Active
+                        <div key={group.domain} className="space-y-1">
+                          <button
+                            type="button"
+                            onClick={() => toggleDomain(group)}
+                            aria-expanded={!collapsed}
+                            className={`w-full text-left transition-all ${
+                              collapsed
+                                ? "mt-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-[13px] font-medium text-white/80"
+                                : "px-3 pt-3 pb-1 text-[9.5px] font-semibold uppercase tracking-[0.16em] text-white/35"
+                            } ${groupIndex === 0 && !collapsed ? "pt-0" : ""}`}
+                          >
+                            {collapsed ? (
+                              <span className="flex items-center justify-between gap-3">
+                                <span className="flex min-w-0 items-center gap-3">
+                                  <span className="w-7 h-7 rounded-md border border-white/10 bg-white/5 flex items-center justify-center shrink-0 text-white/70">
+                                    <PrimaryIcon className="text-[15.5px]" />
+                                  </span>
+                                  <span className="truncate">{group.domain}</span>
                                 </span>
-                              ) : null}
-                            </div>
-                          </div>
-                        </button>
+                                <span className="text-white/35">+</span>
+                              </span>
+                            ) : (
+                              group.domain
+                            )}
+                          </button>
+
+                          {!collapsed &&
+                            group.items.map((item) => {
+                              const href = ROUTES[item.key];
+                              const active = item.key !== "ai" && isActivePath(pathname || "/", href);
+                              const Icon = item.icon;
+                              const badgeValue = item.badgeKey ? clampBadge((badges as any)[item.badgeKey]) : 0;
+
+                              return (
+                                <button
+                                  key={item.key}
+                                  onClick={() => onMenuClick(item.key)}
+                                  className={`w-full text-left rounded-lg px-3 py-2.5 text-[13px] transition border
+                                    ${
+                                      active
+                                        ? "bg-gradient-to-r from-violet-600 to-blue-600/70 text-white border-violet-500/45 shadow-[0_12px_30px_rgba(99,102,241,0.2)]"
+                                        : "bg-transparent text-white/70 border-transparent hover:bg-white/5 hover:border-white/10 hover:text-white"
+                                    }
+                                  `}
+                                  type="button"
+                                >
+                                  <div className="flex items-center justify-between gap-3">
+                                    <div className="flex items-center gap-3 min-w-0">
+                                      <span
+                                        className={`w-7 h-7 rounded-md border flex items-center justify-center shrink-0
+                                          ${
+                                            active
+                                              ? "bg-white/15 border-white/15 text-white"
+                                              : "bg-white/5 border-white/10 text-white/70"
+                                          }
+                                        `}
+                                      >
+                                        <Icon className="text-[15.5px]" />
+                                      </span>
+                                      <span className="font-medium truncate text-[13px]">{item.label}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      <BadgePill value={badgeValue} />
+                                      {active ? <span className="text-[11px] text-white/50">Active</span> : null}
+                                    </div>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                        </div>
                       );
                     })}
                   </div>
