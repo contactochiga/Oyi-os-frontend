@@ -124,25 +124,6 @@ export default function HamburgerMenu() {
     visitors: 0,
     maintenance: 0,
   });
-  const [openDomains, setOpenDomains] = useState<Record<string, boolean>>({});
-
-  const groupedMenu = useMemo(() => {
-    return MENU_ITEMS.reduce<Array<{ domain: string; items: typeof MENU_ITEMS }>>((groups, item) => {
-      const last = groups[groups.length - 1];
-      if (last?.domain === item.domain) {
-        last.items.push(item);
-      } else {
-        groups.push({ domain: item.domain, items: [item] as typeof MENU_ITEMS });
-      }
-      return groups;
-    }, []);
-  }, []);
-
-  function toggleDomain(group: { domain: string; items: typeof MENU_ITEMS }) {
-    const first = group.items[0];
-    if (first?.key) pushAndClose(ROUTES[first.key]);
-    setOpenDomains((current) => ({ ...current, [group.domain]: !current[group.domain] }));
-  }
 
   // swipe-to-close
   const dragStartX = useRef<number | null>(null);
@@ -421,80 +402,52 @@ export default function HamburgerMenu() {
                   </div>
 
                   <div className="space-y-1">
-                    {groupedMenu.map((group, groupIndex) => {
-                      const collapsed = !openDomains[group.domain];
-                      const PrimaryIcon = group.items[0]?.icon || FiGrid;
+                    {MENU_ITEMS.map((item, index) => {
+                      const href = ROUTES[item.key];
+                      const active = item.key !== "ai" && isActivePath(pathname || "/", href);
+                      const Icon = item.icon;
+                      const showDomain = index === 0 || MENU_ITEMS[index - 1]?.domain !== item.domain;
+                      const badgeValue = item.badgeKey ? clampBadge((badges as any)[item.badgeKey]) : 0;
 
                       return (
-                        <div key={group.domain} className="space-y-1">
+                        <div key={item.key}>
+                          {showDomain ? (
+                            <div className="px-3 pt-3 pb-1 text-[9.5px] font-semibold uppercase tracking-[0.16em] text-white/35">
+                              {item.domain}
+                            </div>
+                          ) : null}
                           <button
+                            onClick={() => onMenuClick(item.key)}
+                            className={`w-full text-left rounded-lg px-3 py-2.5 text-[13px] transition border
+                              ${
+                                active
+                                  ? "bg-gradient-to-r from-violet-600 to-blue-600/70 text-white border-violet-500/45 shadow-[0_12px_30px_rgba(99,102,241,0.2)]"
+                                  : "bg-transparent text-white/70 border-transparent hover:bg-white/5 hover:border-white/10 hover:text-white"
+                              }
+                            `}
                             type="button"
-                            onClick={() => toggleDomain(group)}
-                            aria-expanded={!collapsed}
-                            className={`w-full text-left transition-all ${
-                              collapsed
-                                ? "mt-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-[13px] font-medium text-white/80"
-                                : "px-3 pt-3 pb-1 text-[9.5px] font-semibold uppercase tracking-[0.16em] text-white/35"
-                            } ${groupIndex === 0 && !collapsed ? "pt-0" : ""}`}
                           >
-                            {collapsed ? (
-                              <span className="flex items-center justify-between gap-3">
-                                <span className="flex min-w-0 items-center gap-3">
-                                  <span className="w-7 h-7 rounded-md border border-white/10 bg-white/5 flex items-center justify-center shrink-0 text-white/70">
-                                    <PrimaryIcon className="text-[15.5px]" />
-                                  </span>
-                                  <span className="truncate">{group.domain}</span>
-                                </span>
-                                <span className="text-white/35">+</span>
-                              </span>
-                            ) : (
-                              group.domain
-                            )}
-                          </button>
-
-                          {!collapsed &&
-                            group.items.map((item) => {
-                              const href = ROUTES[item.key];
-                              const active = item.key !== "ai" && isActivePath(pathname || "/", href);
-                              const Icon = item.icon;
-                              const badgeValue = item.badgeKey ? clampBadge((badges as any)[item.badgeKey]) : 0;
-
-                              return (
-                                <button
-                                  key={item.key}
-                                  onClick={() => onMenuClick(item.key)}
-                                  className={`w-full text-left rounded-lg px-3 py-2.5 text-[13px] transition border
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <span
+                                  className={`w-7 h-7 rounded-md border flex items-center justify-center shrink-0
                                     ${
                                       active
-                                        ? "bg-gradient-to-r from-violet-600 to-blue-600/70 text-white border-violet-500/45 shadow-[0_12px_30px_rgba(99,102,241,0.2)]"
-                                        : "bg-transparent text-white/70 border-transparent hover:bg-white/5 hover:border-white/10 hover:text-white"
+                                        ? "bg-white/15 border-white/15 text-white"
+                                        : "bg-white/5 border-white/10 text-white/70"
                                     }
                                   `}
-                                  type="button"
                                 >
-                                  <div className="flex items-center justify-between gap-3">
-                                    <div className="flex items-center gap-3 min-w-0">
-                                      <span
-                                        className={`w-7 h-7 rounded-md border flex items-center justify-center shrink-0
-                                          ${
-                                            active
-                                              ? "bg-white/15 border-white/15 text-white"
-                                              : "bg-white/5 border-white/10 text-white/70"
-                                          }
-                                        `}
-                                      >
-                                        <Icon className="text-[15.5px]" />
-                                      </span>
-                                      <span className="font-medium truncate text-[13px]">{item.label}</span>
-                                    </div>
-                                    <div className="flex items-center gap-2 shrink-0">
-                                      <BadgePill value={badgeValue} />
-                                      {active ? <span className="text-[11px] text-white/50">Active</span> : null}
-                                    </div>
-                                  </div>
-                                </button>
-                              );
-                            })}
+                                  <Icon className="text-[15.5px]" />
+                                </span>
+                                <span className="font-medium truncate text-[13px]">{item.label}</span>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <BadgePill value={badgeValue} />
+                                {active ? <span className="text-[11px] text-white/50">Active</span> : null}
+                              </div>
+                            </div>
+                          </button>
                         </div>
                       );
                     })}
