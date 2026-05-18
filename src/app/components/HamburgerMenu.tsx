@@ -16,58 +16,24 @@ import { decodeToken } from "@/lib/auth";
 
 // ✅ NEW: menu icons
 import { FiGrid, FiCpu, FiCreditCard, FiUsers, FiKey, FiTool, FiHome, FiZap, FiShield, FiDroplet, FiBarChart2, FiUser } from "react-icons/fi";
+import { CONSUMER_MODULES, visibleModules, type ModuleDefinition } from "@/lib/moduleRegistry";
 
-type MenuKey =
-  | "home"
-  | "rooms"
-  | "devices"
-  | "security"
-  | "utilities"
-  | "maintenance"
-  | "visitors"
-  | "community"
-  | "wallet"
-  | "reports"
-  | "ai"
-  | "account";
-
-// ✅ KEEP ROUTES EXACTLY AS YOU HAD IT (DO NOT CHANGE)
-const ROUTES: Record<MenuKey, string> = {
-  home: "/home",
-  rooms: "/rooms",
-  devices: "/devices",
-  security: "/visitors",
-  utilities: "/devices?tab=utilities",
-  maintenance: "/maintenance",
-  visitors: "/visitors",
-  community: "/community",
-  wallet: "/wallet",
-  reports: "/home?tab=reports",
-  ai: "/home?oyi=ai",
-  account: "/settings",
+const MODULE_ICONS: Record<string, any> = {
+  home: FiGrid,
+  rooms: FiHome,
+  devices: FiCpu,
+  security: FiShield,
+  utilities: FiDroplet,
+  maintenance: FiTool,
+  visitors: FiKey,
+  community: FiUsers,
+  wallet: FiCreditCard,
+  reports: FiBarChart2,
+  ai: FiZap,
+  account: FiUser,
 };
 
-// Domain-aligned resident runtime menu. Routes stay backward-compatible.
-const MENU_ITEMS: Array<{
-  key: MenuKey;
-  domain: string;
-  label: string;
-  icon: any;
-  badgeKey?: "devices" | "wallet" | "community" | "visitors" | "maintenance";
-}> = [
-  { domain: "Resident Runtime", key: "home", label: "Home Overview", icon: FiGrid },
-  { domain: "Resident Runtime", key: "rooms", label: "Rooms & Spaces", icon: FiHome },
-  { domain: "Resident Runtime", key: "devices", label: "Smart Devices", icon: FiCpu, badgeKey: "devices" },
-  { domain: "Resident Runtime", key: "security", label: "Security & Access", icon: FiShield, badgeKey: "visitors" },
-  { domain: "Resident Runtime", key: "utilities", label: "Utilities", icon: FiDroplet },
-  { domain: "Resident Runtime", key: "maintenance", label: "Maintenance & Support", icon: FiTool, badgeKey: "maintenance" },
-  { domain: "Resident Runtime", key: "visitors", label: "Visitors", icon: FiKey, badgeKey: "visitors" },
-  { domain: "Resident Runtime", key: "community", label: "Community", icon: FiUsers, badgeKey: "community" },
-  { domain: "Resident Runtime", key: "wallet", label: "Wallet & Services", icon: FiCreditCard, badgeKey: "wallet" },
-  { domain: "Resident Runtime", key: "reports", label: "Reports", icon: FiBarChart2 },
-  { domain: "Resident Runtime", key: "ai", label: "AI & Automation", icon: FiZap },
-  { domain: "Resident Runtime", key: "account", label: "Account", icon: FiUser },
-];
+type MenuItem = ModuleDefinition & { icon: any };
 
 function getApiBase() {
   return (
@@ -189,7 +155,7 @@ export default function HamburgerMenu() {
     return pushAndClose("/settings");
   };
 
-  const onMenuClick = (key: MenuKey) => pushAndClose(ROUTES[key]);
+  const onMenuClick = (href: string) => pushAndClose(href);
 
   const handleLogout = async () => {
     closeAll();
@@ -295,6 +261,15 @@ export default function HamburgerMenu() {
       maintenance: 0,
     });
   }, [token]);
+
+  const menuItems = useMemo<MenuItem[]>(
+    () =>
+      visibleModules(user as any, CONSUMER_MODULES).map((item) => ({
+        ...item,
+        icon: MODULE_ICONS[item.key] || FiGrid,
+      })),
+    [user],
+  );
 
   const shouldShowContext = useMemo(
     () => !!estateName || !!homeLabel,
@@ -414,11 +389,11 @@ export default function HamburgerMenu() {
                   </div>
 
                   <div className="space-y-1">
-                    {MENU_ITEMS.map((item, index) => {
-                      const href = ROUTES[item.key];
-                      const active = item.key !== "ai" && isActivePath(pathname || "/", href);
+                    {menuItems.map((item, index) => {
+                      const href = item.href;
+                      const active = isActivePath(pathname || "/", href);
                       const Icon = item.icon;
-                      const showDomain = index === 0 || MENU_ITEMS[index - 1]?.domain !== item.domain;
+                      const showDomain = index === 0 || menuItems[index - 1]?.domain !== item.domain;
                       const badgeValue = item.badgeKey ? clampBadge((badges as any)[item.badgeKey]) : 0;
 
                       return (
@@ -429,7 +404,7 @@ export default function HamburgerMenu() {
                             </div>
                           ) : null}
                           <button
-                            onClick={() => onMenuClick(item.key)}
+                            onClick={() => onMenuClick(href)}
                             className={`w-full text-left rounded-lg px-3 py-2.5 text-[13px] transition border
                               ${
                                 active
