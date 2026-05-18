@@ -15,28 +15,36 @@ import { MdOutlinePerson, MdSettings } from "react-icons/md";
 import { decodeToken } from "@/lib/auth";
 
 // ✅ NEW: menu icons
-import { FiGrid, FiCpu, FiCreditCard, FiUsers, FiKey, FiTool, FiHome, FiZap } from "react-icons/fi";
+import { FiGrid, FiCpu, FiCreditCard, FiUsers, FiKey, FiTool, FiHome, FiZap, FiShield, FiDroplet, FiBarChart2, FiUser } from "react-icons/fi";
 
 type MenuKey =
   | "home"
   | "rooms"
   | "devices"
-  | "wallet"
+  | "security"
+  | "utilities"
+  | "maintenance"
   | "visitors"
   | "community"
-  | "maintenance"
-  | "ai";
+  | "wallet"
+  | "reports"
+  | "ai"
+  | "account";
 
 // ✅ KEEP ROUTES EXACTLY AS YOU HAD IT (DO NOT CHANGE)
 const ROUTES: Record<MenuKey, string> = {
   home: "/home",
   rooms: "/rooms",
   devices: "/devices",
-  wallet: "/wallet",
+  security: "/visitors",
+  utilities: "/devices?tab=utilities",
+  maintenance: "/maintenance",
   visitors: "/visitors",
   community: "/community",
-  maintenance: "/maintenance",
+  wallet: "/wallet",
+  reports: "/home?tab=reports",
   ai: "/home?oyi=ai",
+  account: "/settings",
 };
 
 // Domain-aligned resident runtime menu. Routes stay backward-compatible.
@@ -47,14 +55,18 @@ const MENU_ITEMS: Array<{
   icon: any;
   badgeKey?: "devices" | "wallet" | "community" | "visitors" | "maintenance";
 }> = [
-  { domain: "Home Overview", key: "home", label: "Home Dashboard", icon: FiGrid },
-  { domain: "Rooms & Spaces", key: "rooms", label: "Rooms", icon: FiHome },
-  { domain: "Smart Devices", key: "devices", label: "Smart Devices", icon: FiCpu, badgeKey: "devices" },
-  { domain: "Visitors & Access", key: "visitors", label: "Visitor QR & Access", icon: FiKey, badgeKey: "visitors" },
-  { domain: "Community", key: "community", label: "Community Feed", icon: FiUsers, badgeKey: "community" },
-  { domain: "Wallet & Services", key: "wallet", label: "Wallet & Services", icon: FiCreditCard, badgeKey: "wallet" },
-  { domain: "Support & Maintenance", key: "maintenance", label: "Tickets & Requests", icon: FiTool, badgeKey: "maintenance" },
-  { domain: "AI & Automation", key: "ai", label: "Oyi AI & Scenes", icon: FiZap },
+  { domain: "Resident Runtime", key: "home", label: "Home Overview", icon: FiGrid },
+  { domain: "Resident Runtime", key: "rooms", label: "Rooms & Spaces", icon: FiHome },
+  { domain: "Resident Runtime", key: "devices", label: "Smart Devices", icon: FiCpu, badgeKey: "devices" },
+  { domain: "Resident Runtime", key: "security", label: "Security & Access", icon: FiShield, badgeKey: "visitors" },
+  { domain: "Resident Runtime", key: "utilities", label: "Utilities", icon: FiDroplet },
+  { domain: "Resident Runtime", key: "maintenance", label: "Maintenance & Support", icon: FiTool, badgeKey: "maintenance" },
+  { domain: "Resident Runtime", key: "visitors", label: "Visitors", icon: FiKey, badgeKey: "visitors" },
+  { domain: "Resident Runtime", key: "community", label: "Community", icon: FiUsers, badgeKey: "community" },
+  { domain: "Resident Runtime", key: "wallet", label: "Wallet & Services", icon: FiCreditCard, badgeKey: "wallet" },
+  { domain: "Resident Runtime", key: "reports", label: "Reports", icon: FiBarChart2 },
+  { domain: "Resident Runtime", key: "ai", label: "AI & Automation", icon: FiZap },
+  { domain: "Resident Runtime", key: "account", label: "Account", icon: FiUser },
 ];
 
 function getApiBase() {
@@ -398,7 +410,7 @@ export default function HamburgerMenu() {
                 {/* Menu */}
                 <nav className="flex-1 overflow-y-auto px-2 py-3">
                   <div className="px-2 pb-2 text-[11px] text-white/35">
-                    Home Runtime Domains
+                    Smart Home Modules
                   </div>
 
                   <div className="space-y-1">
