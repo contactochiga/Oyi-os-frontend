@@ -124,6 +124,7 @@ export default function WalletPage() {
     const funding = url.searchParams.get("funding");
     const reference = url.searchParams.get("reference") || url.searchParams.get("trxref");
     if (!funding || !reference) return;
+    const paymentReference = reference;
 
     let cancelled = false;
 
@@ -131,7 +132,7 @@ export default function WalletPage() {
       setErr(null);
       setInfo("Verifying payment...");
 
-      const verifyRes: any = await walletService.verifyPayment(reference);
+      const verifyRes: any = await walletService.verifyPayment(paymentReference);
       if (cancelled) return;
 
       if (verifyRes?.error) {

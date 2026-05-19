@@ -80,12 +80,12 @@ export default function LiveSessionPlayer({
   }
 
   function applyRtcConfig(input?: LiveRtcConfig | null) {
-    const next = {
+    const next: RTCConfiguration = {
       iceServers:
         Array.isArray(input?.iceServers) && input.iceServers.length
           ? input.iceServers
           : DEFAULT_RTC_CONFIG.iceServers,
-      iceTransportPolicy: input?.iceTransportPolicy === "relay" ? "relay" : "all",
+      iceTransportPolicy: (input?.iceTransportPolicy === "relay" ? "relay" : "all") as RTCIceTransportPolicy,
     };
     rtcConfigRef.current = next;
     setRtcConfig(next);

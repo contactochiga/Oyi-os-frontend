@@ -84,13 +84,13 @@ export default function LiveBroadcastComposer({
   }
 
   function applyRtcConfig(input?: LiveRtcConfig | null) {
-    const next = !input
+    const next: RTCConfiguration = !input
       ? DEFAULT_RTC_CONFIG
       : {
       iceServers: Array.isArray(input.iceServers) && input.iceServers.length
         ? input.iceServers
         : DEFAULT_RTC_CONFIG.iceServers,
-      iceTransportPolicy: input.iceTransportPolicy === "relay" ? "relay" : "all",
+      iceTransportPolicy: (input.iceTransportPolicy === "relay" ? "relay" : "all") as RTCIceTransportPolicy,
     };
     rtcConfigRef.current = next;
     setRtcConfig(next);
