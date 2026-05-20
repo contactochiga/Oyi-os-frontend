@@ -4,10 +4,16 @@ import { decodeToken, isExpired, getCookie } from "@/lib/auth";
 export type SessionUser = {
   id: string;
   email?: string;
+  username?: string;
   role?: string;
   estate_id?: string;
   home_id?: string;
   full_name?: string;
+  estate_name?: string;
+  unit_name?: string;
+  unit_id?: string;
+  permissions?: string[];
+  permission_scopes?: string[];
 };
 
 type SessionState = {
@@ -56,6 +62,12 @@ function deriveUserFromToken(token: string): SessionUser | null {
     estate_id: decoded.estate_id,
     home_id: decoded.home_id,
     full_name: decoded.full_name,
+    username: decoded.username,
+    estate_name: decoded.estate_name,
+    unit_name: decoded.unit_name,
+    unit_id: decoded.unit_id,
+    permissions: decoded.permissions,
+    permission_scopes: decoded.permission_scopes,
   };
 }
 

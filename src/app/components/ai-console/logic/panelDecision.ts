@@ -1,5 +1,5 @@
 // src/app/components/ai-console/logic/panelDecision.ts
-import type { AiPanel, AiResponse } from "../types/ai";
+import type { AiPanel, AiResponse } from "../types";
 
 export function decidePanelOpen(userText: string, resp: AiResponse, inferred: AiPanel | null) {
   const t = (userText || "").toLowerCase();

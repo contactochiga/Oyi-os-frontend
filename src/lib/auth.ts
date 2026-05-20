@@ -1,17 +1,18 @@
 import { jwtDecode } from "jwt-decode";
+import { permissionsForRole, type OyiIdentity } from "@/lib/oyiFoundation";
 
-export type DecodedToken = {
-  id: string;
-  email?: string;
-  role?: string;
-  estate_id?: string;
-  home_id?: string;
-  exp?: number;
-};
+export type DecodedToken = OyiIdentity;
 
 export function decodeToken(token: string): DecodedToken | null {
   try {
-    return jwtDecode<DecodedToken>(token);
+    const decoded = jwtDecode<DecodedToken>(token);
+    const scopes = Array.isArray(decoded.permission_scopes) ? decoded.permission_scopes : [];
+    return {
+      ...decoded,
+      permissions: Array.isArray(decoded.permissions) && decoded.permissions.length
+        ? decoded.permissions
+        : permissionsForRole(decoded.role, scopes),
+    };
   } catch {
     return null;
   }

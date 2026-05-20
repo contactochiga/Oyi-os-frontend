@@ -40,3 +40,14 @@ export type AiResponse = {
     reason?: string;
   };
 };
+
+export type ChatMessage = {
+  id: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  time?: string;
+  pending?: boolean;
+  panel?: AiPanel | string | null;
+  deviceId?: string;
+  lastUpdated?: number;
+};

@@ -60,6 +60,7 @@ const API = axios.create({
   baseURL: getBaseURL(),
   headers: {
     "Content-Type": "application/json",
+    "X-Ochiga-Surface": "consumer",
   },
   timeout: 15000,
 });
@@ -85,6 +86,7 @@ API.interceptors.request.use((config) => {
     if (token) {
       config.headers = config.headers || {};
       (config.headers as any).Authorization = `Bearer ${token}`;
+      (config.headers as any)["X-Oyi-Contract-Version"] = "ochiga.tier1.2026-05-16";
     }
   }
 

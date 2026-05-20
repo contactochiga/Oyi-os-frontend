@@ -1266,7 +1266,7 @@ export default function DeviceClient() {
             const gangCount = guessGangCount(d, cached);
             const nowOn = currentIsOn(d, cached);
 
-            const busy = sid && busyId === sid;
+            const busy = Boolean(sid && busyId === sid);
 
             return (
               <button
@@ -1415,7 +1415,7 @@ export default function DeviceClient() {
                       ? readGangValues(gangCount, cached)
                       : Array.from({ length: gangCount }, () => null);
 
-                    const busy = sid && busyId === sid;
+                    const busy = Boolean(sid && busyId === sid);
                     const online = isOnline(sheetDevice);
 
                     return (

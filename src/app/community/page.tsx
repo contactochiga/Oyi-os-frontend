@@ -943,8 +943,13 @@ export default function CommunityPage() {
               !!bodyText &&
               normalizeLine(titleText) === normalizeLine(bodyText);
 
+            const rawType = String((p as any)?.type || (p as any)?.post_type || "").toLowerCase();
             const type: "announcement" | "discussion" | "event" =
-              tab === "announcements" ? "announcement" : badge === "Admin" ? "announcement" : "discussion";
+              rawType === "event"
+                ? "event"
+                : rawType === "announcement" || tab === "announcements" || badge === "Admin"
+                  ? "announcement"
+                  : "discussion";
 
             return (
               <Card key={postKey}>

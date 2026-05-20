@@ -13,6 +13,7 @@ export default function useSignalStream() {
     if (!user?.id) return;
 
     const socket = getSocket();
+    if (!socket) return;
 
     const estateId = (user as any)?.estate_id;
     socket.emit("subscribe:user", user.id);

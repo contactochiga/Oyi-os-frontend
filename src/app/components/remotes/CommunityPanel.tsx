@@ -18,7 +18,15 @@ function when(iso?: string | null) {
   });
 }
 
-export default function CommunityPanel({ limit = 3 }: { limit?: number }) {
+export default function CommunityPanel({
+  limit = 3,
+  lastUpdated: _lastUpdated,
+  onInteraction: _onInteraction,
+}: {
+  limit?: number;
+  lastUpdated?: number;
+  onInteraction?: () => void;
+}) {
   const router = useRouter();
   const { user } = useAuth();
 

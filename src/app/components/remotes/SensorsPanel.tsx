@@ -36,9 +36,11 @@ function prettyName(k: string) {
 export default function SensorsPanel({
   deviceId,
   lastUpdated,
+  onInteraction: _onInteraction,
 }: {
   deviceId?: string;
   lastUpdated?: number;
+  onInteraction?: () => void;
 }) {
   const { user } = useAuth();
   const estateId = useMemo(
