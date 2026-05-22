@@ -113,6 +113,7 @@ export default function HomePage() {
   const [devicesTab, setDevicesTab] = useState<"assigned" | "discovery">("assigned");
   const [devicesBusy, setDevicesBusy] = useState(false);
   const [devicesErr, setDevicesErr] = useState<string | null>(null);
+  const [deviceCommandBusy, setDeviceCommandBusy] = useState<string | null>(null);
   const [visitors, setVisitors] = useState<VisitorAccess[]>([]);
   const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>([]);
   const [maintenance, setMaintenance] = useState<MaintenanceTicket[]>([]);
@@ -202,6 +203,26 @@ export default function HomePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, token, estateId]);
 
+  function pickDeviceId(device: any) {
+    return String(device?.id || device?.device_id || device?.external_id || device?.externalId || device?.dev_id || device?.uuid || "").trim();
+  }
+
+  async function toggleFavoriteDevice(device: any) {
+    const deviceId = pickDeviceId(device);
+    if (!deviceId || deviceCommandBusy) return;
+    const currentlyOn = isOnline(device);
+    setDeviceCommandBusy(deviceId);
+    setDashErr(null);
+    try {
+      await deviceService.commandDevice(deviceId, { switch: !currentlyOn });
+      await refreshDevicePanelData();
+    } catch (e: any) {
+      setDashErr(e?.response?.data?.error || e?.message || "Device command failed. Check device status and permissions.");
+    } finally {
+      setDeviceCommandBusy(null);
+    }
+  }
+
   async function handleSend(text?: string) {
     const command = (text ?? input).trim();
     if (!command) return;
@@ -271,6 +292,7 @@ export default function HomePage() {
   const activeVisitors = visitors.filter((v) => ["entered", "active", "approved"].includes(String(v.status || "").toLowerCase())).length;
   const openMaintenance = maintenance.length;
   const unread = notifications.filter((n) => String(n.status || "").toLowerCase() === "unread").length;
+  const favoriteDevices = assignedDevices.slice(0, 3);
   const latestActivity = [...notifications]
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .slice(0, 4);
@@ -371,6 +393,34 @@ export default function HomePage() {
               <QuickControl label="Security" icon={<Lock className="h-4 w-4" />} onClick={() => router.push("/security")} />
               <QuickControl label="Scenes" icon={<Moon className="h-4 w-4" />} onClick={() => router.push("/devices")} />
               <QuickControl label="Energy" icon={<Zap className="h-4 w-4" />} onClick={() => router.push("/utilities")} />
+            </section>
+
+            <section className="mt-4 grid gap-3 sm:grid-cols-3">
+              {favoriteDevices.length ? favoriteDevices.map((device) => {
+                const deviceId = pickDeviceId(device);
+                const online = isOnline(device);
+                const busy = deviceCommandBusy === deviceId;
+                return (
+                  <button
+                    key={deviceId || String(device?.name || device?.label || Math.random())}
+                    type="button"
+                    onClick={() => toggleFavoriteDevice(device)}
+                    disabled={!deviceId || busy}
+                    className="rounded-[24px] border border-white/10 bg-black/22 p-4 text-left transition hover:bg-white/[0.065] active:scale-[0.99] disabled:opacity-60"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="grid h-10 w-10 place-items-center rounded-2xl bg-sky-300/10 text-sky-100"><Zap className="h-5 w-5" /></span>
+                      <span className={`h-2.5 w-2.5 rounded-full ${online ? "bg-emerald-300 shadow-[0_0_14px_rgba(95,227,161,0.7)]" : "bg-white/28"}`} />
+                    </div>
+                    <div className="mt-4 truncate text-sm font-semibold text-white">{device?.name || device?.label || device?.type || "Smart device"}</div>
+                    <div className="mt-1 text-xs text-white/42">{busy ? "Sending command…" : online ? "Tap to turn off" : "Tap to turn on"}</div>
+                  </button>
+                );
+              }) : (
+                <div className="sm:col-span-3 rounded-[24px] border border-white/10 bg-black/20 p-4 text-sm text-white/45">
+                  Favorite device controls will appear here when devices are assigned to this home.
+                </div>
+              )}
             </section>
 
             <section className="mt-4 grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
