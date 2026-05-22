@@ -4,7 +4,6 @@
 import { FaMicrophone, FaPaperPlane, FaStop } from "react-icons/fa";
 import { useEffect, useRef, useState } from "react";
 import { Capacitor } from "@capacitor/core";
-import { SpeechRecognition } from "@capacitor-community/speech-recognition";
 
 type VoiceState = "idle" | "recording" | "processing" | "review";
 type Intent = "default" | "light" | "ac" | "security" | "tv";
@@ -42,6 +41,7 @@ export default function ChatFooter({
   const activeEngineRef = useRef<"web" | "native" | null>(null);
   const finalizingRef = useRef(false);
   const nativeListenerHandlesRef = useRef<Array<{ remove: () => Promise<void> }>>([]);
+  const nativeSpeechRef = useRef<any>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -75,12 +75,26 @@ export default function ChatFooter({
     return "default";
   }
 
+  async function getNativeSpeechRecognition() {
+    if (!Capacitor.isNativePlatform()) return null;
+    if (nativeSpeechRef.current) return nativeSpeechRef.current;
+    try {
+      const dynamicImport = new Function("specifier", "return import(specifier)") as (specifier: string) => Promise<any>;
+      const mod = await dynamicImport("@capacitor-community/speech-recognition");
+      nativeSpeechRef.current = mod.SpeechRecognition;
+      return nativeSpeechRef.current;
+    } catch {
+      return null;
+    }
+  }
+
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
-      if (!Capacitor.isNativePlatform()) return;
+      const NativeSpeech = await getNativeSpeechRecognition();
+      if (!NativeSpeech) return;
       try {
-        const availability = await SpeechRecognition.available();
+        const availability = await NativeSpeech.available();
         if (!cancelled) setHasNativeSpeech(!!availability?.available);
       } catch {
         if (!cancelled) setHasNativeSpeech(false);
@@ -100,7 +114,7 @@ export default function ChatFooter({
       } catch {}
     }
     try {
-      await SpeechRecognition.removeAllListeners();
+      await nativeSpeechRef.current?.removeAllListeners?.();
     } catch {}
   }
 
@@ -323,10 +337,12 @@ export default function ChatFooter({
     if (shouldPreferNativeSpeech) {
       try {
         await cleanupNativeListeners();
-        const permissions = await SpeechRecognition.checkPermissions();
+        const NativeSpeech = await getNativeSpeechRecognition();
+        if (!NativeSpeech) throw new Error("native_speech_unavailable");
+        const permissions = await NativeSpeech.checkPermissions();
         const granted =
           permissions?.speechRecognition === "granted" ||
-          (await SpeechRecognition.requestPermissions()).speechRecognition === "granted";
+          (await NativeSpeech.requestPermissions()).speechRecognition === "granted";
         if (!granted) {
           setVoiceState("idle");
           stopAudio();
@@ -334,14 +350,14 @@ export default function ChatFooter({
           return;
         }
 
-        const p1 = await SpeechRecognition.addListener("partialResults", (data) => {
+        const p1 = await NativeSpeech.addListener("partialResults", (data: any) => {
           const transcript = String(data?.matches?.[0] || "").trim();
           if (!transcript) return;
           finalTranscriptRef.current = transcript;
           setLiveTranscript(transcript);
           setIntent(inferIntent(transcript));
         });
-        const p2 = await SpeechRecognition.addListener("listeningState", (state) => {
+        const p2 = await NativeSpeech.addListener("listeningState", (state: any) => {
           if (state?.status === "stopped") {
             if (voiceActionRef.current === "send") finalizeVoiceAndSend();
             else finalizeVoiceReview();
@@ -350,7 +366,7 @@ export default function ChatFooter({
         nativeListenerHandlesRef.current = [p1, p2];
 
         activeEngineRef.current = "native";
-        const started = await SpeechRecognition.start({
+        const started = await NativeSpeech.start({
           language: "en-US",
           maxResults: 1,
           partialResults: true,
@@ -383,7 +399,7 @@ export default function ChatFooter({
 
     try {
       if (activeEngineRef.current === "native") {
-        void SpeechRecognition.stop().catch(() => {
+        void nativeSpeechRef.current?.stop?.().catch(() => {
           if (mode === "send") finalizeVoiceAndSend();
           else finalizeVoiceReview();
         });

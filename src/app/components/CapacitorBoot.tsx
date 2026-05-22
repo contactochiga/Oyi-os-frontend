@@ -15,8 +15,9 @@ export default function CapacitorBoot() {
         if (!Capacitor.isNativePlatform()) return;
         if (Capacitor.getPlatform() !== "ios") return;
 
-        // Only on iOS native:
-        const kb = await import("@capacitor/keyboard");
+        // Only on iOS native. Use runtime import so web builds do not require the optional plugin.
+        const dynamicImport = new Function("specifier", "return import(specifier)") as (specifier: string) => Promise<any>;
+        const kb = await dynamicImport("@capacitor/keyboard");
         const { Keyboard, KeyboardResize } = kb;
 
         await Keyboard.setResizeMode({ mode: KeyboardResize.None });

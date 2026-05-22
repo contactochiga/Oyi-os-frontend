@@ -49,72 +49,63 @@ export default function ConsumerShell({
 
   return (
     <LayoutWrapper>
-      <main className="fixed inset-0 flex flex-col">
+      <main className="fixed inset-0 flex flex-col overflow-hidden bg-[#03070c] text-white">
+        <div className="oyi-ambient-bg" />
         <InviteSuggestionBridge />
         <NotificationsBridge />
+        <TopBar />
 
-        {/* ✅ Top bar (fixed + safe-area aware via your global setup) */}
-        <header className="fixed top-0 left-0 right-0 z-[80] h-16 bg-gray-900/80 backdrop-blur border-b border-gray-800">
-          <div className="max-w-3xl mx-auto h-full px-4 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              {showBack && (
-                <button
-                  type="button"
-                  onClick={handleBack}
-                  className="rounded-xl px-3 py-2 bg-white/10 hover:bg-white/15 active:scale-[0.99] transition text-white text-sm"
-                >
-                  ← Back
-                </button>
-              )}
-            </div>
+        {showBack ? (
+          <button
+            type="button"
+            onClick={handleBack}
+            className="fixed left-4 z-[82] rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs text-white/65 backdrop-blur-xl transition hover:bg-white/10 active:scale-[0.98]"
+            style={{ top: "calc(76px + var(--sat))" }}
+          >
+            Back
+          </button>
+        ) : null}
 
-            {/* Hamburger + bell live inside TopBar */}
-            <TopBar />
-          </div>
-        </header>
-
-        {/* ✅ Scrollable content area (NO footer here) */}
         <div
-          className={`flex-1 px-4 ${disableContentScroll ? "overflow-hidden" : "overflow-y-auto"}`}
+          className={`relative z-10 flex-1 px-4 ${disableContentScroll ? "overflow-hidden" : "overflow-y-auto"}`}
           style={{
-            // top space: header(64px) + safe-area + spacing
-            paddingTop: "calc(64px + var(--sat) + 16px)",
-            // bottom space: footer + safe-area + keyboard offset
+            paddingTop: showBack ? "calc(112px + var(--sat))" : "calc(78px + var(--sat))",
             paddingBottom: disableContentScroll
               ? "calc(88px + var(--sab))"
-              : "calc(88px + var(--sab) + var(--kb))",
+              : "calc(96px + var(--sab) + var(--kb))",
+            WebkitOverflowScrolling: "touch",
           }}
         >
-          <div className="max-w-3xl mx-auto">
+          <div className="mx-auto max-w-5xl">
             {(title || subtitle) && (
-              <div className="mb-4">
-                {title && (
-                  <div className="text-white text-lg font-semibold">{title}</div>
-                )}
-                {subtitle && (
-                  <div className="text-white/60 text-sm mt-1">{subtitle}</div>
-                )}
-              </div>
+              <section className="mb-4 rounded-[28px] border border-white/10 bg-white/[0.045] p-4 shadow-[0_20px_80px_rgba(0,0,0,0.25)] backdrop-blur-xl">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[10px] uppercase tracking-[0.24em] text-sky-200/65">Oyi Home</div>
+                    {title ? <h1 className="mt-1 text-xl font-semibold tracking-tight text-white">{title}</h1> : null}
+                    {subtitle ? <p className="mt-1 text-sm leading-6 text-white/55">{subtitle}</p> : null}
+                  </div>
+                  <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-300 shadow-[0_0_18px_rgba(95,227,161,0.8)]" />
+                </div>
+              </section>
             )}
 
             {(estate?.name || homeLabel) && (
-              <div className="mb-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                <div className="flex items-start justify-between gap-3">
+              <section className="mb-4 rounded-[24px] border border-white/10 bg-black/25 px-4 py-3 backdrop-blur-xl">
+                <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
-                      Active Home
-                    </div>
-                    <div className="mt-1 text-sm font-medium text-white truncate">
+                    <div className="text-[10px] uppercase tracking-[0.22em] text-white/35">Active Environment</div>
+                    <div className="mt-1 truncate text-sm font-medium text-white/88">
                       {String(home?.name || "").trim() || estate?.name || homeLabel || "Home not selected"}
                     </div>
                   </div>
                   {available_contexts.length > 1 ? (
-                    <div className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2.5 py-1 text-[10px] text-cyan-100">
+                    <div className="rounded-full border border-sky-400/20 bg-sky-400/10 px-2.5 py-1 text-[10px] text-sky-100">
                       Switch in menu
                     </div>
                   ) : null}
                 </div>
-              </div>
+              </section>
             )}
 
             {children}

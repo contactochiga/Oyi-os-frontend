@@ -37,14 +37,16 @@ export default function ConsumerModuleDashboard({
 }) {
   return (
     <ConsumerShell title={title} subtitle={subtitle} showBack backHref="/home">
-      <div className="space-y-4 pb-6">
-        <nav className="-mx-1 flex gap-4 overflow-x-auto border-b border-white/10 px-1 text-[13px] text-white/50">
+      <div className="space-y-4 pb-8">
+        <nav className="-mx-1 flex gap-2 overflow-x-auto px-1 text-[13px] text-white/48">
           {tabs.map((tab, index) => (
             <Link
               key={`${tab.label}-${tab.href}`}
               href={tab.href}
-              className={`shrink-0 border-b-2 pb-3 transition ${
-                index === 0 ? "border-violet-400 text-white" : "border-transparent hover:text-white"
+              className={`shrink-0 rounded-full border px-4 py-2 transition ${
+                index === 0
+                  ? "border-sky-300/20 bg-sky-300/10 text-sky-50 shadow-[0_0_24px_rgba(74,168,255,0.08)]"
+                  : "border-white/10 bg-white/[0.035] hover:bg-white/[0.07] hover:text-white/80"
               }`}
             >
               {tab.label}
@@ -52,21 +54,24 @@ export default function ConsumerModuleDashboard({
           ))}
         </nav>
 
-        <section className="relative overflow-hidden rounded-3xl border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(124,77,255,0.18),transparent_32%),linear-gradient(145deg,rgba(255,255,255,0.07),rgba(255,255,255,0.025))] p-5">
-          <div className="absolute inset-0 opacity-[0.08] [background-image:linear-gradient(to_right,rgba(255,255,255,0.16)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.16)_1px,transparent_1px)] [background-size:34px_34px]" />
-          <div className="relative">
-            <div className="text-[10px] uppercase tracking-[0.22em] text-violet-200/80">Oyi Consumer OS</div>
-            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-white">{title}</h1>
-            <p className="mt-3 text-sm leading-6 text-white/60">{subtitle}</p>
+        <section className="relative overflow-hidden rounded-[32px] border border-white/10 bg-[radial-gradient(circle_at_30%_0%,rgba(74,168,255,0.20),transparent_36%),linear-gradient(145deg,rgba(255,255,255,0.075),rgba(255,255,255,0.028))] p-5 shadow-[0_20px_90px_rgba(0,0,0,0.32)]">
+          <div className="absolute -right-24 -top-24 h-64 w-64 rounded-full bg-sky-300/10 blur-3xl" />
+          <div className="relative flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="text-[10px] uppercase tracking-[0.24em] text-sky-100/70">Living Intelligence OS</div>
+              <h1 className="mt-2 text-2xl font-semibold tracking-tight text-white">{title}</h1>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-white/58">{subtitle}</p>
+            </div>
+            <div className="oyi-orb h-16 w-16 shrink-0" aria-hidden="true" />
           </div>
         </section>
 
         <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {metrics.map((metric) => (
-            <article key={metric.label} className="rounded-2xl border border-white/10 bg-white/[0.055] p-4">
-              <div className="text-[11px] text-white/45">{metric.label}</div>
+            <article key={metric.label} className="rounded-[24px] border border-white/10 bg-black/24 p-4 backdrop-blur-xl">
+              <div className="text-[11px] text-white/42">{metric.label}</div>
               <div className="mt-2 text-xl font-semibold text-white">{metric.value}</div>
-              {metric.hint ? <div className="mt-1 text-[11px] text-white/35">{metric.hint}</div> : null}
+              {metric.hint ? <div className="mt-1 text-[11px] leading-4 text-white/34">{metric.hint}</div> : null}
             </article>
           ))}
         </section>
@@ -78,11 +83,11 @@ export default function ConsumerModuleDashboard({
               <Link
                 key={action.label}
                 href={action.href}
-                className="rounded-2xl border border-white/10 bg-black/20 p-4 transition active:scale-[0.99] hover:bg-white/[0.07]"
+                className="rounded-[24px] border border-white/10 bg-white/[0.045] p-4 transition hover:bg-white/[0.075] active:scale-[0.99]"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex gap-3">
-                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/10 text-violet-200">
+                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-sky-300/15 bg-sky-300/10 text-sky-100">
                       <Icon className="h-5 w-5" />
                     </span>
                     <div>
@@ -97,12 +102,12 @@ export default function ConsumerModuleDashboard({
           })}
         </section>
 
-        <section className="rounded-2xl border border-white/10 bg-white/[0.045] p-4">
-          <div className="text-sm font-semibold text-white">What this controls</div>
+        <section className="rounded-[24px] border border-white/10 bg-black/20 p-4">
+          <div className="text-sm font-semibold text-white">How Oyi uses this layer</div>
           <div className="mt-3 space-y-2">
             {notes.map((note) => (
               <div key={note} className="flex gap-2 text-sm leading-6 text-white/55">
-                <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-300" />
+                <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-sky-300 shadow-[0_0_12px_rgba(74,168,255,0.7)]" />
                 <span>{note}</span>
               </div>
             ))}

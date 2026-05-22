@@ -44,16 +44,17 @@ export default function ViewportKeyboardFix() {
     async function bindNativeKeyboard() {
       if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "ios") return;
       try {
-        const mod = await import("@capacitor/keyboard");
+        const dynamicImport = new Function("specifier", "return import(specifier)") as (specifier: string) => Promise<any>;
+        const mod = await dynamicImport("@capacitor/keyboard");
         const { Keyboard } = mod;
         keyboardListeners.push(
-          await Keyboard.addListener("keyboardWillShow", (info) => {
+          await Keyboard.addListener("keyboardWillShow", (info: any) => {
             latestNativeKb = Math.max(0, Number(info?.keyboardHeight || 0));
             root.style.setProperty("--kb", `${Math.round(latestNativeKb)}px`);
           })
         );
         keyboardListeners.push(
-          await Keyboard.addListener("keyboardDidShow", (info) => {
+          await Keyboard.addListener("keyboardDidShow", (info: any) => {
             latestNativeKb = Math.max(0, Number(info?.keyboardHeight || 0));
             root.style.setProperty("--kb", `${Math.round(latestNativeKb)}px`);
           })

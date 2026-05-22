@@ -1,10 +1,10 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { FiHome, FiCpu, FiCreditCard, FiUsers, FiGrid } from "react-icons/fi";
+import { FiActivity, FiHome, FiLayers, FiUser, FiUsers } from "react-icons/fi";
 
 type Item = {
-  key: "home" | "devices" | "wallet" | "community" | "services";
+  key: "home" | "spaces" | "activity" | "community" | "profile";
   label: string;
   href: string;
   icon: any;
@@ -12,14 +12,29 @@ type Item = {
 
 const ITEMS: Item[] = [
   { key: "home", label: "Home", href: "/home", icon: FiHome },
-  { key: "devices", label: "Devices", href: "/devices", icon: FiCpu },
-  { key: "wallet", label: "Wallet", href: "/wallet", icon: FiCreditCard },
+  { key: "spaces", label: "Spaces", href: "/rooms", icon: FiLayers },
+  { key: "activity", label: "Activity", href: "/notifications", icon: FiActivity },
   { key: "community", label: "Community", href: "/community", icon: FiUsers },
-  { key: "services", label: "Services", href: "/services", icon: FiGrid },
+  { key: "profile", label: "Profile", href: "/account", icon: FiUser },
 ];
 
 function isActive(pathname: string, href: string) {
   if (href === "/home") return pathname === "/home";
+  if (href === "/notifications") {
+    return ["/notifications", "/visitors", "/maintenance", "/messages"].some(
+      (route) => pathname === route || pathname.startsWith(`${route}/`)
+    );
+  }
+  if (href === "/rooms") {
+    return ["/rooms", "/room", "/devices", "/security", "/utilities"].some(
+      (route) => pathname === route || pathname.startsWith(`${route}/`)
+    );
+  }
+  if (href === "/account") {
+    return ["/account", "/wallet", "/services", "/settings", "/ai", "/reports"].some(
+      (route) => pathname === route || pathname.startsWith(`${route}/`)
+    );
+  }
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
@@ -29,11 +44,11 @@ export default function BottomNav() {
 
   return (
     <nav
-      className="fixed left-0 right-0 bottom-0 z-[95] border-t border-white/10 bg-[#06080e]/95 backdrop-blur-xl"
+      className="fixed inset-x-0 bottom-0 z-[95] border-t border-white/10 bg-[#03070c]/90 backdrop-blur-2xl"
       style={{ paddingBottom: "var(--sab)" }}
-      aria-label="Bottom Navigation"
+      aria-label="Oyi Home navigation"
     >
-      <div className="max-w-3xl mx-auto grid grid-cols-5 gap-1 px-2 py-2">
+      <div className="mx-auto grid max-w-3xl grid-cols-5 gap-1 px-2 py-2">
         {ITEMS.map((item) => {
           const active = isActive(pathname, item.href);
           const Icon = item.icon;
@@ -42,14 +57,22 @@ export default function BottomNav() {
               key={item.key}
               type="button"
               onClick={() => router.push(item.href)}
-              className={`rounded-xl px-2 py-2.5 text-center transition ${
-                active ? "bg-white/10 text-white" : "text-white/65 hover:bg-white/5"
+              className={`group rounded-2xl px-2 py-2.5 text-center transition active:scale-[0.98] ${
+                active
+                  ? "bg-[radial-gradient(circle_at_top,rgba(74,168,255,0.28),rgba(255,255,255,0.08))] text-white shadow-[0_0_24px_rgba(74,168,255,0.12)]"
+                  : "text-white/52 hover:bg-white/[0.06] hover:text-white/80"
               }`}
             >
               <div className="flex justify-center">
-                <Icon className="text-[18px]" />
+                <span
+                  className={`grid h-7 w-7 place-items-center rounded-full transition ${
+                    active ? "bg-sky-300/15 text-sky-100" : "text-white/58 group-hover:text-white/80"
+                  }`}
+                >
+                  <Icon className="text-[16px]" />
+                </span>
               </div>
-              <div className="mt-1 text-[11px] font-medium">{item.label}</div>
+              <div className="mt-1 text-[10px] font-medium tracking-tight">{item.label}</div>
             </button>
           );
         })}
