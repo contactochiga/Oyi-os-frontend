@@ -7,7 +7,7 @@ export default function ReportsModule() {
       title="Reports"
       subtitle="Resident reports for device health, visitor activity, wallet/service history and support status."
       tabs={[
-        { label: "Dashboard", href: "/reports" },
+        { label: "Overview", href: "/reports" },
         { label: "Device Health", href: "/devices?tab=reports" },
         { label: "Visitor Activity", href: "/visitors?tab=activity" },
         { label: "Wallet History", href: "/wallet" },

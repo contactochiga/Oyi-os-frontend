@@ -7,7 +7,7 @@ export default function SecurityAccessModule() {
       title="Security & Access"
       subtitle="Your home access, visitors, guest codes, camera access and door-control surface."
       tabs={[
-        { label: "Dashboard", href: "/security" },
+        { label: "Overview", href: "/security" },
         { label: "Visitors", href: "/visitors" },
         { label: "Guest Access", href: "/visitors?action=guest" },
         { label: "Door Controls", href: "/devices?category=access" },

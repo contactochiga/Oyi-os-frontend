@@ -7,7 +7,7 @@ export default function UtilitiesModule() {
       title="Utilities"
       subtitle="Resident utility dashboard for power, water, lighting, climate and home utility services."
       tabs={[
-        { label: "Dashboard", href: "/utilities" },
+        { label: "Overview", href: "/utilities" },
         { label: "Power", href: "/devices?category=power" },
         { label: "Water", href: "/devices?category=water" },
         { label: "Lighting", href: "/devices?category=lighting" },

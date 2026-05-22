@@ -54,18 +54,6 @@ export default function ConsumerModuleDashboard({
           ))}
         </nav>
 
-        <section className="oyi-glass relative overflow-hidden rounded-[24px] p-4">
-          <div className="absolute -right-24 -top-24 h-64 w-64 rounded-full bg-sky-300/10 blur-3xl" />
-          <div className="relative flex items-center justify-between gap-4">
-            <div className="min-w-0">
-              <div className="text-[10px] uppercase tracking-[0.24em] text-sky-100/70">Living Intelligence OS</div>
-              <h1 className="mt-1.5 text-xl font-semibold tracking-tight text-white">{title}</h1>
-              <p className="mt-2 max-w-2xl text-xs leading-5 text-white/54 sm:text-sm">{subtitle}</p>
-            </div>
-            <div className="oyi-orb h-12 w-12 shrink-0 sm:h-14 sm:w-14" aria-hidden="true" />
-          </div>
-        </section>
-
         <section className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
           {metrics.map((metric) => (
             <article key={metric.label} className="oyi-soft-card rounded-[20px] p-3.5">

@@ -7,7 +7,8 @@ import useActiveContext from "@/hooks/useActiveContext";
 import LayoutWrapper from "./LayoutWrapper";
 import InviteSuggestionBridge from "./InviteSuggestionBridge";
 import NotificationsBridge from "./NotificationsBridge";
-import TopBar from "./TopBar";
+import HamburgerMenu from "./HamburgerMenu";
+import NotificationBell from "./NotificationBell";
 import BottomNav from "./BottomNav";
 
 export default function ConsumerShell({
@@ -42,6 +43,13 @@ export default function ConsumerShell({
     return String(home?.name || "").trim() || null;
   }, [home]);
 
+  const environmentName = String(home?.name || "").trim() || estate?.name || homeLabel || "Home";
+  const contextLine = [
+    estate?.name ? String(estate.name) : null,
+    homeLabel && homeLabel !== environmentName ? homeLabel : null,
+    available_contexts.length > 1 ? "Multiple spaces" : "Resident scope",
+  ].filter(Boolean).join(" · ");
+
   function handleBack() {
     if (canGoBack) router.back();
     else router.push(backHref);
@@ -53,60 +61,54 @@ export default function ConsumerShell({
         <div className="oyi-ambient-bg" />
         <InviteSuggestionBridge />
         <NotificationsBridge />
-        <TopBar />
-
-        {showBack ? (
-          <button
-            type="button"
-            onClick={handleBack}
-            className="fixed left-4 z-[82] rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs text-white/65 backdrop-blur-xl transition hover:bg-white/10 active:scale-[0.98]"
-            style={{ top: "calc(76px + var(--sat))" }}
-          >
-            Back
-          </button>
-        ) : null}
 
         <div
           className={`relative z-10 flex-1 overflow-x-hidden px-3 sm:px-4 ${disableContentScroll ? "overflow-hidden" : "overflow-y-auto"}`}
           style={{
-            paddingTop: showBack ? "calc(104px + var(--sat))" : "calc(72px + var(--sat))",
+            paddingTop: "calc(12px + var(--sat))",
             paddingBottom: disableContentScroll
               ? "calc(78px + var(--sab))"
               : "calc(88px + var(--sab) + var(--kb))",
             WebkitOverflowScrolling: "touch",
           }}
         >
-          <div className="oyi-page-fade mx-auto w-full max-w-5xl">
-            {(title || subtitle) && (
-              <section className="oyi-glass mb-3 rounded-[22px] p-3 sm:p-3.5">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-[10px] uppercase tracking-[0.24em] text-sky-200/65">Oyi Home</div>
-                    {title ? <h1 className="mt-1 text-[17px] font-semibold tracking-tight text-white sm:text-xl">{title}</h1> : null}
-                    {subtitle ? <p className="mt-1 max-w-2xl text-xs leading-5 text-white/52 sm:text-sm">{subtitle}</p> : null}
+          <div className="oyi-living-page oyi-page-fade mx-auto w-full max-w-5xl">
+            <section className="oyi-context-layer mb-3 rounded-[24px] px-3.5 py-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-start gap-3">
+                  <div className="pt-0.5">
+                    <HamburgerMenu />
                   </div>
-                  <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-300 shadow-[0_0_18px_rgba(95,227,161,0.8)]" />
+                  <div className="min-w-0">
+                    <div className="truncate text-[11px] text-sky-100/58">{contextLine || "Living Intelligence OS"}</div>
+                    <h1 className="mt-1 text-[17px] font-semibold tracking-tight text-white sm:text-xl">
+                      {title || environmentName}
+                    </h1>
+                    <p className="mt-1 max-w-2xl text-xs leading-5 text-white/50">
+                      {subtitle || "Home stable · Perimeter secure · Quiet monitoring active"}
+                    </p>
+                    {showBack ? (
+                      <button
+                        type="button"
+                        onClick={handleBack}
+                        className="mt-2 rounded-full border border-white/10 bg-white/[0.045] px-2.5 py-1 text-[11px] text-white/55 transition hover:bg-white/[0.075]"
+                      >
+                        Back
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
-              </section>
-            )}
-
-            {(estate?.name || homeLabel) && (
-              <section className="mb-3 rounded-[18px] border border-white/10 bg-black/[0.18] px-3.5 py-2.5 backdrop-blur-xl">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-[10px] uppercase tracking-[0.22em] text-white/35">Active Environment</div>
-                    <div className="mt-1 truncate text-sm font-medium text-white/88">
-                      {String(home?.name || "").trim() || estate?.name || homeLabel || "Home not selected"}
-                    </div>
-                  </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <NotificationBell />
+                  <div className="oyi-orb h-10 w-10" aria-hidden="true" />
                   {available_contexts.length > 1 ? (
-                    <div className="rounded-full border border-sky-400/20 bg-sky-400/10 px-2.5 py-1 text-[10px] text-sky-100">
-                      Switch in menu
+                    <div className="hidden rounded-full border border-sky-400/20 bg-sky-400/10 px-2.5 py-1 text-[10px] text-sky-100 sm:block">
+                      Switch
                     </div>
                   ) : null}
                 </div>
-              </section>
-            )}
+              </div>
+            </section>
 
             {children}
           </div>

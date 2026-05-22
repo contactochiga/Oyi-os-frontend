@@ -7,7 +7,7 @@ export default function NotificationsModule() {
       title="Notifications"
       subtitle="Resident alerts, home updates, visitor notices, maintenance messages and estate announcements."
       tabs={[
-        { label: "Dashboard", href: "/notifications" },
+        { label: "Overview", href: "/notifications" },
         { label: "Visitors", href: "/visitors" },
         { label: "Maintenance", href: "/maintenance" },
         { label: "Community", href: "/community" },

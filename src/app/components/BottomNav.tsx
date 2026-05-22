@@ -44,11 +44,11 @@ export default function BottomNav() {
 
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-[95] border-t border-white/10 bg-[#03070c]/86 backdrop-blur-2xl"
+      className="fixed inset-x-0 bottom-0 z-[95] border-t border-white/[0.07] bg-[#03070c]/78 backdrop-blur-2xl"
       style={{ paddingBottom: "var(--sab)" }}
       aria-label="Oyi Home navigation"
     >
-      <div className="mx-auto grid max-w-3xl grid-cols-5 gap-1 px-2 py-1.5">
+      <div className="mx-auto grid max-w-3xl grid-cols-5 gap-1 px-2 py-1">
         {ITEMS.map((item) => {
           const active = isActive(pathname, item.href);
           const Icon = item.icon;
@@ -57,22 +57,22 @@ export default function BottomNav() {
               key={item.key}
               type="button"
               onClick={() => router.push(item.href)}
-              className={`group rounded-[18px] px-1.5 py-2 text-center transition active:scale-[0.98] ${
+              className={`group rounded-[16px] px-1.5 py-1.5 text-center transition active:scale-[0.98] ${
                 active
-                  ? "bg-[radial-gradient(circle_at_top,rgba(74,168,255,0.22),rgba(255,255,255,0.065))] text-white shadow-[0_0_20px_rgba(74,168,255,0.1)]"
+                  ? "bg-[radial-gradient(circle_at_top,rgba(74,168,255,0.16),rgba(255,255,255,0.048))] text-white shadow-[0_0_16px_rgba(74,168,255,0.08)]"
                   : "text-white/52 hover:bg-white/[0.06] hover:text-white/80"
               }`}
             >
               <div className="flex justify-center">
                 <span
-                  className={`grid h-6 w-6 place-items-center rounded-full transition ${
+                  className={`grid h-5 w-5 place-items-center rounded-full transition ${
                     active ? "bg-sky-300/15 text-sky-100" : "text-white/58 group-hover:text-white/80"
                   }`}
                 >
-                  <Icon className="text-[16px]" />
+                  <Icon className="text-[14px]" />
                 </span>
               </div>
-              <div className="mt-0.5 text-[9.5px] font-medium tracking-tight">{item.label}</div>
+              <div className="mt-0.5 text-[9px] font-medium tracking-tight">{item.label}</div>
             </button>
           );
         })}

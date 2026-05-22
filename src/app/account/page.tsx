@@ -7,7 +7,7 @@ export default function AccountModule() {
       title="Profile"
       subtitle="Wallet, services, access permissions, family members, account settings and resident preferences."
       tabs={[
-        { label: "Dashboard", href: "/account" },
+        { label: "Overview", href: "/account" },
         { label: "Wallet", href: "/wallet" },
         { label: "Services", href: "/services" },
         { label: "Access", href: "/visitors" },

@@ -7,7 +7,7 @@ export default function AiAutomationModule() {
       title="AI & Automation"
       subtitle="Oyi AI, voice commands, automations, smart scenes and resident-friendly home assistance."
       tabs={[
-        { label: "Dashboard", href: "/ai" },
+        { label: "Overview", href: "/ai" },
         { label: "Oyi AI", href: "/home?oyi=ai" },
         { label: "Voice", href: "/home?oyi=voice" },
         { label: "Automations", href: "/devices?tab=automations" },

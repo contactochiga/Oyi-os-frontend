@@ -24,7 +24,8 @@ import {
 import LayoutWrapper from "../components/LayoutWrapper";
 import InviteSuggestionBridge from "../components/InviteSuggestionBridge";
 import NotificationsBridge from "../components/NotificationsBridge";
-import TopBar from "../components/TopBar";
+import HamburgerMenu from "../components/HamburgerMenu";
+import NotificationBell from "../components/NotificationBell";
 import BottomNav from "../components/BottomNav";
 import AiConsoleSheet from "../components/ai-console/AiConsoleSheet";
 
@@ -305,26 +306,29 @@ export default function HomePage() {
     <LayoutWrapper>
       <main className="fixed inset-0 min-h-0 isolate overflow-hidden bg-[#03070c] text-white">
         <div className="oyi-ambient-bg" />
-        <div className="relative z-10">
+        <div className="pointer-events-none fixed inset-x-0 z-[80] px-3" style={{ top: "calc(12px + var(--sat))" }}>
           {canMountAuthedBridges ? (
             <>
               <InviteSuggestionBridge />
               <NotificationsBridge />
             </>
           ) : null}
-          <TopBar />
+          <div className="pointer-events-auto mx-auto flex max-w-5xl items-center justify-between">
+            <HamburgerMenu />
+            <NotificationBell />
+          </div>
         </div>
 
         <div
           className="absolute inset-x-0 overflow-y-auto px-4"
           style={{
             zIndex: 20,
-            top: "calc(64px + var(--sat))",
+            top: "calc(48px + var(--sat))",
             bottom: "calc(92px + var(--sab))",
             WebkitOverflowScrolling: "touch",
           }}
         >
-          <div className="oyi-page-fade mx-auto max-w-5xl py-3 sm:py-4">
+          <div className="oyi-living-page oyi-page-fade mx-auto max-w-5xl py-3 sm:py-4">
             <motion.section
               initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
