@@ -49,7 +49,7 @@ The watch bundle must stay prefixed by the parent app bundle ID. If the producti
 
 The app is simulator-safe. If no backend URL/token is configured, it runs in `Mock mode` and all UI states can still be tested:
 
-- `Talk` moves through Listening → Working → Success.
+- `Talk` moves through Listening -> Working -> Success.
 - `Alert` shows the alert state.
 - `More` opens quick actions.
 - Quick actions update state.
@@ -59,7 +59,7 @@ The app is simulator-safe. If no backend URL/token is configured, it runs in `Mo
 
 If no Apple Watch simulator appears:
 
-1. Open Xcode `Settings` → `Platforms`.
+1. Open Xcode `Settings` -> `Platforms`.
 2. Install the watchOS simulator runtime.
 3. Try the destination picker again.
 
@@ -83,44 +83,88 @@ OYI_WATCH_DEV_TOKEN=replace-with-temporary-dev-token
 
 Do not commit real tokens. The committed source contains no real token.
 
-## WatchConnectivity token handoff
+## WatchConnectivity session handoff
 
-Production auth should come from the logged-in Oyi Home iPhone app using WatchConnectivity.
+The Oyi Home iPhone app now includes an iOS native Capacitor plugin:
 
-The watch app already listens for application context or direct messages with these keys:
-
-```json
-{
-  "baseURL": "https://your-backend.example.com",
-  "bearerToken": "user-session-token"
-}
+```text
+ios/App/App/OyiWatchSyncPlugin.swift
 ```
 
-or:
+The web layer calls it through:
+
+```text
+src/services/watchSyncService.ts
+```
+
+Session handoff happens in two ways:
+
+1. Automatic sync after login/session restore when an auth token and user context are available.
+2. Manual sync from Oyi Home Settings -> Connected Systems -> Oyi Watch -> Sync Watch.
+
+The iPhone sends only safe runtime context:
 
 ```json
 {
   "backendBaseURL": "https://your-backend.example.com",
-  "authToken": "user-session-token"
+  "bearerToken": "user-session-token",
+  "userId": "user-id",
+  "homeId": "home-id",
+  "estateId": "estate-id",
+  "role": "resident"
 }
 ```
 
-The watch stores received values in Keychain and uses them for backend calls. The iPhone app still needs to send this payload after login/session refresh.
+Raw tokens are never logged by the sender. The watch receives application context or direct messages, stores the backend URL/token in Keychain, and uses them for the watch adapter calls.
+
+## Manual Sync Watch test
+
+1. Run Oyi Home on an iPhone simulator or real iPhone.
+2. Log in with a valid user.
+3. Open Settings.
+4. Use `Sync Watch` in the Oyi Watch card.
+5. On paired watch hardware, open Oyi Watch and trigger `Talk` or a quick action.
+6. Confirm backend calls reach the watch endpoints with the authenticated bearer token.
+
+Simulator-only testing can still use mock mode if the iPhone/watch pair is not available.
 
 ## Run on a real Apple Watch Series 9
 
 1. Pair the Apple Watch with your iPhone.
 2. Keep the watch unlocked and near the iPhone/Mac.
 3. Connect the iPhone to the Mac.
-4. In Xcode, sign the target with your Apple Developer Team.
+4. In Xcode, sign the parent iOS app and watch target with your Apple Developer Team.
 5. Confirm the parent app bundle is `com.ochiga.oyios`.
 6. Confirm the watch bundle is `com.ochiga.oyios.watch`.
 7. Select the paired Apple Watch destination.
 8. Press `Cmd + R`.
 
+## Visual direction
+
+The native SwiftUI UI follows the approved Oyi Watch direction:
+
+- orb-first
+- dark ambient surface
+- soft Oyi blue glow
+- compact glance states
+- voice-first interaction
+- confirmation-focused risky actions
+- no dashboard UI
+- no bottom navigation
+
+Implemented watch states:
+
+- Home Awareness
+- Listening
+- Working / Executing
+- Confirmation
+- Success
+- Alert
+- Quick Actions
+
 ## Remaining blockers
 
-- Add real app icons to `Assets.xcassets/AppIcon.appiconset`.
+- Add final App Store watch icons to `Assets.xcassets/AppIcon.appiconset`.
 - Set Apple Developer Team in Xcode signing settings for real device install.
-- Add the iPhone-side WatchConnectivity sender in the iOS app after login.
-- Configure APNs/watch notification categories for production alerts.
+- Validate WatchConnectivity handoff on a real paired iPhone + Apple Watch.
+- Configure APNs/watch notification categories for production visitor/security/environment alerts.

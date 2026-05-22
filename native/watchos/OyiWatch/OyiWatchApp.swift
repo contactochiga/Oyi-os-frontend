@@ -250,10 +250,11 @@ final class OyiWatchSession: ObservableObject {
             keychain.save(token, account: "bearerToken")
             didUpdate = true
         }
+        let updated = didUpdate
         await MainActor.run {
             isMockMode = !hasBackendConfiguration
             connectionLabel = hasBackendConfiguration ? "Connected" : "Mock mode"
-            if didUpdate {
+            if updated {
                 title = "Watch linked"
                 detail = "Session received"
                 state = .success
@@ -501,67 +502,85 @@ struct AwarenessView: View {
     @EnvironmentObject var session: OyiWatchSession
 
     var body: some View {
-        VStack(spacing: 8) {
-            HStack {
-                Text(session.connectionLabel)
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(session.isMockMode ? .orange : .green)
-                Spacer()
-                Button("More") { session.openQuickActions() }
-                    .font(.system(size: 10, weight: .semibold))
-                    .buttonStyle(.bordered)
-                    .controlSize(.mini)
+        WatchSurface {
+            WatchChrome(label: session.connectionLabel, isMock: session.isMockMode) {
+                session.openQuickActions()
             }
+            Spacer(minLength: 2)
             OyiOrb(state: session.state)
-            Text(session.title).font(.headline).foregroundStyle(.white).lineLimit(1)
-            Text(session.detail).font(.caption2).foregroundStyle(.secondary).multilineTextAlignment(.center).lineLimit(2)
-            HStack(spacing: 6) {
-                Button("Talk") { Task { await session.simulateVoiceCommand("show home status") } }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-                Button("Alert") { session.showAlertDemo() }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+            Text(session.title)
+                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .foregroundStyle(titleColor)
+                .lineLimit(1)
+            Text(session.detail)
+                .font(.system(size: 10, weight: .regular, design: .rounded))
+                .foregroundStyle(.white.opacity(0.62))
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+            if session.state == .listening {
+                OyiWaveform(color: .blue)
+                    .frame(height: 18)
+                    .padding(.top, 1)
+            } else {
+                HStack(spacing: 8) {
+                    WatchPillButton(title: "Talk", tint: .blue) { Task { await session.simulateVoiceCommand("turn off downstairs lights") } }
+                    WatchPillButton(title: "Alert", tint: .orange) { session.showAlertDemo() }
+                }
+                .padding(.top, 2)
             }
         }
-        .padding(.horizontal, 4)
-        .containerBackground(.black.gradient, for: .navigation)
+    }
+
+    private var titleColor: Color {
+        switch session.state {
+        case .success: return .green
+        case .alert, .failed: return .red
+        case .confirmationRequired: return .orange
+        default: return .blue
+        }
     }
 }
 
 struct QuickActionsView: View {
     @EnvironmentObject var session: OyiWatchSession
 
+    private let columns = [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)]
+
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Quick actions")
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                ForEach(session.actions) { action in
+        WatchSurface(alignment: .top) {
+            WatchChrome(label: "Actions", isMock: session.isMockMode) {
+                session.activePage = 0
+            }
+            LazyVGrid(columns: columns, spacing: 8) {
+                ForEach(session.actions.prefix(4)) { action in
                     Button {
                         Task { await session.run(action: action) }
                     } label: {
-                        HStack {
-                            ActionDot(risk: action.risk)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(action.label).font(.caption).foregroundStyle(.white)
-                                Text(action.confirmation_required == true ? "Confirm required" : action.risk.capitalized)
-                                    .font(.system(size: 9))
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
+                        VStack(spacing: 5) {
+                            ActionIcon(action: action)
+                            Text(shortLabel(action.label))
+                                .font(.system(size: 10, weight: .medium, design: .rounded))
+                                .foregroundStyle(.white)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.center)
+                            Text(action.confirmation_required == true ? "Confirm" : "Activate")
+                                .font(.system(size: 8, weight: .regular, design: .rounded))
+                                .foregroundStyle(.white.opacity(0.45))
                         }
+                        .frame(maxWidth: .infinity, minHeight: 64)
+                        .padding(6)
+                        .background(.white.opacity(action.enabled ? 0.07 : 0.03), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 18).stroke(.white.opacity(0.1), lineWidth: 1))
                     }
                     .buttonStyle(.plain)
-                    .padding(8)
-                    .background(.white.opacity(action.enabled ? 0.1 : 0.04), in: RoundedRectangle(cornerRadius: 14))
                     .disabled(!action.enabled)
                 }
             }
-            .padding(.horizontal, 4)
         }
-        .containerBackground(.black.gradient, for: .navigation)
+    }
+
+    private func shortLabel(_ label: String) -> String {
+        label.replacingOccurrences(of: "All lights off", with: "Lights Off")
     }
 }
 
@@ -569,27 +588,103 @@ struct ConfirmationView: View {
     @EnvironmentObject var session: OyiWatchSession
 
     var body: some View {
-        VStack(spacing: 8) {
+        WatchSurface {
+            WatchChrome(label: "Confirm", isMock: session.isMockMode) {
+                session.activePage = 0
+            }
+            Spacer(minLength: 2)
             OyiOrb(state: session.pendingConfirmation == nil ? session.state : .confirmationRequired)
-            Text(session.pendingConfirmation == nil ? "No confirmation" : "Confirm action?")
-                .font(.headline)
-                .foregroundStyle(.white)
-            Text(session.pendingConfirmation == nil ? "Nothing is pending" : session.detail)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+            Text(session.pendingConfirmation == nil ? "No confirmation" : confirmationTitle)
+                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .foregroundStyle(session.pendingConfirmation == nil ? .white : .orange)
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
-            HStack(spacing: 6) {
-                Button("Cancel") { Task { await session.cancel() } }
-                    .tint(.gray)
-                    .controlSize(.small)
-                Button("Confirm") { Task { await session.confirm() } }
-                    .tint(.blue)
-                    .controlSize(.small)
+            Text(session.pendingConfirmation == nil ? "Nothing is pending" : session.detail)
+                .font(.system(size: 10, weight: .regular, design: .rounded))
+                .foregroundStyle(.white.opacity(0.62))
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+            HStack(spacing: 8) {
+                WatchPillButton(title: "Cancel", tint: .gray) { Task { await session.cancel() } }
+                WatchPillButton(title: "Confirm", tint: .blue) { Task { await session.confirm() } }
             }
             .disabled(session.pendingConfirmation == nil)
+            .opacity(session.pendingConfirmation == nil ? 0.45 : 1)
         }
-        .containerBackground(.black.gradient, for: .navigation)
+    }
+
+    private var confirmationTitle: String {
+        if session.detail.lowercased().contains("gate") { return "Open gate?" }
+        if session.detail.lowercased().contains("security") { return "Arm security?" }
+        return "Run action?"
+    }
+}
+
+struct WatchSurface<Content: View>: View {
+    var alignment: VerticalAlignment = .center
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        VStack(spacing: 7, content: content)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment == .top ? .top : .center)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 5)
+            .background(
+                ZStack {
+                    Color.black
+                    RadialGradient(colors: [.blue.opacity(0.18), .clear], center: .top, startRadius: 8, endRadius: 120)
+                    LinearGradient(colors: [.white.opacity(0.035), .clear], startPoint: .topLeading, endPoint: .bottomTrailing)
+                }
+            )
+            .containerBackground(.black.gradient, for: .navigation)
+    }
+}
+
+struct WatchChrome: View {
+    let label: String
+    let isMock: Bool
+    let onMore: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top) {
+            Text(label)
+                .font(.system(size: 8, weight: .semibold, design: .rounded))
+                .foregroundStyle(isMock ? .orange.opacity(0.85) : .green.opacity(0.85))
+                .lineLimit(1)
+            Spacer()
+            Text("9:41")
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white)
+            Button(action: onMore) {
+                VStack(spacing: 2) {
+                    Circle().fill(.white.opacity(0.72)).frame(width: 3, height: 3)
+                    Circle().fill(.white.opacity(0.52)).frame(width: 3, height: 3)
+                    Circle().fill(.white.opacity(0.34)).frame(width: 3, height: 3)
+                }
+                .frame(width: 16, height: 20)
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(height: 18)
+    }
+}
+
+struct WatchPillButton: View {
+    let title: String
+    let tint: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white)
+                .frame(minWidth: 48)
+                .padding(.vertical, 7)
+                .background(tint.opacity(0.28), in: Capsule())
+                .overlay(Capsule().stroke(tint.opacity(0.5), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -598,48 +693,97 @@ struct OyiOrb: View {
     @State private var pulse = false
 
     var body: some View {
-        Circle()
-            .fill(.radialGradient(colors: colors, center: .center, startRadius: 4, endRadius: 58))
-            .frame(width: 76, height: 76)
-            .overlay(Circle().stroke(.white.opacity(0.16), lineWidth: 1))
-            .scaleEffect(pulse ? 1.04 : 0.98)
-            .shadow(color: colors.first?.opacity(0.38) ?? .blue.opacity(0.3), radius: state == .alert ? 24 : 16)
-            .overlay(Text("Oyi").font(.headline).foregroundStyle(.white))
-            .onAppear {
-                withAnimation(.easeInOut(duration: state == .alert ? 0.75 : 1.6).repeatForever(autoreverses: true)) {
-                    pulse = true
-                }
+        ZStack {
+            Circle()
+                .stroke(color.opacity(0.85), lineWidth: 2)
+                .frame(width: 76, height: 76)
+                .blur(radius: pulse ? 0.2 : 0.9)
+            Circle()
+                .fill(.radialGradient(colors: [color.opacity(0.5), .blue.opacity(0.11), .black], center: .center, startRadius: 3, endRadius: 43))
+                .frame(width: 68, height: 68)
+                .shadow(color: color.opacity(0.75), radius: state == .alert ? 18 : 13)
+            orbMark
+        }
+        .scaleEffect(pulse ? 1.04 : 0.98)
+        .onAppear {
+            withAnimation(.easeInOut(duration: state == .alert ? 0.72 : 1.45).repeatForever(autoreverses: true)) {
+                pulse = true
             }
+        }
     }
 
-    var colors: [Color] {
+    private var orbMark: some View {
+        Group {
+            switch state {
+            case .success:
+                Image(systemName: "checkmark")
+                    .font(.system(size: 28, weight: .semibold))
+            case .alert, .failed:
+                Image(systemName: "bell.fill")
+                    .font(.system(size: 24, weight: .semibold))
+            case .confirmationRequired:
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 23, weight: .semibold))
+            case .executing, .thinking:
+                Circle().stroke(.blue, style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [2, 6])).frame(width: 42, height: 42)
+            default:
+                Text("Oyi")
+                    .font(.system(size: 18, weight: .semibold, design: .rounded))
+            }
+        }
+        .foregroundStyle(.white)
+    }
+
+    private var color: Color {
         switch state {
-        case .alert, .failed: return [.red.opacity(0.8), .black]
-        case .success: return [.green.opacity(0.8), .black]
-        case .confirmationRequired: return [.orange.opacity(0.8), .black]
-        case .executing, .thinking: return [.blue.opacity(0.9), .black]
-        case .listening: return [.cyan.opacity(0.9), .blue.opacity(0.25), .black]
-        default: return [.cyan.opacity(0.75), .black]
+        case .alert, .failed: return .red
+        case .success: return .green
+        case .confirmationRequired: return .orange
+        case .executing, .thinking, .listening: return .blue
+        default: return .blue
         }
     }
 }
 
-struct ActionDot: View {
-    let risk: String
+struct ActionIcon: View {
+    let action: OyiQuickAction
 
     var body: some View {
         Circle()
-            .fill(color.opacity(0.22))
-            .frame(width: 24, height: 24)
-            .overlay(Circle().fill(color).frame(width: 7, height: 7))
+            .fill(color.opacity(0.2))
+            .frame(width: 30, height: 30)
+            .overlay(Image(systemName: symbol).font(.system(size: 14, weight: .semibold)).foregroundStyle(color))
+            .shadow(color: color.opacity(0.28), radius: 8)
     }
 
-    var color: Color {
-        switch risk {
-        case "medium": return .orange
-        case "high": return .red
-        case "low": return .blue
-        default: return .green
+    private var symbol: String {
+        let key = action.id.lowercased() + " " + action.label.lowercased()
+        if key.contains("light") { return "lightbulb.fill" }
+        if key.contains("security") { return "lock.shield.fill" }
+        if key.contains("movie") { return "movieclapper.fill" }
+        if key.contains("climate") { return "thermometer.medium" }
+        return "house.fill"
+    }
+
+    private var color: Color {
+        if action.confirmation_required == true || action.risk == "medium" { return .orange }
+        if action.risk == "low" { return .blue }
+        return .green
+    }
+}
+
+struct OyiWaveform: View {
+    let color: Color
+    private let bars: [CGFloat] = [0.2, 0.55, 0.3, 0.8, 0.42, 1, 0.35, 0.62, 0.28, 0.75, 0.38, 0.5]
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 2) {
+            ForEach(Array(bars.enumerated()), id: \.offset) { _, value in
+                Capsule()
+                    .fill(color.opacity(0.8))
+                    .frame(width: 2, height: max(4, value * 18))
+                    .shadow(color: color.opacity(0.45), radius: 3)
+            }
         }
     }
 }

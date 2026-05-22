@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { deleteCookie } from "@/lib/auth";
 import { useSessionStore, type SessionUser } from "@/store/useSessionStore";
 import API, { setApiAuthToken } from "@/services/api";
+import { syncOyiWatchSession } from "@/services/watchSyncService";
 
 type AuthContextType = {
   user: SessionUser | null;
@@ -47,6 +48,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     setApiAuthToken(token);
   }, [token]);
+
+  useEffect(() => {
+    if (!token || !user) return;
+    void syncOyiWatchSession(token, user).catch(() => {
+      // Watch sync is opportunistic; login/session restore must never fail because a watch is absent.
+    });
+  }, [token, user]);
 
   // ✅ refresh context on boot (fix iOS “no estate linked / no home selected”)
   useEffect(() => {
