@@ -33,6 +33,9 @@ export type AiChatResponse = {
   deviceId?: string;
 
   actions?: AiAction[];
+  tools?: Array<Record<string, any>>;
+  confirmations?: Array<Record<string, any>>;
+  safe_mode?: boolean;
 
   requiresConfirmation?: boolean;
 };
@@ -52,7 +55,11 @@ function normalize(resp: any): AiChatResponse {
 
     actions: Array.isArray(resp?.actions) ? resp.actions : [],
 
-    requiresConfirmation: Boolean(resp?.requiresConfirmation),
+    tools: Array.isArray(resp?.tools) ? resp.tools : [],
+    confirmations: Array.isArray(resp?.confirmations) ? resp.confirmations : [],
+    safe_mode: Boolean(resp?.safe_mode),
+
+    requiresConfirmation: Boolean(resp?.requiresConfirmation || (Array.isArray(resp?.confirmations) && resp.confirmations.length)),
   };
 }
 
@@ -70,5 +77,15 @@ export const aiService = {
         confidence: 0,
       };
     }
+  },
+
+  async confirm(ledgerId: string) {
+    const res = await API.post(`/ai/confirmations/${ledgerId}/confirm`);
+    return res.data;
+  },
+
+  async cancel(ledgerId: string) {
+    const res = await API.post(`/ai/confirmations/${ledgerId}/cancel`);
+    return res.data;
   },
 };

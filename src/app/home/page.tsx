@@ -7,7 +7,6 @@ import { motion } from "framer-motion";
 import {
   Bell,
   ChevronRight,
-  Home,
   Leaf,
   Lightbulb,
   Lock,
@@ -27,9 +26,7 @@ import NotificationsBridge from "../components/NotificationsBridge";
 import HamburgerMenu from "../components/HamburgerMenu";
 import NotificationBell from "../components/NotificationBell";
 import BottomNav from "../components/BottomNav";
-import AiConsoleSheet from "../components/ai-console/AiConsoleSheet";
 
-import { aiService } from "../../services/aiService";
 import { deviceService } from "../../services/deviceService";
 import { walletService } from "@/services/walletService";
 import { visitorService, type VisitorAccess } from "@/services/visitorService";
@@ -37,13 +34,6 @@ import { communityService, type CommunityPost } from "@/services/communityServic
 import { maintenanceService, type MaintenanceTicket } from "@/services/maintenanceService";
 import { listMyNotifications, type AppNotification } from "@/services/notificationsService";
 import useAuth from "../../hooks/useAuth";
-import { useEventStore } from "../../store/useEventStore";
-
-import type { ChatMessage, DeviceAction } from "../components/ai-console/types";
-import { nowMeta, createId } from "../components/ai-console/logic/ids";
-import { inferPanel } from "../components/ai-console/logic/panelInference";
-import { executeActions } from "../components/ai-console/logic/actions";
-import { getSuggestionTitle, isSamePanelInstance, shouldOpenPanel } from "../components/ai-console/logic/panelRules";
 
 function isOnline(device: any) {
   if (typeof device?.online === "boolean") return device.online;
@@ -105,13 +95,9 @@ function SpaceCard({ title, detail, tone, onClick }: { title: string; detail: st
 export default function HomePage() {
   const router = useRouter();
   const { user, token, ready } = useAuth() as any;
-  const { pushEvent } = useEventStore();
 
-  const [input, setInput] = useState("");
-  const [chatOpen, setChatOpen] = useState(false);
   const [assignedDevices, setAssignedDevices] = useState<any[]>([]);
   const [discoveryDevices, setDiscoveryDevices] = useState<any[]>([]);
-  const [devicesTab, setDevicesTab] = useState<"assigned" | "discovery">("assigned");
   const [devicesBusy, setDevicesBusy] = useState(false);
   const [devicesErr, setDevicesErr] = useState<string | null>(null);
   const [deviceCommandBusy, setDeviceCommandBusy] = useState<string | null>(null);
@@ -122,33 +108,10 @@ export default function HomePage() {
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [dashErr, setDashErr] = useState<string | null>(null);
   const [dashBusy, setDashBusy] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: "sys-1",
-      role: "assistant",
-      content: "I am here. Tell me what you want the home to check, open, or prepare.",
-      ...nowMeta(),
-      lastUpdated: Date.now(),
-    },
-  ]);
 
   const estateId = useMemo(
     () => (user as any)?.estate_id ?? (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null),
     [(user as any)?.estate_id]
-  );
-
-  const aiContextDevices = useMemo(
-    () =>
-      assignedDevices
-        .map((d: any) => ({
-          id: String(d?.id || d?.external_id || d?.externalId || d?.device_id || d?.dev_id || d?.uuid || ""),
-          name: String(d?.name || d?.label || d?.type || "Device"),
-          type: d?.type ? String(d.type) : null,
-          room: d?.room_name || d?.room || null,
-          status: d?.status || null,
-        }))
-        .filter((d) => d.id),
-    [assignedDevices]
   );
 
   async function refreshDevicePanelData() {
@@ -224,70 +187,6 @@ export default function HomePage() {
     }
   }
 
-  async function handleSend(text?: string) {
-    const command = (text ?? input).trim();
-    if (!command) return;
-    if (command === "__OPEN_INVITES__") return router.push("/invites");
-
-    setChatOpen(true);
-    setInput("");
-    const { time, stamp } = nowMeta();
-    const userMsgId = createId();
-    const pendingId = createId();
-    setMessages((prev) => [
-      ...prev,
-      { id: userMsgId, role: "user", content: command, time, lastUpdated: stamp },
-      { id: pendingId, role: "assistant", content: "", time, lastUpdated: stamp, pending: true },
-    ]);
-
-    try {
-      const resp: any = await aiService.chat(command, { estateId: estateId || null, devices: aiContextDevices });
-      const replyBase = resp?.reply || "I have received that. I did not execute anything sensitive without confirmation.";
-      const panel = inferPanel(resp?.panel, command);
-      const actions: DeviceAction[] | undefined = resp?.actions;
-      let actionFailure = "";
-      if (actions?.length) {
-        const results = await executeActions(actions);
-        if (results.some((r) => !r.ok)) actionFailure = " Some actions could not complete. Check permissions and device state.";
-      }
-      const reply = `${replyBase}${actionFailure}`;
-      const openPanel = shouldOpenPanel(command, panel);
-      const deviceId = resp?.deviceId;
-
-      setMessages((prev) =>
-        prev.map((m) => {
-          if (openPanel && panel && isSamePanelInstance(m, panel, deviceId) && m.id !== pendingId) {
-            return { ...m, panel: null, deviceId: undefined };
-          }
-          if (m.id === pendingId) {
-            return { ...m, pending: false, content: reply, panel: openPanel ? panel || null : null, deviceId, time, lastUpdated: stamp };
-          }
-          return m;
-        })
-      );
-
-      if (openPanel && panel === "devices") {
-        await refreshDevicePanelData();
-        setDevicesTab("assigned");
-      }
-      if (openPanel && panel) {
-        pushEvent({
-          id: createId(),
-          type: "info",
-          category: "assistant",
-          priority: "medium",
-          actionable: true,
-          title: getSuggestionTitle(panel),
-          message: command,
-          timestamp: stamp,
-          expiresAt: Date.now() + 60_000,
-        } as any);
-      }
-    } catch {
-      setMessages((prev) => prev.map((m) => (m.id === pendingId ? { ...m, pending: false, content: "Oyi could not reach the intelligence layer right now." } : m)));
-    }
-  }
-
   const totalDevices = assignedDevices.length;
   const activeDevices = assignedDevices.filter(isOnline).length;
   const activeVisitors = visitors.filter((v) => ["entered", "active", "approved"].includes(String(v.status || "").toLowerCase())).length;
@@ -355,7 +254,7 @@ export default function HomePage() {
                       {atmosphere}. {securityState}. Environment stable.
                     </p>
                   </div>
-                  <button type="button" onClick={() => setChatOpen(true)} className="oyi-orb h-[72px] w-[72px] shrink-0 active:scale-[0.98] sm:h-20 sm:w-20" aria-label="Open Oyi" />
+                  <button type="button" onClick={() => router.push("/ai")} className="oyi-orb h-[72px] w-[72px] shrink-0 active:scale-[0.98] sm:h-20 sm:w-20" aria-label="Open Oyi" />
                 </div>
                 <div className="relative mt-4 grid grid-cols-3 gap-2">
                   <div className="rounded-[18px] border border-white/10 bg-black/[0.16] p-2.5">
@@ -387,7 +286,7 @@ export default function HomePage() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => setChatOpen(true)}
+                  onClick={() => router.push("/ai")}
                   className="mt-4 w-full rounded-[22px] border border-sky-300/15 bg-sky-300/10 px-3.5 py-3 text-left transition hover:bg-sky-300/15 active:scale-[0.99]"
                 >
                   <div className="flex items-center gap-3">
@@ -467,7 +366,7 @@ export default function HomePage() {
                 </div>
                 <div className="mt-4 space-y-3">
                   {latestActivity.length ? latestActivity.map((item) => (
-                    <button key={item.id} type="button" onClick={() => router.push("/notifications")} className="w-full rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-left transition hover:bg-white/[0.06]">
+                    <button key={item.id} type="button" onClick={() => router.push("/activity")} className="w-full rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-left transition hover:bg-white/[0.06]">
                       <div className="flex items-start gap-3">
                         <span className="mt-0.5 grid h-8 w-8 place-items-center rounded-full bg-sky-300/10 text-sky-100"><Bell className="h-4 w-4" /></span>
                         <div className="min-w-0 flex-1">
@@ -508,22 +407,6 @@ export default function HomePage() {
             </section>
           </div>
         </div>
-
-        <AiConsoleSheet
-          open={chatOpen}
-          onClose={() => setChatOpen(false)}
-          input={input}
-          setInput={setInput}
-          messages={messages}
-          onSend={handleSend}
-          assignedDevices={assignedDevices}
-          discoveryDevices={discoveryDevices}
-          devicesTab={devicesTab}
-          setDevicesTab={setDevicesTab}
-          devicesBusy={devicesBusy}
-          devicesErr={devicesErr}
-          refreshDevicePanelData={refreshDevicePanelData}
-        />
 
         <BottomNav />
       </main>

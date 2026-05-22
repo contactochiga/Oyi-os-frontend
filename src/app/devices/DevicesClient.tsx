@@ -68,14 +68,6 @@ function statusDot(online: boolean | null) {
   return online ? "bg-emerald-500" : "bg-white/25";
 }
 
-function prettyState(state: any) {
-  try {
-    return JSON.stringify(state ?? {}, null, 2);
-  } catch {
-    return String(state ?? "");
-  }
-}
-
 function guessGangCount(device: AnyDevice, state: any): 1 | 2 | 3 {
   const raw = (device?.metadata?.raw ?? device?.metadata ?? device?.meta ?? {}) as any;
 
@@ -162,6 +154,38 @@ function inferFamily(d: AnyDevice) {
   return "generic";
 }
 
+function readPowerState(state: any): boolean | null {
+  if (!state) return null;
+  const v = state?.switch ?? state?.power ?? state?.on ?? null;
+  if (typeof v === "boolean") return v;
+  const keys = ["switch_1", "switch_2", "switch_3"];
+  for (const k of keys) {
+    if (typeof state?.[k] === "boolean" && state[k] === true) return true;
+  }
+  const hasAny = keys.some((k) => typeof state?.[k] === "boolean");
+  return hasAny ? false : null;
+}
+
+function isSimpleControlDevice(device: AnyDevice, state: any) {
+  const family = inferFamily(device);
+  const gangCount = guessGangCount(device, state);
+  return gangCount === 1 && ["light", "switch", "outlet", "generic"].includes(family);
+}
+
+function friendlyStateRows(device: AnyDevice, state: any) {
+  const online = isOnline(device);
+  const isOn = readPowerState(state);
+  const rows = [
+    { label: "Power", value: isOn === null ? "No state yet" : isOn ? "On" : "Off" },
+    { label: "Connection", value: online === null ? "Unknown" : online ? "Online" : "Offline" },
+    { label: "Room", value: pickRoomName(device) || "Unassigned" },
+    { label: "Device type", value: inferFamily(device).replace("_", " ") },
+  ];
+  const lastSeen = state?.last_seen || state?.lastSeen || device?.last_seen || device?.lastSeen || device?.updated_at;
+  if (lastSeen) rows.push({ label: "Last active", value: new Date(lastSeen).toLocaleString() });
+  return rows;
+}
+
 export default function DeviceClient() {
   const { user } = useAuth();
 
@@ -192,8 +216,7 @@ export default function DeviceClient() {
   // details modal
   const [stateOpen, setStateOpen] = useState(false);
   const [stateTitle, setStateTitle] = useState<string>("Device");
-  const [stateMeta, setStateMeta] = useState<{ id?: string; vendor?: string; external_id?: string } | null>(null);
-  const [stateBody, setStateBody] = useState<string>("{}");
+  const [stateMeta, setStateMeta] = useState<{ id?: string; vendor?: string; external_id?: string; rows?: Array<{ label: string; value: string }> } | null>(null);
   const [stateLoading, setStateLoading] = useState(false);
 
   // bottom sheet for controls
@@ -410,27 +433,7 @@ export default function DeviceClient() {
   }
 
   function currentIsOn(device: AnyDevice, state: any): boolean | null {
-    if (!state) return null;
-
-    // prefer dp-like switches first if present
-    const v =
-      state?.switch ??
-      state?.power ??
-      state?.on ??
-      null;
-
-    if (typeof v === "boolean") return v;
-
-    // fallback: if any switch_i is true, treat as "on"
-    const keys = ["switch_1", "switch_2", "switch_3"];
-    for (const k of keys) {
-      if (typeof state?.[k] === "boolean" && state[k] === true) return true;
-    }
-    // if we can see them but all false
-    const hasAny = keys.some((k) => typeof state?.[k] === "boolean");
-    if (hasAny) return false;
-
-    return null;
+    return readPowerState(state);
   }
 
   async function toggleGang(device: AnyDevice, gangIndex: number, next: boolean) {
@@ -573,7 +576,7 @@ export default function DeviceClient() {
     warmState(device);
   }
 
-  async function viewState(device: AnyDevice) {
+  async function viewFriendlyDetails(device: AnyDevice) {
     const dbId = pickDbId(device);
     if (!dbId) return;
 
@@ -581,32 +584,38 @@ export default function DeviceClient() {
     const ext = pickExternalId(device);
 
     setStateTitle(pickName(device));
-    setStateMeta({ id: sid, vendor: pickVendor(device), external_id: ext ? String(ext) : undefined });
-    setStateBody("{}");
+    setStateMeta({
+      id: sid,
+      vendor: pickVendor(device),
+      external_id: ext ? String(ext) : undefined,
+      rows: friendlyStateRows(device, stateMap[sid] || {}),
+    });
     setStateOpen(true);
     setStateLoading(true);
 
     try {
       const res = await deviceService.getDeviceState(sid);
       const state = (res as any)?.state ?? res ?? {};
-      setStateBody(prettyState(state));
       setStateMap((p) => ({ ...p, [sid]: state }));
+      setStateMeta({
+        id: sid,
+        vendor: pickVendor(device),
+        external_id: ext ? String(ext) : undefined,
+        rows: friendlyStateRows(device, state),
+      });
     } catch (e: any) {
-      setStateBody(
-        prettyState({
-          error: e?.response?.data?.error || e?.message || "Failed to load device state",
-        })
-      );
+      setStateMeta({
+        id: sid,
+        vendor: pickVendor(device),
+        external_id: ext ? String(ext) : undefined,
+        rows: [
+          ...friendlyStateRows(device, stateMap[sid] || {}),
+          { label: "State", value: e?.response?.data?.error || e?.message || "Unavailable" },
+        ],
+      });
     } finally {
       setStateLoading(false);
     }
-  }
-
-  function copy(text?: string | null) {
-    if (!text) return;
-    try {
-      navigator.clipboard.writeText(text);
-    } catch {}
   }
 
   const onlineCount = useMemo(
@@ -1265,6 +1274,7 @@ export default function DeviceClient() {
             const cached = sid ? stateMap[sid] : {};
             const gangCount = guessGangCount(d, cached);
             const nowOn = currentIsOn(d, cached);
+            const simpleControl = isSimpleControlDevice(d, cached);
 
             const busy = Boolean(sid && busyId === sid);
 
@@ -1272,7 +1282,7 @@ export default function DeviceClient() {
               <button
                 key={sid || String(pickExternalId(d) || name)}
                 type="button"
-                onClick={() => openSheet(d)}
+                onClick={() => (simpleControl ? toggleMasterPower(d) : openSheet(d))}
                 className="
                   text-left rounded-[22px]
                   border border-white/10
@@ -1338,7 +1348,7 @@ export default function DeviceClient() {
                 {/* bottom hint */}
                 <div className="mt-3 flex items-center justify-between">
                   <div className="text-[11px] text-white/35">
-                    {gangCount > 1 ? `${gangCount}-gang` : "1-gang"}
+                    {simpleControl ? "Tap to control" : gangCount > 1 ? `${gangCount}-gang controls` : "Open controls"}
                   </div>
 
                   <div className="text-[11px] text-white/35">
@@ -1387,7 +1397,7 @@ export default function DeviceClient() {
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => viewState(sheetDevice)}
+                      onClick={() => viewFriendlyDetails(sheetDevice)}
                       className="rounded-2xl px-3 py-2 text-sm bg-white/10 text-white hover:bg-white/15 border border-white/10 transition"
                     >
                       Details
@@ -1470,36 +1480,8 @@ export default function DeviceClient() {
                   <div className="min-w-0">
                     <div className="text-sm font-semibold text-white truncate">{stateTitle}</div>
                     <div className="text-xs text-white/40 mt-1 truncate">
-                      {stateMeta?.vendor ? `${stateMeta.vendor} • ` : ""}Live state snapshot
+                      {stateMeta?.vendor ? `${stateMeta.vendor} • ` : ""}Consumer device summary
                     </div>
-
-                    {stateMeta?.external_id ? (
-                      <div className="mt-2 flex items-center gap-2">
-                        <span className="text-[11px] text-white/35">External:</span>
-                        <span className="text-[11px] text-white/70 font-mono truncate">{stateMeta.external_id}</span>
-                        <button
-                          onClick={() => copy(stateMeta.external_id)}
-                          className="text-[11px] text-white/60 hover:text-white underline"
-                          type="button"
-                        >
-                          Copy
-                        </button>
-                      </div>
-                    ) : null}
-
-                    {stateMeta?.id ? (
-                      <div className="mt-1 flex items-center gap-2">
-                        <span className="text-[11px] text-white/35">Device:</span>
-                        <span className="text-[11px] text-white/70 font-mono truncate">{stateMeta.id}</span>
-                        <button
-                          onClick={() => copy(stateMeta.id)}
-                          className="text-[11px] text-white/60 hover:text-white underline"
-                          type="button"
-                        >
-                          Copy
-                        </button>
-                      </div>
-                    ) : null}
                   </div>
 
                   <button
@@ -1519,26 +1501,19 @@ export default function DeviceClient() {
                       Fetching state…
                     </div>
                   ) : (
-                    <>
-                      <div className="flex justify-end mb-2">
-                        <button
-                          onClick={() => copy(stateBody)}
-                          className="rounded-2xl px-3 py-2 text-sm bg-white/10 text-white hover:bg-white/15 border border-white/10 transition"
-                          type="button"
-                        >
-                          Copy JSON
-                        </button>
-                      </div>
-
-                      <pre className="text-xs text-white/80 whitespace-pre-wrap break-words font-mono">
-                        {stateBody}
-                      </pre>
-                    </>
+                    <div className="grid gap-2">
+                      {(stateMeta?.rows || []).map((row) => (
+                        <div key={row.label} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2.5">
+                          <span className="text-xs text-white/42">{row.label}</span>
+                          <span className="truncate text-right text-sm font-medium capitalize text-white/84">{row.value}</span>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
 
                 <div className="px-4 py-3 border-t border-white/10 text-[11px] text-white/40">
-                  Source: <span className="text-white/70">GET /devices/:deviceId/state</span>
+                  Developer payloads are hidden in the resident experience.
                 </div>
               </div>
             </div>
