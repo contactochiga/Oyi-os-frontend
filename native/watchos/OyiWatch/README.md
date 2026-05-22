@@ -36,16 +36,22 @@ If no Apple Watch simulator appears:
 1. Pair the Apple Watch with your iPhone.
 2. Connect the iPhone to the Mac.
 3. In Xcode, sign the target with your Apple Developer Team.
-4. Keep bundle id as placeholder or replace it:
+4. Use the watch bundle identifier:
 
 ```text
-com.oyi.watch
+com.ochiga.oyios.watch
 ```
 
 5. Select the paired Apple Watch destination.
 6. Press `Cmd + R`.
 
 ## Companion app bundle
+
+The parent iOS app bundle ID is:
+
+```text
+com.ochiga.oyios
+```
 
 The watch app declares its iPhone companion with:
 
@@ -55,10 +61,10 @@ WKCompanionAppBundleIdentifier = com.ochiga.oyios
 
 This value must match the production Oyi Home iPhone app bundle identifier before App Store submission. If the iOS app bundle changes, update `Info.plist` before archiving the watch app.
 
-The watch app bundle identifier remains:
+The watch app bundle identifier is:
 
 ```text
-com.oyi.watch
+com.ochiga.oyios.watch
 ```
 
 ## Backend connection
