@@ -93,20 +93,20 @@ export default function RoomsClient() {
   const totalDevices = rooms.reduce((sum, room) => sum + (Array.isArray(room.devices) ? room.devices.length : 0), 0);
 
   return (
-    <ConsumerShell title="Spaces" subtitle="Move through your home as an intelligent environment, not a device list.">
-      <div className="space-y-4 pb-8">
-        <section className="rounded-[30px] border border-white/10 bg-white/[0.045] p-5 backdrop-blur-xl">
-          <div className="flex items-start justify-between gap-3">
+    <ConsumerShell title="Spaces" subtitle="Spatial room awareness • calm resident controls">
+      <div className="space-y-3 pb-8">
+        <section className="oyi-glass rounded-[24px] p-4">
+          <div className="flex items-center justify-between gap-3">
             <div>
               <div className="text-[10px] uppercase tracking-[0.24em] text-sky-100/60">Spatial Layer</div>
-              <h1 className="mt-2 text-2xl font-semibold text-white">{rooms.length || "No"} connected space{rooms.length === 1 ? "" : "s"}</h1>
-              <p className="mt-2 text-sm leading-6 text-white/55">
-                {totalDevices ? `${totalDevices} device signals are mapped into this home.` : "Add spaces and bind devices when the home is ready."}
+              <h1 className="mt-1.5 text-xl font-semibold text-white">{rooms.length || "No"} connected space{rooms.length === 1 ? "" : "s"}</h1>
+              <p className="mt-1.5 text-xs leading-5 text-white/52 sm:text-sm">
+                {totalDevices ? `${totalDevices} device signals mapped.` : "Add spaces when the home is ready."}
               </p>
             </div>
-            <div className="oyi-orb h-16 w-16 shrink-0" aria-hidden="true" />
+            <div className="oyi-orb h-12 w-12 shrink-0 sm:h-14 sm:w-14" aria-hidden="true" />
           </div>
-          <div className="mt-4 flex gap-2">
+          <div className="mt-3 flex gap-2">
             <button type="button" onClick={loadRooms} disabled={loading || !homeId} className="rounded-full border border-white/10 bg-white/[0.06] px-4 py-2 text-sm text-white/75 transition hover:bg-white/10 disabled:opacity-50">
               <RefreshCw className="mr-2 inline h-4 w-4" /> {loading ? "Syncing" : "Refresh"}
             </button>
@@ -117,11 +117,11 @@ export default function RoomsClient() {
         </section>
 
         {err ? <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-200">{err}</div> : null}
-        {!homeId ? <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-4 text-sm text-white/60">No home selected yet. Join or choose a home to view spaces.</div> : null}
+        {!homeId ? <div className="rounded-[20px] border border-white/10 bg-white/[0.035] p-4 text-sm text-white/60">No home selected yet. Join or choose a home to view spaces.</div> : null}
 
-        {loading ? <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/55">Oyi is syncing spatial state…</div> : null}
+        {loading ? <div className="rounded-[20px] border border-white/10 bg-black/20 p-4 text-sm text-white/55">Syncing spatial state…</div> : null}
 
-        <section className="grid gap-3 sm:grid-cols-2">
+        <section className="grid gap-2.5 sm:grid-cols-2">
           {rooms.map((room, index) => {
             const devicesCount = Array.isArray(room.devices) ? room.devices.length : 0;
             const status = inferStatus(room);
@@ -131,18 +131,18 @@ export default function RoomsClient() {
                 key={room.id}
                 type="button"
                 onClick={() => router.push(`/room?roomId=${room.id}`)}
-                className="min-h-[164px] rounded-[28px] border border-white/10 bg-black/22 p-4 text-left transition hover:bg-white/[0.065] active:scale-[0.99]"
+                className="min-h-[136px] rounded-[22px] border border-white/10 bg-white/[0.032] p-3.5 text-left transition hover:bg-white/[0.065] active:scale-[0.99]"
               >
                 <div className="flex h-full flex-col justify-between">
                   <div>
                     <div className="flex items-center justify-between gap-3">
-                      <span className="grid h-10 w-10 place-items-center rounded-2xl border border-white/10 bg-white/[0.06] text-sky-100"><Icon className="h-5 w-5" /></span>
+                      <span className="grid h-9 w-9 place-items-center rounded-[16px] border border-white/10 bg-white/[0.06] text-sky-100"><Icon className="h-4 w-4" /></span>
                       <span className={`h-2.5 w-2.5 rounded-full ${statusTone(status)}`} />
                     </div>
-                    <h2 className="mt-4 truncate text-lg font-semibold text-white">{room.name || "Unnamed Space"}</h2>
-                    <p className="mt-2 text-sm leading-5 text-white/48">{statusCopy(status)} · {devicesCount} device signal{devicesCount === 1 ? "" : "s"}</p>
+                    <h2 className="mt-3 truncate text-base font-semibold text-white">{room.name || "Unnamed Space"}</h2>
+                    <p className="mt-1.5 text-xs leading-5 text-white/48">{statusCopy(status)} · {devicesCount} signal{devicesCount === 1 ? "" : "s"}</p>
                   </div>
-                  <div className="mt-4 text-xs text-white/35">Open spatial controls →</div>
+                  <div className="mt-3 text-[11px] text-white/35">Open controls →</div>
                 </div>
               </button>
             );
@@ -150,9 +150,9 @@ export default function RoomsClient() {
         </section>
 
         {!loading && rooms.length === 0 && homeId ? (
-          <div className="rounded-[28px] border border-white/10 bg-white/[0.04] p-8 text-center">
-            <div className="mx-auto oyi-orb h-16 w-16" aria-hidden="true" />
-            <h2 className="mt-5 text-lg font-semibold text-white">No spaces mapped yet.</h2>
+          <div className="rounded-[24px] border border-white/10 bg-white/[0.035] p-6 text-center">
+            <div className="mx-auto oyi-orb h-12 w-12" aria-hidden="true" />
+            <h2 className="mt-4 text-base font-semibold text-white">No spaces mapped yet.</h2>
             <p className="mt-2 text-sm leading-6 text-white/50">Start by adding the first room. Oyi will use spaces to understand context before showing controls.</p>
           </div>
         ) : null}

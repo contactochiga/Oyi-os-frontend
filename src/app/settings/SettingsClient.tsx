@@ -412,34 +412,37 @@ export default function SettingsClient() {
   }
 
   return (
-    <div className="relative z-10 max-w-3xl mx-auto py-2 space-y-10">
+    <div className="oyi-living-page relative z-10 mx-auto max-w-3xl space-y-4 py-2 pb-8">
       {/* PROFILE HEADER */}
-      <section ref={profileRef} className="text-center space-y-4">
+      <section ref={profileRef} className="oyi-environment-hero rounded-[24px] p-4 text-center">
         <div
-          className="w-20 h-20 rounded-full bg-[#16A34A] mx-auto flex items-center justify-center text-white text-2xl font-semibold"
+          className="oyi-orb mx-auto flex h-16 w-16 items-center justify-center rounded-full text-lg font-semibold text-white"
           aria-label="Profile avatar"
         >
           {initials}
         </div>
 
-        <div>
-          <div className="text-xl font-semibold text-white">{user?.username ?? "Resident"}</div>
-          <div className="text-sm text-gray-400">{user?.email}</div>
+        <div className="mt-4">
+          <div className="text-lg font-semibold text-white">{user?.username ?? "Resident"}</div>
+          <div className="text-xs text-white/45">{user?.email}</div>
+          <div className="mt-2 text-[11px] uppercase tracking-[0.2em] text-sky-100/55">
+            Identity aware • Home scoped • Permission protected
+          </div>
         </div>
 
         {/* ✅ FIX: Make button actually do something */}
         <button
           type="button"
           onClick={() => setEditOpen(true)}
-          className="px-4 py-2 rounded-full border border-gray-700 text-sm text-gray-300 hover:bg-gray-800 transition active:scale-[0.99]"
+          className="mt-4 rounded-full border border-white/10 bg-white/[0.06] px-4 py-2 text-xs text-white/70 transition hover:bg-white/10 active:scale-[0.99]"
         >
           Edit profile
         </button>
       </section>
 
       {/* ACCOUNT */}
-      <section className="space-y-4">
-        <h3 className="text-sm text-gray-400">Account</h3>
+      <section className="space-y-3">
+        <h3 className="text-[11px] uppercase tracking-[0.22em] text-white/38">Access & Family</h3>
 
         <Row label="Email" value={user?.email} />
         <Row label="Estate" value={accountContext.estate?.name ?? (user as any)?.estate_name ?? "—"} />
@@ -447,9 +450,9 @@ export default function SettingsClient() {
         <Row label="Role" value={user?.role ?? "resident"} />
       </section>
 
-      <section className="space-y-4">
-        <h3 className="text-sm text-gray-400">Smart Home Integration</h3>
-        <div className="rounded-xl border border-gray-800 bg-gray-900/70 p-4 space-y-3">
+      <section className="space-y-3">
+        <h3 className="text-[11px] uppercase tracking-[0.22em] text-white/38">Connected Systems</h3>
+        <div className="rounded-[22px] border border-white/10 bg-white/[0.035] p-4 space-y-3">
           <div className="text-xs text-gray-400">Manage partner integrations for full ecosystem control.</div>
 
           <div className="grid gap-2 sm:grid-cols-3">
@@ -537,10 +540,10 @@ export default function SettingsClient() {
         </div>
       </section>
 
-      <section className="space-y-4">
-        <h3 className="text-sm text-gray-400">Room Access Control</h3>
+      <section className="space-y-3">
+        <h3 className="text-[11px] uppercase tracking-[0.22em] text-white/38">Home Intelligence</h3>
 
-        <div className="rounded-xl border border-gray-800 bg-gray-900/70 p-4 space-y-3">
+        <div className="rounded-[22px] border border-white/10 bg-white/[0.035] p-4 space-y-3">
           <div className="text-xs text-gray-400">
             Manage who belongs to this home, then assign room-level control for devices, visitors, and finance visibility.
           </div>
@@ -754,23 +757,23 @@ export default function SettingsClient() {
       </section>
 
       {/* SETTINGS */}
-      <section ref={settingsRef} className="space-y-4">
-        <h3 className="text-sm text-gray-400">Preferences</h3>
+      <section ref={settingsRef} className="space-y-3">
+        <h3 className="text-[11px] uppercase tracking-[0.22em] text-white/38">Preferences</h3>
 
         <ToggleRow label="Notifications" value={notificationsEnabled} onChange={toggleNotifications} />
         <ToggleRow label="Voice assistant" value={voiceEnabled} onChange={toggleVoice} />
       </section>
 
       {/* SYSTEM */}
-      <section className="space-y-4">
-        <h3 className="text-sm text-gray-400">System</h3>
+      <section className="space-y-3">
+        <h3 className="text-[11px] uppercase tracking-[0.22em] text-white/38">Security & Privacy</h3>
 
         <Row label="App version" value="v1.0.0" />
         <Row label="Environment" value="Production" />
       </section>
 
       {/* LOGOUT */}
-      <section className="pt-6 border-t border-gray-800">
+      <section className="border-t border-white/10 pt-4">
         <button
           type="button"
           onClick={logout}
@@ -782,8 +785,8 @@ export default function SettingsClient() {
 
       {/* DELETE ACCOUNT */}
       <section className="space-y-3">
-        <h3 className="text-sm text-gray-400">Privacy</h3>
-        <div className="bg-[#1b0b0d] border border-red-900/60 rounded-xl p-4 space-y-3">
+        <h3 className="text-[11px] uppercase tracking-[0.22em] text-white/38">Account Safety</h3>
+        <div className="rounded-[20px] border border-red-900/40 bg-[#1b0b0d]/70 p-4 space-y-3">
           <div className="text-sm text-red-200 font-medium">Delete account</div>
           <p className="text-xs text-red-300/80">
             This permanently removes your account and cannot be undone.

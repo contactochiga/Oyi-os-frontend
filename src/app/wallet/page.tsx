@@ -158,7 +158,8 @@ export default function WalletPage() {
   const quickAmounts = [1000, 5000, 10000, 20000];
 
   return (
-    <ConsumerShell title="Wallet" subtitle="Fund account • pay dues">
+    <ConsumerShell title="Wallet" subtitle="Home operations finance • dues • utilities">
+      <div className="oyi-living-page space-y-3 pb-8">
       {info && (
         <div className="mb-4 rounded-2xl border border-cyan-500/20 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
           {info}
@@ -171,36 +172,35 @@ export default function WalletPage() {
         </div>
       )}
 
-      <div className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur p-5">
+      <section className="oyi-environment-hero rounded-[24px] p-4">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <div className="text-xs text-white/50">Available balance</div>
-            <div className="mt-2 text-[28px] leading-tight font-semibold text-white tracking-tight">
+            <div className="text-[10px] uppercase tracking-[0.24em] text-sky-100/60">Available Balance</div>
+            <div className="mt-2 text-2xl leading-tight font-semibold text-white tracking-tight">
               {formatMoney(balance, currency)}
             </div>
 
-            <div className="mt-2 text-xs text-white/40">
-              Currency: <span className="text-white/70">{currency}</span>
+            <div className="mt-2 text-xs text-white/45">
+              Estate dues, utility payments and service charges stay tied to this home.
             </div>
           </div>
 
           <button
             onClick={load}
             disabled={loading}
-            className="shrink-0 rounded-xl px-3 py-2 text-sm text-white/80 bg-white/10 hover:bg-white/15 border border-white/10 disabled:opacity-50 transition"
+            className="shrink-0 rounded-full px-3 py-1.5 text-xs text-white/80 bg-white/10 hover:bg-white/15 border border-white/10 disabled:opacity-50 transition"
             type="button"
           >
-            {loading ? "Refreshing…" : "Refresh"}
+            {loading ? "Syncing" : "Refresh"}
           </button>
         </div>
 
-        <div className="mt-5 border-t border-white/10" />
+        <div className="mt-4 border-t border-white/10" />
 
         <div className="mt-4">
           <div className="text-sm font-medium text-white">Fund wallet</div>
           <div className="mt-1 text-xs text-white/40">
-            Payments run through Paystack. You’ll be redirected to complete
-            payment.
+            Payments run securely through Paystack.
           </div>
 
           {/* Quick picks */}
@@ -218,7 +218,7 @@ export default function WalletPage() {
           </div>
 
           {/* Input + action */}
-          <div className="mt-4 flex items-center gap-2 rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+          <div className="mt-3 flex items-center gap-2 rounded-[18px] border border-white/10 bg-black/[0.16] px-3 py-2.5">
             <div className="text-xs text-white/40 pl-1">₦</div>
 
             <input
@@ -245,12 +245,12 @@ export default function WalletPage() {
             Balance updates via webhook. If funding returns to this page, verification runs automatically.
           </div>
         </div>
-      </div>
+      </section>
 
-      <div className="mt-4 rounded-3xl border border-white/10 bg-white/5 p-5">
+      <section className="rounded-[24px] border border-white/10 bg-white/[0.035] p-4">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <div className="text-sm font-medium text-white">Estate dues</div>
+            <div className="text-sm font-medium text-white">Home expenses</div>
             <div className="text-xs text-white/40 mt-1">
               Recent wallet-paid services tied to this account.
             </div>
@@ -259,7 +259,7 @@ export default function WalletPage() {
         <div className="mt-3 space-y-2">
           {servicePayments.length ? (
             servicePayments.map((p) => (
-              <div key={p.id} className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+              <div key={p.id} className="oyi-presence-row rounded-[16px] px-3 py-2">
                 <div className="text-xs text-white/90">
                   {(p.service_title || p.service_key.replaceAll("_", " "))} • {formatMoney(p.amount, currency)}
                 </div>
@@ -281,6 +281,7 @@ export default function WalletPage() {
             <div className="text-xs text-white/40">No service payments yet.</div>
           )}
         </div>
+      </section>
       </div>
     </ConsumerShell>
   );

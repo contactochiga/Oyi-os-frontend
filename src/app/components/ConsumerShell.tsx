@@ -67,23 +67,23 @@ export default function ConsumerShell({
         ) : null}
 
         <div
-          className={`relative z-10 flex-1 px-4 ${disableContentScroll ? "overflow-hidden" : "overflow-y-auto"}`}
+          className={`relative z-10 flex-1 overflow-x-hidden px-3 sm:px-4 ${disableContentScroll ? "overflow-hidden" : "overflow-y-auto"}`}
           style={{
-            paddingTop: showBack ? "calc(112px + var(--sat))" : "calc(78px + var(--sat))",
+            paddingTop: showBack ? "calc(104px + var(--sat))" : "calc(72px + var(--sat))",
             paddingBottom: disableContentScroll
-              ? "calc(88px + var(--sab))"
-              : "calc(96px + var(--sab) + var(--kb))",
+              ? "calc(78px + var(--sab))"
+              : "calc(88px + var(--sab) + var(--kb))",
             WebkitOverflowScrolling: "touch",
           }}
         >
-          <div className="mx-auto max-w-5xl">
+          <div className="oyi-page-fade mx-auto w-full max-w-5xl">
             {(title || subtitle) && (
-              <section className="mb-4 rounded-[28px] border border-white/10 bg-white/[0.045] p-4 shadow-[0_20px_80px_rgba(0,0,0,0.25)] backdrop-blur-xl">
+              <section className="oyi-glass mb-3 rounded-[22px] p-3 sm:p-3.5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="text-[10px] uppercase tracking-[0.24em] text-sky-200/65">Oyi Home</div>
-                    {title ? <h1 className="mt-1 text-xl font-semibold tracking-tight text-white">{title}</h1> : null}
-                    {subtitle ? <p className="mt-1 text-sm leading-6 text-white/55">{subtitle}</p> : null}
+                    {title ? <h1 className="mt-1 text-[17px] font-semibold tracking-tight text-white sm:text-xl">{title}</h1> : null}
+                    {subtitle ? <p className="mt-1 max-w-2xl text-xs leading-5 text-white/52 sm:text-sm">{subtitle}</p> : null}
                   </div>
                   <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-300 shadow-[0_0_18px_rgba(95,227,161,0.8)]" />
                 </div>
@@ -91,7 +91,7 @@ export default function ConsumerShell({
             )}
 
             {(estate?.name || homeLabel) && (
-              <section className="mb-4 rounded-[24px] border border-white/10 bg-black/25 px-4 py-3 backdrop-blur-xl">
+              <section className="mb-3 rounded-[18px] border border-white/10 bg-black/[0.18] px-3.5 py-2.5 backdrop-blur-xl">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <div className="text-[10px] uppercase tracking-[0.22em] text-white/35">Active Environment</div>

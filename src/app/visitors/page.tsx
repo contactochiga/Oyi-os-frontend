@@ -313,43 +313,45 @@ export default function VisitorsPage() {
   const pendingCount = vClampCount(pendingVisitors.length);
 
   return (
-    <ConsumerShell title="Visitor Access" subtitle="Create access • track entries">
+    <ConsumerShell title="Visitor Access" subtitle="Access intelligence • trusted arrivals • gate flow">
+      <div className="oyi-living-page space-y-3 pb-8">
       {err && (
         <div className="mb-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
           {err}
         </div>
       )}
 
-      {/* Header row */}
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="text-sm font-semibold text-white">Visitor Access</div>
-          <div className="text-xs text-white/45 mt-1">Manage visitor access for gated entry</div>
-        </div>
-
-        <div className="flex items-center gap-2">
+      <section className="oyi-environment-hero rounded-[24px] p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.24em] text-sky-100/60">Access Intelligence</div>
+            <h1 className="mt-1.5 text-xl font-semibold text-white">Gate flow is protected.</h1>
+            <p className="mt-1.5 text-xs leading-5 text-white/50">Create passes, approve arrivals and keep visitor access quiet and traceable.</p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
           <button
             onClick={loadMine}
             disabled={loading}
-            className="rounded-xl px-3 py-2 text-sm text-white/80 bg-white/10 hover:bg-white/15 border border-white/10 disabled:opacity-50 transition"
+            className="rounded-full px-3 py-1.5 text-xs text-white/80 bg-white/10 hover:bg-white/15 border border-white/10 disabled:opacity-50 transition"
             type="button"
           >
-            {loading ? "Refreshing…" : "Refresh"}
+            {loading ? "Syncing" : "Refresh"}
           </button>
 
           <button
             onClick={() => setShowAddDialog(true)}
-            className="rounded-xl px-3 py-2 text-sm bg-white text-black font-medium hover:opacity-90 transition inline-flex items-center gap-2"
+            className="rounded-full px-3 py-1.5 text-xs bg-white text-black font-medium hover:opacity-90 transition inline-flex items-center gap-2"
             type="button"
           >
             <UserPlus className="h-4 w-4" />
-            Add Visitor
+            Add
           </button>
+          </div>
         </div>
-      </div>
+      </section>
 
       {/* Stats */}
-      <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 gap-2">
         <Card>
           <CardHeader className="border-b-0 pb-2">
             <div className="text-[12px] text-white/60">Active Visitors</div>
@@ -445,7 +447,7 @@ export default function VisitorsPage() {
       )}
 
       {/* Tabs */}
-      <div className="mt-4 grid grid-cols-3 rounded-2xl border border-white/10 bg-white/5 p-1">
+      <div className="grid grid-cols-3 rounded-[18px] border border-white/10 bg-white/[0.035] p-1">
         <button
           type="button"
           onClick={() => setTab("all")}
@@ -483,7 +485,7 @@ export default function VisitorsPage() {
       </div>
 
       {/* List */}
-      <div className="mt-4">
+      <div>
         {loading && items.length === 0 ? (
           <div className="flex items-center gap-3 text-sm text-white/60">
             <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
@@ -731,6 +733,7 @@ export default function VisitorsPage() {
           </div>
         </div>
       )}
+      </div>
     </ConsumerShell>
   );
 }
@@ -745,13 +748,13 @@ function VisitorCard({ v, onOpen }: { v: VisitorAccess; onOpen: () => void }) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.18 }}
       onClick={onOpen}
-      className="w-full text-left rounded-2xl border border-white/10 bg-black/20 hover:bg-white/5 transition"
+      className="oyi-presence-row w-full text-left rounded-[20px] transition hover:bg-white/[0.055]"
       type="button"
     >
-      <div className="p-4">
+      <div className="p-3.5">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <div className={`h-10 w-10 rounded-2xl border flex items-center justify-center ${tone.iconBg}`}>
+            <div className={`h-9 w-9 rounded-[16px] border flex items-center justify-center ${tone.iconBg}`}>
               <span className="text-white font-semibold text-sm">{initials}</span>
             </div>
 
@@ -780,8 +783,8 @@ function VisitorCard({ v, onOpen }: { v: VisitorAccess; onOpen: () => void }) {
           </Pill>
         </div>
 
-        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/75">
+        <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+          <div className="rounded-[16px] border border-white/10 bg-white/[0.035] px-3 py-2 text-xs text-white/75">
             <span className="text-white/45">Code:</span>{" "}
             <span className="text-white font-mono">{v.access_code || "—"}</span>
             {v.expires_at ? (
@@ -789,7 +792,7 @@ function VisitorCard({ v, onOpen }: { v: VisitorAccess; onOpen: () => void }) {
             ) : null}
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/75">
+          <div className="rounded-[16px] border border-white/10 bg-white/[0.035] px-3 py-2 text-xs text-white/75">
             <span className="text-white/45">Purpose:</span>{" "}
             <span className="text-white/85">{v.purpose || "—"}</span>
           </div>

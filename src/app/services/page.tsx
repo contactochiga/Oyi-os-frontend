@@ -196,7 +196,8 @@ export default function ServicesPage() {
   }
 
   return (
-    <ConsumerShell title="Services" subtitle="Utility • fiber internet • estate charges">
+    <ConsumerShell title="Services" subtitle="Managed living • utilities • home support">
+      <div className="oyi-living-page space-y-3 pb-8">
       {err ? <div className="mb-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">{err}</div> : null}
       {msg ? <div className="mb-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">{msg}</div> : null}
       {configsFallback ? (
@@ -205,7 +206,18 @@ export default function ServicesPage() {
         </div>
       ) : null}
 
-      <div className="grid grid-cols-2 gap-3">
+      <section className="oyi-environment-hero rounded-[24px] p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.24em] text-sky-100/60">Concierge Services</div>
+            <h1 className="mt-1.5 text-xl font-semibold text-white">Managed living, simplified.</h1>
+            <p className="mt-1.5 text-xs leading-5 text-white/50">Utilities, internet, dues and facility services stay curated for this home.</p>
+          </div>
+          <div className="oyi-orb h-12 w-12 shrink-0" aria-hidden="true" />
+        </div>
+      </section>
+
+      <div className="grid grid-cols-2 gap-2.5">
         {SERVICE_ITEMS.map((item) => {
           const merged = mergedServiceItem(item, configs);
           const Icon = merged.icon;
@@ -221,23 +233,23 @@ export default function ServicesPage() {
               key={merged.key}
               type="button"
               onClick={() => merged.active && setActiveServiceKey(merged.key)}
-              className={`text-left rounded-3xl border p-4 transition ${merged.active ? "border-white/10 bg-white/5 hover:bg-white/10" : "border-white/5 bg-white/[0.03] opacity-60"}`}
+              className={`text-left rounded-[22px] border p-3.5 transition ${merged.active ? "border-white/10 bg-white/[0.035] hover:bg-white/[0.065]" : "border-white/5 bg-white/[0.03] opacity-60"}`}
             >
               <div className="flex items-center justify-between gap-2">
-                <div className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl transition ${iconTone}`}>
+                <div className={`inline-flex h-9 w-9 items-center justify-center rounded-[16px] transition ${iconTone}`}>
                   <Icon className="h-4 w-4" />
                 </div>
                 {!merged.active ? <span className="rounded-full border border-zinc-500/35 bg-zinc-500/10 px-2 py-0.5 text-[10px] text-zinc-300">Disabled</span> : null}
               </div>
               <div className="mt-3 text-sm font-semibold text-white">{merged.title}</div>
-              <div className="mt-1 text-xs text-white/50">{merged.subtitle}</div>
+              <div className="mt-1 text-[11px] leading-4 text-white/48">{merged.subtitle}</div>
             </button>
           );
         })}
       </div>
 
       {!activeService ? (
-        <div className="mt-4 rounded-3xl border border-dashed border-white/15 bg-white/5 p-4 text-sm text-white/60">Select a service card to open payment.</div>
+        <div className="rounded-[22px] border border-dashed border-white/15 bg-white/[0.035] p-4 text-sm text-white/52">Select a service card to open payment.</div>
       ) : null}
 
       {activeService ? (
@@ -374,6 +386,7 @@ export default function ServicesPage() {
           </div>
         </div>
       ) : null}
+      </div>
     </ConsumerShell>
   );
 }

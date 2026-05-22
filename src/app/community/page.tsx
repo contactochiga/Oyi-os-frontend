@@ -701,7 +701,8 @@ export default function CommunityPage() {
   const listForTab = tab === "announcements" ? announcements : items;
 
   return (
-    <ConsumerShell title="Community" subtitle="Estate updates • announcements • resident posts">
+    <ConsumerShell title="Community" subtitle="Residential updates • concierge notices • quiet estate signal">
+      <div className="oyi-living-page space-y-3 pb-8">
       <LiveBroadcastComposer
         open={liveComposerOpen}
         estateId={estateId ? String(estateId) : null}
@@ -718,6 +719,32 @@ export default function CommunityPage() {
           void load();
         }}
       />
+      <section className="oyi-environment-hero rounded-[24px] p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.24em] text-sky-100/60">Estate Presence</div>
+            <h1 className="mt-1.5 text-xl font-semibold text-white">Community is calm.</h1>
+            <p className="mt-1.5 text-xs leading-5 text-white/50">
+              Announcements, services, deliveries and resident interactions stay organized here.
+            </p>
+          </div>
+          <div className="oyi-orb h-12 w-12 shrink-0" aria-hidden="true" />
+        </div>
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          <div className="rounded-[16px] border border-white/10 bg-black/[0.16] px-3 py-2">
+            <div className="text-[10px] text-white/36">Updates</div>
+            <div className="mt-1 text-sm font-semibold text-white">{items.length}</div>
+          </div>
+          <div className="rounded-[16px] border border-white/10 bg-black/[0.16] px-3 py-2">
+            <div className="text-[10px] text-white/36">Notices</div>
+            <div className="mt-1 text-sm font-semibold text-white">{announcements.length}</div>
+          </div>
+          <div className="rounded-[16px] border border-white/10 bg-black/[0.16] px-3 py-2">
+            <div className="text-[10px] text-white/36">Unread</div>
+            <div className="mt-1 text-sm font-semibold text-white">{unreadCount}</div>
+          </div>
+        </div>
+      </section>
       {/* Tabs */}
       <div>
         <div className="grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-white/5 p-2">
@@ -1139,6 +1166,7 @@ export default function CommunityPage() {
           })}
         </div>
       )}
+      </div>
     </ConsumerShell>
   );
 }

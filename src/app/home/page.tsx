@@ -59,7 +59,7 @@ function timeLabel(iso?: string | null) {
 
 function AmbientPanel({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <section className={`rounded-[28px] border border-white/10 bg-white/[0.045] shadow-[0_18px_70px_rgba(0,0,0,0.28)] backdrop-blur-xl ${className}`}>
+    <section className={`oyi-glass rounded-[24px] ${className}`}>
       {children}
     </section>
   );
@@ -70,11 +70,11 @@ function QuickControl({ label, icon, onClick }: { label: string; icon: React.Rea
     <button
       type="button"
       onClick={onClick}
-      className="shrink-0 rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-left text-white/80 transition hover:bg-white/[0.07] active:scale-[0.98]"
+      className="shrink-0 rounded-[18px] border border-white/10 bg-white/[0.035] px-3.5 py-2.5 text-left text-white/76 transition hover:bg-white/[0.07] active:scale-[0.98]"
     >
       <div className="flex items-center gap-2">
-        <span className="grid h-8 w-8 place-items-center rounded-full bg-sky-300/10 text-sky-100">{icon}</span>
-        <span className="text-sm font-medium">{label}</span>
+        <span className="grid h-7 w-7 place-items-center rounded-full bg-sky-300/10 text-sky-100">{icon}</span>
+        <span className="text-xs font-medium">{label}</span>
       </div>
     </button>
   );
@@ -85,7 +85,7 @@ function SpaceCard({ title, detail, tone, onClick }: { title: string; detail: st
     <button
       type="button"
       onClick={onClick}
-      className="group min-h-[132px] rounded-[26px] border border-white/10 bg-black/20 p-4 text-left transition hover:bg-white/[0.065] active:scale-[0.99]"
+      className="group min-h-[118px] rounded-[22px] border border-white/10 bg-white/[0.032] p-3.5 text-left transition hover:bg-white/[0.065] active:scale-[0.99]"
     >
       <div className="flex h-full flex-col justify-between">
         <div>
@@ -93,9 +93,9 @@ function SpaceCard({ title, detail, tone, onClick }: { title: string; detail: st
             <span className={`h-2.5 w-2.5 rounded-full ${tone}`} />
             <ChevronRight className="h-4 w-4 text-white/28 transition group-hover:text-white/60" />
           </div>
-          <h3 className="mt-4 text-base font-semibold text-white">{title}</h3>
+          <h3 className="mt-3 text-sm font-semibold text-white">{title}</h3>
         </div>
-        <p className="mt-3 text-xs leading-5 text-white/48">{detail}</p>
+        <p className="mt-2 text-[11px] leading-4 text-white/45">{detail}</p>
       </div>
     </button>
   );
@@ -324,45 +324,56 @@ export default function HomePage() {
             WebkitOverflowScrolling: "touch",
           }}
         >
-          <div className="mx-auto max-w-5xl py-5">
+          <div className="oyi-page-fade mx-auto max-w-5xl py-3 sm:py-4">
             <motion.section
               initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
-              className="grid gap-4 lg:grid-cols-[1.05fr_0.95fr]"
+              className="grid gap-3 lg:grid-cols-[1.1fr_0.9fr]"
             >
-              <AmbientPanel className="relative overflow-hidden p-5">
+              <AmbientPanel className="relative overflow-hidden p-4 sm:p-5">
                 <div className="absolute -right-20 -top-20 h-52 w-52 rounded-full bg-sky-400/10 blur-3xl" />
-                <div className="relative flex items-start justify-between gap-4">
+                <div className="relative">
+                  <div className="mb-4">
+                    <div className="text-[10px] uppercase tracking-[0.26em] text-sky-100/55">
+                      {String((user as any)?.estate_name || "Paradise 2 Residence")}
+                    </div>
+                    <div className="mt-1 text-sm text-white/70">Evening calm • Secure • 24°</div>
+                    <div className="mt-1 text-xs text-white/42">
+                      {activeVisitors || visitors.length} visitor event{activeVisitors === 1 ? "" : "s"} today
+                    </div>
+                  </div>
+                </div>
+                <div className="relative flex items-center justify-between gap-4">
                   <div className="min-w-0">
                     <div className="text-[10px] uppercase tracking-[0.26em] text-sky-100/55">Living Intelligence OS</div>
-                    <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">Home is {homeState.toLowerCase()}.</h1>
-                    <p className="mt-3 max-w-sm text-sm leading-6 text-white/56">
-                      {atmosphere}. {securityState}. Oyi is quietly watching the environment and will surface what matters.
+                    <h1 className="mt-2 text-2xl font-semibold tracking-tight text-white sm:text-[28px]">Home is {homeState.toLowerCase()}.</h1>
+                    <p className="mt-2 max-w-sm text-sm leading-5 text-white/54">
+                      {atmosphere}. {securityState}. Environment stable.
                     </p>
                   </div>
-                  <button type="button" onClick={() => setChatOpen(true)} className="oyi-orb h-24 w-24 shrink-0 active:scale-[0.98]" aria-label="Open Oyi" />
+                  <button type="button" onClick={() => setChatOpen(true)} className="oyi-orb h-[72px] w-[72px] shrink-0 active:scale-[0.98] sm:h-20 sm:w-20" aria-label="Open Oyi" />
                 </div>
-                <div className="relative mt-5 grid grid-cols-3 gap-2">
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
+                <div className="relative mt-4 grid grid-cols-3 gap-2">
+                  <div className="rounded-[18px] border border-white/10 bg-black/[0.16] p-2.5">
                     <div className="text-[10px] text-white/40">Atmosphere</div>
                     <div className="mt-1 text-sm font-semibold text-white">{homeState}</div>
                   </div>
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
+                  <div className="rounded-[18px] border border-white/10 bg-black/[0.16] p-2.5">
                     <div className="text-[10px] text-white/40">Security</div>
                     <div className="mt-1 text-sm font-semibold text-white">Protected</div>
                   </div>
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
+                  <div className="rounded-[18px] border border-white/10 bg-black/[0.16] p-2.5">
                     <div className="text-[10px] text-white/40">Wallet</div>
                     <div className="mt-1 text-sm font-semibold text-white">₦{Number(walletBalance || 0).toLocaleString()}</div>
                   </div>
                 </div>
               </AmbientPanel>
 
-              <AmbientPanel className="p-5">
+              <AmbientPanel className="p-4 sm:p-5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <div className="text-[10px] uppercase tracking-[0.22em] text-white/38">Ambient AI</div>
-                    <h2 className="mt-1 text-lg font-semibold text-white">Oyi is listening through context.</h2>
+                    <h2 className="mt-1 text-base font-semibold text-white">Quiet monitoring active.</h2>
                   </div>
                   <div className="oyi-wave-line" aria-hidden="true">
                     {Array.from({ length: 16 }).map((_, index) => (
@@ -373,13 +384,13 @@ export default function HomePage() {
                 <button
                   type="button"
                   onClick={() => setChatOpen(true)}
-                  className="mt-5 w-full rounded-3xl border border-sky-300/15 bg-sky-300/10 px-4 py-4 text-left transition hover:bg-sky-300/15 active:scale-[0.99]"
+                  className="mt-4 w-full rounded-[22px] border border-sky-300/15 bg-sky-300/10 px-3.5 py-3 text-left transition hover:bg-sky-300/15 active:scale-[0.99]"
                 >
                   <div className="flex items-center gap-3">
                     <Sparkles className="h-5 w-5 text-sky-100" />
                     <div>
-                      <div className="text-sm font-semibold text-white">Ask Oyi to check, open, summarize, or prepare.</div>
-                      <div className="mt-1 text-xs text-white/45">Sensitive actions still require permission and confirmation.</div>
+                      <div className="text-sm font-semibold text-white">Ask Oyi</div>
+                      <div className="mt-1 text-xs text-white/45">Check, open, summarize, or prepare.</div>
                     </div>
                   </div>
                 </button>
@@ -387,7 +398,7 @@ export default function HomePage() {
               </AmbientPanel>
             </motion.section>
 
-            <section className="mt-4 flex gap-2 overflow-x-auto pb-1">
+            <section className="mt-3 flex gap-2 overflow-x-auto pb-1">
               <QuickControl label="Lights" icon={<Lightbulb className="h-4 w-4" />} onClick={() => router.push("/devices?category=lighting")} />
               <QuickControl label="Climate" icon={<Thermometer className="h-4 w-4" />} onClick={() => router.push("/utilities")} />
               <QuickControl label="Security" icon={<Lock className="h-4 w-4" />} onClick={() => router.push("/security")} />
@@ -395,7 +406,7 @@ export default function HomePage() {
               <QuickControl label="Energy" icon={<Zap className="h-4 w-4" />} onClick={() => router.push("/utilities")} />
             </section>
 
-            <section className="mt-4 grid gap-3 sm:grid-cols-3">
+            <section className="mt-3 grid gap-2.5 sm:grid-cols-3">
               {favoriteDevices.length ? favoriteDevices.map((device) => {
                 const deviceId = pickDeviceId(device);
                 const online = isOnline(device);
@@ -406,7 +417,7 @@ export default function HomePage() {
                     type="button"
                     onClick={() => toggleFavoriteDevice(device)}
                     disabled={!deviceId || busy}
-                    className="rounded-[24px] border border-white/10 bg-black/22 p-4 text-left transition hover:bg-white/[0.065] active:scale-[0.99] disabled:opacity-60"
+                    className="rounded-[22px] border border-white/10 bg-white/[0.032] p-3.5 text-left transition hover:bg-white/[0.065] active:scale-[0.99] disabled:opacity-60"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <span className="grid h-10 w-10 place-items-center rounded-2xl bg-sky-300/10 text-sky-100"><Zap className="h-5 w-5" /></span>
@@ -423,8 +434,8 @@ export default function HomePage() {
               )}
             </section>
 
-            <section className="mt-4 grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
-              <AmbientPanel className="p-5">
+            <section className="mt-3 grid gap-3 lg:grid-cols-[1.25fr_0.75fr]">
+              <AmbientPanel className="p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <div className="text-[10px] uppercase tracking-[0.22em] text-white/38">Spatial Layer</div>
@@ -432,7 +443,7 @@ export default function HomePage() {
                   </div>
                   <button type="button" onClick={() => router.push("/rooms")} className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs text-white/65">View all</button>
                 </div>
-                <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
                   <SpaceCard title="Living Room" detail="Comfort, lights, entertainment and shared mood." tone="bg-sky-300 shadow-[0_0_16px_rgba(125,211,252,0.7)]" onClick={() => router.push("/rooms")} />
                   <SpaceCard title="Kitchen" detail="Utility awareness, safety signals and routines." tone="bg-emerald-300 shadow-[0_0_16px_rgba(95,227,161,0.7)]" onClick={() => router.push("/rooms")} />
                   <SpaceCard title="Bedroom" detail="Quiet scenes, climate and night automation." tone="bg-indigo-300 shadow-[0_0_16px_rgba(165,180,252,0.7)]" onClick={() => router.push("/rooms")} />
@@ -442,11 +453,11 @@ export default function HomePage() {
                 </div>
               </AmbientPanel>
 
-              <AmbientPanel className="p-5">
+              <AmbientPanel className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="text-[10px] uppercase tracking-[0.22em] text-white/38">Activity</div>
-                    <h2 className="mt-1 text-lg font-semibold text-white">What matters now</h2>
+                    <h2 className="mt-1 text-base font-semibold text-white">Environmental heartbeat</h2>
                   </div>
                   {dashBusy ? <span className="text-xs text-white/42">Syncing…</span> : null}
                 </div>
@@ -469,23 +480,23 @@ export default function HomePage() {
               </AmbientPanel>
             </section>
 
-            <section className="mt-4 grid gap-4 pb-8 sm:grid-cols-2 lg:grid-cols-4">
-              <AmbientPanel className="p-4">
+            <section className="mt-3 grid gap-2.5 pb-8 sm:grid-cols-2 lg:grid-cols-4">
+              <AmbientPanel className="p-3.5">
                 <ShieldCheck className="h-5 w-5 text-emerald-200" />
                 <div className="mt-3 text-sm font-semibold text-white">Protected</div>
                 <div className="mt-1 text-xs text-white/45">{securityState}</div>
               </AmbientPanel>
-              <AmbientPanel className="p-4">
+              <AmbientPanel className="p-3.5">
                 <UserCheck className="h-5 w-5 text-sky-200" />
                 <div className="mt-3 text-sm font-semibold text-white">Visitors</div>
                 <div className="mt-1 text-xs text-white/45">{activeVisitors || "No active visitor"}</div>
               </AmbientPanel>
-              <AmbientPanel className="p-4">
+              <AmbientPanel className="p-3.5">
                 <MessageSquare className="h-5 w-5 text-violet-200" />
                 <div className="mt-3 text-sm font-semibold text-white">Community</div>
                 <div className="mt-1 text-xs text-white/45">{communityPosts.length} estate update{communityPosts.length === 1 ? "" : "s"}</div>
               </AmbientPanel>
-              <AmbientPanel className="p-4">
+              <AmbientPanel className="p-3.5">
                 <Leaf className="h-5 w-5 text-emerald-200" />
                 <div className="mt-3 text-sm font-semibold text-white">Maintenance</div>
                 <div className="mt-1 text-xs text-white/45">{openMaintenance ? `${openMaintenance} open request${openMaintenance === 1 ? "" : "s"}` : "No open request"}</div>

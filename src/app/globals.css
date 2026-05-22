@@ -15,6 +15,7 @@ body {
 
   /* ✅ Keep body locked so footer doesn't shake */
   overflow: hidden;
+  overscroll-behavior: none;
 }
 
 /* iOS viewport stability + better layering behavior */
@@ -92,7 +93,15 @@ a {
 
 /* ✅ Don’t force smooth scrolling globally (can feel stuck on iOS) */
 * {
+  box-sizing: border-box;
   scroll-behavior: auto;
+}
+
+img,
+video,
+canvas,
+svg {
+  max-width: 100%;
 }
 
 /* -------------------------------------------------
@@ -174,17 +183,17 @@ a {
   z-index: 0;
   pointer-events: none;
   background:
-    radial-gradient(circle at 50% 10%, rgba(74, 168, 255, 0.18), transparent 30%),
-    radial-gradient(circle at 8% 26%, rgba(95, 227, 161, 0.08), transparent 24%),
-    radial-gradient(circle at 86% 18%, rgba(255, 255, 255, 0.07), transparent 28%),
-    linear-gradient(180deg, #03070c 0%, #06101a 48%, #03070c 100%);
+    radial-gradient(circle at 50% 8%, rgba(74, 168, 255, 0.13), transparent 28%),
+    radial-gradient(circle at 8% 26%, rgba(95, 227, 161, 0.055), transparent 24%),
+    radial-gradient(circle at 86% 18%, rgba(255, 255, 255, 0.045), transparent 28%),
+    linear-gradient(180deg, #02060b 0%, #06101a 48%, #02060b 100%);
 }
 
 .oyi-ambient-bg::before {
   content: "";
   position: absolute;
   inset: 0;
-  opacity: 0.08;
+  opacity: 0.055;
   background-image:
     linear-gradient(to right, rgba(255,255,255,0.16) 1px, transparent 1px),
     linear-gradient(to bottom, rgba(255,255,255,0.16) 1px, transparent 1px);
@@ -203,9 +212,9 @@ a {
     radial-gradient(circle at center, rgba(74,168,255,0.18), rgba(4,12,20,0.72) 64%, rgba(2,6,10,0.96));
   box-shadow:
     inset 0 0 38px rgba(255,255,255,0.08),
-    0 0 52px rgba(74,168,255,0.24),
-    0 18px 80px rgba(0,0,0,0.44);
-  animation: oyi-breathe 5.4s ease-in-out infinite;
+    0 0 38px rgba(74,168,255,0.18),
+    0 16px 58px rgba(0,0,0,0.42);
+  animation: oyi-breathe 6.6s ease-in-out infinite;
 }
 
 .oyi-orb::after {
@@ -215,6 +224,87 @@ a {
   border-radius: inherit;
   border: 1px solid rgba(255,255,255,0.12);
   box-shadow: 0 0 20px rgba(74,168,255,0.18);
+}
+
+.oyi-glass {
+  border: 1px solid rgba(255,255,255,0.09);
+  background: linear-gradient(145deg, rgba(255,255,255,0.052), rgba(255,255,255,0.024));
+  box-shadow: 0 16px 58px rgba(0,0,0,0.24);
+  backdrop-filter: blur(22px);
+}
+
+.oyi-soft-card {
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.034);
+  box-shadow: 0 12px 42px rgba(0,0,0,0.2);
+  backdrop-filter: blur(18px);
+}
+
+.oyi-page-fade {
+  animation: oyi-page-fade 420ms ease-out both;
+}
+
+.oyi-living-page {
+  --oyi-surface: rgba(255,255,255,0.034);
+  --oyi-surface-strong: rgba(255,255,255,0.052);
+  --oyi-line: rgba(255,255,255,0.08);
+}
+
+.oyi-living-page :where(.rounded-3xl, .rounded-2xl) {
+  border-color: var(--oyi-line);
+}
+
+.oyi-living-page :where(.bg-white\/5) {
+  background-color: var(--oyi-surface);
+}
+
+.oyi-living-page :where(.bg-black\/20) {
+  background-color: rgba(0,0,0,0.16);
+}
+
+.oyi-living-page :where(.p-5) {
+  padding: 1rem;
+}
+
+.oyi-living-page :where(.p-4) {
+  padding: 0.875rem;
+}
+
+.oyi-living-page :where(.text-3xl) {
+  font-size: 1.5rem;
+  line-height: 2rem;
+}
+
+.oyi-living-page :where(.text-2xl) {
+  font-size: 1.25rem;
+  line-height: 1.75rem;
+}
+
+.oyi-environment-hero {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.085);
+  background:
+    radial-gradient(circle at 85% 0%, rgba(74,168,255,0.14), transparent 34%),
+    linear-gradient(145deg, rgba(255,255,255,0.052), rgba(255,255,255,0.022));
+  box-shadow: 0 16px 56px rgba(0,0,0,0.24);
+  backdrop-filter: blur(22px);
+}
+
+.oyi-presence-row {
+  border: 1px solid rgba(255,255,255,0.075);
+  background: rgba(255,255,255,0.032);
+  box-shadow: 0 10px 36px rgba(0,0,0,0.18);
+  backdrop-filter: blur(18px);
+}
+
+@media (min-width: 768px) {
+  .oyi-tablet-console {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+    gap: 0.875rem;
+    align-items: start;
+  }
 }
 
 .oyi-wave-line {
@@ -235,11 +325,16 @@ a {
 }
 
 @keyframes oyi-breathe {
-  0%, 100% { transform: scale(1); filter: saturate(0.9); }
-  50% { transform: scale(1.025); filter: saturate(1.18); }
+  0%, 100% { transform: scale(1); filter: saturate(0.88) brightness(0.96); }
+  50% { transform: scale(1.018); filter: saturate(1.12) brightness(1.04); }
 }
 
 @keyframes oyi-wave {
   0%, 100% { height: 5px; opacity: 0.35; }
   50% { height: var(--h, 14px); opacity: 0.9; }
+}
+
+@keyframes oyi-page-fade {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }

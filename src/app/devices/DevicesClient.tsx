@@ -780,22 +780,22 @@ export default function DeviceClient() {
   }
 
   return (
-    <ConsumerShell title="Devices" subtitle="Command Center" showBack backHref="/home">
-      {/* command center hero */}
-      <div className="relative overflow-hidden rounded-3xl border border-cyan-500/20 bg-gradient-to-br from-cyan-500/15 via-sky-500/10 to-blue-700/20 p-5">
+    <ConsumerShell title="Smart Devices" subtitle="Spatial controls • scenes • home-safe automation" showBack backHref="/home">
+      <div className="oyi-glass relative overflow-hidden rounded-[24px] p-4">
         <div className="absolute -top-8 -right-8 h-32 w-32 rounded-full bg-cyan-300/20 blur-3xl" />
         <div className="absolute -bottom-10 -left-8 h-36 w-36 rounded-full bg-blue-400/10 blur-3xl" />
 
-        <div className="relative flex flex-col gap-4">
+        <div className="relative flex flex-col gap-3">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <div className="text-sm text-cyan-100/80">Smart Home Command Center</div>
-              <div className="mt-1 text-xl font-semibold text-white">Live Control Grid</div>
+              <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-100/65">Device Layer</div>
+              <div className="mt-1.5 text-xl font-semibold text-white">Home devices responsive</div>
+              <div className="mt-1 text-xs text-white/45">Control only what your resident permission allows.</div>
             </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={openAddDevice}
-                className="rounded-2xl px-3 py-2 text-sm bg-cyan-300/20 text-cyan-100 border border-cyan-300/30 hover:bg-cyan-300/30 transition"
+                className="rounded-full px-3 py-2 text-xs bg-cyan-300/14 text-cyan-100 border border-cyan-300/20 hover:bg-cyan-300/22 transition"
                 type="button"
               >
                 Add Device
@@ -803,7 +803,7 @@ export default function DeviceClient() {
               <button
                 onClick={load}
                 disabled={loading}
-                className="rounded-2xl px-3 py-2 text-sm bg-white text-black hover:opacity-90 disabled:opacity-50 transition"
+                className="rounded-full px-3 py-2 text-xs bg-white/10 text-white hover:bg-white/15 border border-white/10 disabled:opacity-50 transition"
                 type="button"
               >
                 {loading ? "Refreshing…" : "Refresh"}
@@ -812,19 +812,19 @@ export default function DeviceClient() {
           </div>
 
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-2">
+            <div className="rounded-[18px] border border-white/10 bg-black/[0.18] px-3 py-2">
               <div className="text-[11px] text-white/50">Devices</div>
               <div className="text-lg font-semibold text-white">{items.length}</div>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-2">
+            <div className="rounded-[18px] border border-white/10 bg-black/[0.18] px-3 py-2">
               <div className="text-[11px] text-white/50">Online</div>
               <div className="text-lg font-semibold text-emerald-300">{onlineCount}</div>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-2">
+            <div className="rounded-[18px] border border-white/10 bg-black/[0.18] px-3 py-2">
               <div className="text-[11px] text-white/50">Active</div>
               <div className="text-lg font-semibold text-cyan-200">{onStateCount}</div>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-2">
+            <div className="rounded-[18px] border border-white/10 bg-black/[0.18] px-3 py-2">
               <div className="text-[11px] text-white/50">Automations</div>
               <div className="text-lg font-semibold text-amber-200">{activeAutomations}</div>
             </div>
@@ -842,7 +842,7 @@ export default function DeviceClient() {
       {/* quick scenes */}
       <CameraIntelPanel estateId={estateId} />
 
-      <div className="mt-4 rounded-3xl border border-white/10 bg-white/5 p-4">
+      <div className="mt-3 rounded-[24px] border border-white/10 bg-white/[0.035] p-3.5">
         <div className="flex items-center justify-between gap-2">
           <div>
             <div className="text-sm font-semibold text-white">Scenes</div>
@@ -851,14 +851,14 @@ export default function DeviceClient() {
           <button
             type="button"
             onClick={() => setSceneFormOpen((v) => !v)}
-            className="rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs text-white hover:bg-white/15 transition"
+            className="rounded-full border border-white/15 bg-white/[0.08] px-3 py-1.5 text-xs text-white hover:bg-white/15 transition"
           >
             {sceneFormOpen ? "Close" : "Add Scene"}
           </button>
         </div>
 
         {sceneFormOpen && (
-          <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-3">
+          <div className="mt-3 rounded-[20px] border border-white/10 bg-black/[0.18] p-3">
             <div className="grid gap-2 sm:grid-cols-2">
               <input
                 value={sceneName}
@@ -925,7 +925,7 @@ export default function DeviceClient() {
               type="button"
               onClick={() => runScene(scene.key as SceneKey)}
               disabled={sceneBusy !== null}
-              className={`rounded-2xl border px-3 py-3 text-left transition hover:bg-white/10 disabled:opacity-60 ${scene.tint}`}
+              className={`rounded-[18px] border px-3 py-2.5 text-left transition hover:bg-white/10 disabled:opacity-60 ${scene.tint}`}
             >
               <div className="text-sm font-semibold text-white">{scene.label}</div>
               <div className="mt-1 text-[11px] text-white/55">
@@ -939,7 +939,7 @@ export default function DeviceClient() {
               type="button"
               onClick={() => runCustomScene(scene)}
               disabled={sceneBusy !== null}
-              className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 px-3 py-3 text-left transition hover:bg-cyan-500/15 disabled:opacity-60"
+              className="rounded-[18px] border border-cyan-500/20 bg-cyan-500/10 px-3 py-2.5 text-left transition hover:bg-cyan-500/15 disabled:opacity-60"
             >
               <div className="text-sm font-semibold text-white">{scene.name}</div>
               <div className="mt-1 text-[11px] text-white/60">
@@ -954,7 +954,7 @@ export default function DeviceClient() {
       </div>
 
       {/* automations */}
-      <div className="mt-4 rounded-3xl border border-white/10 bg-white/5 p-4">
+      <div className="mt-3 rounded-[24px] border border-white/10 bg-white/[0.035] p-3.5">
         <div className="flex items-center justify-between gap-2">
           <div>
             <div className="text-sm font-semibold text-white">Automations</div>
@@ -963,7 +963,7 @@ export default function DeviceClient() {
           <button
             type="button"
             onClick={() => setAutomationFormOpen((v) => !v)}
-            className="rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs text-white hover:bg-white/15 transition"
+            className="rounded-full border border-white/15 bg-white/[0.08] px-3 py-1.5 text-xs text-white hover:bg-white/15 transition"
           >
             {automationFormOpen ? "Close" : "Add Automation"}
           </button>
@@ -1086,7 +1086,7 @@ export default function DeviceClient() {
       </div>
 
       {/* search / quick info */}
-      <div className="mt-4 rounded-3xl border border-white/10 bg-white/5 p-4">
+      <div className="mt-3 rounded-[24px] border border-white/10 bg-white/[0.035] p-3.5">
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
@@ -1249,11 +1249,11 @@ export default function DeviceClient() {
           Loading devices…
         </div>
       ) : filtered.length === 0 ? (
-        <div className="mt-4 rounded-3xl border border-white/10 bg-white/5 p-5 text-sm text-white/60">
+        <div className="mt-4 rounded-[24px] border border-white/10 bg-white/[0.035] p-5 text-sm text-white/60">
           No devices found.
         </div>
       ) : (
-        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
           {filtered.map((d) => {
             const dbId = pickDbId(d);
             const sid = dbId ? String(dbId) : "";
@@ -1274,11 +1274,11 @@ export default function DeviceClient() {
                 type="button"
                 onClick={() => openSheet(d)}
                 className="
-                  text-left rounded-3xl
+                  text-left rounded-[22px]
                   border border-white/10
-                  bg-white/5 hover:bg-white/8
+                  bg-white/[0.035] hover:bg-white/[0.065]
                   transition
-                  p-4
+                  p-3.5
                   relative
                   overflow-hidden
                 "
