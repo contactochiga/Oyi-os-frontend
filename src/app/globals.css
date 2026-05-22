@@ -307,6 +307,11 @@ svg {
   backdrop-filter: blur(18px);
 }
 
+.oyi-notification-panel {
+  animation: oyi-overlay-in 240ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  transform-origin: top right;
+}
+
 @media (min-width: 768px) {
   .oyi-tablet-console {
     display: grid;
@@ -346,4 +351,9 @@ svg {
 @keyframes oyi-page-fade {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes oyi-overlay-in {
+  from { opacity: 0; transform: translate3d(10px, -8px, 0) scale(0.98); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
 }

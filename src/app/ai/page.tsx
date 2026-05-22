@@ -12,7 +12,9 @@ type AiMessage = {
   id: string;
   role: "user" | "assistant";
   content: string;
+  state?: "idle" | "preparing" | "confirmation_required" | "confirmed" | "queued" | "executing" | "success" | "failed" | "denied";
   pending?: boolean;
+  localConfirmation?: { command: string; label: string };
   confirmations?: Array<Record<string, any>>;
 };
 
@@ -22,10 +24,20 @@ function createId() {
 
 function commandHint(tool: Record<string, any>) {
   if (tool.status === "executed") return tool.summary || "Command completed.";
-  if (tool.status === "pending_confirmation") return "Confirmation required before Oyi executes this action.";
+  if (tool.status === "pending_confirmation") return "Confirmation needed.";
   if (tool.status === "denied") return tool.reason === "missing_permission" ? "You do not have permission for that action." : "That action is not available.";
   if (tool.status === "failed") return tool.error || "The command could not complete.";
   return tool.summary || "Oyi processed that command.";
+}
+
+function isDeviceExecutionIntent(text: string) {
+  const value = text.toLowerCase();
+  return /(turn|switch|set|activate|start|stop|open|close|unlock|lock|arm)\b/.test(value) && /(light|ac|air|fan|scene|gate|door|lock|security|heater|device)/.test(value);
+}
+
+function confirmationLabel(text: string) {
+  const cleaned = text.trim().replace(/[?.!]+$/, "");
+  return `${cleaned.charAt(0).toUpperCase()}${cleaned.slice(1)}?`;
 }
 
 export default function AiAutomationModule() {
@@ -54,6 +66,9 @@ export default function AiAutomationModule() {
   function updatePending(id: string, resp: AiChatResponse) {
     const details = (resp.tools || []).map(commandHint).filter(Boolean);
     const content = [resp.reply, ...details.filter((line) => line !== resp.reply)].filter(Boolean).join("\n");
+    const failed = (resp.tools || []).some((tool) => tool.status === "failed");
+    const denied = (resp.tools || []).some((tool) => tool.status === "denied");
+    const needsConfirmation = Boolean(resp.confirmations?.length);
     setMessages((prev) =>
       prev.map((item) =>
         item.id === id
@@ -61,6 +76,7 @@ export default function AiAutomationModule() {
               ...item,
               pending: false,
               content: content || "Oyi processed that command.",
+              state: needsConfirmation ? "confirmation_required" : denied ? "denied" : failed ? "failed" : "success",
               confirmations: resp.confirmations || [],
             }
           : item
@@ -68,7 +84,13 @@ export default function AiAutomationModule() {
     );
   }
 
-  async function handleSend(text?: string) {
+  async function executeCommand(command: string, pendingId: string) {
+    setMessages((prev) => prev.map((item) => (item.id === pendingId ? { ...item, content: "Executing…", state: "executing", pending: true } : item)));
+    const resp = await aiService.chat(command, context);
+    updatePending(pendingId, resp);
+  }
+
+  async function handleSend(text?: string, options?: { confirmed?: boolean }) {
     const command = (text ?? input).trim();
     if (!command || busy) return;
     setBusy(true);
@@ -77,13 +99,41 @@ export default function AiAutomationModule() {
     setMessages((prev) => [
       ...prev,
       { id: createId(), role: "user", content: command },
-      { id: pendingId, role: "assistant", content: "Listening to the home context…", pending: true },
+      { id: pendingId, role: "assistant", content: options?.confirmed ? "Executing…" : "Preparing…", state: options?.confirmed ? "executing" : "preparing", pending: true },
     ]);
     try {
-      const resp = await aiService.chat(command, context);
-      updatePending(pendingId, resp);
+      if (isDeviceExecutionIntent(command) && !options?.confirmed) {
+        setMessages((prev) =>
+          prev.map((item) =>
+            item.id === pendingId
+              ? {
+                  ...item,
+                  pending: false,
+                  content: confirmationLabel(command),
+                  state: "confirmation_required",
+                  localConfirmation: { command, label: confirmationLabel(command) },
+                }
+              : item
+          )
+        );
+      } else {
+        await executeCommand(command, pendingId);
+      }
     } catch {
-      setMessages((prev) => prev.map((item) => (item.id === pendingId ? { ...item, pending: false, content: "Oyi could not reach the command layer right now." } : item)));
+      setMessages((prev) => prev.map((item) => (item.id === pendingId ? { ...item, pending: false, state: "failed", content: "Oyi could not reach the command layer right now." } : item)));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmLocalCommand(messageId: string, command: string) {
+    if (busy) return;
+    setBusy(true);
+    setMessages((prev) => prev.map((item) => (item.id === messageId ? { ...item, content: "Confirmed. Executing…", state: "executing", pending: true, localConfirmation: undefined } : item)));
+    try {
+      await executeCommand(command, messageId);
+    } catch {
+      setMessages((prev) => prev.map((item) => (item.id === messageId ? { ...item, pending: false, state: "failed", content: "The command could not complete." } : item)));
     } finally {
       setBusy(false);
     }
@@ -120,9 +170,7 @@ export default function AiAutomationModule() {
             <div className="min-w-0">
               <div className="text-[10px] uppercase tracking-[0.26em] text-sky-100/55">Living Intelligence</div>
               <h1 className="mt-2 text-2xl font-semibold tracking-tight text-white">Oyi is listening.</h1>
-              <p className="mt-2 max-w-md text-sm leading-5 text-white/52">
-                Low-risk home commands execute through the secure backend command layer. Risky actions ask for confirmation first.
-              </p>
+              <p className="mt-2 max-w-md text-sm leading-5 text-white/52">Voice-first control for lights, climate, spaces and home awareness.</p>
             </div>
             <div className="oyi-orb h-[76px] w-[76px] shrink-0" aria-hidden="true" />
           </div>
@@ -151,7 +199,28 @@ export default function AiAutomationModule() {
                   message.role === "user" ? "ml-auto max-w-[88%] bg-sky-300/12 text-sky-50" : "mr-auto max-w-[92%] bg-black/22 text-white/78"
                 }`}
               >
-                <div className="whitespace-pre-line text-sm leading-6">{message.pending ? "Oyi is processing…" : message.content}</div>
+                <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-white/30">{message.state ? message.state.replaceAll("_", " ") : message.role === "assistant" ? "aware" : "you"}</div>
+                <div className="whitespace-pre-line text-sm leading-6">{message.pending ? message.content : message.content}</div>
+                {message.localConfirmation ? (
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => confirmLocalCommand(message.id, message.localConfirmation!.command)}
+                      className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-xs font-semibold text-black disabled:opacity-50"
+                    >
+                      <Check className="h-3.5 w-3.5" /> Confirm
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => setMessages((prev) => prev.map((item) => (item.id === message.id ? { ...item, state: "denied", content: "Cancelled.", localConfirmation: undefined } : item)))}
+                      className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-2 text-xs text-white/70 disabled:opacity-50"
+                    >
+                      <X className="h-3.5 w-3.5" /> Cancel
+                    </button>
+                  </div>
+                ) : null}
                 {message.confirmations?.length ? (
                   <div className="mt-3 space-y-2">
                     {message.confirmations.map((item) => {

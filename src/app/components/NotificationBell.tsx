@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { FiBell } from "react-icons/fi";
+import { FiBell, FiBox, FiCheckCircle, FiHome, FiShield, FiTool, FiZap } from "react-icons/fi";
 import { markNotificationRead } from "@/services/notificationsService";
 import { useNotificationStore } from "@/store/useNotificationStore";
 import InviteRequestCard from "@/app/components/InviteRequestCard";
@@ -20,6 +20,17 @@ function timeAgo(ts?: string) {
   if (h < 24) return `${h}h`;
   const d = Math.floor(h / 24);
   return `${d}d`;
+}
+
+function notificationTone(item: any) {
+  const value = `${item?.type || ""} ${item?.title || ""} ${item?.message || ""} ${item?.payload?.kind || ""}`.toLowerCase();
+  if (value.includes("visitor") || value.includes("gate") || value.includes("access")) return { Icon: FiShield, label: "Access", cls: "text-sky-100 bg-sky-300/10 border-sky-300/15" };
+  if (value.includes("maintenance") || value.includes("repair") || value.includes("service")) return { Icon: FiTool, label: "Service", cls: "text-amber-100 bg-amber-300/10 border-amber-300/15" };
+  if (value.includes("ai") || value.includes("command") || value.includes("automation")) return { Icon: FiZap, label: "Oyi", cls: "text-blue-100 bg-blue-300/10 border-blue-300/15" };
+  if (value.includes("package") || value.includes("delivery")) return { Icon: FiBox, label: "Delivery", cls: "text-violet-100 bg-violet-300/10 border-violet-300/15" };
+  if (value.includes("security") || value.includes("motion") || value.includes("alert")) return { Icon: FiShield, label: "Security", cls: "text-rose-100 bg-rose-300/10 border-rose-300/15" };
+  if (value.includes("done") || value.includes("success") || value.includes("restored")) return { Icon: FiCheckCircle, label: "Resolved", cls: "text-emerald-100 bg-emerald-300/10 border-emerald-300/15" };
+  return { Icon: FiHome, label: "Home", cls: "text-white/75 bg-white/[0.06] border-white/10" };
 }
 
 export default function NotificationBell() {
@@ -88,14 +99,14 @@ export default function NotificationBell() {
       ? createPortal(
           <>
             <div
-              className="fixed inset-0 z-[219] bg-black/24 backdrop-blur-[6px]"
+              className="fixed inset-0 z-[219] bg-black/18 backdrop-blur-[7px]"
               onClick={() => setOpen(false)}
               aria-label="Close notifications"
             />
-            <div className="fixed inset-x-0 top-[76px] z-[220] px-3">
-              <div ref={rootRef} className="mx-auto max-w-3xl flex justify-end">
+            <div className="fixed inset-x-0 z-[220] px-3" style={{ top: "calc(58px + var(--sat))" }}>
+              <div ref={rootRef} className="mx-auto flex max-w-5xl justify-end">
                 <aside
-                  className="w-[min(332px,calc(100vw-20px))] overflow-hidden rounded-[22px] border border-white/10 bg-[#06080e]/98 shadow-[0_22px_52px_rgba(0,0,0,0.38)]"
+                  className="oyi-notification-panel w-[min(360px,calc(100vw-20px))] overflow-hidden rounded-[28px] border border-white/10 bg-[#050a12]/88 shadow-[0_24px_70px_rgba(0,0,0,0.46)] backdrop-blur-2xl"
                   onTouchStart={(e) => {
                     dragStartX.current = e.touches[0]?.clientX ?? null;
                     dragDelta.current = 0;
@@ -111,16 +122,13 @@ export default function NotificationBell() {
                     dragDelta.current = 0;
                   }}
                 >
-                  <div className="flex flex-col max-h-[min(62vh,520px)]">
-                    <div className="px-4 pt-4 pb-3 border-b border-white/10">
+                  <div className="flex max-h-[min(68vh,560px)] flex-col">
+                    <div className="border-b border-white/10 px-4 pb-3 pt-4">
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="text-[13px] font-semibold text-white truncate">
-                            Notifications
-                          </div>
-                          <div className="text-[11px] text-white/45 truncate">
-                            Updates • invites • estate activity
-                          </div>
+                          <div className="text-[10px] uppercase tracking-[0.24em] text-sky-100/50">Environment</div>
+                          <div className="mt-1 truncate text-[15px] font-semibold text-white">Activity around you</div>
+                          <div className="mt-0.5 truncate text-[11px] text-white/42">Access · service · Oyi · home signals</div>
                         </div>
 
                         <button
@@ -133,10 +141,10 @@ export default function NotificationBell() {
                       </div>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2">
+                    <div className="flex-1 space-y-2 overflow-y-auto px-3 py-3">
                       {visible.length === 0 ? (
-                        <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/60">
-                          No notifications yet.
+                        <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-4 text-sm text-white/55">
+                          Home is quiet. New visitor, service, Oyi and environmental signals will appear here.
                         </div>
                       ) : (
                         visible.map((n: any) => {
@@ -190,28 +198,37 @@ export default function NotificationBell() {
                           }
 
                           const unread = n.status !== "read";
+                          const tone = notificationTone(n);
+                          const Icon = tone.Icon;
 
                           return (
                             <button
                               key={n.id}
                               type="button"
                               onClick={() => handleMarkRead(n.id)}
-                              className={`w-full text-left rounded-2xl border px-4 py-3 transition ${
+                              className={`w-full rounded-[20px] border px-3 py-3 text-left transition ${
                                 unread
-                                  ? "border-white/15 bg-white/10 hover:bg-white/12"
-                                  : "border-white/10 bg-white/5 hover:bg-white/7"
+                                  ? "border-white/14 bg-white/[0.075] hover:bg-white/[0.1]"
+                                  : "border-white/10 bg-white/[0.038] hover:bg-white/[0.065]"
                               }`}
                             >
                               <div className="flex items-start justify-between gap-3">
-                                <div className="min-w-0">
-                                  <div className="text-[13px] font-semibold text-white truncate">
-                                    {n.title || "Update"}
+                                <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-full border ${tone.cls}`}>
+                                  <Icon className="h-4 w-4" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] uppercase tracking-[0.18em] text-white/32">{tone.label}</span>
+                                    {unread ? <span className="h-1.5 w-1.5 rounded-full bg-sky-200 shadow-[0_0_10px_rgba(125,211,252,0.8)]" /> : null}
                                   </div>
-                                  <div className="mt-1 text-[12px] text-white/70">
+                                  <div className="mt-1 truncate text-[13px] font-semibold text-white/92">
+                                    {n.title || "Home update"}
+                                  </div>
+                                  <div className="mt-1 line-clamp-2 text-[12px] leading-4 text-white/54">
                                     {n.message || ""}
                                   </div>
                                 </div>
-                                <div className="text-[11px] text-white/40 whitespace-nowrap">
+                                <div className="whitespace-nowrap text-[11px] text-white/34">
                                   {timeAgo(n.created_at)}
                                 </div>
                               </div>
@@ -221,8 +238,8 @@ export default function NotificationBell() {
                       )}
                     </div>
 
-                    <div className="px-4 py-3 border-t border-white/10 bg-white/[0.03] rounded-b-[22px]">
-                      <div className="text-[11px] text-white/40">Tap a card to mark it read.</div>
+                    <div className="rounded-b-[28px] border-t border-white/10 bg-white/[0.025] px-4 py-3">
+                      <div className="text-[11px] text-white/38">Tap a signal to acknowledge it. Your current screen stays active.</div>
                     </div>
                   </div>
                 </aside>
