@@ -45,6 +45,22 @@ com.oyi.watch
 5. Select the paired Apple Watch destination.
 6. Press `Cmd + R`.
 
+## Companion app bundle
+
+The watch app declares its iPhone companion with:
+
+```text
+WKCompanionAppBundleIdentifier = com.ochiga.oyios
+```
+
+This value must match the production Oyi Home iPhone app bundle identifier before App Store submission. If the iOS app bundle changes, update `Info.plist` before archiving the watch app.
+
+The watch app bundle identifier remains:
+
+```text
+com.oyi.watch
+```
+
 ## Backend connection
 
 The source currently contains placeholders for `baseURL` and `bearerToken` in `OyiWatchSession`.
