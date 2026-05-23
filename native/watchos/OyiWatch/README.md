@@ -211,3 +211,57 @@ npx cap sync ios
 xcodebuild -workspace ios/App/App.xcworkspace -scheme App -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO
 xcodebuild -project native/watchos/OyiWatch/OyiWatch.xcodeproj -scheme OyiWatch -sdk watchsimulator -destination 'generic/platform=watchOS Simulator' build CODE_SIGNING_ALLOWED=NO
 ```
+
+## Integrated companion target in main iOS workspace
+
+Oyi Watch is now also registered as a watchOS companion target inside the main Capacitor iOS workspace:
+
+```text
+/Users/ochigaidoko/Oyi-os-frontend/ios/App/App.xcworkspace
+```
+
+The main iPhone `App` target embeds:
+
+```text
+App.app/Watch/OyiWatch.app
+```
+
+Use this integrated target for real iPhone + Apple Watch testing. The standalone project remains useful for isolated watch simulator UI work, but the main workspace is the production-style install path.
+
+Integrated bundle relationship:
+
+```text
+Parent iOS bundle ID: com.ochiga.oyios
+Watch bundle ID: com.ochiga.oyios.watch
+WKCompanionAppBundleIdentifier: com.ochiga.oyios
+```
+
+Integrated Xcode run steps:
+
+1. Run the web/native sync first:
+
+```bash
+cd /Users/ochigaidoko/Oyi-os-frontend
+npm run build
+npx cap sync ios
+open ios/App/App.xcworkspace
+```
+
+2. In Xcode, select the `App` scheme.
+3. Select your connected iPhone as the destination.
+4. Set Signing & Capabilities for both `App` and `OyiWatch` targets to the same Apple Developer Team.
+5. Confirm the parent iPhone target uses `com.ochiga.oyios`.
+6. Confirm the watch target uses `com.ochiga.oyios.watch`.
+7. Press `Cmd + R`.
+8. Xcode should install the iPhone app and embed/install the companion Oyi Watch app on the paired watch.
+9. Open Oyi Home on iPhone and log in.
+10. Go to Settings -> Connected Systems -> Oyi Watch -> `Sync Watch`.
+11. Open Oyi Watch on the paired Apple Watch and run `Talk` or a quick action.
+
+Verification commands for the integrated workspace:
+
+```bash
+xcodebuild -workspace ios/App/App.xcworkspace -list
+xcodebuild -workspace ios/App/App.xcworkspace -scheme App -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO
+xcodebuild -workspace ios/App/App.xcworkspace -scheme OyiWatch -sdk watchsimulator -destination 'generic/platform=watchOS Simulator' build CODE_SIGNING_ALLOWED=NO
+```
