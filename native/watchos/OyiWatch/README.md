@@ -168,3 +168,46 @@ Implemented watch states:
 - Set Apple Developer Team in Xcode signing settings for real device install.
 - Validate WatchConnectivity handoff on a real paired iPhone + Apple Watch.
 - Configure APNs/watch notification categories for production visitor/security/environment alerts.
+
+## Local iOS dev build flow for Watch sync
+
+Use this flow before App Store release when you need the logged-in Oyi Home iPhone app to hand the backend URL and bearer token to the paired Apple Watch.
+
+From the Consumer repo:
+
+```bash
+cd /Users/ochigaidoko/Oyi-os-frontend
+npm run build
+npx cap sync ios
+open ios/App/App.xcworkspace
+```
+
+In Xcode:
+
+1. Select the `App` scheme, not the standalone watch project.
+2. Select your connected iPhone as the run destination.
+3. Open `Signing & Capabilities` for the iPhone app target.
+4. Set your Apple Developer Team.
+5. Confirm the iPhone bundle ID is `com.ochiga.oyios`.
+6. Press `Cmd + R` to install Oyi Home on the connected iPhone.
+7. Log in on the iPhone app.
+8. Open Settings -> Connected Systems -> Oyi Watch.
+9. Tap `Sync Watch`.
+10. Open Oyi Watch on the paired Apple Watch.
+11. Trigger `Talk` or a quick action to verify the watch uses the synced backend session.
+
+Expected behavior:
+
+- On native iPhone, `Sync Watch` sends the backend URL and bearer token through WatchConnectivity.
+- On web or non-iOS environments, Settings shows: `Watch sync requires the iPhone app. Please open Oyi Home on iPhone.`
+- The watch stores received values in Keychain.
+- No raw token is printed to logs.
+
+Useful verification commands:
+
+```bash
+npm run build
+npx cap sync ios
+xcodebuild -workspace ios/App/App.xcworkspace -scheme App -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO
+xcodebuild -project native/watchos/OyiWatch/OyiWatch.xcodeproj -scheme OyiWatch -sdk watchsimulator -destination 'generic/platform=watchOS Simulator' build CODE_SIGNING_ALLOWED=NO
+```

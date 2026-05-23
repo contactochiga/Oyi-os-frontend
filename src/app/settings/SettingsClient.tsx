@@ -427,7 +427,7 @@ export default function SettingsClient() {
       } else {
         setWatchSyncError(
           result?.reason === "ios_native_only"
-            ? "Sync Watch is available inside the iPhone app."
+            ? "Watch sync requires the iPhone app. Please open Oyi Home on iPhone."
             : result?.reason === "missing_token"
               ? "Sign in again before syncing your watch."
               : "Watch sync did not complete. Keep the watch paired, unlocked, and nearby."
