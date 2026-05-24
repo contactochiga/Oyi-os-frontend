@@ -15,7 +15,7 @@ import {
   saveGenericIntegration,
   saveTuyaIntegration,
 } from "@/services/integrationsService";
-import { syncOyiWatchSession } from "@/services/watchSyncService";
+import { getOyiWatchSyncStatus, syncOyiWatchSession, type WatchSyncResult } from "@/services/watchSyncService";
 
 type AccessResident = {
   id: string;
@@ -122,6 +122,7 @@ export default function SettingsClient() {
   const [watchSyncBusy, setWatchSyncBusy] = useState(false);
   const [watchSyncMessage, setWatchSyncMessage] = useState<string | null>(null);
   const [watchSyncError, setWatchSyncError] = useState<string | null>(null);
+  const [watchStatus, setWatchStatus] = useState<WatchSyncResult | null>(null);
   const unitLabel =
     accountContext.home?.name ||
     [accountContext.home?.block, accountContext.home?.unit].filter(Boolean).join(" ") ||
@@ -415,6 +416,14 @@ export default function SettingsClient() {
     }));
   }
 
+  async function refreshWatchStatus() {
+    try {
+      setWatchStatus(await getOyiWatchSyncStatus());
+    } catch (error) {
+      setWatchStatus({ available: false, lastSyncError: error instanceof Error ? error.message : "status_failed" });
+    }
+  }
+
   async function syncWatchNow() {
     setWatchSyncBusy(true);
     setWatchSyncMessage(null);
@@ -424,6 +433,7 @@ export default function SettingsClient() {
       if (result?.synced) {
         const installed = result.watchAppInstalled === false ? " Watch app not detected yet." : "";
         setWatchSyncMessage(`Watch session synced.${installed}`);
+        setWatchStatus(result);
       } else {
         setWatchSyncError(
           result?.reason === "ios_native_only"
@@ -437,8 +447,22 @@ export default function SettingsClient() {
       setWatchSyncError("Watch sync failed. Keep the watch paired, unlocked, and nearby.");
     } finally {
       setWatchSyncBusy(false);
+      void refreshWatchStatus();
     }
   }
+
+  useEffect(() => {
+    void refreshWatchStatus();
+  }, []);
+
+  const activationLabel =
+    watchStatus?.activationState === 2
+      ? "activated"
+      : watchStatus?.activationState === 1
+        ? "inactive"
+        : watchStatus?.activationState === 0
+          ? "not activated"
+          : "unknown";
 
   return (
     <div className="oyi-living-page relative z-10 mx-auto max-w-3xl space-y-4 py-2 pb-8">
@@ -504,6 +528,13 @@ export default function SettingsClient() {
             >
               {watchSyncBusy ? "Syncing Watch..." : "Sync Watch"}
             </button>
+            <div className="grid grid-cols-2 gap-2 rounded-xl border border-white/10 bg-black/20 p-3 text-[10px] text-white/55">
+              <div>Paired: <span className="text-white/80">{String(Boolean(watchStatus?.paired))}</span></div>
+              <div>Installed: <span className="text-white/80">{String(Boolean(watchStatus?.watchAppInstalled))}</span></div>
+              <div>Reachable: <span className="text-white/80">{String(Boolean(watchStatus?.reachable))}</span></div>
+              <div>Activation: <span className="text-white/80">{activationLabel}</span></div>
+              <div className="col-span-2">Last sync error: <span className="text-white/80">{watchStatus?.lastSyncError || watchStatus?.lastActivationError || "none"}</span></div>
+            </div>
             {watchSyncMessage ? <div className="text-xs text-emerald-300">{watchSyncMessage}</div> : null}
             {watchSyncError ? <div className="text-xs text-amber-200">{watchSyncError}</div> : null}
           </div>

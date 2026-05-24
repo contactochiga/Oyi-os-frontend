@@ -10,11 +10,14 @@ type WatchSyncPayload = {
   role?: string;
 };
 
-type WatchSyncResult = {
+export type WatchSyncResult = {
   available?: boolean;
   paired?: boolean;
   watchAppInstalled?: boolean;
   reachable?: boolean;
+  activationState?: number;
+  lastSyncError?: string | null;
+  lastActivationError?: string | null;
   synced?: boolean;
   reason?: string;
 };

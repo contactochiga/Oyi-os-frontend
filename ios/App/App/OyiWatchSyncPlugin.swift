@@ -4,6 +4,8 @@ import WatchConnectivity
 
 @objc(OyiWatchSyncPlugin)
 public class OyiWatchSyncPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate {
+    private var lastSyncError: String?
+    private var lastActivationError: String?
     public let identifier = "OyiWatchSyncPlugin"
     public let jsName = "OyiWatchSync"
     public let pluginMethods: [CAPPluginMethod] = [
@@ -50,17 +52,23 @@ public class OyiWatchSyncPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate 
 
         do {
             try session.updateApplicationContext(payload)
+            lastSyncError = nil
             if session.isReachable {
-                session.sendMessage(payload, replyHandler: nil, errorHandler: nil)
+                session.sendMessage(payload, replyHandler: nil) { [weak self] error in
+                    self?.lastSyncError = error.localizedDescription
+                }
             }
             call.resolve([
                 "available": true,
                 "paired": session.isPaired,
                 "watchAppInstalled": session.isWatchAppInstalled,
                 "reachable": session.isReachable,
+                "activationState": session.activationState.rawValue,
+                "lastSyncError": lastSyncError as Any,
                 "synced": true
             ])
         } catch {
+            lastSyncError = error.localizedDescription
             call.reject("watch_sync_failed", error.localizedDescription, error)
         }
     }
@@ -76,7 +84,9 @@ public class OyiWatchSyncPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate 
             "paired": session.isPaired,
             "watchAppInstalled": session.isWatchAppInstalled,
             "reachable": session.isReachable,
-            "activationState": session.activationState.rawValue
+            "activationState": session.activationState.rawValue,
+            "lastSyncError": lastSyncError as Any,
+            "lastActivationError": lastActivationError as Any
         ])
     }
 
@@ -90,7 +100,9 @@ public class OyiWatchSyncPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate 
         }
     }
 
-    public func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {}
+    public func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
+        lastActivationError = error?.localizedDescription
+    }
     public func sessionDidBecomeInactive(_ session: WCSession) {}
     public func sessionDidDeactivate(_ session: WCSession) { session.activate() }
 }

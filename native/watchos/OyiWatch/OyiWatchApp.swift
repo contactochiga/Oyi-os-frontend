@@ -82,6 +82,10 @@ final class OyiWatchSession: ObservableObject {
     @Published var activePage: Int = 0
     @Published var isMockMode: Bool = true
     @Published var connectionLabel: String = "Mock mode"
+    @Published var modeLabel: String = "Mock"
+    @Published var backendURLPresent: Bool = false
+    @Published var tokenPresent: Bool = false
+    @Published var lastBackendCallStatus: String = "none"
 
     private let keychain = OyiWatchKeychain()
     private lazy var connectivity = OyiWatchConnectivityBridge(session: self)
@@ -253,6 +257,9 @@ final class OyiWatchSession: ObservableObject {
         let updated = didUpdate
         await MainActor.run {
             isMockMode = !hasBackendConfiguration
+            modeLabel = hasBackendConfiguration ? "Synced" : "Mock"
+            backendURLPresent = baseURL != nil
+            tokenPresent = bearerToken?.isEmpty == false
             connectionLabel = hasBackendConfiguration ? "Connected" : "Mock mode"
             if updated {
                 title = "Watch linked"
@@ -271,10 +278,16 @@ final class OyiWatchSession: ObservableObject {
         let environment = ProcessInfo.processInfo.environment
         let envURL = environment["OYI_WATCH_BACKEND_URL"].flatMap(URL.init(string:))
         let envToken = environment["OYI_WATCH_DEV_TOKEN"]
-        baseURL = envURL ?? keychain.read(account: "backendBaseURL").flatMap(URL.init(string:))
-        bearerToken = envToken ?? keychain.read(account: "bearerToken")
+        let storedURL = keychain.read(account: "backendBaseURL").flatMap(URL.init(string:))
+        let storedToken = keychain.read(account: "bearerToken")
+        baseURL = envURL ?? storedURL
+        bearerToken = envToken ?? storedToken
+        let nextMode = hasBackendConfiguration ? (envToken?.isEmpty == false ? "Dev Token" : "Synced") : "Mock"
         DispatchQueue.main.async {
             self.isMockMode = !self.hasBackendConfiguration
+            self.modeLabel = nextMode
+            self.backendURLPresent = self.baseURL != nil
+            self.tokenPresent = self.bearerToken?.isEmpty == false
             self.connectionLabel = self.hasBackendConfiguration ? "Connected" : "Mock mode"
         }
     }
@@ -352,7 +365,12 @@ final class OyiWatchSession: ObservableObject {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
         }
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw URLError(.badServerResponse) }
+        guard let http = response as? HTTPURLResponse else {
+            await MainActor.run { self.lastBackendCallStatus = "no http response" }
+            throw URLError(.badServerResponse)
+        }
+        await MainActor.run { self.lastBackendCallStatus = "\(method) \(path): \(http.statusCode)" }
+        guard (200..<300).contains(http.statusCode) else { throw URLError(.badServerResponse) }
         return data
     }
 
@@ -361,6 +379,7 @@ final class OyiWatchSession: ObservableObject {
             state = .failed
             title = "Not completed"
             detail = error.localizedDescription.isEmpty ? "Try again" : "Backend unavailable"
+            lastBackendCallStatus = error.localizedDescription.isEmpty ? "failed" : error.localizedDescription
             pendingConfirmation = nil
         }
     }
@@ -368,6 +387,9 @@ final class OyiWatchSession: ObservableObject {
     private func applyMockHome() async {
         await MainActor.run {
             isMockMode = true
+            modeLabel = "Mock"
+            backendURLPresent = baseURL != nil
+            tokenPresent = bearerToken?.isEmpty == false
             connectionLabel = "Mock mode"
             title = "Home calm"
             detail = "Simulator ready"
@@ -517,6 +539,7 @@ struct AwarenessView: View {
                 .foregroundStyle(.white.opacity(0.62))
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
+            WatchDiagnosticsView()
             if session.state == .listening {
                 OyiWaveform(color: .blue)
                     .frame(height: 18)
@@ -538,6 +561,24 @@ struct AwarenessView: View {
         case .confirmationRequired: return .orange
         default: return .blue
         }
+    }
+}
+
+struct WatchDiagnosticsView: View {
+    @EnvironmentObject var session: OyiWatchSession
+
+    var body: some View {
+        VStack(spacing: 1) {
+            Text("mode: \(session.modeLabel) | url: \(session.backendURLPresent ? "yes" : "no") | token: \(session.tokenPresent ? "yes" : "no")")
+                .font(.system(size: 7, weight: .medium, design: .rounded))
+                .foregroundStyle(.white.opacity(0.46))
+                .lineLimit(1)
+            Text("last: \(session.lastBackendCallStatus)")
+                .font(.system(size: 7, weight: .regular, design: .rounded))
+                .foregroundStyle(.white.opacity(0.35))
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 4)
     }
 }
 
