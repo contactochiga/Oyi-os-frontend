@@ -6,7 +6,9 @@ import WatchConnectivity
 public class OyiWatchSyncPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate {
     private var lastSyncError: String?
     private var lastActivationError: String?
+    private var activationTimedOut = false
     private var activationCallbacks: [(WCSession) -> Void] = []
+    private var activationTimeoutWorkItem: DispatchWorkItem?
 
     public let identifier = "OyiWatchSyncPlugin"
     public let jsName = "OyiWatchSync"
@@ -26,14 +28,14 @@ public class OyiWatchSyncPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate 
     }
 
     @objc func sync(_ call: CAPPluginCall) {
-        guard let session else {
+        guard session != nil else {
             call.resolve(["available": false, "synced": false, "reason": "watch_connectivity_unavailable"])
             return
         }
 
         guard let backendBaseURL = call.getString("backendBaseURL"), !backendBaseURL.isEmpty,
               let bearerToken = call.getString("bearerToken"), !bearerToken.isEmpty else {
-            call.reject("backendBaseURL and bearerToken are required")
+            call.reject("missing_session", "backendBaseURL and bearerToken are required")
             return
         }
 
@@ -50,7 +52,7 @@ public class OyiWatchSyncPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate 
     }
 
     @objc func status(_ call: CAPPluginCall) {
-        guard let session else {
+        guard session != nil else {
             call.resolve(["available": false, "reason": "watch_connectivity_unavailable"])
             return
         }
@@ -96,7 +98,9 @@ public class OyiWatchSyncPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate 
         if session.isReachable {
             usedSendMessage = true
             session.sendMessage(payload, replyHandler: nil) { [weak self] error in
-                self?.lastSyncError = error.localizedDescription
+                DispatchQueue.main.async {
+                    self?.lastSyncError = error.localizedDescription
+                }
             }
         }
 
@@ -117,6 +121,7 @@ public class OyiWatchSyncPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate 
             "installed": session.isWatchAppInstalled,
             "reachable": session.isReachable,
             "activationState": session.activationState.rawValue,
+            "activationTimedOut": activationTimedOut,
             "lastSyncError": lastSyncError as Any,
             "lastActivationError": lastActivationError as Any,
             "synced": synced
@@ -135,16 +140,35 @@ public class OyiWatchSyncPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate 
         if let completion {
             activationCallbacks.append(completion)
         }
-        if session.activationState == .notActivated {
-            session.activate()
+        session.activate()
+        scheduleActivationFallback(for: session)
+    }
+
+    private func scheduleActivationFallback(for session: WCSession) {
+        guard activationTimeoutWorkItem == nil else { return }
+        let item = DispatchWorkItem { [weak self, weak session] in
+            guard let self, let session else { return }
+            guard session.activationState != .activated, !self.activationCallbacks.isEmpty else { return }
+            self.activationTimedOut = true
+            self.lastActivationError = "watch_connectivity_activation_timeout"
+            self.drainActivationCallbacks(with: session)
         }
+        activationTimeoutWorkItem = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5, execute: item)
+    }
+
+    private func drainActivationCallbacks(with session: WCSession) {
+        activationTimeoutWorkItem?.cancel()
+        activationTimeoutWorkItem = nil
+        let callbacks = activationCallbacks
+        activationCallbacks.removeAll()
+        callbacks.forEach { $0(session) }
     }
 
     public func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
         lastActivationError = error?.localizedDescription
-        let callbacks = activationCallbacks
-        activationCallbacks.removeAll()
-        callbacks.forEach { $0(session) }
+        activationTimedOut = false
+        drainActivationCallbacks(with: session)
     }
 
     public func sessionDidBecomeInactive(_ session: WCSession) {}

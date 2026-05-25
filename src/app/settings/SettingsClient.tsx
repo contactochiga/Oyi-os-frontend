@@ -120,6 +120,7 @@ export default function SettingsClient() {
   });
   const [accountContext, setAccountContext] = useState<AccountContextState>({});
   const [watchSyncBusy, setWatchSyncBusy] = useState(false);
+  const [watchScanBusy, setWatchScanBusy] = useState(false);
   const [watchSyncMessage, setWatchSyncMessage] = useState<string | null>(null);
   const [watchSyncError, setWatchSyncError] = useState<string | null>(null);
   const [watchStatus, setWatchStatus] = useState<WatchSyncResult | null>(null);
@@ -419,10 +420,23 @@ export default function SettingsClient() {
   }
 
   async function refreshWatchStatus() {
+    setWatchScanBusy(true);
+    setWatchSyncError(null);
     try {
-      setWatchStatus(await getOyiWatchSyncStatus());
+      const nextStatus = await getOyiWatchSyncStatus();
+      setWatchStatus(nextStatus);
+      if (nextStatus.available === false) {
+        setWatchSyncStage("attention");
+        setWatchSyncError(getWatchStatusMessage(nextStatus));
+      } else if (watchSyncStage === "attention") {
+        setWatchSyncStage("idle");
+      }
     } catch (error) {
+      setWatchSyncStage("attention");
       setWatchStatus({ available: false, lastSyncError: error instanceof Error ? error.message : "status_failed" });
+      setWatchSyncError(error instanceof Error ? error.message : "Watch scan failed.");
+    } finally {
+      setWatchScanBusy(false);
     }
   }
 
@@ -454,13 +468,7 @@ export default function SettingsClient() {
         setWatchStatus(result);
       } else {
         setWatchSyncStage("attention");
-        setWatchSyncError(
-          result?.reason === "ios_native_only"
-            ? "Watch sync requires the iPhone app. Please open Oyi Home on iPhone."
-            : result?.reason === "missing_token"
-              ? "Sign in again before syncing your watch."
-              : result?.error || result?.lastSyncError || "Watch sync did not complete. Keep the watch paired, unlocked, and nearby."
-        );
+        setWatchSyncError(getWatchStatusMessage(result));
       }
     } catch {
       setWatchSyncStage("attention");
@@ -896,6 +904,7 @@ export default function SettingsClient() {
       <WatchSyncModule
         open={watchSyncOpen}
         busy={watchSyncBusy}
+        scanning={watchScanBusy}
         experience={watchExperience}
         status={watchStatus}
         hasToken={Boolean(token)}
@@ -978,6 +987,16 @@ export default function SettingsClient() {
 }
 
 
+function getWatchStatusMessage(result: WatchSyncResult | null | undefined) {
+  if (!result) return "Watch sync did not complete. Keep the watch paired, unlocked, and nearby.";
+  if (result.reason === "plugin_unavailable") return "The iPhone app build is missing the Oyi Watch native sync plugin. Rebuild from Xcode after syncing iOS.";
+  if (result.reason === "watch_sync_timeout") return "The iPhone app could not reach the native watch sync bridge in time. Reopen the app and try again.";
+  if (result.reason === "ios_native_only") return "Watch sync requires the iPhone app. Please open Oyi Home on iPhone.";
+  if (result.reason === "missing_token") return "Sign in again before syncing your watch.";
+  if (result.activationTimedOut) return "WatchConnectivity activation timed out. Keep both devices unlocked and try Scan Again.";
+  return result.error || result.lastSyncError || "Watch sync did not complete. Keep the watch paired, unlocked, and nearby.";
+}
+
 function getWatchSyncMethod(result: WatchSyncResult | null) {
   if (!result) return "";
   const methods = [];
@@ -990,6 +1009,7 @@ function getWatchSyncMethod(result: WatchSyncResult | null) {
 function WatchSyncModule({
   open,
   busy,
+  scanning,
   experience,
   status,
   hasToken,
@@ -1001,6 +1021,7 @@ function WatchSyncModule({
 }: {
   open: boolean;
   busy: boolean;
+  scanning: boolean;
   experience: ReturnType<typeof getWatchExperience>;
   status: WatchSyncResult | null;
   hasToken: boolean;
@@ -1013,9 +1034,9 @@ function WatchSyncModule({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/72 px-4 py-6 backdrop-blur-xl" role="dialog" aria-modal="true" aria-label="Oyi Watch sync">
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-black/72 px-3 py-3 backdrop-blur-xl" role="dialog" aria-modal="true" aria-label="Oyi Watch sync">
       <button type="button" className="absolute inset-0 cursor-default" aria-label="Close watch sync" onClick={onClose} />
-      <div className="relative w-full max-w-xs overflow-hidden rounded-[32px] border border-white/12 bg-[radial-gradient(circle_at_50%_0%,rgba(56,189,248,0.18),transparent_34%),linear-gradient(160deg,rgba(9,14,28,0.98),rgba(2,5,12,0.98))] p-5 text-center shadow-[0_32px_100px_rgba(0,0,0,0.68)]">
+      <div className="relative max-h-[calc(100dvh-1.5rem)] w-full max-w-xs overflow-hidden rounded-[32px] border border-white/12 bg-[radial-gradient(circle_at_50%_0%,rgba(56,189,248,0.18),transparent_34%),linear-gradient(160deg,rgba(9,14,28,0.98),rgba(2,5,12,0.98))] p-4 text-center shadow-[0_32px_100px_rgba(0,0,0,0.68)]">
         <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-blue-500/12 blur-3xl" />
 
         <button type="button" onClick={onClose} disabled={busy} className="absolute right-4 top-4 rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5 text-xs text-white/55 disabled:opacity-40">
@@ -1028,10 +1049,10 @@ function WatchSyncModule({
           <div className="mt-1 text-xs text-white/45">{experience.kicker}</div>
         </div>
 
-        <div className="relative mx-auto mt-6 h-48 w-36 rounded-[38px] border border-white/16 bg-black p-2.5 shadow-[inset_0_0_24px_rgba(255,255,255,0.04),0_0_58px_rgba(56,189,248,0.14)]">
+        <div className="relative mx-auto mt-4 h-40 w-32 rounded-[34px] border border-white/16 bg-black p-2 shadow-[inset_0_0_24px_rgba(255,255,255,0.04),0_0_58px_rgba(56,189,248,0.14)]">
           <div className="absolute -right-1.5 top-14 h-9 w-1.5 rounded-r-full bg-white/18" />
           <div className="flex h-full flex-col items-center justify-center rounded-[30px] border border-white/10 bg-[radial-gradient(circle_at_center,rgba(37,99,235,0.24),rgba(0,0,0,0.92)_58%)] px-4">
-            <div className={`relative flex h-20 w-20 items-center justify-center rounded-full border ${experience.ringClass} bg-black/55 ${busy ? "animate-pulse" : ""}`}>
+            <div className={`relative flex h-16 w-16 items-center justify-center rounded-full border ${experience.ringClass} bg-black/55 ${busy || scanning ? "animate-pulse" : ""}`}>
               <div className="absolute inset-2 rounded-full border border-sky-300/20" />
               <div className="absolute inset-0 rounded-full bg-sky-400/10 blur-xl" />
               <div className="relative text-lg font-semibold text-white">Oyi</div>
@@ -1054,19 +1075,19 @@ function WatchSyncModule({
         </div>
 
         {status ? (
-          <div className="relative mt-4 rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-2 text-left text-[10px] leading-relaxed text-white/42">
-            <div>Watch paired: <span className="text-white/70">{status.paired ? "yes" : "no"}</span></div>
-            <div>App installed: <span className="text-white/70">{status.watchAppInstalled || status.installed ? "yes" : "no"}</span></div>
-            <div>Reachable: <span className="text-white/70">{status.reachable ? "yes" : "no"}</span></div>
-            <div>Sync: <span className="text-white/70">{getWatchSyncMethod(status) || "pending"}</span></div>
+          <div className="relative mt-3 grid grid-cols-2 gap-1.5 rounded-2xl border border-white/10 bg-white/[0.035] p-2 text-left text-[9px] leading-tight text-white/42">
+            <div>Paired <span className="text-white/70">{status.paired ? "yes" : "no"}</span></div>
+            <div>Installed <span className="text-white/70">{status.watchAppInstalled || status.installed ? "yes" : "no"}</span></div>
+            <div>Reachable <span className="text-white/70">{status.reachable ? "yes" : "no"}</span></div>
+            <div>Sync <span className="text-white/70">{getWatchSyncMethod(status) || status.reason || "pending"}</span></div>
           </div>
         ) : null}
 
-        <div className="relative mt-5 grid grid-cols-2 gap-2">
-          <button type="button" onClick={onRefresh} disabled={busy} className="rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-3 text-xs font-medium text-white/68 disabled:opacity-40">
-            Scan Again
+        <div className="relative mt-4 grid grid-cols-2 gap-2">
+          <button type="button" onClick={onRefresh} disabled={busy || scanning} className="rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-xs font-medium text-white/68 disabled:opacity-40">
+            {scanning ? "Scanning" : "Scan Again"}
           </button>
-          <button type="button" onClick={onSync} disabled={busy || !hasToken} className="rounded-2xl bg-white px-4 py-3 text-xs font-semibold text-black transition active:scale-[0.98] disabled:opacity-45">
+          <button type="button" onClick={onSync} disabled={busy || scanning || !hasToken} className="rounded-2xl bg-white px-4 py-2.5 text-xs font-semibold text-black transition active:scale-[0.98] disabled:opacity-45">
             {busy ? "Syncing" : "Pair"}
           </button>
         </div>

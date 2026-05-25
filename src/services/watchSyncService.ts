@@ -17,6 +17,7 @@ export type WatchSyncResult = {
   installed?: boolean;
   reachable?: boolean;
   activationState?: number;
+  activationTimedOut?: boolean;
   usedApplicationContext?: boolean;
   usedTransferUserInfo?: boolean;
   usedSendMessage?: boolean;
@@ -43,6 +44,10 @@ export async function syncOyiWatchSession(token: string | null | undefined, user
     return { available: false, synced: false, reason: "ios_native_only" } satisfies WatchSyncResult;
   }
 
+  if (!Capacitor.isPluginAvailable("OyiWatchSync")) {
+    return { available: false, synced: false, reason: "plugin_unavailable" } satisfies WatchSyncResult;
+  }
+
   if (!token) {
     return { available: true, synced: false, reason: "missing_token" } satisfies WatchSyncResult;
   }
@@ -56,12 +61,24 @@ export async function syncOyiWatchSession(token: string | null | undefined, user
     role: user?.role,
   };
 
-  return OyiWatchSync.sync(payload);
+  return withWatchTimeout(OyiWatchSync.sync(payload));
 }
 
 export async function getOyiWatchSyncStatus() {
   if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "ios") {
     return { available: false, reason: "ios_native_only" } satisfies WatchSyncResult;
   }
-  return OyiWatchSync.status();
+  if (!Capacitor.isPluginAvailable("OyiWatchSync")) {
+    return { available: false, reason: "plugin_unavailable" } satisfies WatchSyncResult;
+  }
+  return withWatchTimeout(OyiWatchSync.status());
+}
+
+function withWatchTimeout<T extends WatchSyncResult>(request: Promise<T>, timeoutMs = 5000): Promise<T | WatchSyncResult> {
+  return Promise.race([
+    request,
+    new Promise<WatchSyncResult>((resolve) =>
+      setTimeout(() => resolve({ available: false, synced: false, reason: "watch_sync_timeout" }), timeoutMs)
+    ),
+  ]);
 }
