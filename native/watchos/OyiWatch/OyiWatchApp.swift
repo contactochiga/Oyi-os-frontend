@@ -58,6 +58,14 @@ struct OyiConfirmation: Decodable, Identifiable {
 
 struct GlancePayload: Decodable { let items: [OyiGlance] }
 struct ActionPayload: Decodable { let actions: [OyiQuickAction] }
+struct HomeStatusPayload: Decodable {
+    let state: String?
+    let title: String?
+    let summary: String?
+    let home_name: String?
+    let estate_name: String?
+    let updated_at: String?
+}
 
 struct AnyDecodable: Decodable {
     let value: Any
@@ -76,6 +84,9 @@ final class OyiWatchSession: ObservableObject {
     @Published var state: OyiWatchState = .awareness
     @Published var title: String = "Home calm"
     @Published var detail: String = "All systems normal"
+    @Published var homeName: String = "Oyi Home"
+    @Published var estateName: String = ""
+    @Published var liveDataError: String?
     @Published var glances: [OyiGlance] = OyiWatchSession.mockGlances
     @Published var actions: [OyiQuickAction] = OyiWatchSession.mockActions
     @Published var pendingConfirmation: OyiConfirmation?
@@ -268,6 +279,7 @@ final class OyiWatchSession: ObservableObject {
                 title = "Watch linked"
                 detail = "Session received"
                 state = .success
+                liveDataError = nil
             }
         }
         if didUpdate { await refresh() }
@@ -296,6 +308,7 @@ final class OyiWatchSession: ObservableObject {
     }
 
     private func apply(_ response: OyiWatchCommandResponse) async {
+        var shouldRefresh = false
         await MainActor.run {
             detail = response.reply
             activePage = 0
@@ -308,6 +321,7 @@ final class OyiWatchSession: ObservableObject {
                 state = .success
                 title = "Done"
                 pendingConfirmation = nil
+                shouldRefresh = true
             } else if response.state == "denied" {
                 state = .failed
                 title = "Not allowed"
@@ -319,36 +333,72 @@ final class OyiWatchSession: ObservableObject {
             } else {
                 state = .executing
                 title = "Queued"
+                shouldRefresh = true
             }
         }
+        if shouldRefresh { await refreshAfterCommand() }
     }
 
     private func fetchStatus() async {
         do {
-            let payload: [String: AnyDecodable] = try await request("/watch/home-status")
+            let payload: HomeStatusPayload = try await request("/watch/home-status")
             await MainActor.run {
-                title = payload["title"]?.stringValue ?? title
-                detail = payload["summary"]?.stringValue ?? detail
-                state = payload["state"]?.stringValue == "attention" ? .alert : .awareness
+                title = payload.title ?? payload.home_name ?? title
+                detail = payload.summary ?? detail
+                homeName = payload.home_name ?? payload.title ?? homeName
+                estateName = payload.estate_name ?? estateName
+                state = payload.state == "attention" ? .alert : .awareness
+                liveDataError = nil
             }
-        } catch { await applyMockHome() }
+        } catch { await applyLiveDataFailure(error) }
     }
 
     private func fetchGlances() async {
         do {
             let payload: GlancePayload = try await request("/watch/glances")
-            await MainActor.run { glances = payload.items.isEmpty ? Self.mockGlances : payload.items }
+            await MainActor.run {
+                glances = payload.items
+                liveDataError = nil
+            }
         } catch {
-            await MainActor.run { glances = Self.mockGlances }
+            await MainActor.run {
+                glances = []
+                liveDataError = "Glances unavailable"
+            }
         }
     }
 
     private func fetchActions() async {
         do {
             let payload: ActionPayload = try await request("/watch/quick-actions")
-            await MainActor.run { actions = payload.actions.isEmpty ? Self.mockActions : payload.actions }
+            await MainActor.run {
+                actions = payload.actions
+                liveDataError = nil
+            }
         } catch {
-            await MainActor.run { actions = Self.mockActions }
+            await MainActor.run {
+                actions = []
+                liveDataError = "Actions unavailable"
+            }
+        }
+    }
+
+    private func refreshAfterCommand() async {
+        try? await Task.sleep(nanoseconds: 350_000_000)
+        await fetchStatus()
+        await fetchGlances()
+        await fetchActions()
+    }
+
+    private func applyLiveDataFailure(_ error: Error) async {
+        await MainActor.run {
+            state = .failed
+            title = "Live data unavailable"
+            detail = "Open iPhone to refresh"
+            liveDataError = error.localizedDescription.isEmpty ? "Backend unavailable" : error.localizedDescription
+            glances = []
+            actions = []
+            lastBackendCallStatus = liveDataError ?? "failed"
         }
     }
 
@@ -394,6 +444,9 @@ final class OyiWatchSession: ObservableObject {
             backendURLPresent = baseURL != nil
             tokenPresent = bearerToken?.isEmpty == false
             connectionLabel = "Mock mode"
+            homeName = "Oyi Home"
+            estateName = ""
+            liveDataError = nil
             title = "Home calm"
             detail = "Simulator ready"
             glances = Self.mockGlances
@@ -532,7 +585,7 @@ struct AwarenessView: View {
 
     var body: some View {
         WatchSurface {
-            WatchChrome(label: session.connectionLabel, isMock: session.isMockMode) {
+            WatchChrome(label: session.isMockMode ? "Mock" : session.homeName, isMock: session.isMockMode) {
                 session.openQuickActions()
             }
             Spacer(minLength: 2)
@@ -542,19 +595,19 @@ struct AwarenessView: View {
                 .foregroundStyle(titleColor)
                 .lineLimit(1)
             Text(session.detail)
-                .font(.system(size: 10, weight: .regular, design: .rounded))
-                .foregroundStyle(.white.opacity(0.62))
+                .font(.system(size: 11, weight: .regular, design: .rounded))
+                .foregroundStyle(.white.opacity(0.68))
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
-            WatchDiagnosticsView()
+            if session.isMockMode { WatchDiagnosticsView() }
             if session.state == .listening {
                 OyiWaveform(color: .blue)
                     .frame(height: 18)
                     .padding(.top, 1)
             } else {
                 HStack(spacing: 8) {
-                    WatchPillButton(title: "Talk", tint: .blue) { Task { await session.simulateVoiceCommand("turn off downstairs lights") } }
-                    WatchPillButton(title: "Alert", tint: .orange) { session.showAlertDemo() }
+                    WatchPillButton(title: "Talk", tint: .blue) { Task { await session.simulateVoiceCommand(session.isMockMode ? "turn off downstairs lights" : "show home status") } }
+                    WatchPillButton(title: "Actions", tint: .blue) { session.openQuickActions() }
                 }
                 .padding(.top, 2)
             }
@@ -603,6 +656,19 @@ struct QuickActionsView: View {
             WatchChrome(label: "Actions", isMock: session.isMockMode) {
                 session.activePage = 0
             }
+            if session.actions.isEmpty {
+                VStack(spacing: 8) {
+                    OyiOrb(state: session.isMockMode ? .awareness : .failed)
+                    Text(session.isMockMode ? "Mock actions" : "No actions yet")
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white)
+                    Text(session.liveDataError ?? "No watch-ready actions returned for this home.")
+                        .font(.system(size: 10, weight: .regular, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.56))
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
             LazyVGrid(columns: columns, spacing: 8) {
                 ForEach(session.actions.prefix(4)) { action in
                     Button {
@@ -627,6 +693,7 @@ struct QuickActionsView: View {
                     .buttonStyle(.plain)
                     .disabled(!action.enabled)
                 }
+            }
             }
         }
     }
