@@ -448,8 +448,9 @@ export default function SettingsClient() {
       const result = await syncOyiWatchSession(token, user);
       if (result?.synced) {
         const installed = result.watchAppInstalled === false ? " Watch app not detected yet." : "";
+        const method = getWatchSyncMethod(result);
         setWatchSyncStage("complete");
-        setWatchSyncMessage(`Oyi Watch is personalized for this home.${installed}`);
+        setWatchSyncMessage(`Oyi Watch paired${method ? ` via ${method}` : ""}.${installed}`);
         setWatchStatus(result);
       } else {
         setWatchSyncStage("attention");
@@ -458,7 +459,7 @@ export default function SettingsClient() {
             ? "Watch sync requires the iPhone app. Please open Oyi Home on iPhone."
             : result?.reason === "missing_token"
               ? "Sign in again before syncing your watch."
-              : "Watch sync did not complete. Keep the watch paired, unlocked, and nearby."
+              : result?.error || result?.lastSyncError || "Watch sync did not complete. Keep the watch paired, unlocked, and nearby."
         );
       }
     } catch {
@@ -896,6 +897,7 @@ export default function SettingsClient() {
         open={watchSyncOpen}
         busy={watchSyncBusy}
         experience={watchExperience}
+        status={watchStatus}
         hasToken={Boolean(token)}
         message={watchSyncMessage}
         error={watchSyncError}
@@ -976,10 +978,20 @@ export default function SettingsClient() {
 }
 
 
+function getWatchSyncMethod(result: WatchSyncResult | null) {
+  if (!result) return "";
+  const methods = [];
+  if (result.usedApplicationContext) methods.push("context");
+  if (result.usedTransferUserInfo) methods.push("queue");
+  if (result.usedSendMessage) methods.push("live");
+  return methods.join(" + ");
+}
+
 function WatchSyncModule({
   open,
   busy,
   experience,
+  status,
   hasToken,
   message,
   error,
@@ -990,6 +1002,7 @@ function WatchSyncModule({
   open: boolean;
   busy: boolean;
   experience: ReturnType<typeof getWatchExperience>;
+  status: WatchSyncResult | null;
   hasToken: boolean;
   message: string | null;
   error: string | null;
@@ -1039,6 +1052,15 @@ function WatchSyncModule({
             />
           ))}
         </div>
+
+        {status ? (
+          <div className="relative mt-4 rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-2 text-left text-[10px] leading-relaxed text-white/42">
+            <div>Watch paired: <span className="text-white/70">{status.paired ? "yes" : "no"}</span></div>
+            <div>App installed: <span className="text-white/70">{status.watchAppInstalled || status.installed ? "yes" : "no"}</span></div>
+            <div>Reachable: <span className="text-white/70">{status.reachable ? "yes" : "no"}</span></div>
+            <div>Sync: <span className="text-white/70">{getWatchSyncMethod(status) || "pending"}</span></div>
+          </div>
+        ) : null}
 
         <div className="relative mt-5 grid grid-cols-2 gap-2">
           <button type="button" onClick={onRefresh} disabled={busy} className="rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-3 text-xs font-medium text-white/68 disabled:opacity-40">

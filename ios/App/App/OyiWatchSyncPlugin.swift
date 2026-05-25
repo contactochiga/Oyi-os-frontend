@@ -6,6 +6,8 @@ import WatchConnectivity
 public class OyiWatchSyncPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate {
     private var lastSyncError: String?
     private var lastActivationError: String?
+    private var activationCallbacks: [(WCSession) -> Void] = []
+
     public let identifier = "OyiWatchSyncPlugin"
     public let jsName = "OyiWatchSync"
     public let pluginMethods: [CAPPluginMethod] = [
@@ -29,13 +31,41 @@ public class OyiWatchSyncPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate 
             return
         }
 
-        activateSessionIfNeeded()
-
         guard let backendBaseURL = call.getString("backendBaseURL"), !backendBaseURL.isEmpty,
               let bearerToken = call.getString("bearerToken"), !bearerToken.isEmpty else {
             call.reject("backendBaseURL and bearerToken are required")
             return
         }
+
+        activateSessionIfNeeded { [weak self] activatedSession in
+            guard let self else { return }
+            let result = self.performSync(
+                session: activatedSession,
+                backendBaseURL: backendBaseURL,
+                bearerToken: bearerToken,
+                call: call
+            )
+            call.resolve(result)
+        }
+    }
+
+    @objc func status(_ call: CAPPluginCall) {
+        guard let session else {
+            call.resolve(["available": false, "reason": "watch_connectivity_unavailable"])
+            return
+        }
+        activateSessionIfNeeded { [weak self] activatedSession in
+            guard let self else { return }
+            call.resolve(self.statusPayload(session: activatedSession, synced: false))
+        }
+    }
+
+    private func performSync(session: WCSession, backendBaseURL: String, bearerToken: String, call: CAPPluginCall) -> [String: Any] {
+        lastSyncError = nil
+        var usedApplicationContext = false
+        var usedTransferUserInfo = false
+        var usedSendMessage = false
+        var syncError: String?
 
         var payload: [String: Any] = [
             "backendBaseURL": backendBaseURL,
@@ -52,48 +82,58 @@ public class OyiWatchSyncPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate 
 
         do {
             try session.updateApplicationContext(payload)
-            lastSyncError = nil
-            if session.isReachable {
-                session.sendMessage(payload, replyHandler: nil) { [weak self] error in
-                    self?.lastSyncError = error.localizedDescription
-                }
-            }
-            call.resolve([
-                "available": true,
-                "paired": session.isPaired,
-                "watchAppInstalled": session.isWatchAppInstalled,
-                "reachable": session.isReachable,
-                "activationState": session.activationState.rawValue,
-                "lastSyncError": lastSyncError as Any,
-                "synced": true
-            ])
+            usedApplicationContext = true
         } catch {
+            syncError = error.localizedDescription
             lastSyncError = error.localizedDescription
-            call.reject("watch_sync_failed", error.localizedDescription, error)
         }
+
+        if session.isPaired && session.isWatchAppInstalled {
+            session.transferUserInfo(payload)
+            usedTransferUserInfo = true
+        }
+
+        if session.isReachable {
+            usedSendMessage = true
+            session.sendMessage(payload, replyHandler: nil) { [weak self] error in
+                self?.lastSyncError = error.localizedDescription
+            }
+        }
+
+        var result = statusPayload(session: session, synced: usedApplicationContext || usedTransferUserInfo || usedSendMessage)
+        result["usedApplicationContext"] = usedApplicationContext
+        result["usedTransferUserInfo"] = usedTransferUserInfo
+        result["usedSendMessage"] = usedSendMessage
+        result["error"] = syncError as Any
+        result["lastSyncError"] = lastSyncError as Any
+        return result
     }
 
-    @objc func status(_ call: CAPPluginCall) {
-        guard let session else {
-            call.resolve(["available": false, "reason": "watch_connectivity_unavailable"])
-            return
-        }
-        activateSessionIfNeeded()
-        call.resolve([
+    private func statusPayload(session: WCSession, synced: Bool) -> [String: Any] {
+        return [
             "available": true,
             "paired": session.isPaired,
             "watchAppInstalled": session.isWatchAppInstalled,
+            "installed": session.isWatchAppInstalled,
             "reachable": session.isReachable,
             "activationState": session.activationState.rawValue,
             "lastSyncError": lastSyncError as Any,
-            "lastActivationError": lastActivationError as Any
-        ])
+            "lastActivationError": lastActivationError as Any,
+            "synced": synced
+        ]
     }
 
-    private func activateSessionIfNeeded() {
+    private func activateSessionIfNeeded(completion: ((WCSession) -> Void)? = nil) {
         guard let session else { return }
         if session.delegate !== self {
             session.delegate = self
+        }
+        if session.activationState == .activated {
+            completion?(session)
+            return
+        }
+        if let completion {
+            activationCallbacks.append(completion)
         }
         if session.activationState == .notActivated {
             session.activate()
@@ -102,7 +142,11 @@ public class OyiWatchSyncPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate 
 
     public func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
         lastActivationError = error?.localizedDescription
+        let callbacks = activationCallbacks
+        activationCallbacks.removeAll()
+        callbacks.forEach { $0(session) }
     }
+
     public func sessionDidBecomeInactive(_ session: WCSession) {}
     public func sessionDidDeactivate(_ session: WCSession) { session.activate() }
 }

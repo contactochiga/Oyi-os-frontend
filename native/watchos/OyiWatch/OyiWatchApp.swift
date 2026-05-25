@@ -86,6 +86,7 @@ final class OyiWatchSession: ObservableObject {
     @Published var backendURLPresent: Bool = false
     @Published var tokenPresent: Bool = false
     @Published var lastBackendCallStatus: String = "none"
+    @Published var lastSyncAt: String = "never"
 
     private let keychain = OyiWatchKeychain()
     private lazy var connectivity = OyiWatchConnectivityBridge(session: self)
@@ -241,7 +242,7 @@ final class OyiWatchSession: ObservableObject {
         }
     }
 
-    func applyCompanionPayload(_ payload: [String: Any]) async {
+    func applyCompanionPayload(_ payload: [String: Any], source: String = "watchconnectivity") async {
         var didUpdate = false
         if let urlString = payload["baseURL"] as? String ?? payload["backendBaseURL"] as? String,
            let url = URL(string: urlString) {
@@ -260,6 +261,8 @@ final class OyiWatchSession: ObservableObject {
             modeLabel = hasBackendConfiguration ? "Synced" : "Mock"
             backendURLPresent = baseURL != nil
             tokenPresent = bearerToken?.isEmpty == false
+            lastSyncAt = payload["sentAt"] as? String ?? Date().formatted(date: .omitted, time: .shortened)
+            lastBackendCallStatus = "sync: \(source)"
             connectionLabel = hasBackendConfiguration ? "Connected" : "Mock mode"
             if updated {
                 title = "Watch linked"
@@ -471,11 +474,15 @@ final class OyiWatchConnectivityBridge: NSObject, WCSessionDelegate {
     func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {}
 
     func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String : Any]) {
-        Task { await sessionModel?.applyCompanionPayload(applicationContext) }
+        Task { await sessionModel?.applyCompanionPayload(applicationContext, source: "applicationContext") }
+    }
+
+    func session(_ session: WCSession, didReceiveUserInfo userInfo: [String : Any]) {
+        Task { await sessionModel?.applyCompanionPayload(userInfo, source: "userInfo") }
     }
 
     func session(_ session: WCSession, didReceiveMessage message: [String : Any]) {
-        Task { await sessionModel?.applyCompanionPayload(message) }
+        Task { await sessionModel?.applyCompanionPayload(message, source: "message") }
     }
 }
 
@@ -569,9 +576,13 @@ struct WatchDiagnosticsView: View {
 
     var body: some View {
         VStack(spacing: 1) {
-            Text("mode: \(session.modeLabel) | url: \(session.backendURLPresent ? "yes" : "no") | token: \(session.tokenPresent ? "yes" : "no")")
+            Text("Mode: \(session.modeLabel) | Backend: \(session.backendURLPresent ? "Present" : "Missing")")
                 .font(.system(size: 7, weight: .medium, design: .rounded))
                 .foregroundStyle(.white.opacity(0.46))
+                .lineLimit(1)
+            Text("Token: \(session.tokenPresent ? "Present" : "Missing") | Last Sync: \(session.lastSyncAt)")
+                .font(.system(size: 7, weight: .regular, design: .rounded))
+                .foregroundStyle(.white.opacity(0.35))
                 .lineLimit(1)
             Text("last: \(session.lastBackendCallStatus)")
                 .font(.system(size: 7, weight: .regular, design: .rounded))

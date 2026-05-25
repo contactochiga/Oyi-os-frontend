@@ -14,8 +14,13 @@ export type WatchSyncResult = {
   available?: boolean;
   paired?: boolean;
   watchAppInstalled?: boolean;
+  installed?: boolean;
   reachable?: boolean;
   activationState?: number;
+  usedApplicationContext?: boolean;
+  usedTransferUserInfo?: boolean;
+  usedSendMessage?: boolean;
+  error?: string | null;
   lastSyncError?: string | null;
   lastActivationError?: string | null;
   synced?: boolean;
