@@ -123,6 +123,7 @@ export default function SettingsClient() {
   const [watchSyncMessage, setWatchSyncMessage] = useState<string | null>(null);
   const [watchSyncError, setWatchSyncError] = useState<string | null>(null);
   const [watchStatus, setWatchStatus] = useState<WatchSyncResult | null>(null);
+  const [watchSyncOpen, setWatchSyncOpen] = useState(false);
   const [watchSyncStage, setWatchSyncStage] = useState<"idle" | "searching" | "securing" | "personalizing" | "complete" | "attention">("idle");
   const unitLabel =
     accountContext.home?.name ||
@@ -425,7 +426,16 @@ export default function SettingsClient() {
     }
   }
 
+  function openWatchSyncModule() {
+    setWatchSyncOpen(true);
+    setWatchSyncMessage(null);
+    setWatchSyncError(null);
+    if (watchSyncStage !== "complete") setWatchSyncStage("idle");
+    void refreshWatchStatus();
+  }
+
   async function syncWatchNow() {
+    setWatchSyncOpen(true);
     setWatchSyncBusy(true);
     setWatchSyncStage("searching");
     setWatchSyncMessage(null);
@@ -526,68 +536,32 @@ export default function SettingsClient() {
         <div className="rounded-[22px] border border-white/10 bg-white/[0.035] p-4 space-y-3">
           <div className="text-xs text-gray-400">Manage partner integrations for full ecosystem control.</div>
 
-          <div className="relative overflow-hidden rounded-[28px] border border-sky-300/15 bg-[radial-gradient(circle_at_20%_0%,rgba(56,189,248,0.22),transparent_32%),linear-gradient(145deg,rgba(7,12,24,0.92),rgba(2,6,14,0.9))] p-4 shadow-[0_24px_80px_rgba(14,165,233,0.12)]">
-            <div className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-sky-400/10 blur-3xl" />
-            <div className="relative flex items-start justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className={`relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full border ${watchExperience.ringClass} bg-black/45`}>
-                  <div className="absolute inset-1 rounded-full border border-sky-300/20" />
-                  <div className={`h-5 w-5 rounded-full ${watchSyncBusy ? "animate-pulse" : ""} bg-sky-300 shadow-[0_0_24px_rgba(56,189,248,0.75)]`} />
-                </div>
-                <div>
-                  <div className="text-sm font-semibold text-white">Oyi Watch</div>
-                  <div className="mt-1 text-[11px] leading-relaxed text-white/58">
-                    {watchExperience.summary}
-                  </div>
+          <div className="rounded-xl border border-sky-400/20 bg-sky-500/10 p-3 space-y-2">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-white">Oyi Watch</div>
+                <div className="mt-1 text-[11px] leading-relaxed text-white/60">
+                  Pair your Apple Watch with this home and send your secure iPhone session.
                 </div>
               </div>
-              <div className={`rounded-full border px-2.5 py-1 text-[9px] uppercase tracking-[0.18em] ${watchExperience.badgeClass}`}>
+              <div className={`rounded-full border px-2 py-1 text-[10px] uppercase tracking-[0.16em] ${watchExperience.badgeClass}`}>
                 {watchExperience.badge}
               </div>
             </div>
-
-            <div className="relative mt-4 rounded-[22px] border border-white/10 bg-black/24 p-3">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-[11px] uppercase tracking-[0.22em] text-white/35">{watchExperience.kicker}</div>
-                  <div className="mt-1 text-sm font-medium text-white">{watchExperience.title}</div>
-                </div>
-                <button
-                  type="button"
-                  onClick={syncWatchNow}
-                  disabled={watchSyncBusy || !token}
-                  className="rounded-full bg-white px-4 py-2 text-xs font-semibold text-black transition hover:bg-sky-100 active:scale-[0.98] disabled:opacity-45"
-                >
-                  {watchSyncBusy ? "Syncing" : watchSyncStage === "complete" ? "Sync Again" : "Sync Watch"}
-                </button>
-              </div>
-
-              <div className="mt-4 grid grid-cols-4 gap-2">
-                {watchExperience.steps.map((step, index) => (
-                  <div key={step.label} className="space-y-1">
-                    <div className={`h-1 rounded-full ${step.active ? "bg-sky-300 shadow-[0_0_14px_rgba(56,189,248,0.65)]" : step.done ? "bg-emerald-300/80" : "bg-white/12"}`} />
-                    <div className={`text-[9px] ${step.active || step.done ? "text-white/75" : "text-white/30"}`}>{index + 1}. {step.label}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="relative mt-3 grid grid-cols-2 gap-2 text-[10px] text-white/50">
+            <button
+              type="button"
+              onClick={openWatchSyncModule}
+              disabled={!token}
+              className="w-full rounded-xl bg-white px-3 py-3 text-sm font-semibold text-black transition active:scale-[0.99] disabled:opacity-50"
+            >
+              Open Watch Sync
+            </button>
+            <div className="grid grid-cols-3 gap-2 text-[10px] text-white/50">
               <WatchSignal label="Paired" active={Boolean(watchStatus?.paired)} />
               <WatchSignal label="Installed" active={watchIsInstalled} />
-              <WatchSignal label="Reachable" active={watchIsReachable} />
-              <WatchSignal label="Activation" value={activationLabel} active={watchStatus?.activationState === 2} />
-              <WatchSignal label="Native iPhone" active={watchIsAvailable} />
               <WatchSignal label="Session" active={Boolean(token)} value={token ? "ready" : "missing"} />
             </div>
-
-            {watchSyncMessage ? <div className="relative mt-3 rounded-2xl border border-emerald-300/15 bg-emerald-400/10 px-3 py-2 text-xs text-emerald-100">{watchSyncMessage}</div> : null}
-            {watchSyncError ? <div className="relative mt-3 rounded-2xl border border-amber-300/15 bg-amber-400/10 px-3 py-2 text-xs text-amber-100">{watchSyncError}</div> : null}
-            {watchStatus?.lastSyncError || watchStatus?.lastActivationError ? (
-              <div className="relative mt-2 text-[10px] text-white/38">
-                Last sync detail: {watchStatus.lastSyncError || watchStatus.lastActivationError}
-              </div>
-            ) : null}
+            {watchSyncError ? <div className="text-xs text-amber-200">{watchSyncError}</div> : null}
           </div>
 
           <div className="grid gap-2 sm:grid-cols-3">
@@ -939,6 +913,23 @@ export default function SettingsClient() {
         </div>
       </section>
 
+      <WatchSyncModule
+        open={watchSyncOpen}
+        busy={watchSyncBusy}
+        experience={watchExperience}
+        status={watchStatus}
+        activationLabel={activationLabel}
+        hasToken={Boolean(token)}
+        message={watchSyncMessage}
+        error={watchSyncError}
+        onClose={() => {
+          if (watchSyncBusy) return;
+          setWatchSyncOpen(false);
+        }}
+        onSync={syncWatchNow}
+        onRefresh={refreshWatchStatus}
+      />
+
       <EditProfileModal
         open={editOpen}
         loading={savingProfile}
@@ -1007,6 +998,102 @@ export default function SettingsClient() {
   );
 }
 
+
+function WatchSyncModule({
+  open,
+  busy,
+  experience,
+  status,
+  activationLabel,
+  hasToken,
+  message,
+  error,
+  onClose,
+  onSync,
+  onRefresh,
+}: {
+  open: boolean;
+  busy: boolean;
+  experience: ReturnType<typeof getWatchExperience>;
+  status: WatchSyncResult | null;
+  activationLabel: string;
+  hasToken: boolean;
+  message: string | null;
+  error: string | null;
+  onClose: () => void;
+  onSync: () => void;
+  onRefresh: () => void;
+}) {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/72 px-4 py-6 backdrop-blur-xl" role="dialog" aria-modal="true" aria-label="Oyi Watch sync">
+      <button type="button" className="absolute inset-0 cursor-default" aria-label="Close watch sync" onClick={onClose} />
+      <div className="relative w-full max-w-sm overflow-hidden rounded-[34px] border border-white/12 bg-[radial-gradient(circle_at_28%_5%,rgba(56,189,248,0.24),transparent_34%),linear-gradient(160deg,rgba(9,14,28,0.98),rgba(2,5,12,0.98))] p-5 text-center shadow-[0_36px_120px_rgba(0,0,0,0.72)]">
+        <div className="pointer-events-none absolute -left-20 top-8 h-44 w-44 rounded-full bg-sky-400/10 blur-3xl" />
+        <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-blue-500/12 blur-3xl" />
+
+        <div className="relative flex items-center justify-between text-left">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.24em] text-sky-100/45">Oyi Watch setup</div>
+            <div className="mt-1 text-lg font-semibold text-white">{experience.title}</div>
+          </div>
+          <button type="button" onClick={onClose} disabled={busy} className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5 text-xs text-white/60 disabled:opacity-40">
+            Close
+          </button>
+        </div>
+
+        <div className="relative mx-auto mt-6 h-56 w-44 rounded-[44px] border border-white/16 bg-black p-3 shadow-[inset_0_0_28px_rgba(255,255,255,0.05),0_0_70px_rgba(56,189,248,0.16)]">
+          <div className="absolute -right-2 top-16 h-10 w-1.5 rounded-r-full bg-white/20" />
+          <div className="flex h-full flex-col items-center justify-center rounded-[34px] border border-white/10 bg-[radial-gradient(circle_at_center,rgba(37,99,235,0.26),rgba(0,0,0,0.92)_58%)] px-4">
+            <div className={`relative flex h-24 w-24 items-center justify-center rounded-full border ${experience.ringClass} bg-black/55 ${busy ? "animate-pulse" : ""}`}>
+              <div className="absolute inset-2 rounded-full border border-sky-300/20" />
+              <div className="absolute inset-0 rounded-full bg-sky-400/10 blur-xl" />
+              <div className="relative text-xl font-semibold text-white">Oyi</div>
+            </div>
+            <div className="mt-4 text-sm font-medium text-sky-200">{experience.badge}</div>
+            <div className="mt-1 text-[11px] text-white/50">{experience.kicker}</div>
+          </div>
+        </div>
+
+        <p className="relative mx-auto mt-5 max-w-xs text-xs leading-relaxed text-white/58">{experience.summary}</p>
+
+        <div className="relative mt-5 grid grid-cols-4 gap-2 text-left">
+          {experience.steps.map((step, index) => (
+            <div key={step.label} className="space-y-1">
+              <div className={`h-1 rounded-full ${step.active ? "bg-sky-300 shadow-[0_0_16px_rgba(56,189,248,0.8)]" : step.done ? "bg-emerald-300/85" : "bg-white/12"}`} />
+              <div className={`text-[9px] ${step.active || step.done ? "text-white/72" : "text-white/28"}`}>{index + 1}. {step.label}</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="relative mt-4 grid grid-cols-2 gap-2 text-left">
+          <WatchSignal label="Paired" active={Boolean(status?.paired)} />
+          <WatchSignal label="Installed" active={Boolean(status?.watchAppInstalled)} />
+          <WatchSignal label="Reachable" active={Boolean(status?.reachable)} />
+          <WatchSignal label="Activation" active={status?.activationState === 2} value={activationLabel} />
+          <WatchSignal label="iPhone session" active={hasToken} value={hasToken ? "ready" : "missing"} />
+          <WatchSignal label="Native app" active={status?.available !== false} />
+        </div>
+
+        {message ? <div className="relative mt-4 rounded-2xl border border-emerald-300/15 bg-emerald-400/10 px-3 py-2 text-xs text-emerald-100">{message}</div> : null}
+        {error ? <div className="relative mt-4 rounded-2xl border border-amber-300/15 bg-amber-400/10 px-3 py-2 text-xs text-amber-100">{error}</div> : null}
+        {status?.lastSyncError || status?.lastActivationError ? (
+          <div className="relative mt-2 text-[10px] text-white/36">Last sync detail: {status.lastSyncError || status.lastActivationError}</div>
+        ) : null}
+
+        <div className="relative mt-5 grid grid-cols-2 gap-2">
+          <button type="button" onClick={onRefresh} disabled={busy} className="rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-3 text-xs font-medium text-white/70 disabled:opacity-40">
+            Scan Again
+          </button>
+          <button type="button" onClick={onSync} disabled={busy || !hasToken} className="rounded-2xl bg-white px-4 py-3 text-xs font-semibold text-black transition active:scale-[0.98] disabled:opacity-45">
+            {busy ? "Syncing" : "Sync Watch"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function getWatchExperience({
   stage,
