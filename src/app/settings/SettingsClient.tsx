@@ -123,6 +123,7 @@ export default function SettingsClient() {
   const [watchSyncMessage, setWatchSyncMessage] = useState<string | null>(null);
   const [watchSyncError, setWatchSyncError] = useState<string | null>(null);
   const [watchStatus, setWatchStatus] = useState<WatchSyncResult | null>(null);
+  const [watchSyncStage, setWatchSyncStage] = useState<"idle" | "searching" | "securing" | "personalizing" | "complete" | "attention">("idle");
   const unitLabel =
     accountContext.home?.name ||
     [accountContext.home?.block, accountContext.home?.unit].filter(Boolean).join(" ") ||
@@ -426,15 +427,22 @@ export default function SettingsClient() {
 
   async function syncWatchNow() {
     setWatchSyncBusy(true);
+    setWatchSyncStage("searching");
     setWatchSyncMessage(null);
     setWatchSyncError(null);
     try {
+      await new Promise((resolve) => setTimeout(resolve, 420));
+      setWatchSyncStage("securing");
+      await new Promise((resolve) => setTimeout(resolve, 420));
+      setWatchSyncStage("personalizing");
       const result = await syncOyiWatchSession(token, user);
       if (result?.synced) {
         const installed = result.watchAppInstalled === false ? " Watch app not detected yet." : "";
-        setWatchSyncMessage(`Watch session synced.${installed}`);
+        setWatchSyncStage("complete");
+        setWatchSyncMessage(`Oyi Watch is personalized for this home.${installed}`);
         setWatchStatus(result);
       } else {
+        setWatchSyncStage("attention");
         setWatchSyncError(
           result?.reason === "ios_native_only"
             ? "Watch sync requires the iPhone app. Please open Oyi Home on iPhone."
@@ -444,6 +452,7 @@ export default function SettingsClient() {
         );
       }
     } catch {
+      setWatchSyncStage("attention");
       setWatchSyncError("Watch sync failed. Keep the watch paired, unlocked, and nearby.");
     } finally {
       setWatchSyncBusy(false);
@@ -463,6 +472,15 @@ export default function SettingsClient() {
         : watchStatus?.activationState === 0
           ? "not activated"
           : "unknown";
+
+  const watchIsAvailable = watchStatus?.available !== false;
+  const watchIsInstalled = Boolean(watchStatus?.watchAppInstalled);
+  const watchIsReachable = Boolean(watchStatus?.reachable);
+  const watchExperience = getWatchExperience({
+    stage: watchSyncStage,
+    status: watchStatus,
+    hasToken: Boolean(token),
+  });
 
   return (
     <div className="oyi-living-page relative z-10 mx-auto max-w-3xl space-y-4 py-2 pb-8">
@@ -508,35 +526,68 @@ export default function SettingsClient() {
         <div className="rounded-[22px] border border-white/10 bg-white/[0.035] p-4 space-y-3">
           <div className="text-xs text-gray-400">Manage partner integrations for full ecosystem control.</div>
 
-          <div className="rounded-xl border border-sky-400/20 bg-sky-500/10 p-3 space-y-2">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-sm font-semibold text-white">Oyi Watch</div>
-                <div className="mt-1 text-[11px] leading-relaxed text-white/60">
-                  Send your current secure iPhone session to your paired Apple Watch.
+          <div className="relative overflow-hidden rounded-[28px] border border-sky-300/15 bg-[radial-gradient(circle_at_20%_0%,rgba(56,189,248,0.22),transparent_32%),linear-gradient(145deg,rgba(7,12,24,0.92),rgba(2,6,14,0.9))] p-4 shadow-[0_24px_80px_rgba(14,165,233,0.12)]">
+            <div className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-sky-400/10 blur-3xl" />
+            <div className="relative flex items-start justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className={`relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full border ${watchExperience.ringClass} bg-black/45`}>
+                  <div className="absolute inset-1 rounded-full border border-sky-300/20" />
+                  <div className={`h-5 w-5 rounded-full ${watchSyncBusy ? "animate-pulse" : ""} bg-sky-300 shadow-[0_0_24px_rgba(56,189,248,0.75)]`} />
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-white">Oyi Watch</div>
+                  <div className="mt-1 text-[11px] leading-relaxed text-white/58">
+                    {watchExperience.summary}
+                  </div>
                 </div>
               </div>
-              <div className="rounded-full border border-sky-300/20 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-sky-100/70">
-                Watch
+              <div className={`rounded-full border px-2.5 py-1 text-[9px] uppercase tracking-[0.18em] ${watchExperience.badgeClass}`}>
+                {watchExperience.badge}
               </div>
             </div>
-            <button
-              type="button"
-              onClick={syncWatchNow}
-              disabled={watchSyncBusy || !token}
-              className="w-full rounded-xl bg-white px-3 py-3 text-sm font-semibold text-black transition active:scale-[0.99] disabled:opacity-50"
-            >
-              {watchSyncBusy ? "Syncing Watch..." : "Sync Watch"}
-            </button>
-            <div className="grid grid-cols-2 gap-2 rounded-xl border border-white/10 bg-black/20 p-3 text-[10px] text-white/55">
-              <div>Paired: <span className="text-white/80">{String(Boolean(watchStatus?.paired))}</span></div>
-              <div>Installed: <span className="text-white/80">{String(Boolean(watchStatus?.watchAppInstalled))}</span></div>
-              <div>Reachable: <span className="text-white/80">{String(Boolean(watchStatus?.reachable))}</span></div>
-              <div>Activation: <span className="text-white/80">{activationLabel}</span></div>
-              <div className="col-span-2">Last sync error: <span className="text-white/80">{watchStatus?.lastSyncError || watchStatus?.lastActivationError || "none"}</span></div>
+
+            <div className="relative mt-4 rounded-[22px] border border-white/10 bg-black/24 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.22em] text-white/35">{watchExperience.kicker}</div>
+                  <div className="mt-1 text-sm font-medium text-white">{watchExperience.title}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={syncWatchNow}
+                  disabled={watchSyncBusy || !token}
+                  className="rounded-full bg-white px-4 py-2 text-xs font-semibold text-black transition hover:bg-sky-100 active:scale-[0.98] disabled:opacity-45"
+                >
+                  {watchSyncBusy ? "Syncing" : watchSyncStage === "complete" ? "Sync Again" : "Sync Watch"}
+                </button>
+              </div>
+
+              <div className="mt-4 grid grid-cols-4 gap-2">
+                {watchExperience.steps.map((step, index) => (
+                  <div key={step.label} className="space-y-1">
+                    <div className={`h-1 rounded-full ${step.active ? "bg-sky-300 shadow-[0_0_14px_rgba(56,189,248,0.65)]" : step.done ? "bg-emerald-300/80" : "bg-white/12"}`} />
+                    <div className={`text-[9px] ${step.active || step.done ? "text-white/75" : "text-white/30"}`}>{index + 1}. {step.label}</div>
+                  </div>
+                ))}
+              </div>
             </div>
-            {watchSyncMessage ? <div className="text-xs text-emerald-300">{watchSyncMessage}</div> : null}
-            {watchSyncError ? <div className="text-xs text-amber-200">{watchSyncError}</div> : null}
+
+            <div className="relative mt-3 grid grid-cols-2 gap-2 text-[10px] text-white/50">
+              <WatchSignal label="Paired" active={Boolean(watchStatus?.paired)} />
+              <WatchSignal label="Installed" active={watchIsInstalled} />
+              <WatchSignal label="Reachable" active={watchIsReachable} />
+              <WatchSignal label="Activation" value={activationLabel} active={watchStatus?.activationState === 2} />
+              <WatchSignal label="Native iPhone" active={watchIsAvailable} />
+              <WatchSignal label="Session" active={Boolean(token)} value={token ? "ready" : "missing"} />
+            </div>
+
+            {watchSyncMessage ? <div className="relative mt-3 rounded-2xl border border-emerald-300/15 bg-emerald-400/10 px-3 py-2 text-xs text-emerald-100">{watchSyncMessage}</div> : null}
+            {watchSyncError ? <div className="relative mt-3 rounded-2xl border border-amber-300/15 bg-amber-400/10 px-3 py-2 text-xs text-amber-100">{watchSyncError}</div> : null}
+            {watchStatus?.lastSyncError || watchStatus?.lastActivationError ? (
+              <div className="relative mt-2 text-[10px] text-white/38">
+                Last sync detail: {watchStatus.lastSyncError || watchStatus.lastActivationError}
+              </div>
+            ) : null}
           </div>
 
           <div className="grid gap-2 sm:grid-cols-3">
@@ -952,6 +1003,130 @@ export default function SettingsClient() {
           logout();
         }}
       />
+    </div>
+  );
+}
+
+
+function getWatchExperience({
+  stage,
+  status,
+  hasToken,
+}: {
+  stage: "idle" | "searching" | "securing" | "personalizing" | "complete" | "attention";
+  status: WatchSyncResult | null;
+  hasToken: boolean;
+}) {
+  const nativeUnavailable = status?.available === false;
+  const paired = Boolean(status?.paired);
+  const installed = Boolean(status?.watchAppInstalled);
+  const reachable = Boolean(status?.reachable);
+  const stageOrder = ["searching", "securing", "personalizing", "complete"];
+  const activeIndex = stageOrder.indexOf(stage);
+  const makeSteps = (activeLabel: string) =>
+    ["Find", "Secure", "Personalize", "Ready"].map((label, index) => ({
+      label,
+      active: label === activeLabel,
+      done: activeIndex >= index && stage !== "attention",
+    }));
+
+  if (stage === "searching") {
+    return {
+      badge: "Searching",
+      badgeClass: "border-sky-300/20 bg-sky-300/10 text-sky-100/80",
+      ringClass: "border-sky-300/35",
+      kicker: "Finding Apple Watch",
+      title: "Looking for your paired watch nearby",
+      summary: "Keep your iPhone and Apple Watch unlocked and close together.",
+      steps: makeSteps("Find"),
+    };
+  }
+
+  if (stage === "securing") {
+    return {
+      badge: "Securing",
+      badgeClass: "border-cyan-300/20 bg-cyan-300/10 text-cyan-100/80",
+      ringClass: "border-cyan-300/35",
+      kicker: "Preparing secure session",
+      title: "Encrypting your home access for Oyi Watch",
+      summary: "Oyi is sending only presence signals and a secure session token.",
+      steps: makeSteps("Secure"),
+    };
+  }
+
+  if (stage === "personalizing") {
+    return {
+      badge: "Personalizing",
+      badgeClass: "border-indigo-300/20 bg-indigo-300/10 text-indigo-100/80",
+      ringClass: "border-indigo-300/35",
+      kicker: "Personalizing watch",
+      title: "Applying your home, role, and permissions",
+      summary: "Your watch receives the same protected home scope as your iPhone.",
+      steps: makeSteps("Personalize"),
+    };
+  }
+
+  if (stage === "complete") {
+    return {
+      badge: "Synced",
+      badgeClass: "border-emerald-300/20 bg-emerald-300/10 text-emerald-100/80",
+      ringClass: "border-emerald-300/35",
+      kicker: "Ready on wrist",
+      title: "Oyi Watch is connected to this home",
+      summary: "Open Oyi Watch to see Synced mode and run a safe quick action.",
+      steps: makeSteps("Ready"),
+    };
+  }
+
+  if (stage === "attention" || nativeUnavailable || !hasToken) {
+    return {
+      badge: "Needs attention",
+      badgeClass: "border-amber-300/20 bg-amber-300/10 text-amber-100/80",
+      ringClass: "border-amber-300/35",
+      kicker: nativeUnavailable ? "iPhone app required" : !hasToken ? "Session required" : "Sync interrupted",
+      title: nativeUnavailable
+        ? "Open Oyi Home from the installed iPhone app"
+        : !hasToken
+          ? "Sign in again before syncing your watch"
+          : "Keep both devices unlocked and nearby",
+      summary: nativeUnavailable
+        ? "Browser preview cannot use WatchConnectivity. This must run inside the iPhone app."
+        : "The watch keeps Mock mode until it receives a synced token or a local dev token.",
+      steps: ["Find", "Secure", "Personalize", "Ready"].map((label) => ({ label, active: false, done: false })),
+    };
+  }
+
+  if (paired && installed && reachable) {
+    return {
+      badge: "Live",
+      badgeClass: "border-emerald-300/20 bg-emerald-300/10 text-emerald-100/80",
+      ringClass: "border-emerald-300/35",
+      kicker: "Apple Watch detected",
+      title: "Ready to sync your wrist experience",
+      summary: "Your watch is nearby. Sync to personalize it for this home.",
+      steps: ["Find", "Secure", "Personalize", "Ready"].map((label, index) => ({ label, active: index === 0, done: false })),
+    };
+  }
+
+  return {
+    badge: installed ? "Installed" : paired ? "Paired" : "Setup",
+    badgeClass: "border-sky-300/20 bg-sky-300/10 text-sky-100/75",
+    ringClass: "border-sky-300/25",
+    kicker: installed ? "Watch app found" : paired ? "Paired watch found" : "Watch setup",
+    title: installed ? "Wake Oyi Watch, then sync" : paired ? "Install Oyi Watch from the iPhone app" : "Pair an Apple Watch to continue",
+    summary: "Sync sends your secure session and home context from iPhone to Watch.",
+    steps: ["Find", "Secure", "Personalize", "Ready"].map((label) => ({ label, active: false, done: false })),
+  };
+}
+
+function WatchSignal({ label, active, value }: { label: string; active: boolean; value?: string }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-2">
+      <div className="flex items-center gap-1.5">
+        <span className={`h-1.5 w-1.5 rounded-full ${active ? "bg-emerald-300" : "bg-white/22"}`} />
+        <span className="text-white/38">{label}</span>
+      </div>
+      <div className="mt-1 text-[11px] text-white/78">{value || (active ? "yes" : "no")}</div>
     </div>
   );
 }
