@@ -21,19 +21,29 @@ const ITEMS: Item[] = [
 function isActive(pathname: string, href: string) {
   if (href === "/home") return pathname === "/home";
   if (href === "/activity") {
-    return ["/activity", "/notifications", "/visitors", "/maintenance", "/messages"].some(
-      (route) => pathname === route || pathname.startsWith(`${route}/`)
-    );
+    return [
+      "/activity",
+      "/notifications",
+      "/visitors",
+      "/maintenance",
+      "/messages",
+    ].some((route) => pathname === route || pathname.startsWith(`${route}/`));
   }
   if (href === "/rooms") {
     return ["/rooms", "/room", "/devices", "/security", "/utilities"].some(
-      (route) => pathname === route || pathname.startsWith(`${route}/`)
+      (route) => pathname === route || pathname.startsWith(`${route}/`),
     );
   }
   if (href === "/profile") {
-    return ["/profile", "/account", "/wallet", "/services", "/settings", "/ai", "/reports"].some(
-      (route) => pathname === route || pathname.startsWith(`${route}/`)
-    );
+    return [
+      "/profile",
+      "/account",
+      "/wallet",
+      "/services",
+      "/settings",
+      "/ai",
+      "/reports",
+    ].some((route) => pathname === route || pathname.startsWith(`${route}/`));
   }
   return pathname === href || pathname.startsWith(`${href}/`);
 }
@@ -44,11 +54,11 @@ export default function BottomNav() {
 
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-[95] border-t border-white/[0.07] bg-[#03070c]/78 backdrop-blur-2xl"
-      style={{ paddingBottom: "var(--sab)" }}
+      className="pointer-events-none fixed inset-x-0 bottom-0 z-[95] px-5"
+      style={{ paddingBottom: "calc(10px + var(--sab))" }}
       aria-label="Oyi Home navigation"
     >
-      <div className="mx-auto grid max-w-3xl grid-cols-5 gap-1 px-2 py-1">
+      <div className="pointer-events-auto mx-auto grid max-w-[820px] grid-cols-5 gap-1 rounded-[30px] border border-white/[0.085] bg-[#040911]/82 px-3 py-2 shadow-[0_20px_70px_rgba(0,0,0,0.48)] backdrop-blur-2xl">
         {ITEMS.map((item) => {
           const active = isActive(pathname, item.href);
           const Icon = item.icon;
@@ -57,22 +67,28 @@ export default function BottomNav() {
               key={item.key}
               type="button"
               onClick={() => router.push(item.href)}
-              className={`group rounded-[16px] px-1.5 py-1.5 text-center transition active:scale-[0.98] ${
-                active
-                  ? "bg-[radial-gradient(circle_at_top,rgba(74,168,255,0.16),rgba(255,255,255,0.048))] text-white shadow-[0_0_16px_rgba(74,168,255,0.08)]"
-                  : "text-white/52 hover:bg-white/[0.06] hover:text-white/80"
+              className={`group rounded-[22px] px-1 py-2 text-center transition active:scale-[0.98] ${
+                active ? "text-white" : "text-white/46 hover:text-white/78"
               }`}
             >
               <div className="flex justify-center">
                 <span
-                  className={`grid h-5 w-5 place-items-center rounded-full transition ${
-                    active ? "bg-sky-300/15 text-sky-100" : "text-white/58 group-hover:text-white/80"
+                  className={`grid h-8 w-8 place-items-center rounded-[15px] transition ${
+                    active
+                      ? "bg-sky-300/16 text-sky-100 shadow-[0_0_24px_rgba(56,189,248,0.36)]"
+                      : "text-white/52 group-hover:bg-white/[0.05] group-hover:text-white/78"
                   }`}
                 >
-                  <Icon className="text-[14px]" />
+                  <Icon className="text-[20px]" />
                 </span>
               </div>
-              <div className="mt-0.5 text-[9px] font-medium tracking-tight">{item.label}</div>
+              <div
+                className={`mt-1 text-[11px] font-medium tracking-[-0.025em] ${
+                  active ? "text-white" : "text-white/48"
+                }`}
+              >
+                {item.label}
+              </div>
             </button>
           );
         })}
