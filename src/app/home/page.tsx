@@ -52,6 +52,15 @@ function isOnline(device: any) {
   );
 }
 
+function asArray<T = any>(value: any): T[] {
+  if (Array.isArray(value)) return value;
+  if (Array.isArray(value?.items)) return value.items;
+  if (Array.isArray(value?.devices)) return value.devices;
+  if (Array.isArray(value?.requests)) return value.requests;
+  if (Array.isArray(value?.data)) return value.data;
+  return [];
+}
+
 function QuickControl({
   icon: Icon,
   label,
@@ -136,8 +145,8 @@ export default function HomePage() {
         deviceService.getAssignedDevices(estateId),
         deviceService.discoverDevices(),
       ]);
-      if (assigned.status === "fulfilled") setAssignedDevices(assigned.value);
-      if (discovered.status === "fulfilled") setDiscoveryDevices(discovered.value);
+      if (assigned.status === "fulfilled") setAssignedDevices(asArray(assigned.value));
+      if (discovered.status === "fulfilled") setDiscoveryDevices(asArray(discovered.value));
       if (assigned.status === "rejected" && discovered.status === "rejected") {
         throw assigned.reason;
       }
@@ -162,11 +171,11 @@ export default function HomePage() {
           walletService.getWallet().catch(() => null),
         ]);
 
-      if (visitorRes.status === "fulfilled") setVisitors(visitorRes.value);
-      if (communityRes.status === "fulfilled") setCommunityPosts(communityRes.value);
-      if (maintenanceRes.status === "fulfilled") setMaintenance(maintenanceRes.value);
+      if (visitorRes.status === "fulfilled") setVisitors(asArray<VisitorAccess>(visitorRes.value));
+      if (communityRes.status === "fulfilled") setCommunityPosts(asArray<CommunityPost>(communityRes.value));
+      if (maintenanceRes.status === "fulfilled") setMaintenance(asArray<MaintenanceTicket>(maintenanceRes.value));
       if (notificationRes.status === "fulfilled") {
-        setNotifications(Array.isArray(notificationRes.value) ? notificationRes.value : []);
+        setNotifications(asArray<AppNotification>(notificationRes.value));
       }
       if (walletRes.status === "fulfilled" && walletRes.value) {
         const balance =
