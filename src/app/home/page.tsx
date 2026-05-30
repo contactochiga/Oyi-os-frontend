@@ -522,7 +522,14 @@ export default function HomePage() {
       (user as any)?.estate_name ||
       "No active home linked yet",
   );
-  const rawName = String((user as any)?.name || (user as any)?.first_name || "Oyi");
+  const rawName = String(
+    (user as any)?.full_name ||
+      (user as any)?.name ||
+      (user as any)?.first_name ||
+      (user as any)?.username ||
+      (user as any)?.email?.split("@")[0] ||
+      "Oyi",
+  ).trim();
   const greetingName = rawName.split(" ")[0] || "Oyi";
   const greetingPeriod = getGreetingPeriod();
   const walletLabel =

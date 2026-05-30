@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Oyi</string>
+    <string name="title_activity_main">Oyi</string>
+    <string name="package_name">com.ochiga.oyios</string>
+    <string name="custom_url_scheme">com.ochiga.oyios</string>
+</resources>

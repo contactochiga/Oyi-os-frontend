@@ -9,3 +9,8 @@ tsconfig.tsbuildinfo
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Xcode local workspace and user metadata
+**/*.xcodeproj/project.xcworkspace/
+**/*.xcuserdata/
+**/xcuserdata/

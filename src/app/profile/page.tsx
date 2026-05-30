@@ -29,7 +29,7 @@ import { deviceService } from "@/services/deviceService";
 import { homeAccessService, type HomeAccessMember } from "@/services/homeAccessService";
 import { walletService } from "@/services/walletService";
 import { getGenericIntegration, getTuyaIntegration } from "@/services/integrationsService";
-import { getOyiWatchSyncStatus, type WatchSyncResult } from "@/services/watchSyncService";
+import { getOyiWatchSyncStatus, syncOyiWatchSession, type WatchSyncResult } from "@/services/watchSyncService";
 import { listMyNotifications, type AppNotification } from "@/services/notificationsService";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import API from "@/services/api";
@@ -77,7 +77,7 @@ function homeLabel(home: any, fallback?: string | null) {
 }
 
 function isConnected(value: any) {
-  return Boolean(value?.connected || value?.synced || value?.watchAppInstalled || value?.available === true);
+  return Boolean(value?.connected || value?.synced || value?.reachable || value?.tokenSent);
 }
 
 function appEnvironment() {
@@ -98,6 +98,8 @@ export default function ProfilePage() {
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [watchStatus, setWatchStatus] = useState<WatchSyncResult | null>(null);
+  const [watchSyncBusy, setWatchSyncBusy] = useState(false);
+  const [watchSyncMessage, setWatchSyncMessage] = useState<string | null>(null);
   const [integrations, setIntegrations] = useState<IntegrationStatus[]>([]);
   const [panel, setPanel] = useState<PanelKey>(null);
   const [logoutOpen, setLogoutOpen] = useState(false);
@@ -290,6 +292,36 @@ export default function ProfilePage() {
     router.replace("/auth/login");
   }
 
+  async function handleSyncWatch() {
+    setWatchSyncBusy(true);
+    setWatchSyncMessage(null);
+    const result = await syncOyiWatchSession(token, user);
+    setWatchSyncBusy(false);
+    setWatchStatus(result);
+
+    if (!result.available) {
+      setWatchSyncMessage(result.reason === "ios_native_only"
+        ? "Watch sync requires the iPhone app. Please open Oyi Home on iPhone."
+        : "Watch sync is unavailable in this app build.");
+      return;
+    }
+    if (result.error || result.lastSyncError) {
+      setWatchSyncMessage(String(result.error || result.lastSyncError));
+      return;
+    }
+    if (!result.paired) {
+      setWatchSyncMessage("No paired Apple Watch was found.");
+      return;
+    }
+    if (!(result.watchAppInstalled || result.installed)) {
+      setWatchSyncMessage("Install Oyi Watch on your paired Apple Watch, then sync again.");
+      return;
+    }
+    setWatchSyncMessage(result.reachable
+      ? "Watch session synced."
+      : "Session queued securely. Open Oyi Watch to complete sync.");
+  }
+
   function renderPanel() {
     if (!panel) return null;
     const title = menu.find((item) => item.key === panel)?.label || "Profile Information";
@@ -344,7 +376,15 @@ export default function ProfilePage() {
                 <InfoRow label="Unread alerts" value={`${notifications.filter((item) => item.status !== "read").length}`} />
               </>
             ) : null}
-            {panel === "integrations" ? integrations.map((item) => <InfoRow key={item.label} label={item.label} value={item.connected ? "Connected" : "Not Connected"} detail={item.detail || undefined} />) : null}
+            {panel === "integrations" ? (
+              <>
+                {integrations.map((item) => <InfoRow key={item.label} label={item.label} value={item.connected ? "Connected" : "Not Connected"} detail={item.detail || undefined} />)}
+                <button type="button" onClick={() => void handleSyncWatch()} disabled={watchSyncBusy} className="w-full rounded-full bg-white px-4 py-2.5 text-sm font-semibold text-black transition disabled:cursor-wait disabled:opacity-60">
+                  {watchSyncBusy ? "Syncing Watch..." : "Sync Watch"}
+                </button>
+                {watchSyncMessage ? <p className="px-1 text-xs leading-5 text-white/54">{watchSyncMessage}</p> : null}
+              </>
+            ) : null}
             {panel === "preferences" ? (
               <>
                 <InfoRow label="Appearance" value={darkMode ? "Dark" : "Light"} />

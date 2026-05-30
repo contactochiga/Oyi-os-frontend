@@ -15,7 +15,7 @@ export default function ViewportKeyboardFix() {
 
     const root = document.documentElement;
     let latestNativeKb = 0;
-    let keyboardListeners: Array<{ remove: () => Promise<void> }> = [];
+    const keyboardListeners: Array<{ remove: () => Promise<void> }> = [];
 
     const setVars = () => {
       const vv = window.visualViewport;
