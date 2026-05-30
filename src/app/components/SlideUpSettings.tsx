@@ -25,10 +25,10 @@ export default function SlideUpSettings({
         </div>
 
         <div className="space-y-4 text-gray-300 text-sm">
-          <a href="/settings" className="block p-4 rounded-lg bg-gray-800 hover:bg-gray-700 transition">
+          <a href="/profile" className="block p-4 rounded-lg bg-gray-800 hover:bg-gray-700 transition">
             Preferences
           </a>
-          <a href="/settings" className="block p-4 rounded-lg bg-gray-800 hover:bg-gray-700 transition">
+          <a href="/profile" className="block p-4 rounded-lg bg-gray-800 hover:bg-gray-700 transition">
             Estate & Unit
           </a>
         </div>

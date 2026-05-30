@@ -102,17 +102,15 @@ export default function MaintenancePage() {
   return (
     <ConsumerShell
       title="Maintenance"
-      subtitle="Concierge service • home diagnostics • calm operations"
-      showBack
-      backHref="/home"
+      subtitle="Service requests and scheduled care."
     >
       <div className="oyi-living-page space-y-3 pb-8">
-      <section className="oyi-environment-hero rounded-[24px] p-4">
+      <section className="oyi-environment-hero rounded-[22px] p-3.5">
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="text-[10px] uppercase tracking-[0.24em] text-sky-100/60">Home Service</div>
-            <div className="mt-1.5 text-xl font-semibold text-white">{openCount ? `${openCount} active request${openCount === 1 ? "" : "s"}` : "Home service calm"}</div>
-            <div className="mt-1.5 text-xs leading-5 text-white/50">Requests, technician updates and infrastructure issues stay organized here.</div>
+            <div className="mt-1 text-[17px] font-semibold tracking-[-0.035em] text-white">{openCount ? `${openCount} active request${openCount === 1 ? "" : "s"}` : "Home service calm"}</div>
+            <div className="mt-1 text-[11px] leading-4 text-white/46">Requests, technician updates and infrastructure issues stay organized here.</div>
           </div>
 
           <div className="flex gap-2">
@@ -287,10 +285,6 @@ export default function MaintenancePage() {
                     </button>
                   </div>
 
-                  <div className="text-[11px] text-white/35">
-                    This page uses <span className="text-white/55">GET /maintenance/mine</span> and{" "}
-                    <span className="text-white/55">POST /maintenance/ticket</span>
-                  </div>
                 </div>
               </div>
             </div>

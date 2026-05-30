@@ -53,5 +53,4 @@ export const CONSUMER_MODULES: ModuleDefinition[] = [
   { key: "wallet", label: "Wallet & Services", href: "/wallet", domain: "Smart Home Modules", badgeKey: "wallet", anyOf: ["wallets.read"] },
   { key: "reports", label: "Reports", href: "/reports", domain: "Smart Home Modules", anyOf: ["homes.read", "devices.read", "wallets.read"] },
   { key: "ai", label: "AI & Automation", href: "/ai", domain: "Smart Home Modules", anyOf: ["homes.read", "devices.read"] },
-  { key: "account", label: "Account", href: "/account", domain: "Smart Home Modules" },
 ];

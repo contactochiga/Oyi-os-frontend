@@ -1,127 +1,286 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import ConsumerShell from "@/app/components/ConsumerShell";
-import { listMyNotifications, type AppNotification } from "@/services/notificationsService";
-import { maintenanceService, type MaintenanceTicket } from "@/services/maintenanceService";
-import { visitorService, type VisitorAccess } from "@/services/visitorService";
-import { Bell, DoorOpen, ShieldCheck, Wrench } from "lucide-react";
+import {
+  Bell,
+  Bolt,
+  ChevronRight,
+  Grid2X2,
+  ShieldCheck,
+  UserRound,
+  Users,
+  Wallet,
+  Wrench,
+  Cpu,
+  Home,
+  AlertTriangle,
+  Activity as ActivityIcon,
+} from "lucide-react";
 
-function timeLabel(iso?: string | null) {
-  if (!iso) return "Now";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "Now";
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+import LayoutWrapper from "@/app/components/LayoutWrapper";
+import HamburgerMenu from "@/app/components/HamburgerMenu";
+import MessagesInboxButton from "@/app/components/MessagesInboxButton";
+import BottomNav from "@/app/components/BottomNav";
+import { getSocket } from "@/services/socket";
+import { getDeviceIconFromText } from "@/lib/devicePresentation";
+import { getActivityFeed, type ActivityCategory, type ActivityEvent, type ActivitySummary } from "@/services/activityService";
+
+type FilterKey = "all" | "alerts" | "devices" | "people";
+
+const EMPTY_SUMMARY: ActivitySummary = { total_events: 0, alerts: 0, visitors: 0, actions: 0 };
+
+const FILTERS: Array<{ key: FilterKey; label: string; icon: any }> = [
+  { key: "all", label: "All Activity", icon: Grid2X2 },
+  { key: "alerts", label: "Alerts", icon: ShieldCheck },
+  { key: "devices", label: "Devices", icon: Cpu },
+  { key: "people", label: "People", icon: UserRound },
+];
+
+function formatTime(value?: string | null) {
+  if (!value) return "Now";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Now";
+  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
-function rowTone(type: string) {
-  const lower = type.toLowerCase();
-  if (lower.includes("visitor") || lower.includes("access")) return { icon: DoorOpen, color: "text-sky-100 bg-sky-300/10" };
-  if (lower.includes("maintenance") || lower.includes("support")) return { icon: Wrench, color: "text-amber-100 bg-amber-300/10" };
-  if (lower.includes("security") || lower.includes("alert")) return { icon: ShieldCheck, color: "text-emerald-100 bg-emerald-300/10" };
-  return { icon: Bell, color: "text-white/75 bg-white/[0.06]" };
+function eventTone(category: ActivityCategory, severity?: string) {
+  if (severity === "high") return { Icon: AlertTriangle, ring: "border-red-300/16 bg-red-500/10 text-red-200 shadow-[0_0_18px_rgba(248,113,113,0.18)]" };
+  if (category === "security") return { Icon: ShieldCheck, ring: "border-emerald-300/16 bg-emerald-400/10 text-emerald-200 shadow-[0_0_18px_rgba(52,211,153,0.18)]" };
+  if (category === "visitor") return { Icon: UserRound, ring: "border-violet-300/16 bg-violet-400/10 text-violet-200 shadow-[0_0_18px_rgba(167,139,250,0.18)]" };
+  if (category === "device") return { Icon: Cpu, ring: "border-sky-300/16 bg-sky-400/10 text-sky-200 shadow-[0_0_18px_rgba(56,189,248,0.18)]" };
+  if (category === "maintenance") return { Icon: Wrench, ring: "border-amber-300/16 bg-amber-400/10 text-amber-200 shadow-[0_0_18px_rgba(251,191,36,0.18)]" };
+  if (category === "ai") return { Icon: Bolt, ring: "border-blue-300/16 bg-blue-400/10 text-blue-200 shadow-[0_0_18px_rgba(59,130,246,0.18)]" };
+  if (category === "wallet") return { Icon: Wallet, ring: "border-purple-300/16 bg-purple-400/10 text-purple-200 shadow-[0_0_18px_rgba(192,132,252,0.18)]" };
+  if (category === "community") return { Icon: Users, ring: "border-cyan-300/16 bg-cyan-400/10 text-cyan-200 shadow-[0_0_18px_rgba(34,211,238,0.18)]" };
+  return { Icon: Bell, ring: "border-white/10 bg-white/[0.055] text-white/72" };
+}
+
+function matchesFilter(item: ActivityEvent, filter: FilterKey) {
+  if (filter === "all") return true;
+  if (filter === "alerts") return item.category === "security" || item.severity === "high" || item.severity === "medium";
+  if (filter === "devices") return item.category === "device" || item.category === "ai";
+  if (filter === "people") return item.category === "visitor" || item.category === "community";
+  return true;
+}
+
+function summaryValue(value: number | undefined) {
+  return Number.isFinite(value) ? String(value) : "0";
 }
 
 export default function ActivityPage() {
-  const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  const [visitors, setVisitors] = useState<VisitorAccess[]>([]);
-  const [tickets, setTickets] = useState<MaintenanceTicket[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [filter, setFilter] = useState<FilterKey>("all");
+  const [events, setEvents] = useState<ActivityEvent[]>([]);
+  const [summary, setSummary] = useState<ActivitySummary>(EMPTY_SUMMARY);
+  const [sources, setSources] = useState<Record<string, { available: boolean; reason?: string | null }>>({});
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [lastSync, setLastSync] = useState<string | null>(null);
 
-  async function load() {
-    setLoading(true);
-    setErr(null);
-    try {
-      const [n, v, m] = await Promise.all([
-        listMyNotifications(),
-        visitorService.listMine(),
-        maintenanceService.listMyTickets({ status: "open" } as any),
-      ]);
-      setNotifications(Array.isArray(n) ? n : []);
-      setVisitors(Array.isArray(v) ? v : []);
-      setTickets(Array.isArray(m as any) ? (m as any) : []);
-    } catch (e: any) {
-      setErr(e?.message || "Activity could not sync yet.");
-    } finally {
-      setLoading(false);
+  async function load(silent = false) {
+    if (silent) setRefreshing(true);
+    else setLoading(true);
+    setError(null);
+    const result = await getActivityFeed();
+    if ("error" in result) {
+      setError(result.error);
+      setEvents([]);
+      setSummary(EMPTY_SUMMARY);
+    } else {
+      setEvents(result.items);
+      setSummary(result.summary || EMPTY_SUMMARY);
+      setSources(result.sources || {});
+      setLastSync(result.generated_at || new Date().toISOString());
     }
+    setLoading(false);
+    setRefreshing(false);
   }
 
   useEffect(() => {
-    load();
+    void load();
   }, []);
 
-  const heartbeat = useMemo(() => {
-    const notificationRows = notifications.map((n) => ({
-      id: `n-${n.id}`,
-      type: String(n.type || "home"),
-      title: n.title || "Home update",
-      body: n.message || "Oyi activity",
-      at: n.created_at,
-    }));
-    const visitorRows = visitors.slice(0, 4).map((v) => ({
-      id: `v-${v.id}`,
-      type: "visitor",
-      title: (v as any).name ? `${(v as any).name} access ${v.status || "updated"}` : "Visitor access updated",
-      body: v.purpose || "Gate activity",
-      at: (v as any).updated_at || (v as any).created_at,
-    }));
-    const ticketRows = tickets.slice(0, 4).map((t) => ({
-      id: `m-${t.id}`,
-      type: "maintenance",
-      title: t.title || "Maintenance request",
-      body: String(t.status || "open").replaceAll("_", " "),
-      at: t.created_at,
-    }));
-    return [...notificationRows, ...visitorRows, ...ticketRows]
-      .sort((a, b) => new Date(b.at || 0).getTime() - new Date(a.at || 0).getTime())
-      .slice(0, 12);
-  }, [notifications, visitors, tickets]);
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+    const refresh = () => void load(true);
+    socket.on("notification", refresh);
+    socket.on("signal", refresh);
+    socket.on("device:update", refresh);
+    socket.on("visitor.created", refresh);
+    socket.on("maintenance.updated", refresh);
+    socket.on("ai.tool.executed", refresh);
+    return () => {
+      socket.off("notification", refresh);
+      socket.off("signal", refresh);
+      socket.off("device:update", refresh);
+      socket.off("visitor.created", refresh);
+      socket.off("maintenance.updated", refresh);
+      socket.off("ai.tool.executed", refresh);
+    };
+  }, []);
+
+  const visibleEvents = useMemo(() => events.filter((item) => matchesFilter(item, filter)), [events, filter]);
+  const unavailableSources = useMemo(() => Object.entries(sources).filter(([, value]) => value && value.available === false), [sources]);
 
   return (
-    <ConsumerShell title="Activity" subtitle="Environmental heartbeat • visitors • access • service updates">
-      <div className="space-y-3 pb-8">
-        <section className="oyi-glass rounded-[24px] p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <div className="text-[10px] uppercase tracking-[0.24em] text-sky-100/60">Heartbeat</div>
-              <h1 className="mt-1.5 text-xl font-semibold text-white">Home aware</h1>
-              <p className="mt-1.5 text-xs leading-5 text-white/50">Quiet monitoring active across access, maintenance and notices.</p>
-            </div>
-            <button type="button" onClick={load} disabled={loading} className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs text-white/70 disabled:opacity-50">
-              {loading ? "Syncing" : "Refresh"}
-            </button>
+    <LayoutWrapper>
+      <main className="fixed inset-0 overflow-hidden bg-[#02060b] text-white">
+        <div className="oyi-ambient-bg" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_72%_14%,rgba(0,132,255,0.14),transparent_30%),linear-gradient(180deg,rgba(3,10,19,0.22),rgba(0,0,0,0.94))]" />
+
+        <div className="fixed inset-x-0 z-[80] px-5" style={{ top: "calc(8px + var(--sat))" }}>
+          <div className="mx-auto flex max-w-[430px] items-center justify-between">
+            <div className="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/[0.03] shadow-[0_8px_26px_rgba(0,0,0,0.28)] backdrop-blur-2xl"><HamburgerMenu /></div>
+            <div className="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/[0.028] shadow-[0_8px_26px_rgba(0,0,0,0.28)] backdrop-blur-2xl"><MessagesInboxButton /></div>
           </div>
-        </section>
+        </div>
 
-        {err ? <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-sm text-amber-100">{err}</div> : null}
+        <div className="absolute inset-x-0 overflow-y-auto px-5" style={{ top: "calc(70px + var(--sat))", bottom: "calc(78px + var(--sab))", WebkitOverflowScrolling: "touch" }}>
+          <div className="mx-auto max-w-[430px] pb-5">
+            <header>
+              <h1 className="text-[27px] font-semibold leading-none tracking-[-0.055em] text-white">Activity</h1>
+              <p className="mt-2 text-[13px] leading-5 text-white/56">Live updates from your home.</p>
+            </header>
 
-        <section className="rounded-[24px] border border-white/10 bg-white/[0.035] p-3">
-          <div className="space-y-2">
-            {heartbeat.length ? heartbeat.map((item) => {
-              const tone = rowTone(item.type);
-              const Icon = tone.icon;
-              return (
-                <article key={item.id} className="rounded-[18px] border border-white/10 bg-black/[0.18] px-3 py-3">
-                  <div className="flex items-start gap-3">
-                    <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full ${tone.color}`}><Icon className="h-4 w-4" /></span>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium text-white/90">{item.title}</div>
-                      <div className="mt-1 truncate text-xs text-white/42">{item.body}</div>
-                    </div>
-                    <span className="text-[10px] text-white/32">{timeLabel(item.at)}</span>
-                  </div>
-                </article>
-              );
-            }) : (
-              <div className="rounded-[20px] border border-white/10 bg-black/[0.18] p-5 text-center text-sm text-white/48">
-                No heartbeat yet. Visitor, security, maintenance and community signals will appear here.
+            <section className="mt-5 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Activity filters">
+              {FILTERS.map((item) => {
+                const Icon = item.icon;
+                const active = filter === item.key;
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setFilter(item.key)}
+                    className={`flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-2 text-xs font-medium transition active:scale-[0.98] ${
+                      active
+                        ? "border-sky-400/70 bg-sky-400/10 text-sky-200 shadow-[0_0_22px_rgba(0,132,255,0.20)]"
+                        : "border-white/[0.075] bg-white/[0.025] text-white/62 hover:bg-white/[0.05]"
+                    }`}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    {item.label}
+                  </button>
+                );
+              })}
+            </section>
+
+            <section className="mt-4 rounded-[20px] border border-white/[0.07] bg-[linear-gradient(145deg,rgba(255,255,255,0.046),rgba(255,255,255,0.012))] p-2.5 shadow-[0_12px_38px_rgba(0,0,0,0.30)] backdrop-blur-2xl">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-300">Today</div>
+              <div className="mt-3 grid grid-cols-4 divide-x divide-white/[0.065]">
+                <SummaryCell icon={ActivityIcon} label="Events" value={summaryValue(summary.total_events)} color="text-sky-300" />
+                <SummaryCell icon={ShieldCheck} label="Alerts" value={summaryValue(summary.alerts)} color="text-emerald-300" />
+                <SummaryCell icon={Users} label="Visitors" value={summaryValue(summary.visitors)} color="text-violet-300" />
+                <SummaryCell icon={Bolt} label="Actions" value={summaryValue(summary.actions)} color="text-amber-300" />
               </div>
-            )}
+            </section>
+
+            {error ? (
+              <section className="mt-4 rounded-[20px] border border-amber-300/16 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
+                <div className="font-medium">Activity temporarily unavailable.</div>
+                <div className="mt-1 text-xs text-amber-100/70">{error}</div>
+              </section>
+            ) : null}
+
+            {unavailableSources.length && !loading ? (
+              <section className="mt-3 rounded-[18px] border border-white/[0.06] bg-white/[0.025] px-3 py-2.5 text-xs leading-5 text-white/42">
+                Some activity sources are pending backend schema support: {unavailableSources.map(([key]) => key).join(", ")}.
+              </section>
+            ) : null}
+
+            <section className="mt-4">
+              <div className="mb-2.5 flex items-center justify-between">
+                <div className="text-xs text-white/38">{lastSync ? `Synced ${formatTime(lastSync)}` : loading ? "Syncing activity" : "Live feed"}</div>
+                <button type="button" onClick={() => load(true)} disabled={loading || refreshing} className="rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-1.5 text-xs text-white/60 disabled:opacity-45">
+                  {refreshing ? "Refreshing" : "Refresh"}
+                </button>
+              </div>
+
+              {loading ? <ActivitySkeleton /> : null}
+
+              {!loading && !visibleEvents.length ? (
+                <div className="rounded-[20px] border border-white/[0.07] bg-[linear-gradient(145deg,rgba(255,255,255,0.042),rgba(255,255,255,0.012))] p-5 text-center shadow-[0_14px_48px_rgba(0,0,0,0.28)] backdrop-blur-2xl">
+                  <div className="mx-auto grid h-8 w-8 place-items-center rounded-full border border-sky-300/15 bg-sky-400/10 text-sky-200">
+                    <Home className="h-5 w-5" />
+                  </div>
+                  <h2 className="mt-3 text-base font-semibold tracking-[-0.04em]">No activity yet.</h2>
+                  <p className="mt-1.5 text-xs leading-5 text-white/48">Oyi will surface important updates here.</p>
+                </div>
+              ) : null}
+
+              {!loading && visibleEvents.length ? (
+                <div className="relative pl-[50px]">
+                  <div className="absolute bottom-3 left-[45px] top-3 w-px bg-white/[0.07]" />
+                  <div className="space-y-2.5">
+                    {visibleEvents.map((item) => <ActivityRow key={item.id} item={item} />)}
+                  </div>
+                </div>
+              ) : null}
+            </section>
           </div>
-        </section>
+        </div>
+
+        <BottomNav />
+      </main>
+    </LayoutWrapper>
+  );
+}
+
+function SummaryCell({ icon: Icon, label, value, color }: { icon: any; label: string; value: string; color: string }) {
+  return (
+    <div className="min-w-0 px-1.5 py-1 text-center">
+      <div className={`mx-auto flex items-center justify-center gap-1.5 ${color}`}>
+        <Icon className="h-4 w-4" />
+        <span className="text-[20px] font-semibold tracking-[-0.05em]">{value}</span>
       </div>
-    </ConsumerShell>
+      <div className="mt-1 text-[11px] text-white/48">{label}</div>
+    </div>
+  );
+}
+
+function ActivityRow({ item }: { item: ActivityEvent }) {
+  const tone = eventTone(item.category, item.severity);
+  const Icon = item.category === "device" ? getDeviceIconFromText(`  `) : tone.Icon;
+  return (
+    <article className="relative">
+      <div className="absolute -left-[50px] top-5 w-[42px] pr-2.5 text-right text-[11px] font-medium text-white/42">{formatTime(item.occurred_at)}</div>
+      <div className="absolute -left-[9px] top-6 h-2 w-2 rounded-full border border-[#02060b] bg-slate-700 shadow-[0_0_12px_rgba(56,189,248,0.20)]" />
+      <div className="rounded-[20px] border border-white/[0.07] bg-[linear-gradient(145deg,rgba(255,255,255,0.044),rgba(255,255,255,0.012))] px-3 py-2.5 shadow-[0_12px_38px_rgba(0,0,0,0.26)] backdrop-blur-2xl">
+        <div className="flex items-center gap-3">
+          <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full border ${tone.ring}`}><Icon className="h-4 w-4" /></span>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-[14px] font-semibold tracking-[-0.025em] text-white">{item.title}</div>
+            <div className="mt-0.5 truncate text-[12px] text-white/50">{item.description}</div>
+          </div>
+          {item.thumbnail_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={item.thumbnail_url} alt="" className="h-8 w-8 rounded-[12px] object-cover" />
+          ) : item.severity === "high" ? (
+            <span className="rounded-full border border-red-300/18 bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold text-red-200">High</span>
+          ) : (
+            <span className="max-w-[58px] truncate text-[11px] text-white/42">{item.label || item.category}</span>
+          )}
+          {item.thumbnail_url || item.severity === "high" ? <ChevronRight className="h-4 w-4 text-white/35" /> : null}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function ActivitySkeleton() {
+  return (
+    <div className="space-y-2.5">
+      {[0, 1, 2].map((item) => (
+        <div key={item} className="rounded-[20px] border border-white/[0.06] bg-white/[0.025] px-3 py-2.5">
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-9 rounded-full bg-white/[0.06]" />
+            <div className="flex-1 space-y-2">
+              <div className="h-3 w-2/3 rounded-full bg-white/[0.06]" />
+              <div className="h-2.5 w-1/2 rounded-full bg-white/[0.04]" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }

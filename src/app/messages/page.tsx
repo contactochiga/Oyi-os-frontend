@@ -53,7 +53,7 @@ function wasReadByPeer(message: ChatMessage, peerLastReadAt?: string | null) {
 
 export default function MessagesPage() {
   const { user } = useAuth();
-  const myId = useMemo(() => String((user as any)?.id || ""), [user]);
+  const myId = useMemo(() => String((user as any)?.id || (user as any)?.user_id || (user as any)?.sub || ""), [user]);
 
   const [threads, setThreads] = useState<InboxThread[]>([]);
   const [residents, setResidents] = useState<ChatResident[]>([]);
@@ -193,9 +193,8 @@ export default function MessagesPage() {
         getComputedStyle(root).getPropertyValue("--sab") || "0"
       );
       const bottomNavReserve = 86 + (Number.isFinite(safeBottom) ? safeBottom : 0);
-      const composerReserve = 112 + (Number.isFinite(safeBottom) ? safeBottom : 0);
       const available = Math.floor(
-        window.innerHeight - rect.top - bottomNavReserve - composerReserve
+        window.innerHeight - rect.top - bottomNavReserve
       );
       setChatViewportHeight(Math.max(280, available));
     };
@@ -293,11 +292,7 @@ export default function MessagesPage() {
   }
 
   const composerDock = view === "chat" ? (
-    <div
-      className="fixed left-0 right-0 z-[85] px-4"
-      style={{ bottom: "calc(72px + var(--sab) + var(--kb))" }}
-    >
-      <div className="mx-auto max-w-3xl">
+    <div className="shrink-0 border-t border-white/[0.07] pt-2">
         {pendingAttachment ? (
           <div className="mb-2 rounded-2xl border border-white/10 bg-[rgba(8,12,20,0.94)] p-3 backdrop-blur-xl">
             <div className="mb-2 flex items-center justify-between gap-2">
@@ -362,7 +357,6 @@ export default function MessagesPage() {
             </button>
           </div>
         </div>
-      </div>
     </div>
   ) : null;
 
@@ -566,9 +560,9 @@ export default function MessagesPage() {
             )}
           </div>
 
+          {composerDock}
         </div>
       )}
-      {composerDock}
     </ConsumerShell>
   );
 }

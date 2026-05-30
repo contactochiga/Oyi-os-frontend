@@ -74,7 +74,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const u = pickUserFromContext(payload);
 
         const mergedUser = {
+          ...(user || {}),
           ...(u || {}),
+          id: (u as any)?.id ?? user?.id,
           email: (u as any)?.email ?? user?.email,
           full_name: (u as any)?.full_name ?? (user as any)?.full_name,
           estate_id: (u as any)?.estate_id ?? estate?.id ?? payload?.estate_id ?? user?.estate_id,

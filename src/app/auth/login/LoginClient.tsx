@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { loginWithEmail } from "@/services/authService";
 import { decodeToken, isExpired, setCookie } from "@/lib/auth";
@@ -113,8 +112,8 @@ export default function LoginClient() {
   const canSubmit = !!email.trim() && !!password && !loading;
 
   return (
-    <main className="min-h-screen text-white">
-      <div className="relative min-h-screen flex items-center justify-center px-6 py-10 overflow-hidden bg-[#070A12]">
+    <main className="min-h-screen overflow-hidden bg-[#02060b] text-white">
+      <div className="relative flex min-h-screen items-center justify-center overflow-hidden px-5 py-[calc(26px+var(--sat))]">
         <div className="pointer-events-none absolute inset-0">
           <div
             className="absolute -top-56 -left-56 h-[680px] w-[680px] rounded-full blur-3xl opacity-25"
@@ -149,8 +148,8 @@ export default function LoginClient() {
           />
         </div>
 
-        <div className="relative w-full max-w-sm">
-          <div className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur p-6 shadow-[0_20px_90px_rgba(0,0,0,0.60)] overflow-hidden">
+        <div className="relative w-full max-w-[370px]">
+          <div className="relative overflow-hidden rounded-[34px] border border-white/[0.08] bg-white/[0.045] p-5 shadow-[0_24px_90px_rgba(0,0,0,0.62)] backdrop-blur-2xl">
             <div
               className="pointer-events-none absolute inset-x-0 top-0 h-[2px]"
               style={{
@@ -162,20 +161,10 @@ export default function LoginClient() {
 
             <div className="relative">
               <div className="flex flex-col items-center text-center">
-                <div className="h-16 w-16 rounded-2xl border border-white/10 bg-black/20 grid place-items-center overflow-hidden">
-                  <div className="relative h-10 w-10">
-                    <Image
-                      src="/oyi-logo-transparent.png"
-                      alt="OYI Logo"
-                      fill
-                      className="object-contain"
-                      priority
-                    />
-                  </div>
-                </div>
+                <div className="oyi-orb grid h-20 w-20 place-items-center rounded-full text-[18px] font-semibold tracking-[-0.08em]">Oyi</div>
 
-                <div className="mt-5 text-xl font-semibold text-white tracking-wide">OYI</div>
-                <div className="mt-1 text-xs text-white/45">Sign in</div>
+                <div className="mt-5 text-[22px] font-semibold tracking-[-0.05em] text-white">Welcome home.</div>
+                <div className="mt-1 text-xs text-white/45">Sign in to your living intelligence OS.</div>
               </div>
 
               <div className="mt-6 space-y-3">
@@ -186,7 +175,7 @@ export default function LoginClient() {
                   onChange={(e) => setEmail(e.target.value)}
                   autoComplete="email"
                   disabled={loading}
-                  className="w-full rounded-2xl bg-black/20 border border-white/10 px-4 py-3 text-sm text-white placeholder-white/30 outline-none focus:border-white/20 disabled:opacity-60"
+                  className="w-full rounded-[18px] border border-white/[0.08] bg-black/24 px-4 py-3 text-sm text-white outline-none placeholder:text-white/30 focus:border-sky-300/30 disabled:opacity-60"
                 />
 
                 <input
@@ -196,7 +185,7 @@ export default function LoginClient() {
                   onChange={(e) => setPassword(e.target.value)}
                   autoComplete="current-password"
                   disabled={loading}
-                  className="w-full rounded-2xl bg-black/20 border border-white/10 px-4 py-3 text-sm text-white placeholder-white/30 outline-none focus:border-white/20 disabled:opacity-60"
+                  className="w-full rounded-[18px] border border-white/[0.08] bg-black/24 px-4 py-3 text-sm text-white outline-none placeholder:text-white/30 focus:border-sky-300/30 disabled:opacity-60"
                 />
 
                 {err && (
@@ -229,8 +218,8 @@ export default function LoginClient() {
                   Create account
                 </button>
 
-                <div className="pt-1 text-center text-[11px] text-white/35">
-                  Smart Home • Smart Estate
+                <div className="pt-1 text-center text-[11px] text-white/32">
+                  Calm home control · estate access · Oyi intelligence
                 </div>
               </div>
             </div>

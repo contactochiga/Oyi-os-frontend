@@ -1,28 +1,35 @@
 // src/app/home/page.tsx
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import {
   ArrowUp,
   ChevronDown,
+  Check,
   Leaf,
+  Loader2,
   Lightbulb,
-  Mic,
+  MessageCircle,
   Moon,
+  Plug,
   ShieldCheck,
   Thermometer,
+  Users,
   Wallet,
-  Zap,
+  Watch,
+  Wrench,
+  X,
 } from "lucide-react";
 
 import LayoutWrapper from "../components/LayoutWrapper";
 import InviteSuggestionBridge from "../components/InviteSuggestionBridge";
 import NotificationsBridge from "../components/NotificationsBridge";
 import HamburgerMenu from "../components/HamburgerMenu";
-import NotificationBell from "../components/NotificationBell";
+import MessagesInboxButton from "../components/MessagesInboxButton";
 import BottomNav from "../components/BottomNav";
+import { getDeviceIcon, getDeviceIconTone } from "@/lib/devicePresentation";
 
 import { deviceService } from "../../services/deviceService";
 import { walletService } from "@/services/walletService";
@@ -39,7 +46,20 @@ import {
   listMyNotifications,
   type AppNotification,
 } from "@/services/notificationsService";
+import { aiService, type AiChatResponse } from "@/services/aiService";
+import messagesService from "@/services/messagesService";
+import { getOyiWatchSyncStatus } from "@/services/watchSyncService";
+import useActiveContext, { type AvailableHomeContext } from "@/hooks/useActiveContext";
 import useAuth from "../../hooks/useAuth";
+
+type VoiceModeState =
+  | "idle"
+  | "listening"
+  | "thinking"
+  | "executing"
+  | "success"
+  | "failed"
+  | "confirmation_required";
 
 function isOnline(device: any) {
   if (typeof device?.online === "boolean") return device.online;
@@ -59,6 +79,32 @@ function asArray<T = any>(value: any): T[] {
   if (Array.isArray(value?.requests)) return value.requests;
   if (Array.isArray(value?.data)) return value.data;
   return [];
+}
+
+function aiCommandHint(tool: Record<string, any>) {
+  if (tool.status === "executed") return tool.summary || "Command completed.";
+  if (tool.status === "pending_confirmation") return "Confirmation needed.";
+  if (tool.status === "denied") {
+    return tool.reason === "missing_permission"
+      ? "You do not have permission for that action."
+      : "That action is not available.";
+  }
+  if (tool.status === "failed") return tool.error || "The command could not complete.";
+  return tool.summary || "Oyi processed that command.";
+}
+
+function aiReplyFromResponse(resp: AiChatResponse) {
+  const details = (resp.tools || []).map(aiCommandHint).filter(Boolean);
+  return [resp.reply, ...details.filter((line) => line !== resp.reply)]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function getGreetingPeriod() {
+  const hour = new Date().getHours();
+  if (hour < 12) return "morning";
+  if (hour < 17) return "afternoon";
+  return "evening";
 }
 
 function QuickControl({
@@ -87,24 +133,26 @@ function QuickControl({
     <button
       type="button"
       onClick={onClick}
-      className="group w-[168px] shrink-0 rounded-[28px] border border-white/[0.075] bg-[linear-gradient(145deg,rgba(255,255,255,0.055),rgba(255,255,255,0.017))] p-4 text-left shadow-[0_18px_54px_rgba(0,0,0,0.30)] backdrop-blur-2xl transition hover:border-white/14 hover:bg-white/[0.065] active:scale-[0.985] sm:w-[188px]"
+      className="group w-[138px] shrink-0 snap-start rounded-[24px] border border-white/[0.06] bg-[linear-gradient(145deg,rgba(255,255,255,0.045),rgba(255,255,255,0.014))] p-3.5 text-left shadow-[0_14px_42px_rgba(0,0,0,0.28)] backdrop-blur-2xl transition hover:border-white/12 hover:bg-white/[0.055] active:scale-[0.985]"
     >
       <span
-        className={`grid h-14 w-14 place-items-center rounded-full bg-gradient-to-b ${tones[tone]} to-transparent transition group-active:scale-95`}
+        className={`grid h-11 w-11 place-items-center rounded-full bg-gradient-to-b ${tones[tone]} to-transparent transition group-active:scale-95`}
       >
-        <Icon className="h-7 w-7" />
+        <Icon className="h-5 w-5" />
       </span>
-      <span className="mt-5 block text-[18px] font-semibold tracking-[-0.035em] text-white">
+      <span className="mt-4 block text-[15px] font-semibold tracking-[-0.035em] text-white">
         {label}
       </span>
-      <span className="mt-1 block text-[15px] text-white/52">{value}</span>
+      <span className="mt-0.5 block text-[13px] text-white/48">{value}</span>
     </button>
   );
 }
 
 export default function HomePage() {
   const router = useRouter();
+  const reduceMotion = useReducedMotion();
   const { user, token, ready } = useAuth() as any;
+  const activeContext = useActiveContext();
 
   const [assignedDevices, setAssignedDevices] = useState<any[]>([]);
   const [discoveryDevices, setDiscoveryDevices] = useState<any[]>([]);
@@ -119,22 +167,53 @@ export default function HomePage() {
   const [maintenance, setMaintenance] = useState<MaintenanceTicket[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const [messageUnread, setMessageUnread] = useState<number | null>(null);
+  const [watchConnected, setWatchConnected] = useState<boolean | null>(null);
+  const [contextOpen, setContextOpen] = useState(false);
+  const [contextSwitching, setContextSwitching] = useState(false);
+  const [contextError, setContextError] = useState<string | null>(null);
   const [dashBusy, setDashBusy] = useState(false);
   const [dashErr, setDashErr] = useState<string | null>(null);
-  const [aiPrompt, setAiPrompt] = useState("");
+  const [quickPage, setQuickPage] = useState(0);
+  const [voiceOpen, setVoiceOpen] = useState(false);
+  const [voiceState, setVoiceState] = useState<VoiceModeState>("idle");
+  const [voiceInput, setVoiceInput] = useState("");
+  const [voiceMessage, setVoiceMessage] = useState("Tap and speak to Oyi.");
+  const [voiceConfirmations, setVoiceConfirmations] = useState<Array<Record<string, any>>>([]);
+  const quickControlsRef = useRef<HTMLDivElement | null>(null);
+  const recognitionRef = useRef<any>(null);
 
   const estateId = useMemo(() => {
+    const fromContext = activeContext.estate_id;
     const fromUser = (user as any)?.estate_id || (user as any)?.estateId;
+    if (fromContext) return String(fromContext);
     if (fromUser) return String(fromUser);
     if (typeof window !== "undefined") {
       return (
         window.localStorage.getItem("oyi_estate_id") ||
         window.localStorage.getItem("estate_id") ||
-        "f479050c-020f-47ce-93b5-3dbf8155a1f3"
+        window.localStorage.getItem("ochiga_estate") ||
+        ""
       );
     }
-    return "f479050c-020f-47ce-93b5-3dbf8155a1f3";
-  }, [user]);
+    return "";
+  }, [activeContext.estate_id, user]);
+
+  const homeId = useMemo(() => {
+    const fromContext = activeContext.home_id;
+    const fromUser = (user as any)?.home_id || (user as any)?.homeId;
+    if (fromContext) return String(fromContext);
+    if (fromUser) return String(fromUser);
+    if (typeof window !== "undefined") {
+      return (
+        window.localStorage.getItem("oyi_home_id") ||
+        window.localStorage.getItem("home_id") ||
+        window.localStorage.getItem("ochiga_home") ||
+        ""
+      );
+    }
+    return "";
+  }, [activeContext.home_id, user]);
 
   async function refreshDevicePanelData() {
     if (!token) return;
@@ -142,7 +221,7 @@ export default function HomePage() {
     setDevicesErr(null);
     try {
       const [assigned, discovered] = await Promise.allSettled([
-        deviceService.getAssignedDevices(estateId),
+        estateId ? deviceService.getAssignedDevices(estateId) : Promise.resolve([]),
         deviceService.discoverDevices(),
       ]);
       if (assigned.status === "fulfilled") setAssignedDevices(asArray(assigned.value));
@@ -162,13 +241,15 @@ export default function HomePage() {
     setDashBusy(true);
     setDashErr(null);
     try {
-      const [visitorRes, communityRes, maintenanceRes, notificationRes, walletRes] =
+      const [visitorRes, communityRes, maintenanceRes, notificationRes, walletRes, messagesRes, watchRes] =
         await Promise.allSettled([
           visitorService.listMine(),
-          communityService.listByEstate(estateId),
+          estateId ? communityService.listByEstate(estateId) : Promise.resolve([]),
           maintenanceService.listMyTickets(),
           listMyNotifications(),
           walletService.getWallet().catch(() => null),
+          messagesService.listInbox(),
+          getOyiWatchSyncStatus().catch(() => null),
         ]);
 
       if (visitorRes.status === "fulfilled") setVisitors(asArray<VisitorAccess>(visitorRes.value));
@@ -181,6 +262,21 @@ export default function HomePage() {
         const balance =
           Number((walletRes.value as any)?.balance ?? (walletRes.value as any)?.amount ?? 0) || 0;
         setWalletBalance(balance);
+      }
+      if (messagesRes.status === "fulfilled") {
+        const total = asArray<any>(messagesRes.value).reduce(
+          (sum, thread) => sum + Number(thread?.unread_count || 0),
+          0,
+        );
+        setMessageUnread(total);
+      }
+      if (watchRes.status === "fulfilled") {
+        const value = watchRes.value as any;
+        setWatchConnected(
+          value
+            ? Boolean(value.synced || value.reachable || value.watchAppInstalled || value.installed)
+            : null,
+        );
       }
     } catch (err: any) {
       setDashErr(err?.message || "Home context sync unavailable");
@@ -247,15 +343,188 @@ export default function HomePage() {
   }
 
   function openOyiWithPrompt(prompt?: string) {
-    const value = String(prompt || aiPrompt || "").trim();
+    const value = String(prompt || "").trim();
     router.push(value ? `/ai?prompt=${encodeURIComponent(value)}` : "/ai");
   }
 
+  const aiContext = useMemo(
+    () => ({
+      surface: "consumer",
+      scope: "home",
+      estateId: (user as any)?.estate_id || estateId || null,
+      homeId: homeId || (user as any)?.home_id || null,
+    }),
+    [user, estateId, homeId],
+  );
+
+  function finishVoiceMode(delay = 1800) {
+    window.setTimeout(() => {
+      setVoiceOpen(false);
+      setVoiceState("idle");
+      setVoiceInput("");
+      setVoiceConfirmations([]);
+      setVoiceMessage("Tap and speak to Oyi.");
+    }, delay);
+  }
+
+  function handleVoiceResponse(resp: AiChatResponse) {
+    const failed = (resp.tools || []).some((tool) => tool.status === "failed");
+    const denied = (resp.tools || []).some((tool) => tool.status === "denied");
+    const confirmations = resp.confirmations || [];
+    const message = aiReplyFromResponse(resp) || "Done.";
+    setVoiceMessage(message);
+    setVoiceConfirmations(confirmations);
+    if (confirmations.length) {
+      setVoiceState("confirmation_required");
+      return;
+    }
+    setVoiceState(failed || denied ? "failed" : "success");
+    refreshDevicePanelData();
+    refreshDashboardData();
+    finishVoiceMode(failed || denied ? 2600 : 1800);
+  }
+
+  async function runVoiceCommand(command: string) {
+    const clean = command.trim();
+    if (!clean) {
+      setVoiceMessage("Type a command or try speaking again.");
+      setVoiceState("listening");
+      return;
+    }
+    setVoiceInput(clean);
+    setVoiceState("thinking");
+    setVoiceMessage(`Heard: “${clean}”`);
+    try {
+      setVoiceState("executing");
+      setVoiceMessage("Working…");
+      const resp = await aiService.chat(clean, aiContext);
+      handleVoiceResponse(resp);
+    } catch {
+      setVoiceState("failed");
+      setVoiceMessage("Oyi could not reach the command layer.");
+    }
+  }
+
+  function startVoiceMode() {
+    setVoiceOpen(true);
+    setVoiceState("listening");
+    setVoiceMessage("Listening…");
+    setVoiceInput("");
+    setVoiceConfirmations([]);
+
+    const SpeechRecognition =
+      typeof window !== "undefined"
+        ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+        : null;
+
+    if (!SpeechRecognition) {
+      setVoiceMessage("Voice is unavailable here. Type a command to test Oyi.");
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognitionRef.current = recognition;
+      recognition.lang = "en-US";
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+      recognition.onresult = (event: any) => {
+        const transcript = String(event?.results?.[0]?.[0]?.transcript || "").trim();
+        void runVoiceCommand(transcript);
+      };
+      recognition.onerror = () => {
+        setVoiceMessage("Voice did not start. Type a command to test Oyi.");
+        setVoiceState("listening");
+      };
+      recognition.onend = () => {
+        recognitionRef.current = null;
+      };
+      recognition.start();
+    } catch {
+      setVoiceMessage("Voice is unavailable here. Type a command to test Oyi.");
+    }
+  }
+
+  function closeVoiceMode() {
+    try {
+      recognitionRef.current?.stop?.();
+    } catch {}
+    setVoiceOpen(false);
+    setVoiceState("idle");
+    setVoiceInput("");
+    setVoiceConfirmations([]);
+    setVoiceMessage("Tap and speak to Oyi.");
+  }
+
+  async function decideVoiceConfirmation(ledgerId: string, decision: "confirm" | "cancel") {
+    if (!ledgerId) return;
+    setVoiceState("executing");
+    setVoiceMessage(decision === "confirm" ? "Confirmed. Working…" : "Cancelling…");
+    try {
+      const result = decision === "confirm" ? await aiService.confirm(ledgerId) : await aiService.cancel(ledgerId);
+      setVoiceConfirmations([]);
+      setVoiceState(decision === "confirm" ? "success" : "failed");
+      setVoiceMessage(
+        result?.record?.result_summary ||
+          (decision === "confirm" ? "Command approved and processed." : "Cancelled. No action was executed."),
+      );
+      refreshDevicePanelData();
+      refreshDashboardData();
+      finishVoiceMode(2200);
+    } catch {
+      setVoiceState("failed");
+      setVoiceMessage("That confirmation could not be completed safely.");
+    }
+  }
+
+  function handleQuickScroll() {
+    const el = quickControlsRef.current;
+    if (!el) return;
+    const scrollable = Math.max(1, el.scrollWidth - el.clientWidth);
+    const progress = el.scrollLeft / scrollable;
+    setQuickPage(Math.max(0, Math.min(2, Math.round(progress * 2))));
+  }
+
+  function contextLabel(ctx: AvailableHomeContext) {
+    return (
+      String(ctx.home_name || "").trim() ||
+      [ctx.block, ctx.unit].map((part) => String(part || "").trim()).filter(Boolean).join(" / ") ||
+      String(ctx.estate_name || "").trim() ||
+      "Home"
+    );
+  }
+
+  async function selectHomeContext(ctx: AvailableHomeContext) {
+    setContextSwitching(true);
+    setContextError(null);
+    try {
+      const result = await activeContext.selectContext(ctx);
+      if (!(result as any)?.ok) {
+        setContextError("Saved locally. Backend context switch needs validation.");
+      } else {
+        setContextOpen(false);
+      }
+      await Promise.all([refreshDevicePanelData(), refreshDashboardData()]);
+    } finally {
+      setContextSwitching(false);
+    }
+  }
+
+  const homeLabel = [activeContext.home?.block, activeContext.home?.unit]
+    .map((part) => String(part || "").trim())
+    .filter(Boolean)
+    .join(" / ");
   const estateName = String(
-    (user as any)?.estate_name || (user as any)?.home_name || "Paradise 2 Residence",
+    activeContext.home?.name ||
+      homeLabel ||
+      activeContext.estate?.name ||
+      (user as any)?.home_name ||
+      (user as any)?.estate_name ||
+      "No active home linked yet",
   );
   const rawName = String((user as any)?.name || (user as any)?.first_name || "Oyi");
   const greetingName = rawName.split(" ")[0] || "Oyi";
+  const greetingPeriod = getGreetingPeriod();
   const walletLabel =
     walletBalance === null
       ? "Ready"
@@ -289,23 +558,88 @@ export default function HomePage() {
       : totalVisibleDevices
         ? `${activeDevices} On`
         : "Ready";
-
-  const suggestionChips = [
-    favoriteDevices[0]?.name ? `Turn off ${favoriteDevices[0].name}` : "Turn off living room lights",
-    activeVisitors ? "Show visitors" : "Arm security",
-    openMaintenance ? "Show maintenance" : communityPosts.length ? "Open community" : "Open gate",
+  const messagesLabel =
+    messageUnread === null ? "Unavailable" : messageUnread > 0 ? `${messageUnread} unread` : "No unread";
+  const maintenanceLabel = openMaintenance ? `${openMaintenance} open` : "None open";
+  const communityLabel = communityPosts.length ? `${communityPosts.length} update${communityPosts.length > 1 ? "s" : ""}` : "No updates";
+  const visitorLabel = activeVisitors ? `${activeVisitors} active` : "0 active";
+  const watchLabel = watchConnected === null ? "Unavailable" : watchConnected ? "Connected" : "Not connected";
+  const homeStateItems = [
+    {
+      label: "Atmosphere",
+      value: homeState,
+      href: "/activity",
+      Icon: Leaf,
+      iconClass: "text-sky-300 drop-shadow-[0_0_12px_rgba(56,189,248,0.70)]",
+    },
+    {
+      label: "Security",
+      value: securityState,
+      href: "/security",
+      Icon: ShieldCheck,
+      iconClass: "text-emerald-300 drop-shadow-[0_0_12px_rgba(52,211,153,0.66)]",
+    },
+    {
+      label: "Wallet",
+      value: walletLabel,
+      href: "/wallet",
+      Icon: Wallet,
+      iconClass: "text-violet-300 drop-shadow-[0_0_12px_rgba(168,85,247,0.68)]",
+    },
+    {
+      label: "Visitors",
+      value: visitorLabel,
+      href: "/visitors",
+      Icon: Users,
+      iconClass: "text-cyan-300 drop-shadow-[0_0_12px_rgba(34,211,238,0.55)]",
+    },
+    {
+      label: "Community",
+      value: communityLabel,
+      href: "/community",
+      Icon: MessageCircle,
+      iconClass: "text-blue-300 drop-shadow-[0_0_12px_rgba(96,165,250,0.58)]",
+    },
+    {
+      label: "Devices",
+      value: totalVisibleDevices ? `${activeDevices}/${totalVisibleDevices} online` : "No devices",
+      href: "/devices",
+      Icon: Plug,
+      iconClass: "text-amber-300 drop-shadow-[0_0_12px_rgba(251,191,36,0.55)]",
+    },
+    {
+      label: "Messages",
+      value: messagesLabel,
+      href: "/messages",
+      Icon: MessageCircle,
+      iconClass: "text-sky-300 drop-shadow-[0_0_12px_rgba(56,189,248,0.62)]",
+    },
+    {
+      label: "Maintenance",
+      value: maintenanceLabel,
+      href: "/maintenance",
+      Icon: Wrench,
+      iconClass: "text-orange-300 drop-shadow-[0_0_12px_rgba(251,146,60,0.55)]",
+    },
+    {
+      label: "Watch",
+      value: watchLabel,
+      href: "/profile",
+      Icon: Watch,
+      iconClass: "text-white/72 drop-shadow-[0_0_12px_rgba(255,255,255,0.22)]",
+    },
   ];
 
   return (
     <LayoutWrapper>
       <main className="fixed inset-0 isolate min-h-0 overflow-hidden bg-[#02060b] text-white">
         <div className="oyi-ambient-bg" />
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_17%,rgba(0,132,255,0.18),transparent_34%),radial-gradient(circle_at_50%_61%,rgba(0,92,185,0.12),transparent_34%),linear-gradient(180deg,rgba(4,12,22,0.28),rgba(0,0,0,0.9))]" />
-        <div className="pointer-events-none absolute inset-x-8 top-[20%] h-[46%] rounded-full bg-sky-500/[0.035] blur-3xl" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_15%,rgba(0,132,255,0.14),transparent_31%),radial-gradient(circle_at_50%_55%,rgba(0,92,185,0.08),transparent_33%),linear-gradient(180deg,rgba(4,12,22,0.2),rgba(0,0,0,0.92))]" />
+        <div className="pointer-events-none absolute inset-x-10 top-[18%] h-[42%] rounded-full bg-sky-500/[0.028] blur-3xl" />
 
         <div
           className="pointer-events-none fixed inset-x-0 z-[80] px-5"
-          style={{ top: "calc(16px + var(--sat))" }}
+          style={{ top: "calc(10px + var(--sat))" }}
         >
           {canMountAuthedBridges ? (
             <>
@@ -313,12 +647,12 @@ export default function HomePage() {
               <NotificationsBridge />
             </>
           ) : null}
-          <div className="pointer-events-auto mx-auto flex max-w-[820px] items-center justify-between">
-            <div className="grid h-14 w-14 place-items-center rounded-full border border-white/12 bg-white/[0.035] shadow-[0_12px_42px_rgba(0,0,0,0.32)] backdrop-blur-2xl">
+          <div className="pointer-events-auto mx-auto flex max-w-[430px] items-center justify-between">
+            <div className="grid h-12 w-12 place-items-center rounded-full border border-white/10 bg-white/[0.03] shadow-[0_10px_32px_rgba(0,0,0,0.30)] backdrop-blur-2xl">
               <HamburgerMenu />
             </div>
-            <div className="grid h-14 w-14 place-items-center rounded-full border border-white/10 bg-white/[0.03] shadow-[0_12px_42px_rgba(0,0,0,0.32)] backdrop-blur-2xl">
-              <NotificationBell />
+            <div className="grid h-12 w-12 place-items-center rounded-full border border-white/10 bg-white/[0.028] shadow-[0_10px_32px_rgba(0,0,0,0.30)] backdrop-blur-2xl">
+              <MessagesInboxButton />
             </div>
           </div>
         </div>
@@ -327,167 +661,105 @@ export default function HomePage() {
           className="absolute inset-x-0 overflow-y-auto px-5"
           style={{
             zIndex: 20,
-            top: "calc(74px + var(--sat))",
-            bottom: "calc(92px + var(--sab))",
+            top: "calc(58px + var(--sat))",
+            bottom: "calc(80px + var(--sab))",
             WebkitOverflowScrolling: "touch",
           }}
         >
-          <div className="oyi-living-page oyi-page-fade mx-auto max-w-[820px] pb-8">
+          <div className={`oyi-living-page oyi-page-fade mx-auto max-w-[430px] pb-5 transition duration-300 ${voiceOpen ? "scale-[0.985] blur-[2px] opacity-55" : ""}`}>
             <motion.section
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
+              initial={reduceMotion ? false : { opacity: 0, y: 18 }}
+              animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+              transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
               className="text-center"
             >
-              <h1 className="mt-9 text-[31px] font-semibold leading-tight tracking-[-0.04em] text-white sm:text-5xl">
-                Good evening, {greetingName}
+              <h1 className="mt-5 text-[26px] font-semibold leading-tight tracking-[-0.04em] text-white sm:text-[30px]">
+                Good {greetingPeriod}, {greetingName}
               </h1>
               <button
                 type="button"
-                onClick={() => router.push("/settings")}
-                className="mx-auto mt-4 inline-flex items-center gap-2 rounded-full px-3 py-1 text-[19px] font-medium text-white/58 transition hover:bg-white/[0.04] active:scale-[0.99]"
+                onClick={() => setContextOpen(true)}
+                className="mx-auto mt-2 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[16px] font-medium text-white/54 transition hover:bg-white/[0.04] active:scale-[0.99]"
               >
                 <span>{estateName}</span>
-                <ChevronDown className="h-5 w-5 text-white/62" />
+                <ChevronDown className="h-4 w-4 text-white/58" />
               </button>
 
               <button
                 type="button"
-                onClick={() => openOyiWithPrompt()}
-                aria-label="Open Oyi AI"
-                className="group relative mx-auto mt-9 grid h-[202px] w-[202px] place-items-center rounded-full transition active:scale-[0.985] sm:h-[246px] sm:w-[246px]"
+                onClick={startVoiceMode}
+                aria-label="Start Oyi voice mode"
+                className="group relative mx-auto mt-6 grid h-[166px] w-[166px] place-items-center rounded-full transition active:scale-[0.985] sm:h-[182px] sm:w-[182px]"
               >
-                <span className="absolute inset-[-30px] rounded-full bg-sky-500/10 blur-3xl transition group-active:bg-sky-400/16" />
+                <span className="absolute inset-[-20px] rounded-full bg-sky-500/9 blur-2xl transition group-active:bg-sky-400/14" />
                 <motion.span
                   aria-hidden="true"
                   className="absolute inset-[-6px] rounded-full border border-sky-300/45"
                   animate={{ opacity: [0.45, 0.9, 0.45], scale: [0.98, 1.035, 0.98] }}
                   transition={{ duration: 5.2, repeat: Infinity, ease: "easeInOut" }}
                 />
-                <span className="absolute inset-0 rounded-full border border-sky-300/72 bg-[radial-gradient(circle_at_42%_28%,rgba(255,255,255,0.21),transparent_16%),radial-gradient(circle_at_50%_58%,rgba(22,111,255,0.42),rgba(2,7,14,0.94)_67%)] shadow-[inset_0_0_42px_rgba(255,255,255,0.055),0_0_48px_rgba(0,132,255,0.52),0_42px_90px_rgba(0,0,0,0.58)]" />
-                <span className="absolute -bottom-10 h-14 w-[78%] rounded-[100%] bg-sky-500/20 blur-xl" />
-                <span className="relative text-[42px] font-semibold tracking-[-0.08em] text-white sm:text-5xl">
+                <span className="absolute inset-0 rounded-full border border-sky-300/68 bg-[radial-gradient(circle_at_42%_28%,rgba(255,255,255,0.18),transparent_15%),radial-gradient(circle_at_50%_58%,rgba(22,111,255,0.38),rgba(2,7,14,0.95)_68%)] shadow-[inset_0_0_34px_rgba(255,255,255,0.05),0_0_36px_rgba(0,132,255,0.46),0_30px_66px_rgba(0,0,0,0.55)]" />
+                <span className="absolute -bottom-7 h-10 w-[74%] rounded-[100%] bg-sky-500/16 blur-xl" />
+                <span className="relative text-[36px] font-semibold tracking-[-0.08em] text-white sm:text-[40px]">
                   Oyi
                 </span>
               </button>
 
-              <div className="mt-14">
-                <div className="text-[35px] font-semibold leading-none tracking-[-0.05em] text-white sm:text-5xl">
+              <div className="mt-10">
+                <div className="text-[28px] font-semibold leading-none tracking-[-0.05em] text-white sm:text-[32px]">
                   Home is {homeState.toLowerCase()}.
                 </div>
-                <p className="mt-4 text-[18px] leading-6 text-white/56 sm:text-xl">
+                <p className="mt-2.5 text-[15px] leading-5 text-white/54 sm:text-[16px]">
                   {supportLine}
                 </p>
               </div>
             </motion.section>
 
-            <section className="mt-8 overflow-hidden rounded-[30px] border border-white/[0.085] bg-[linear-gradient(145deg,rgba(255,255,255,0.055),rgba(255,255,255,0.018))] px-4 py-4 shadow-[0_20px_70px_rgba(0,0,0,0.34)] backdrop-blur-2xl">
-              <div className="grid grid-cols-3 divide-x divide-white/10">
-                <button
-                  type="button"
-                  onClick={() => router.push("/activity")}
-                  className="flex items-center justify-center gap-3 px-1 py-1.5 text-left active:scale-[0.99]"
-                >
-                  <Leaf className="h-8 w-8 text-sky-300 drop-shadow-[0_0_16px_rgba(56,189,248,0.78)]" />
-                  <span>
-                    <span className="block text-[13px] text-white/48">Atmosphere</span>
-                    <span className="block text-[15px] font-semibold text-white">{homeState}</span>
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => router.push("/security")}
-                  className="flex items-center justify-center gap-3 px-1 py-1.5 text-left active:scale-[0.99]"
-                >
-                  <ShieldCheck className="h-8 w-8 text-emerald-300 drop-shadow-[0_0_16px_rgba(52,211,153,0.72)]" />
-                  <span>
-                    <span className="block text-[13px] text-white/48">Security</span>
-                    <span className="block text-[15px] font-semibold text-white">{securityState}</span>
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => router.push("/wallet")}
-                  className="flex items-center justify-center gap-3 px-1 py-1.5 text-left active:scale-[0.99]"
-                >
-                  <Wallet className="h-8 w-8 text-violet-300 drop-shadow-[0_0_16px_rgba(168,85,247,0.76)]" />
-                  <span>
-                    <span className="block text-[13px] text-white/48">Wallet</span>
-                    <span className="block text-[15px] font-semibold text-white">{walletLabel}</span>
-                  </span>
-                </button>
-              </div>
-            </section>
-
-            <section className="relative mt-7 overflow-hidden rounded-[32px] border border-white/[0.095] bg-[radial-gradient(circle_at_88%_16%,rgba(0,117,255,0.20),transparent_24%),linear-gradient(145deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] p-5 shadow-[0_24px_90px_rgba(0,0,0,0.38)] backdrop-blur-2xl">
-              <div className="absolute -right-16 top-0 h-44 w-44 rounded-full bg-sky-400/10 blur-3xl" />
-              <div className="relative flex items-start justify-between gap-4">
-                <div className="text-left">
-                  <h2 className="text-[24px] font-semibold tracking-[-0.035em] text-white">Ask Oyi</h2>
-                  <p className="mt-2 text-[16px] text-white/52">Your AI for your home.</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => openOyiWithPrompt(aiPrompt || "voice command")}
-                  className="grid h-16 w-16 shrink-0 place-items-center rounded-full border border-sky-200/30 bg-[radial-gradient(circle_at_center,rgba(56,189,248,0.30),rgba(0,70,255,0.92))] text-white shadow-[0_0_36px_rgba(0,132,255,0.66)] transition active:scale-95"
-                  aria-label="Speak to Oyi"
-                >
-                  <Mic className="h-8 w-8" />
-                </button>
-              </div>
-
-              <form
-                className="relative mt-8"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  openOyiWithPrompt();
-                }}
-              >
-                <input
-                  value={aiPrompt}
-                  onChange={(event) => setAiPrompt(event.target.value)}
-                  placeholder="Ask anything..."
-                  className="h-16 w-full rounded-[28px] border border-white/[0.08] bg-black/28 px-5 pr-16 text-[17px] text-white outline-none shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition placeholder:text-white/34 focus:border-sky-300/32 focus:bg-black/36 focus:shadow-[0_0_34px_rgba(0,132,255,0.16)]"
-                />
-                <button
-                  type="submit"
-                  className="absolute right-3 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-white/12 text-white/74 transition hover:bg-white/18 active:scale-95"
-                  aria-label="Send to Oyi"
-                >
-                  <ArrowUp className="h-5 w-5" />
-                </button>
-              </form>
-
-              <div className="mt-5 flex gap-2 overflow-x-auto pb-0.5">
-                {suggestionChips.map((item) => (
+            <motion.section
+              initial={reduceMotion ? false : { opacity: 0, y: 12 }}
+              animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+              transition={{ duration: 0.48, delay: 0.18, ease: [0.22, 1, 0.36, 1] }}
+              className="mt-5 overflow-hidden rounded-[24px] border border-white/[0.06] bg-[linear-gradient(145deg,rgba(255,255,255,0.043),rgba(255,255,255,0.014))] px-2.5 py-3 shadow-[0_16px_52px_rgba(0,0,0,0.30)] backdrop-blur-2xl"
+            >
+              <div className="flex snap-x snap-mandatory gap-2 overflow-x-auto scroll-smooth">
+                {homeStateItems.map((item) => (
                   <button
-                    key={item}
+                    key={item.label}
                     type="button"
-                    onClick={() => openOyiWithPrompt(item)}
-                    className="shrink-0 rounded-full border border-white/[0.085] bg-black/18 px-4 py-2.5 text-[14px] text-white/62 transition hover:bg-white/[0.06] hover:text-white/82 active:scale-[0.98]"
+                    onClick={() => router.push(item.href)}
+                    className="flex min-w-[118px] snap-start items-center justify-center gap-2 rounded-[18px] px-2.5 py-1.5 text-left transition hover:bg-white/[0.045] active:scale-[0.99]"
                   >
-                    {item}
+                    <item.Icon className={`h-5 w-5 ${item.iconClass}`} />
+                    <span className="min-w-0">
+                      <span className="block truncate text-[10px] text-white/42">{item.label}</span>
+                      <span className="block truncate text-[12px] font-semibold text-white">{item.value}</span>
+                    </span>
                   </button>
                 ))}
               </div>
-              {dashErr ? (
-                <div className="mt-4 rounded-2xl border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-xs text-amber-100">
-                  {dashErr}
-                </div>
-              ) : null}
-            </section>
+            </motion.section>
 
-            <section className="mt-9">
-              <div className="mb-5 flex items-center justify-between">
-                <h2 className="text-[23px] font-medium tracking-[-0.04em] text-white/78">Quick controls</h2>
+            <motion.section
+              initial={reduceMotion ? false : { opacity: 0, y: 12 }}
+              animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+              transition={{ duration: 0.48, delay: 0.28, ease: [0.22, 1, 0.36, 1] }}
+              className="mt-6"
+            >
+              <div className="mb-3.5 flex items-center justify-between">
+                <h2 className="text-[18px] font-medium tracking-[-0.04em] text-white/76">Quick controls</h2>
                 <button
                   type="button"
                   onClick={() => router.push("/devices")}
-                  className="text-[17px] font-medium text-sky-300 transition hover:text-sky-200 active:scale-[0.98]"
+                  className="text-[14px] font-medium text-sky-300 transition hover:text-sky-200 active:scale-[0.98]"
                 >
                   Edit
                 </button>
               </div>
-              <div className="flex gap-4 overflow-x-auto pb-2">
+              <div
+                ref={quickControlsRef}
+                onScroll={handleQuickScroll}
+                className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1 scroll-smooth"
+              >
                 <QuickControl
                   icon={Lightbulb}
                   label="Lights"
@@ -518,35 +790,44 @@ export default function HomePage() {
                 />
               </div>
 
-              <div className="mt-5 flex justify-center gap-2" aria-hidden="true">
-                <span className="h-2 w-2 rounded-full bg-sky-400 shadow-[0_0_14px_rgba(56,189,248,0.9)]" />
-                <span className="h-2 w-2 rounded-full bg-white/14" />
-                <span className="h-2 w-2 rounded-full bg-white/14" />
+              <div className="mt-3.5 flex justify-center gap-1.5" aria-hidden="true">
+                {[0, 1, 2].map((dot) => (
+                  <span
+                    key={dot}
+                    className={`h-1.5 rounded-full transition-all duration-300 ${
+                      quickPage === dot
+                        ? "w-4 bg-sky-400 shadow-[0_0_12px_rgba(56,189,248,0.85)]"
+                        : "w-1.5 bg-white/13"
+                    }`}
+                  />
+                ))}
               </div>
-            </section>
+            </motion.section>
 
             {favoriteDevices.length ? (
-              <section className="mt-8 rounded-[28px] border border-white/[0.07] bg-white/[0.025] p-3 backdrop-blur-2xl">
+              <section className="mt-5 rounded-[24px] border border-white/[0.055] bg-white/[0.02] p-2.5 backdrop-blur-2xl">
                 <div className="flex gap-2 overflow-x-auto">
                   {favoriteDevices.map((device) => {
                     const deviceId = pickDeviceId(device);
                     const online = isOnline(device);
                     const busy = deviceCommandBusy === deviceId;
+                    const Icon = getDeviceIcon(device);
+                    const tone = getDeviceIconTone(device);
                     return (
                       <button
                         key={deviceId || device?.name}
                         type="button"
                         disabled={busy}
                         onClick={() => toggleFavoriteDevice(device)}
-                        className="min-w-[136px] rounded-[24px] border border-white/[0.065] bg-black/18 px-4 py-4 text-left transition hover:bg-white/[0.045] disabled:opacity-60 active:scale-[0.98]"
+                        className="min-w-[118px] rounded-[20px] border border-white/[0.055] bg-black/16 px-3 py-3 text-left transition hover:bg-white/[0.04] disabled:opacity-60 active:scale-[0.98]"
                       >
-                        <span className={`grid h-10 w-10 place-items-center rounded-full ${online ? "bg-sky-400/18 text-sky-200" : "bg-white/[0.06] text-white/45"}`}>
-                          <Zap className="h-5 w-5" />
+                        <span className={`grid h-8 w-8 place-items-center rounded-full border ${tone}`}>
+                          <Icon className="h-4 w-4" />
                         </span>
-                        <span className="mt-4 block truncate text-[14px] font-semibold text-white/84">
+                        <span className="mt-3 block truncate text-[13px] font-semibold text-white/82">
                           {device?.name || device?.label || "Device"}
                         </span>
-                        <span className="mt-1 block text-xs text-white/42">
+                        <span className="mt-0.5 block text-[11px] text-white/40">
                           {busy ? "Working" : online ? "On" : "Off"}
                         </span>
                       </button>
@@ -565,6 +846,154 @@ export default function HomePage() {
             ) : null}
           </div>
         </div>
+
+
+        {contextOpen ? (
+          <div className="fixed inset-0 z-[115] flex items-end justify-center bg-black/42 px-4 pb-[calc(18px+var(--sab))] backdrop-blur-md sm:items-center sm:pb-4">
+            <button
+              type="button"
+              className="absolute inset-0"
+              aria-label="Close home selector"
+              onClick={() => setContextOpen(false)}
+            />
+            <div className="relative w-full max-w-[390px] overflow-hidden rounded-[30px] border border-white/[0.09] bg-[#050a12]/92 p-4 shadow-[0_28px_90px_rgba(0,0,0,0.62)] backdrop-blur-2xl">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-[10px] uppercase tracking-[0.22em] text-sky-100/48">Home context</div>
+                  <h2 className="mt-1 text-[18px] font-semibold tracking-[-0.04em] text-white">Choose your home</h2>
+                  <p className="mt-1 text-xs text-white/45">Only linked homes are shown.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setContextOpen(false)}
+                  className="grid h-9 w-9 place-items-center rounded-full bg-white/[0.06] text-white/50 transition hover:bg-white/[0.1]"
+                  aria-label="Close home selector"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="mt-4 max-h-[48vh] space-y-2 overflow-y-auto pr-1">
+                {activeContext.loading ? (
+                  <div className="rounded-[22px] border border-white/[0.07] bg-white/[0.035] p-4 text-sm text-white/52">
+                    Loading linked homes…
+                  </div>
+                ) : activeContext.available_contexts.length ? (
+                  activeContext.available_contexts.map((ctx) => {
+                    const active = String(ctx.home_id) === String(activeContext.home_id) && String(ctx.estate_id) === String(activeContext.estate_id);
+                    return (
+                      <button
+                        key={`${ctx.estate_id}:${ctx.home_id}`}
+                        type="button"
+                        disabled={contextSwitching}
+                        onClick={() => selectHomeContext(ctx)}
+                        className={`w-full rounded-[22px] border px-4 py-3 text-left transition active:scale-[0.99] disabled:opacity-60 ${
+                          active
+                            ? "border-sky-300/30 bg-sky-400/[0.105] shadow-[0_0_26px_rgba(56,189,248,0.16)]"
+                            : "border-white/[0.07] bg-white/[0.035] hover:bg-white/[0.055]"
+                        }`}
+                      >
+                        <span className="flex items-center justify-between gap-3">
+                          <span className="min-w-0">
+                            <span className="block truncate text-[14px] font-semibold text-white">{contextLabel(ctx)}</span>
+                            <span className="mt-0.5 block truncate text-[11px] text-white/42">{ctx.estate_name || "Estate"}</span>
+                          </span>
+                          {active ? <Check className="h-4 w-4 shrink-0 text-sky-200" /> : null}
+                        </span>
+                      </button>
+                    );
+                  })
+                ) : (
+                  <div className="rounded-[22px] border border-white/[0.07] bg-white/[0.035] p-4 text-sm text-white/52">
+                    No active home linked yet.
+                  </div>
+                )}
+              </div>
+              {contextError ? <p className="mt-3 text-xs text-amber-100/70">{contextError}</p> : null}
+            </div>
+          </div>
+        ) : null}
+
+        {voiceOpen ? (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/46 px-5 backdrop-blur-md">
+            <div className="relative w-full max-w-[360px] overflow-hidden rounded-[34px] border border-white/[0.09] bg-[#050a12]/88 p-5 text-center shadow-[0_28px_90px_rgba(0,0,0,0.62)] backdrop-blur-2xl">
+              <button
+                type="button"
+                onClick={closeVoiceMode}
+                className="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-full bg-white/[0.06] text-white/50 transition hover:bg-white/[0.1]"
+                aria-label="Close Oyi voice mode"
+              >
+                <X className="h-4 w-4" />
+              </button>
+              <div className="mx-auto mt-3 grid h-28 w-28 place-items-center rounded-full border border-sky-300/58 bg-[radial-gradient(circle_at_45%_32%,rgba(255,255,255,0.16),transparent_17%),radial-gradient(circle_at_center,rgba(32,129,255,0.38),rgba(3,8,16,0.96)_68%)] shadow-[0_0_46px_rgba(0,132,255,0.48)]">
+                {voiceState === "thinking" || voiceState === "executing" ? (
+                  <Loader2 className="h-9 w-9 animate-spin text-sky-100" />
+                ) : voiceState === "success" ? (
+                  <Check className="h-10 w-10 text-emerald-200" />
+                ) : voiceState === "failed" ? (
+                  <X className="h-10 w-10 text-rose-200" />
+                ) : (
+                  <span className="text-[28px] font-semibold tracking-[-0.08em]">Oyi</span>
+                )}
+              </div>
+              <div className="mt-5 text-[11px] uppercase tracking-[0.22em] text-sky-100/50">
+                {voiceState.replaceAll("_", " ")}
+              </div>
+              <div className="mt-2 whitespace-pre-line text-[20px] font-semibold tracking-[-0.035em] text-white">
+                {voiceMessage}
+              </div>
+              {voiceState === "listening" ? (
+                <form
+                  className="mt-5 flex items-center gap-2 rounded-[22px] border border-white/[0.07] bg-black/26 p-2"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void runVoiceCommand(voiceInput || "Turn off living room light");
+                  }}
+                >
+                  <input
+                    value={voiceInput}
+                    onChange={(event) => setVoiceInput(event.target.value)}
+                    placeholder="Type test command…"
+                    className="min-w-0 flex-1 bg-transparent px-2 text-sm text-white outline-none placeholder:text-white/30"
+                  />
+                  <button type="submit" className="grid h-9 w-9 place-items-center rounded-full bg-sky-400 text-black">
+                    <ArrowUp className="h-4 w-4" />
+                  </button>
+                </form>
+              ) : null}
+              {voiceState === "confirmation_required" ? (
+                <div className="mt-5 space-y-3">
+                  {voiceConfirmations.map((item, index) => {
+                    const ledgerId = String(item.ledger_id || item.id || "");
+                    return (
+                      <div key={ledgerId || index} className="rounded-[22px] border border-amber-300/18 bg-amber-300/[0.08] p-3">
+                        <div className="text-sm font-medium text-amber-100">Confirm this action?</div>
+                        <div className="mt-3 flex justify-center gap-2">
+                          <button
+                            type="button"
+                            disabled={!ledgerId}
+                            onClick={() => decideVoiceConfirmation(ledgerId, "confirm")}
+                            className="rounded-full bg-white px-4 py-2 text-xs font-semibold text-black disabled:opacity-40"
+                          >
+                            Confirm
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!ledgerId}
+                            onClick={() => decideVoiceConfirmation(ledgerId, "cancel")}
+                            className="rounded-full border border-white/10 bg-white/[0.06] px-4 py-2 text-xs text-white/70 disabled:opacity-40"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
 
         <BottomNav />
       </main>

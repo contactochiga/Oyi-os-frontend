@@ -7,6 +7,7 @@ import useAuth from "@/hooks/useAuth";
 import { roomsService, RoomDTO } from "@/services/roomsService";
 import { deviceService } from "@/services/deviceService";
 import GangRingSwitch from "@/app/components/devices/GangRingSwitch";
+import { getDeviceIcon, getDeviceIconTone } from "@/lib/devicePresentation";
 
 type AnyDevice = Record<string, any>;
 
@@ -273,7 +274,7 @@ export default function RoomClient() {
   const subtitle = "Room command center";
 
   return (
-    <ConsumerShell title={title} subtitle={subtitle} showBack backHref="/rooms">
+    <ConsumerShell title={title} subtitle={subtitle}>
       {!roomId ? (
         <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/70">
           Missing roomId.
@@ -351,6 +352,8 @@ export default function RoomClient() {
             const name = pickName(d);
             const vendor = pickVendor(d);
             const online = isOnline(d);
+            const Icon = getDeviceIcon(d);
+            const tone = getDeviceIconTone(d);
 
             const cachedState = sid ? stateMap[sid] : {};
             const gangCount = guessGangCount(d, cachedState);
@@ -374,8 +377,11 @@ export default function RoomClient() {
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className={`h-2 w-2 rounded-full ${statusDot(online)}`} aria-hidden="true" />
-                      <div className="text-sm text-white font-medium truncate">{name}</div>
+                      <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full border `}><Icon className="h-4.5 w-4.5" /></span>
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium text-white">{name}</div>
+                        <div className="mt-0.5 text-[11px] text-white/35">{online === false ? "Offline" : "Ready"}</div>
+                      </div>
                     </div>
 
                     <div className="text-xs text-white/40 mt-1 truncate">

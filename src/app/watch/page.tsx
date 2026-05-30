@@ -40,7 +40,7 @@ function WatchFace({ title, detail, icon: Icon, tone = "text-sky-100 bg-sky-300/
 
 export default function OyiWatchPage() {
   return (
-    <ConsumerShell title="Oyi Watch" subtitle="Voice-first companion · glanceable home awareness">
+    <ConsumerShell title="Watch Concept Preview" subtitle="Reference only · native watch app powers real sync">
       <div className="space-y-3 pb-8">
         <section className="oyi-glass relative overflow-hidden rounded-[28px] p-5">
           <div className="absolute -right-24 -top-20 h-64 w-64 rounded-full bg-blue-400/12 blur-3xl" />
@@ -57,9 +57,9 @@ export default function OyiWatchPage() {
               </div>
             </div>
             <div>
-              <div className="text-[10px] uppercase tracking-[0.28em] text-sky-100/55">Watch OS foundation</div>
+              <div className="text-[10px] uppercase tracking-[0.28em] text-sky-100/55">Concept reference</div>
               <h1 className="mt-2 text-2xl font-semibold tracking-tight text-white">Oyi on your wrist.</h1>
-              <p className="mt-3 max-w-xl text-sm leading-6 text-white/54">A glance-first companion for home state, voice commands, calm confirmations and urgent environmental signals.</p>
+              <p className="mt-3 max-w-xl text-sm leading-6 text-white/54">This resident web page is a visual reference. Real Apple Watch sync runs through the native watchOS companion app and WatchConnectivity.</p>
               <div className="mt-4 grid gap-2 sm:grid-cols-2">
                 {[
                   [Mic, "Voice first", "Raise wrist and speak naturally."],
@@ -84,7 +84,7 @@ export default function OyiWatchPage() {
               <div className="text-[10px] uppercase tracking-[0.24em] text-white/36">Glances</div>
               <h2 className="mt-1 text-base font-semibold text-white">Home awareness</h2>
             </div>
-            <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[11px] text-white/46">Companion preview</span>
+            <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[11px] text-white/46">Concept preview</span>
           </div>
           <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
             {glances.map((item) => <WatchFace key={item.title} {...item} />)}

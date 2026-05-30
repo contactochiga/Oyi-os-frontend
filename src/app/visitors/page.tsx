@@ -136,13 +136,13 @@ function vIsApprovedStatus(status: VisitorStatus) {
 // tiny UI primitives (fit your dark theme)
 // -------------------------------
 function Card({ className = "", children }: { className?: string; children: any }) {
-  return <div className={`rounded-2xl border border-white/10 bg-black/20 ${className}`}>{children}</div>;
+  return <div className={`rounded-[18px] border border-white/[0.07] bg-white/[0.025] ${className}`}>{children}</div>;
 }
 function CardHeader({ className = "", children }: { className?: string; children: any }) {
-  return <div className={`p-4 pb-3 border-b border-white/10 ${className}`}>{children}</div>;
+  return <div className={`px-3 pb-1.5 pt-2.5 ${className}`}>{children}</div>;
 }
 function CardBody({ className = "", children }: { className?: string; children: any }) {
-  return <div className={`p-4 ${className}`}>{children}</div>;
+  return <div className={`px-3 pb-2.5 pt-0 ${className}`}>{children}</div>;
 }
 function Pill({ className = "", children }: { className?: string; children: any }) {
   return (
@@ -313,7 +313,7 @@ export default function VisitorsPage() {
   const pendingCount = vClampCount(pendingVisitors.length);
 
   return (
-    <ConsumerShell title="Visitor Access" subtitle="Access intelligence • trusted arrivals • gate flow">
+    <ConsumerShell title="Visitor Access" subtitle="Trusted arrivals and temporary access.">
       <div className="oyi-living-page space-y-3 pb-8">
       {err && (
         <div className="mb-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
@@ -321,12 +321,12 @@ export default function VisitorsPage() {
         </div>
       )}
 
-      <section className="oyi-environment-hero rounded-[24px] p-4">
+      <section className="oyi-environment-hero rounded-[22px] p-3.5">
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="text-[10px] uppercase tracking-[0.24em] text-sky-100/60">Access Intelligence</div>
-            <h1 className="mt-1.5 text-xl font-semibold text-white">Gate flow is protected.</h1>
-            <p className="mt-1.5 text-xs leading-5 text-white/50">Create passes, approve arrivals and keep visitor access quiet and traceable.</p>
+            <h1 className="mt-1 text-[17px] font-semibold tracking-[-0.035em] text-white">Gate flow is protected.</h1>
+            <p className="mt-1 text-[11px] leading-4 text-white/46">Create passes and keep arrivals quietly traceable.</p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
           <button
@@ -357,8 +357,8 @@ export default function VisitorsPage() {
             <div className="text-[12px] text-white/60">Active Visitors</div>
           </CardHeader>
           <CardBody className="pt-0">
-            <div className="text-3xl font-bold text-white">{activeVisitors.length}</div>
-            <div className="text-[11px] text-white/40 mt-1">Currently in estate</div>
+            <div className="text-xl font-semibold tracking-[-0.04em] text-white">{activeVisitors.length}</div>
+            <div className="text-[10px] text-white/38 mt-0.5">Currently in estate</div>
           </CardBody>
         </Card>
 
@@ -367,8 +367,8 @@ export default function VisitorsPage() {
             <div className="text-[12px] text-white/60">Pending Approval</div>
           </CardHeader>
           <CardBody className="pt-0">
-            <div className="text-3xl font-bold text-white">{pendingVisitors.length}</div>
-            <div className="text-[11px] text-white/40 mt-1">Awaiting processing</div>
+            <div className="text-xl font-semibold tracking-[-0.04em] text-white">{pendingVisitors.length}</div>
+            <div className="text-[10px] text-white/38 mt-0.5">Awaiting processing</div>
           </CardBody>
         </Card>
 
@@ -377,8 +377,8 @@ export default function VisitorsPage() {
             <div className="text-[12px] text-white/60">Pre-Approved</div>
           </CardHeader>
           <CardBody className="pt-0">
-            <div className="text-3xl font-bold text-white">{approvedVisitors.length}</div>
-            <div className="text-[11px] text-white/40 mt-1">Ready to check in</div>
+            <div className="text-xl font-semibold tracking-[-0.04em] text-white">{approvedVisitors.length}</div>
+            <div className="text-[10px] text-white/38 mt-0.5">Ready to check in</div>
           </CardBody>
         </Card>
       </div>
@@ -451,7 +451,7 @@ export default function VisitorsPage() {
         <button
           type="button"
           onClick={() => setTab("all")}
-          className={`rounded-xl px-3 py-2 text-sm transition ${
+          className={`rounded-xl px-3 py-1.5 text-[12px] transition ${
             tab === "all" ? "bg-white text-black" : "text-white/70 hover:bg-white/10"
           }`}
         >
@@ -461,7 +461,7 @@ export default function VisitorsPage() {
         <button
           type="button"
           onClick={() => setTab("pending")}
-          className={`rounded-xl px-3 py-2 text-sm transition inline-flex items-center justify-center gap-2 ${
+          className={`rounded-xl px-3 py-1.5 text-[12px] transition inline-flex items-center justify-center gap-2 ${
             tab === "pending" ? "bg-white text-black" : "text-white/70 hover:bg-white/10"
           }`}
         >
@@ -476,7 +476,7 @@ export default function VisitorsPage() {
         <button
           type="button"
           onClick={() => setTab("active")}
-          className={`rounded-xl px-3 py-2 text-sm transition ${
+          className={`rounded-xl px-3 py-1.5 text-[12px] transition ${
             tab === "active" ? "bg-white text-black" : "text-white/70 hover:bg-white/10"
           }`}
         >
@@ -783,22 +783,10 @@ function VisitorCard({ v, onOpen }: { v: VisitorAccess; onOpen: () => void }) {
           </Pill>
         </div>
 
-        <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
-          <div className="rounded-[16px] border border-white/10 bg-white/[0.035] px-3 py-2 text-xs text-white/75">
-            <span className="text-white/45">Code:</span>{" "}
-            <span className="text-white font-mono">{v.access_code || "—"}</span>
-            {v.expires_at ? (
-              <span className="text-white/35"> • expires {vWhen(v.expires_at)}</span>
-            ) : null}
-          </div>
-
-          <div className="rounded-[16px] border border-white/10 bg-white/[0.035] px-3 py-2 text-xs text-white/75">
-            <span className="text-white/45">Purpose:</span>{" "}
-            <span className="text-white/85">{v.purpose || "—"}</span>
-          </div>
+        <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-white/42">
+          <span className="truncate">{v.purpose || "Visitor access"}</span>
+          <span className="shrink-0 text-sky-100/54">View details →</span>
         </div>
-
-        <div className="mt-3 text-[11px] text-white/40">Tap to view full details →</div>
       </div>
     </motion.button>
   );

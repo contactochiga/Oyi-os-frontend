@@ -1,30 +1,48 @@
-// src/app/devices/DeviceClient.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import ConsumerShell from "@/app/components/ConsumerShell";
+import {
+  AlertTriangle,
+  ChevronRight,
+  Fan,
+  Home,
+  Plus,
+  Search,
+  X,
+} from "lucide-react";
+
+import LayoutWrapper from "@/app/components/LayoutWrapper";
+import HamburgerMenu from "@/app/components/HamburgerMenu";
+import MessagesInboxButton from "@/app/components/MessagesInboxButton";
+import BottomNav from "@/app/components/BottomNav";
 import useAuth from "@/hooks/useAuth";
 import { deviceService } from "@/services/deviceService";
 import GangRingSwitch from "@/app/components/devices/GangRingSwitch";
-import CameraIntelPanel from "@/app/components/devices/CameraIntelPanel";
+import { getDeviceFamily, getDeviceIcon, getDeviceIconTone, isSimplePowerDevice } from "@/lib/devicePresentation";
 
 type AnyDevice = Record<string, any>;
 type DiscoveryDevice = Record<string, any>;
+type CategoryKey = "all" | "lights" | "climate" | "security" | "entertainment" | "sensors";
+
+const CATEGORIES: Array<{ key: CategoryKey; label: string }> = [
+  { key: "all", label: "All" },
+  { key: "lights", label: "Lights" },
+  { key: "climate", label: "Climate" },
+  { key: "security", label: "Security" },
+  { key: "entertainment", label: "Entertainment" },
+  { key: "sensors", label: "Sensors" },
+];
+
+function cn(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(" ");
+}
 
 function pickDbId(d: AnyDevice) {
-  return d?.id || null; // ✅ DB uuid
+  return d?.id || null;
 }
 
 function pickExternalId(d: AnyDevice) {
-  return (
-    d?.external_id ||
-    d?.externalId ||
-    d?.device_id ||
-    d?.dev_id ||
-    d?.devId ||
-    d?.uuid ||
-    null
-  );
+  return d?.external_id || d?.externalId || d?.device_id || d?.dev_id || d?.devId || d?.uuid || null;
 }
 
 function pickName(d: AnyDevice) {
@@ -36,74 +54,81 @@ function pickVendor(d: AnyDevice) {
 }
 
 function pickRoomName(d: AnyDevice) {
-  return d?.room_name || d?.room?.name || d?.metadata?.room_name || null;
+  return d?.room_name || d?.room?.name || d?.metadata?.room_name || d?.metadata?.room || null;
+}
+
+function pickRoomKey(d: AnyDevice) {
+  return String(d?.room_id || d?.room?.id || pickRoomName(d) || "unassigned").toLowerCase();
 }
 
 function pickDiscoveryExternalId(d: DiscoveryDevice) {
-  return (
-    d?.external_id ||
-    d?.externalId ||
-    d?.device_id ||
-    d?.dev_id ||
-    d?.uuid ||
-    null
-  );
+  return d?.external_id || d?.externalId || d?.device_id || d?.dev_id || d?.uuid || null;
 }
 
 function isOnline(d: AnyDevice): boolean | null {
   if (typeof d?.online === "boolean") return d.online;
   if (typeof d?.isOnline === "boolean") return d.isOnline;
   if (typeof d?.connected === "boolean") return d.connected;
-
   if (typeof d?.status === "string") {
     const s = d.status.toLowerCase();
-    if (s.includes("online")) return true;
-    if (s.includes("offline")) return false;
+    if (s.includes("online") || s.includes("active")) return true;
+    if (s.includes("offline") || s.includes("lost")) return false;
   }
   return null;
 }
 
-function statusDot(online: boolean | null) {
-  if (online === null) return "bg-white/20";
-  return online ? "bg-emerald-500" : "bg-white/25";
+function inferFamily(d: AnyDevice) {
+  return getDeviceFamily(d);
+}
+
+function categoryFor(device: AnyDevice): CategoryKey {
+  const family = inferFamily(device);
+  if (["light", "switch", "plug"].includes(family)) return "lights";
+  if (["climate", "thermostat", "fan", "curtain", "purifier", "heater"].includes(family)) return "climate";
+  if (["camera", "lock", "security"].includes(family)) return "security";
+  if (["tv", "remote", "speaker"].includes(family)) return "entertainment";
+  if (family === "sensor") return "sensors";
+  return "all";
+}
+
+function deviceIcon(device: AnyDevice) {
+  return getDeviceIcon(device);
+}
+
+function iconTone(device: AnyDevice) {
+  return getDeviceIconTone(device);
 }
 
 function guessGangCount(device: AnyDevice, state: any): 1 | 2 | 3 {
   const raw = (device?.metadata?.raw ?? device?.metadata ?? device?.meta ?? {}) as any;
-
   const rawKeys = Object.keys(raw || {});
   const has2 = rawKeys.some((k) => k === "switch_2" || k === "switch_2_code");
   const has3 = rawKeys.some((k) => k === "switch_3" || k === "switch_3_code");
   if (has3) return 3;
   if (has2) return 2;
-
   const keys = Object.keys(state || {});
   if (keys.includes("switch_3")) return 3;
   if (keys.includes("switch_2")) return 2;
-
   const dps = state?.dps || state?.raw?.dps;
   if (dps && typeof dps === "object") {
     const dpKeys = Object.keys(dps);
     if (dpKeys.some((k) => String(k).includes("switch_3"))) return 3;
     if (dpKeys.some((k) => String(k).includes("switch_2"))) return 2;
   }
-
   return 1;
 }
 
 function readGangValues(gangCount: 1 | 2 | 3, state: any): Array<boolean | null> {
   const out: Array<boolean | null> = [];
-  for (let i = 1; i <= gangCount; i++) {
+  for (let i = 1; i <= gangCount; i += 1) {
     const k = `switch_${i}`;
     const v = state?.[k];
     out.push(typeof v === "boolean" ? v : null);
   }
-
   if (gangCount === 1 && out[0] === null) {
     const v = state?.switch ?? state?.power ?? state?.on;
     if (typeof v === "boolean") out[0] = v;
   }
-
   return out;
 }
 
@@ -111,134 +136,104 @@ function normalizeCommandKey(gangCount: 1 | 2 | 3, gangIndex: number) {
   return gangCount === 1 ? "switch" : `switch_${gangIndex + 1}`;
 }
 
-function powerButtonClass(isOn: boolean | null) {
-  if (isOn === null) return "bg-white/10 text-white/70 border-white/10";
-  return isOn
-    ? "bg-emerald-500/15 text-emerald-200 border-emerald-500/20"
-    : "bg-white/10 text-white/70 border-white/10";
-}
-
-type SceneKey = "welcome_home" | "evening" | "all_off" | "away_mode";
-type AutomationKey = "night_guard" | "energy_saver" | "presence_watch";
-type CustomScene = {
-  id: string;
-  name: string;
-  targetOn: boolean;
-  deviceIds: string[];
-  createdAt: number;
-};
-type CustomAutomation = {
-  id: string;
-  name: string;
-  schedule: string;
-  sceneId: string;
-  enabled: boolean;
-  createdAt: number;
-};
-
-function pickType(d: AnyDevice) {
-  return d?.type || d?.device_type || d?.category || d?.kind || "";
-}
-
-function inferFamily(d: AnyDevice) {
-  const source = `${pickType(d)} ${pickName(d)} ${pickVendor(d)}`.toLowerCase();
-  if (source.includes("light")) return "light";
-  if (source.includes("switch")) return "switch";
-  if (source.includes("outlet") || source.includes("plug") || source.includes("socket")) return "outlet";
-  if (source.includes("ac") || source.includes("air")) return "hvac";
-  if (source.includes("curtain") || source.includes("blind")) return "curtain";
-  if (source.includes("camera") || source.includes("cctv") || source.includes("onvif")) return "camera";
-  if (source.includes("lock") || source.includes("door")) return "access";
-  if (source.includes("sensor") || source.includes("motion") || source.includes("pir")) return "sensor";
-  if (source.includes("smoke") || source.includes("alarm")) return "safety";
-  return "generic";
-}
-
 function readPowerState(state: any): boolean | null {
   if (!state) return null;
   const v = state?.switch ?? state?.power ?? state?.on ?? null;
   if (typeof v === "boolean") return v;
   const keys = ["switch_1", "switch_2", "switch_3"];
-  for (const k of keys) {
-    if (typeof state?.[k] === "boolean" && state[k] === true) return true;
+  for (const k of keys) if (typeof state?.[k] === "boolean" && state[k] === true) return true;
+  return keys.some((k) => typeof state?.[k] === "boolean") ? false : null;
+}
+
+function readTemperature(state: any): string | null {
+  const raw = state?.temp_current ?? state?.temperature ?? state?.temp ?? state?.current_temperature;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return null;
+  const c = n > 80 ? Math.round(n / 10) : Math.round(n);
+  return `${c}°C`;
+}
+
+function readLockState(device: AnyDevice, state: any): string | null {
+  const family = inferFamily(device);
+  if (family !== "lock") return null;
+  const raw = String(state?.lock_state ?? state?.door_state ?? state?.status ?? "").toLowerCase();
+  if (raw.includes("unlock") || raw === "open") return "Unlocked";
+  if (raw.includes("lock") || raw === "closed") return "Locked";
+  return null;
+}
+
+function displayState(device: AnyDevice, state: any) {
+  const lock = readLockState(device, state);
+  if (lock) return lock;
+  const temp = readTemperature(state);
+  if (temp) return temp;
+  const family = inferFamily(device);
+  if (family === "curtain") {
+    const open = state?.open ?? state?.curtain_open ?? state?.position;
+    if (typeof open === "boolean") return open ? "Open" : "Closed";
+    if (typeof open === "number") return open > 0 ? "Open" : "Closed";
   }
-  const hasAny = keys.some((k) => typeof state?.[k] === "boolean");
-  return hasAny ? false : null;
+  const power = readPowerState(state);
+  if (power !== null) return power ? "On" : "Off";
+  const online = isOnline(device);
+  if (online === false) return "Offline";
+  if (online === true) return "Online";
+  return "Awaiting sync";
 }
 
 function isSimpleControlDevice(device: AnyDevice, state: any) {
-  const family = inferFamily(device);
   const gangCount = guessGangCount(device, state);
-  return gangCount === 1 && ["light", "switch", "outlet", "generic"].includes(family);
+  return gangCount === 1 && isSimplePowerDevice(device);
+}
+
+function isFavoriteDevice(device: AnyDevice) {
+  const meta = device?.metadata || {};
+  return Boolean(device?.favorite || device?.is_favorite || device?.pinned || meta?.favorite || meta?.is_favorite || meta?.pinned);
 }
 
 function friendlyStateRows(device: AnyDevice, state: any) {
   const online = isOnline(device);
-  const isOn = readPowerState(state);
+  const power = readPowerState(state);
   const rows = [
-    { label: "Power", value: isOn === null ? "No state yet" : isOn ? "On" : "Off" },
+    { label: "State", value: displayState(device, state) },
     { label: "Connection", value: online === null ? "Unknown" : online ? "Online" : "Offline" },
     { label: "Room", value: pickRoomName(device) || "Unassigned" },
     { label: "Device type", value: inferFamily(device).replace("_", " ") },
   ];
+  if (power !== null && rows[0].value !== (power ? "On" : "Off")) rows.push({ label: "Power", value: power ? "On" : "Off" });
   const lastSeen = state?.last_seen || state?.lastSeen || device?.last_seen || device?.lastSeen || device?.updated_at;
   if (lastSeen) rows.push({ label: "Last active", value: new Date(lastSeen).toLocaleString() });
   return rows;
 }
 
+function attentionReason(device: AnyDevice, state: any) {
+  if (isOnline(device) === false) return "Connection lost";
+  const battery = Number(state?.battery ?? state?.battery_percentage ?? device?.battery);
+  if (Number.isFinite(battery) && battery > 0 && battery <= 20) return "Battery low";
+  const status = String(device?.status || state?.status || "").toLowerCase();
+  if (status.includes("firmware")) return "Firmware update available";
+  if (status.includes("error") || status.includes("fault")) return "Attention needed";
+  return null;
+}
+
 export default function DeviceClient() {
   const { user } = useAuth();
-
-  const estateId = useMemo(
-    () =>
-      (user as any)?.estate_id ??
-      (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null),
-    [user]
-  );
-  const homeId = useMemo(
-    () =>
-      (user as any)?.home_id ??
-      (typeof window !== "undefined" ? localStorage.getItem("ochiga_home") : null),
-    [user]
-  );
+  const estateId = useMemo(() => (user as any)?.estate_id ?? (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null), [user]);
+  const homeId = useMemo(() => (user as any)?.home_id ?? (typeof window !== "undefined" ? localStorage.getItem("ochiga_home") : null), [user]);
 
   const [items, setItems] = useState<AnyDevice[]>([]);
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
-
   const [q, setQ] = useState("");
-  const [familyFilter, setFamilyFilter] = useState<string>("all");
-
-  // device state cache (by DB id)
+  const [category, setCategory] = useState<CategoryKey>("all");
   const [stateMap, setStateMap] = useState<Record<string, any>>({});
-
-  // details modal
-  const [stateOpen, setStateOpen] = useState(false);
-  const [stateTitle, setStateTitle] = useState<string>("Device");
-  const [stateMeta, setStateMeta] = useState<{ id?: string; vendor?: string; external_id?: string; rows?: Array<{ label: string; value: string }> } | null>(null);
-  const [stateLoading, setStateLoading] = useState(false);
-
-  // bottom sheet for controls
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetDevice, setSheetDevice] = useState<AnyDevice | null>(null);
-  const [sceneBusy, setSceneBusy] = useState<string | null>(null);
-  const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
-  const [autoEnabled, setAutoEnabled] = useState<Record<AutomationKey, boolean>>({
-    night_guard: true,
-    energy_saver: true,
-    presence_watch: false,
-  });
-  const [customScenes, setCustomScenes] = useState<CustomScene[]>([]);
-  const [customAutomations, setCustomAutomations] = useState<CustomAutomation[]>([]);
-  const [sceneFormOpen, setSceneFormOpen] = useState(false);
-  const [automationFormOpen, setAutomationFormOpen] = useState(false);
-  const [sceneName, setSceneName] = useState("");
-  const [sceneTargetOn, setSceneTargetOn] = useState(true);
-  const [sceneDeviceIds, setSceneDeviceIds] = useState<string[]>([]);
-  const [automationName, setAutomationName] = useState("");
-  const [automationSchedule, setAutomationSchedule] = useState("Every day • 7:00 PM");
-  const [automationSceneId, setAutomationSceneId] = useState("");
+  const [stateOpen, setStateOpen] = useState(false);
+  const [stateTitle, setStateTitle] = useState("Device");
+  const [stateMeta, setStateMeta] = useState<{ rows?: Array<{ label: string; value: string }> } | null>(null);
+  const [stateLoading, setStateLoading] = useState(false);
   const [addDeviceOpen, setAddDeviceOpen] = useState(false);
   const [discovering, setDiscovering] = useState(false);
   const [binding, setBinding] = useState(false);
@@ -247,11 +242,6 @@ export default function DeviceClient() {
   const [bindRoom, setBindRoom] = useState("");
 
   async function hydrateStates(list: AnyDevice[]) {
-    if (!Array.isArray(list) || list.length === 0) {
-      setLastSyncAt(Date.now());
-      return;
-    }
-
     const jobs = list
       .map((d) => ({ sid: pickDbId(d) ? String(pickDbId(d)) : null }))
       .filter((x) => x.sid)
@@ -263,20 +253,12 @@ export default function DeviceClient() {
           return null;
         }
       });
-
     const settled = await Promise.allSettled(jobs);
     const patch: Record<string, any> = {};
-
     settled.forEach((s) => {
-      if (s.status !== "fulfilled") return;
-      if (!s.value?.sid) return;
-      patch[s.value.sid] = s.value.state;
+      if (s.status === "fulfilled" && s.value?.sid) patch[s.value.sid] = s.value.state;
     });
-
-    if (Object.keys(patch).length) {
-      setStateMap((prev) => ({ ...prev, ...patch }));
-    }
-    setLastSyncAt(Date.now());
+    if (Object.keys(patch).length) setStateMap((prev) => ({ ...prev, ...patch }));
   }
 
   async function load() {
@@ -296,129 +278,65 @@ export default function DeviceClient() {
   }
 
   useEffect(() => {
-    load();
+    void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [estateId]);
 
   useEffect(() => {
     if (!items.length) return;
-    const t = window.setInterval(() => {
-      hydrateStates(items);
-    }, 20000);
+    const t = window.setInterval(() => void hydrateStates(items), 20000);
     return () => window.clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const key = `oyi_device_automation_${estateId || "global"}`;
-    try {
-      const raw = localStorage.getItem(key);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === "object") {
-        setAutoEnabled((prev) => ({ ...prev, ...parsed }));
-      }
-    } catch {
-      // ignore storage errors
-    }
-  }, [estateId]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const key = `oyi_device_automation_${estateId || "global"}`;
-    try {
-      localStorage.setItem(key, JSON.stringify(autoEnabled));
-    } catch {
-      // ignore storage errors
-    }
-  }, [estateId, autoEnabled]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const scenesKey = `oyi_custom_scenes_${estateId || "global"}`;
-    const autosKey = `oyi_custom_automations_${estateId || "global"}`;
-    try {
-      const rawScenes = localStorage.getItem(scenesKey);
-      const rawAutos = localStorage.getItem(autosKey);
-      if (rawScenes) {
-        const parsed = JSON.parse(rawScenes);
-        if (Array.isArray(parsed)) setCustomScenes(parsed);
-      }
-      if (rawAutos) {
-        const parsed = JSON.parse(rawAutos);
-        if (Array.isArray(parsed)) setCustomAutomations(parsed);
-      }
-    } catch {
-      // ignore storage errors
-    }
-  }, [estateId]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const scenesKey = `oyi_custom_scenes_${estateId || "global"}`;
-    try {
-      localStorage.setItem(scenesKey, JSON.stringify(customScenes));
-    } catch {
-      // ignore storage errors
-    }
-  }, [estateId, customScenes]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const autosKey = `oyi_custom_automations_${estateId || "global"}`;
-    try {
-      localStorage.setItem(autosKey, JSON.stringify(customAutomations));
-    } catch {
-      // ignore storage errors
-    }
-  }, [estateId, customAutomations]);
+  const selectedDiscoveryIds = useMemo(() => Object.keys(selectedDiscover).filter((k) => selectedDiscover[k]), [selectedDiscover]);
 
   const filtered = useMemo(() => {
-    const t = (q || "").trim().toLowerCase();
+    const term = q.trim().toLowerCase();
     return items.filter((d) => {
+      const deviceCategory = categoryFor(d);
       const family = inferFamily(d);
-      if (familyFilter !== "all" && family !== familyFilter) return false;
-      if (!t) return true;
-      const name = String(pickName(d)).toLowerCase();
-      const vendor = String(pickVendor(d)).toLowerCase();
-      const room = String(pickRoomName(d) ?? "").toLowerCase();
-      const ext = String(pickExternalId(d) ?? "").toLowerCase();
-      return name.includes(t) || vendor.includes(t) || room.includes(t) || ext.includes(t);
+      const categoryMatch = category === "all" || deviceCategory === category || (category === "lights" && family === "switch");
+      if (!categoryMatch) return false;
+      if (!term) return true;
+      return [pickName(d), pickRoomName(d), displayState(d, stateMap[String(pickDbId(d))] || {})]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(term);
     });
-  }, [q, items, familyFilter]);
+  }, [items, q, category, stateMap]);
 
-  const familyCounts = useMemo(() => {
-    const out: Record<string, number> = {
-      all: items.length,
-      light: 0,
-      switch: 0,
-      hvac: 0,
-      camera: 0,
-      access: 0,
-      sensor: 0,
-      safety: 0,
-    };
-    items.forEach((d) => {
-      const f = inferFamily(d);
-      if (typeof out[f] === "number") out[f] += 1;
+  const favorites = useMemo(() => items.filter(isFavoriteDevice).slice(0, 8), [items]);
+
+  const roomGroups = useMemo(() => {
+    const map = new Map<string, { key: string; name: string; devices: AnyDevice[] }>();
+    items.forEach((device) => {
+      const key = pickRoomKey(device);
+      const name = pickRoomName(device) || "Unassigned";
+      const current = map.get(key) || { key, name, devices: [] as AnyDevice[] };
+      current.devices.push(device);
+      map.set(key, current);
     });
-    return out;
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [items]);
+
+  const attentionItems = useMemo(() => {
+    return items
+      .map((device) => ({ device, reason: attentionReason(device, stateMap[String(pickDbId(device))] || {}) }))
+      .filter((item) => Boolean(item.reason));
+  }, [items, stateMap]);
 
   async function warmState(device: AnyDevice) {
     const dbId = pickDbId(device);
     if (!dbId) return;
-
     const sid = String(dbId);
     if (stateMap[sid]) return;
-
     try {
       const res = await deviceService.getDeviceState(sid);
-      const state = (res as any)?.state ?? res ?? {};
-      setStateMap((p) => ({ ...p, [sid]: state }));
+      setStateMap((p) => ({ ...p, [sid]: (res as any)?.state ?? res ?? {} }));
     } catch {
-      // silent
+      // silent warmup
     }
   }
 
@@ -426,237 +344,83 @@ export default function DeviceClient() {
     const gangCount = guessGangCount(device, state);
     if (gangCount === 1) return { switch: next };
     const out: Record<string, boolean> = {};
-    for (let i = 1; i <= gangCount; i++) {
-      out[`switch_${i}`] = next;
-    }
+    for (let i = 1; i <= gangCount; i += 1) out[`switch_${i}`] = next;
     return out;
-  }
-
-  function currentIsOn(device: AnyDevice, state: any): boolean | null {
-    return readPowerState(state);
   }
 
   async function toggleGang(device: AnyDevice, gangIndex: number, next: boolean) {
     const dbId = pickDbId(device);
-    if (!dbId) {
-      setErr("This device has no DB id yet. Bind/assign it first.");
-      return;
-    }
-
+    if (!dbId) return setErr("This device is not assigned yet.");
     const sid = String(dbId);
     setBusyId(sid);
     setErr(null);
-
     try {
       await warmState(device);
-
       const cached = stateMap[sid] || {};
       const gangCount = guessGangCount(device, cached);
       const code = normalizeCommandKey(gangCount, gangIndex);
-
       await deviceService.commandDevice(sid, { [code]: next });
-
-      // optimistic UI
-      setStateMap((p) => {
-        const prev = p[sid] || {};
-        if (gangCount === 1) {
-          return { ...p, [sid]: { ...prev, switch: next, power: next, on: next } };
-        }
-        return { ...p, [sid]: { ...prev, [`switch_${gangIndex + 1}`]: next } };
-      });
+      setStateMap((p) => ({ ...p, [sid]: { ...(p[sid] || {}), [code]: next, ...(gangCount === 1 ? { switch: next, power: next, on: next } : {}) } }));
     } catch (e: any) {
-      setErr(e?.response?.data?.error || e?.message || "Command failed (device may be offline)");
+      setErr(e?.response?.data?.error || e?.message || "Command failed");
     } finally {
       setBusyId(null);
     }
   }
 
-  // ✅ card power button: full ON/OFF
-  // - 1-gang => switch
-  // - multi-gang => switch_1..switch_n all together
   async function toggleMasterPower(device: AnyDevice) {
     const dbId = pickDbId(device);
-    if (!dbId) {
-      setErr("This device has no DB id yet. Bind/assign it first.");
-      return;
-    }
-
+    if (!dbId) return setErr("This device is not assigned yet.");
     const sid = String(dbId);
     setBusyId(sid);
     setErr(null);
-
     try {
       await warmState(device);
-
       const cached = stateMap[sid] || {};
-      const nowOn = currentIsOn(device, cached);
+      const nowOn = readPowerState(cached);
       const next = nowOn === null ? true : !nowOn;
-      const gangCount = guessGangCount(device, cached);
       const command = buildPowerCommand(device, cached, next);
-
       await deviceService.commandDevice(sid, command);
-
-      // optimistic UI
-      setStateMap((p) => {
-        const prev = p[sid] || {};
-        if (gangCount === 1) {
-          return { ...p, [sid]: { ...prev, switch: next, power: next, on: next } };
-        }
-        const patch: any = {};
-        for (let i = 1; i <= gangCount; i++) patch[`switch_${i}`] = next;
-        return { ...p, [sid]: { ...prev, ...patch } };
-      });
+      setStateMap((p) => ({ ...p, [sid]: { ...(p[sid] || {}), ...command, switch: next, power: next, on: next } }));
     } catch (e: any) {
-      setErr(e?.response?.data?.error || e?.message || "Command failed (device may be offline)");
+      setErr(e?.response?.data?.error || e?.message || "Command failed");
     } finally {
       setBusyId(null);
     }
   }
 
-  async function executeSceneTarget(targetOn: boolean, busyKey: string, allowedIds?: string[]) {
-    if (!items.length) return;
-    setSceneBusy(busyKey);
-    setErr(null);
-    try {
-      const allow = allowedIds && allowedIds.length ? new Set(allowedIds) : null;
-      const candidates = items.filter((d) => {
-        const dbId = pickDbId(d);
-        if (!dbId) return false;
-        const sid = String(dbId);
-        if (allow && !allow.has(sid)) return false;
-        const family = inferFamily(d);
-        if (family === "camera" || family === "sensor" || family === "safety") return false;
-        return isOnline(d) !== false;
-      });
-
-      const jobs = candidates.map(async (d) => {
-        const sid = String(pickDbId(d));
-        const cached = stateMap[sid] || {};
-        const family = inferFamily(d);
-        const command = family === "curtain" ? { open: targetOn } : buildPowerCommand(d, cached, targetOn);
-
-        try {
-          await deviceService.commandDevice(sid, command);
-          return { sid, ok: true, command };
-        } catch {
-          return { sid, ok: false, command };
-        }
-      });
-
-      const results = await Promise.all(jobs);
-      const patch: Record<string, any> = {};
-      results.forEach((r) => {
-        if (!r.ok) return;
-        patch[r.sid] = { ...(stateMap[r.sid] || {}), ...r.command };
-      });
-      if (Object.keys(patch).length) {
-        setStateMap((prev) => ({ ...prev, ...patch }));
-      }
-      await hydrateStates(items);
-    } catch (e: any) {
-      setErr(e?.response?.data?.error || e?.message || "Scene command failed");
-    } finally {
-      setSceneBusy(null);
+  function openDevice(device: AnyDevice) {
+    const sid = String(pickDbId(device) || "");
+    const cached = sid ? stateMap[sid] : {};
+    if (isSimpleControlDevice(device, cached)) void toggleMasterPower(device);
+    else {
+      setSheetDevice(device);
+      setSheetOpen(true);
+      void warmState(device);
     }
-  }
-
-  async function runScene(scene: SceneKey) {
-    const targetOn = scene === "all_off" || scene === "away_mode" ? false : true;
-    await executeSceneTarget(targetOn, scene);
-  }
-
-  async function runCustomScene(scene: CustomScene) {
-    await executeSceneTarget(scene.targetOn, scene.id, scene.deviceIds);
-  }
-
-  function openSheet(device: AnyDevice) {
-    setSheetDevice(device);
-    setSheetOpen(true);
-    // warm quickly so ring state shows immediately
-    warmState(device);
   }
 
   async function viewFriendlyDetails(device: AnyDevice) {
     const dbId = pickDbId(device);
     if (!dbId) return;
-
     const sid = String(dbId);
-    const ext = pickExternalId(device);
-
     setStateTitle(pickName(device));
-    setStateMeta({
-      id: sid,
-      vendor: pickVendor(device),
-      external_id: ext ? String(ext) : undefined,
-      rows: friendlyStateRows(device, stateMap[sid] || {}),
-    });
+    setStateMeta({ rows: friendlyStateRows(device, stateMap[sid] || {}) });
     setStateOpen(true);
     setStateLoading(true);
-
     try {
       const res = await deviceService.getDeviceState(sid);
       const state = (res as any)?.state ?? res ?? {};
       setStateMap((p) => ({ ...p, [sid]: state }));
-      setStateMeta({
-        id: sid,
-        vendor: pickVendor(device),
-        external_id: ext ? String(ext) : undefined,
-        rows: friendlyStateRows(device, state),
-      });
-    } catch (e: any) {
-      setStateMeta({
-        id: sid,
-        vendor: pickVendor(device),
-        external_id: ext ? String(ext) : undefined,
-        rows: [
-          ...friendlyStateRows(device, stateMap[sid] || {}),
-          { label: "State", value: e?.response?.data?.error || e?.message || "Unavailable" },
-        ],
-      });
+      setStateMeta({ rows: friendlyStateRows(device, state) });
     } finally {
       setStateLoading(false);
     }
   }
 
-  const onlineCount = useMemo(
-    () => items.reduce((acc, d) => (isOnline(d) === true ? acc + 1 : acc), 0),
-    [items]
-  );
-
-  const onStateCount = useMemo(() => {
-    return items.reduce((acc, d) => {
-      const dbId = pickDbId(d);
-      if (!dbId) return acc;
-      const sid = String(dbId);
-      return currentIsOn(d, stateMap[sid]) === true ? acc + 1 : acc;
-    }, 0);
-  }, [items, stateMap]);
-
-  const activeAutomations = useMemo(
-    () =>
-      Object.values(autoEnabled).filter(Boolean).length +
-      customAutomations.filter((a) => a.enabled).length,
-    [autoEnabled, customAutomations]
-  );
-
-  function toggleAutomation(key: AutomationKey) {
-    setAutoEnabled((prev) => ({ ...prev, [key]: !prev[key] }));
-  }
-
-  const selectedDiscoveryIds = useMemo(
-    () => Object.keys(selectedDiscover).filter((k) => selectedDiscover[k]),
-    [selectedDiscover]
-  );
-
-  async function openAddDevice() {
-    setAddDeviceOpen(true);
-    setSelectedDiscover({});
-    setErr(null);
-    await refreshDiscovery();
-  }
-
   async function refreshDiscovery() {
     setDiscovering(true);
+    setErr(null);
     try {
       const found = await deviceService.discoverDevices();
       setDiscovered(Array.isArray(found) ? found : []);
@@ -668,8 +432,10 @@ export default function DeviceClient() {
     }
   }
 
-  function toggleDiscoverySelection(id: string) {
-    setSelectedDiscover((prev) => ({ ...prev, [id]: !prev[id] }));
+  async function openAddDevice() {
+    setAddDeviceOpen(true);
+    setSelectedDiscover({});
+    await refreshDiscovery();
   }
 
   async function bindSelectedDevices() {
@@ -682,31 +448,22 @@ export default function DeviceClient() {
         return ext ? selectedDiscover[String(ext)] : false;
       });
       const payload: any = {
-        devices: targets.map((d) => {
-          const ext = pickDiscoveryExternalId(d);
-          return {
-            external_id: String(ext),
-            vendor: d?.vendor || d?.adapter || "tuya",
-            adapter: d?.adapter || d?.vendor || "tuya",
-            name: d?.name || d?.type || "Device",
-            type: d?.type || d?.category || "device",
-            icon: d?.icon,
-            ip: d?.ip,
-            protocol: d?.protocol,
-            online: typeof d?.online === "boolean" ? d.online : undefined,
-            metadata: d?.metadata ?? d,
-          };
-        }),
+        devices: targets.map((d) => ({
+          external_id: String(pickDiscoveryExternalId(d)),
+          vendor: d?.vendor || d?.adapter || "tuya",
+          adapter: d?.adapter || d?.vendor || "tuya",
+          name: d?.name || d?.type || "Device",
+          type: d?.type || d?.category || "device",
+          icon: d?.icon,
+          ip: d?.ip,
+          protocol: d?.protocol,
+          online: typeof d?.online === "boolean" ? d.online : undefined,
+          metadata: d?.metadata ?? d,
+        })),
         room: bindRoom || null,
         estate_id: estateId || undefined,
         home_id: homeId || undefined,
       };
-
-      if (!payload.devices.length) {
-        setErr("No valid discovered device IDs found.");
-        return;
-      }
-
       await deviceService.assignDevices(payload);
       setAddDeviceOpen(false);
       setBindRoom("");
@@ -719,807 +476,226 @@ export default function DeviceClient() {
     }
   }
 
-  function toggleSceneDevice(id: string) {
-    setSceneDeviceIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
-  }
-
-  function createCustomScene() {
-    const name = sceneName.trim();
-    if (!name) {
-      setErr("Scene name is required");
-      return;
-    }
-    if (!sceneDeviceIds.length) {
-      setErr("Select at least one device for the scene");
-      return;
-    }
-
-    setCustomScenes((prev) => [
-      {
-        id: `custom_scene_${Date.now()}`,
-        name,
-        targetOn: sceneTargetOn,
-        deviceIds: sceneDeviceIds,
-        createdAt: Date.now(),
-      },
-      ...prev,
-    ]);
-    setSceneName("");
-    setSceneTargetOn(true);
-    setSceneDeviceIds([]);
-    setSceneFormOpen(false);
-    setErr(null);
-  }
-
-  function createCustomAutomation() {
-    const name = automationName.trim();
-    if (!name) {
-      setErr("Automation name is required");
-      return;
-    }
-    if (!automationSceneId) {
-      setErr("Select a scene to link this automation");
-      return;
-    }
-
-    setCustomAutomations((prev) => [
-      {
-        id: `custom_auto_${Date.now()}`,
-        name,
-        schedule: automationSchedule.trim() || "Custom",
-        sceneId: automationSceneId,
-        enabled: true,
-        createdAt: Date.now(),
-      },
-      ...prev,
-    ]);
-    setAutomationName("");
-    setAutomationSchedule("Every day • 7:00 PM");
-    setAutomationSceneId("");
-    setAutomationFormOpen(false);
-    setErr(null);
-  }
-
-  function toggleCustomAutomation(id: string) {
-    setCustomAutomations((prev) =>
-      prev.map((a) => (a.id === id ? { ...a, enabled: !a.enabled } : a))
-    );
-  }
-
   return (
-    <ConsumerShell title="Smart Devices" subtitle="Spatial controls • scenes • home-safe automation" showBack backHref="/home">
-      <div className="oyi-glass relative overflow-hidden rounded-[24px] p-4">
-        <div className="absolute -top-8 -right-8 h-32 w-32 rounded-full bg-cyan-300/20 blur-3xl" />
-        <div className="absolute -bottom-10 -left-8 h-36 w-36 rounded-full bg-blue-400/10 blur-3xl" />
+    <LayoutWrapper>
+      <main className="fixed inset-0 overflow-hidden bg-[#02060b] text-white">
+        <div className="oyi-ambient-bg" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_76%_12%,rgba(0,132,255,0.16),transparent_30%),radial-gradient(circle_at_18%_38%,rgba(14,165,233,0.08),transparent_34%),linear-gradient(180deg,rgba(4,12,22,0.18),rgba(0,0,0,0.93))]" />
 
-        <div className="relative flex flex-col gap-3">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-100/65">Device Layer</div>
-              <div className="mt-1.5 text-xl font-semibold text-white">Home devices responsive</div>
-              <div className="mt-1 text-xs text-white/45">Control only what your resident permission allows.</div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={openAddDevice}
-                className="rounded-full px-3 py-2 text-xs bg-cyan-300/14 text-cyan-100 border border-cyan-300/20 hover:bg-cyan-300/22 transition"
-                type="button"
-              >
-                Add Device
-              </button>
-              <button
-                onClick={load}
-                disabled={loading}
-                className="rounded-full px-3 py-2 text-xs bg-white/10 text-white hover:bg-white/15 border border-white/10 disabled:opacity-50 transition"
-                type="button"
-              >
-                {loading ? "Refreshing…" : "Refresh"}
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <div className="rounded-[18px] border border-white/10 bg-black/[0.18] px-3 py-2">
-              <div className="text-[11px] text-white/50">Devices</div>
-              <div className="text-lg font-semibold text-white">{items.length}</div>
-            </div>
-            <div className="rounded-[18px] border border-white/10 bg-black/[0.18] px-3 py-2">
-              <div className="text-[11px] text-white/50">Online</div>
-              <div className="text-lg font-semibold text-emerald-300">{onlineCount}</div>
-            </div>
-            <div className="rounded-[18px] border border-white/10 bg-black/[0.18] px-3 py-2">
-              <div className="text-[11px] text-white/50">Active</div>
-              <div className="text-lg font-semibold text-cyan-200">{onStateCount}</div>
-            </div>
-            <div className="rounded-[18px] border border-white/10 bg-black/[0.18] px-3 py-2">
-              <div className="text-[11px] text-white/50">Automations</div>
-              <div className="text-lg font-semibold text-amber-200">{activeAutomations}</div>
-            </div>
-          </div>
-
-          <div className="text-[11px] text-white/60">
-            Live state sync:{" "}
-            <span className="text-white/85">
-              {lastSyncAt ? new Date(lastSyncAt).toLocaleTimeString() : "Waiting for first sync"}
-            </span>
+        <div className="fixed inset-x-0 z-[80] px-5" style={{ top: "calc(8px + var(--sat))" }}>
+          <div className="mx-auto flex max-w-[430px] items-center justify-between">
+            <div className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/[0.03] shadow-[0_8px_26px_rgba(0,0,0,0.28)] backdrop-blur-2xl"><HamburgerMenu /></div>
+            <div className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/[0.028] shadow-[0_8px_26px_rgba(0,0,0,0.28)] backdrop-blur-2xl"><MessagesInboxButton /></div>
           </div>
         </div>
+
+        <div className="absolute inset-x-0 overflow-y-auto px-5" style={{ top: "calc(68px + var(--sat))", bottom: "calc(78px + var(--sab))", WebkitOverflowScrolling: "touch" }}>
+          <div className="mx-auto max-w-[430px] pb-6">
+            <header className="flex items-end justify-between gap-3">
+              <div>
+                <h1 className="text-[30px] font-semibold leading-none tracking-[-0.055em] text-white">Devices</h1>
+                <p className="mt-2 text-[13px] leading-5 text-white/56">Control your connected home.</p>
+              </div>
+              <button type="button" onClick={openAddDevice} className="inline-flex items-center gap-1.5 rounded-full border border-sky-300/18 bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-100 shadow-[0_0_18px_rgba(0,132,255,0.14)] active:scale-[0.98]">
+                <Plus className="h-3.5 w-3.5" /> Add
+              </button>
+            </header>
+
+            {err ? <div className="mt-4 rounded-[18px] border border-red-300/16 bg-red-500/10 px-3.5 py-3 text-xs text-red-100">{err}</div> : null}
+
+            <section className="mt-5">
+              <div className="mb-2.5 flex items-center justify-between">
+                <h2 className="text-[17px] font-semibold tracking-[-0.04em] text-white">Favorite Controls</h2>
+                <button type="button" onClick={load} disabled={loading} className="text-xs text-sky-200/76 disabled:text-white/30">{loading ? "Syncing" : "Refresh"}</button>
+              </div>
+              {favorites.length ? (
+                <div className="flex snap-x gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  {favorites.map((device) => <FavoriteCard key={String(pickDbId(device) || pickExternalId(device) || pickName(device))} device={device} state={stateMap[String(pickDbId(device))] || {}} busy={busyId === String(pickDbId(device))} onOpen={openDevice} onPower={toggleMasterPower} />)}
+                </div>
+              ) : (
+                <div className="rounded-[22px] border border-white/[0.07] bg-[linear-gradient(145deg,rgba(255,255,255,0.042),rgba(255,255,255,0.012))] p-4 text-sm text-white/54 shadow-[0_14px_48px_rgba(0,0,0,0.28)] backdrop-blur-2xl">
+                  No favorite controls yet.
+                </div>
+              )}
+            </section>
+
+            <section className="mt-5 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Device categories">
+              {CATEGORIES.map((item) => {
+                const active = category === item.key;
+                return <button key={item.key} type="button" onClick={() => setCategory(item.key)} className={cn("shrink-0 rounded-full border px-3.5 py-2 text-xs font-medium transition active:scale-[0.98]", active ? "border-sky-400/70 bg-sky-400/10 text-sky-200 shadow-[0_0_20px_rgba(0,132,255,0.18)]" : "border-white/[0.075] bg-white/[0.025] text-white/62 hover:bg-white/[0.05]")}>{item.label}</button>;
+              })}
+            </section>
+
+            <section className="mt-4">
+              <h2 className="text-[17px] font-semibold tracking-[-0.04em] text-white">Devices by Room</h2>
+              {roomGroups.length ? (
+                <div className="mt-3 grid grid-cols-2 gap-2.5">
+                  {roomGroups.map((room) => <RoomCard key={room.key} room={room} />)}
+                </div>
+              ) : (
+                <AmbientEmpty className="mt-3" title="No rooms available" body="Assigned room devices will appear here." />
+              )}
+            </section>
+
+            {attentionItems.length ? (
+              <section className="mt-5">
+                <h2 className="text-[17px] font-semibold tracking-[-0.04em] text-white">Attention Needed</h2>
+                <div className="mt-3 space-y-2">
+                  {attentionItems.map(({ device, reason }) => <AttentionRow key={String(pickDbId(device) || pickExternalId(device) || pickName(device))} device={device} reason={String(reason)} />)}
+                </div>
+              </section>
+            ) : null}
+
+            <section className="mt-5">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h2 className="text-[17px] font-semibold tracking-[-0.04em] text-white">All Devices</h2>
+                <a href="/activity" className="inline-flex items-center gap-1 text-xs text-sky-200/80">View Activity <ChevronRight className="h-3.5 w-3.5" /></a>
+              </div>
+              <label className="flex h-11 items-center gap-2 rounded-full border border-white/[0.075] bg-white/[0.035] px-4 text-white/70 shadow-[0_12px_34px_rgba(0,0,0,0.24)] backdrop-blur-2xl focus-within:border-sky-300/25 focus-within:bg-sky-400/[0.045]">
+                <Search className="h-4 w-4 text-white/36" />
+                <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search devices" className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/34" />
+              </label>
+
+              <div className="mt-3 overflow-hidden rounded-[24px] border border-white/[0.07] bg-[linear-gradient(145deg,rgba(255,255,255,0.042),rgba(255,255,255,0.012))] shadow-[0_14px_48px_rgba(0,0,0,0.29)] backdrop-blur-2xl">
+                {loading && !filtered.length ? <div className="px-4 py-5 text-sm text-white/50">Loading devices…</div> : null}
+                {!loading && !filtered.length ? <div className="px-4 py-5 text-sm text-white/50">No devices available.</div> : null}
+                {filtered.map((device, index) => <DeviceRow key={String(pickDbId(device) || pickExternalId(device) || pickName(device))} device={device} state={stateMap[String(pickDbId(device))] || {}} busy={busyId === String(pickDbId(device))} bordered={index > 0} onOpen={openDevice} onPower={toggleMasterPower} />)}
+              </div>
+            </section>
+          </div>
+        </div>
+
+        {addDeviceOpen ? <AddDeviceSheet discovering={discovering} binding={binding} discovered={discovered} selectedDiscover={selectedDiscover} selectedCount={selectedDiscoveryIds.length} bindRoom={bindRoom} setBindRoom={setBindRoom} setSelectedDiscover={setSelectedDiscover} onClose={() => setAddDeviceOpen(false)} onScan={refreshDiscovery} onBind={bindSelectedDevices} /> : null}
+        {sheetOpen && sheetDevice ? <ControlSheet device={sheetDevice} state={stateMap[String(pickDbId(sheetDevice))] || {}} busy={busyId === String(pickDbId(sheetDevice))} onClose={() => setSheetOpen(false)} onDetails={viewFriendlyDetails} onToggleGang={toggleGang} /> : null}
+        {stateOpen ? <DetailsModal title={stateTitle} meta={stateMeta} loading={stateLoading} onClose={() => setStateOpen(false)} /> : null}
+        <BottomNav />
+      </main>
+    </LayoutWrapper>
+  );
+}
+
+function FavoriteCard({ device, state, busy, onOpen, onPower }: { device: AnyDevice; state: any; busy: boolean; onOpen: (device: AnyDevice) => void; onPower: (device: AnyDevice) => void }) {
+  const Icon = deviceIcon(device);
+  const stateText = busy ? "Working…" : displayState(device, state);
+  return (
+    <button type="button" onClick={() => onOpen(device)} className="relative min-h-[142px] w-[156px] shrink-0 snap-start overflow-hidden rounded-[26px] border border-white/[0.075] bg-[linear-gradient(145deg,rgba(255,255,255,0.052),rgba(255,255,255,0.014))] p-3.5 text-left shadow-[0_16px_48px_rgba(0,0,0,0.30)] backdrop-blur-2xl transition active:scale-[0.985]">
+      <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-sky-400/12 blur-3xl" />
+      <div className={cn("relative grid h-11 w-11 place-items-center rounded-full border", iconTone(device))}><Icon className="h-5 w-5" /></div>
+      <div className="relative mt-5 text-[15px] font-semibold leading-5 tracking-[-0.035em] text-white line-clamp-2">{pickName(device)}</div>
+      <div className="relative mt-1 truncate text-xs text-white/46">{pickRoomName(device) || "Unassigned"}</div>
+      <div className="relative mt-3 flex items-center justify-between gap-2">
+        <span className={cn("text-[13px] font-semibold", stateText === "On" || stateText === "Online" || stateText === "Locked" ? "text-emerald-300" : "text-white/72")}>{stateText}</span>
+        <button type="button" onClick={(e) => { e.stopPropagation(); onPower(device); }} className="grid h-8 w-8 place-items-center rounded-full border border-white/10 bg-white/[0.06] text-white/72" aria-label="Toggle power"><Fan className="h-4 w-4" /></button>
       </div>
+    </button>
+  );
+}
 
-      {/* quick scenes */}
-      <CameraIntelPanel estateId={estateId} />
+function RoomCard({ room }: { room: { key: string; name: string; devices: AnyDevice[] } }) {
+  return (
+    <a href={`/rooms?room=${encodeURIComponent(room.name)}`} className="rounded-[22px] border border-white/[0.07] bg-[linear-gradient(145deg,rgba(255,255,255,0.042),rgba(255,255,255,0.012))] p-3.5 shadow-[0_12px_36px_rgba(0,0,0,0.25)] backdrop-blur-2xl transition active:scale-[0.985]">
+      <div className="grid h-9 w-9 place-items-center rounded-full border border-sky-300/14 bg-sky-400/10 text-sky-200"><Home className="h-4.5 w-4.5" /></div>
+      <div className="mt-3 truncate text-[15px] font-semibold tracking-[-0.035em] text-white">{room.name}</div>
+      <div className="mt-1 text-xs text-white/48">{room.devices.length} device{room.devices.length === 1 ? "" : "s"}</div>
+    </a>
+  );
+}
 
-      <div className="mt-3 rounded-[24px] border border-white/10 bg-white/[0.035] p-3.5">
-        <div className="flex items-center justify-between gap-2">
-          <div>
-            <div className="text-sm font-semibold text-white">Scenes</div>
-            <div className="text-xs text-white/45">One-tap whole-home actions</div>
+function DeviceRow({ device, state, busy, bordered, onOpen, onPower }: { device: AnyDevice; state: any; busy: boolean; bordered: boolean; onOpen: (device: AnyDevice) => void; onPower: (device: AnyDevice) => void }) {
+  const Icon = deviceIcon(device);
+  const simple = isSimpleControlDevice(device, state);
+  const stateText = busy ? "Working…" : displayState(device, state);
+  return (
+    <button type="button" onClick={() => onOpen(device)} className={cn("flex w-full items-center gap-3 px-3.5 py-3 text-left transition hover:bg-white/[0.035]", bordered && "border-t border-white/[0.055]")}>
+      <span className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-full border", iconTone(device))}><Icon className="h-5 w-5" /></span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[14px] font-semibold tracking-[-0.025em] text-white">{pickName(device)}</span>
+        <span className="mt-0.5 block truncate text-xs text-white/44">{pickRoomName(device) || "Unassigned"}</span>
+      </span>
+      <span className="shrink-0 text-right text-[13px] font-medium text-white/72">{stateText}</span>
+      {simple ? <span onClick={(e) => { e.stopPropagation(); void onPower(device); }} className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.05] text-white/60"><ChevronRight className="h-4 w-4" /></span> : <ChevronRight className="h-4 w-4 shrink-0 text-white/32" />}
+    </button>
+  );
+}
+
+function AttentionRow({ device, reason }: { device: AnyDevice; reason: string }) {
+  return (
+    <div className="flex items-center gap-3 rounded-[20px] border border-amber-300/12 bg-amber-400/[0.055] px-3.5 py-3 text-left">
+      <span className="grid h-9 w-9 place-items-center rounded-full border border-amber-300/15 bg-amber-400/10 text-amber-200"><AlertTriangle className="h-4.5 w-4.5" /></span>
+      <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-white">{pickName(device)}</span><span className="mt-0.5 block text-xs text-amber-100/66">{reason}</span></span>
+    </div>
+  );
+}
+
+function AmbientEmpty({ title, body, className }: { title: string; body: string; className?: string }) {
+  return <div className={cn("rounded-[22px] border border-white/[0.07] bg-white/[0.025] p-4 text-sm text-white/54", className)}><div className="font-medium text-white/74">{title}</div><div className="mt-1 text-xs text-white/42">{body}</div></div>;
+}
+
+function AddDeviceSheet({ discovering, binding, discovered, selectedDiscover, selectedCount, bindRoom, setBindRoom, setSelectedDiscover, onClose, onScan, onBind }: any) {
+  return (
+    <div className="fixed inset-0 z-[130]">
+      <div className="absolute inset-0 bg-black/65 backdrop-blur-md" onClick={onClose} />
+      <div className="absolute inset-x-0 bottom-0 px-4 pb-[calc(14px+var(--sab))]">
+        <section className="mx-auto max-w-[430px] overflow-hidden rounded-[28px] border border-white/[0.08] bg-[#050a12]/96 shadow-[0_24px_80px_rgba(0,0,0,0.62)]">
+          <div className="flex items-center justify-between gap-3 border-b border-white/[0.06] px-4 py-3">
+            <div><h2 className="text-base font-semibold tracking-[-0.035em] text-white">Add Devices</h2><p className="mt-0.5 text-xs text-white/44">Scan and connect available home devices.</p></div>
+            <div className="flex items-center gap-2"><button type="button" onClick={onScan} disabled={discovering || binding} className="rounded-full border border-sky-300/16 bg-sky-400/10 px-3 py-1.5 text-xs text-sky-100 disabled:opacity-50">{discovering ? "Scanning" : "Scan"}</button><button type="button" onClick={onClose} className="grid h-8 w-8 place-items-center rounded-full bg-white/[0.06] text-white/60"><X className="h-4 w-4" /></button></div>
           </div>
-          <button
-            type="button"
-            onClick={() => setSceneFormOpen((v) => !v)}
-            className="rounded-full border border-white/15 bg-white/[0.08] px-3 py-1.5 text-xs text-white hover:bg-white/15 transition"
-          >
-            {sceneFormOpen ? "Close" : "Add Scene"}
-          </button>
-        </div>
-
-        {sceneFormOpen && (
-          <div className="mt-3 rounded-[20px] border border-white/10 bg-black/[0.18] p-3">
-            <div className="grid gap-2 sm:grid-cols-2">
-              <input
-                value={sceneName}
-                onChange={(e) => setSceneName(e.target.value)}
-                placeholder="Scene name"
-                className="rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-white outline-none"
-              />
-              <select
-                value={sceneTargetOn ? "on" : "off"}
-                onChange={(e) => setSceneTargetOn(e.target.value === "on")}
-                className="rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-white outline-none"
-              >
-                <option value="on">Action: Turn selected devices ON</option>
-                <option value="off">Action: Turn selected devices OFF</option>
-              </select>
+          <div className="max-h-[62vh] overflow-y-auto p-4">
+            {discovering ? <div className="text-sm text-white/56">Scanning for devices…</div> : null}
+            {!discovering && !discovered.length ? <AmbientEmpty title="No devices found" body="Awaiting device sync." /> : null}
+            <div className="space-y-2">
+              {discovered.map((d: DiscoveryDevice, index: number) => {
+                const ext = pickDiscoveryExternalId(d);
+                const key = ext ? String(ext) : `tmp-${index}`;
+                const selected = ext ? Boolean(selectedDiscover[String(ext)]) : false;
+                return <button key={key} type="button" disabled={!ext || binding} onClick={() => ext && setSelectedDiscover((prev: Record<string, boolean>) => ({ ...prev, [String(ext)]: !prev[String(ext)] }))} className={cn("flex w-full items-center justify-between gap-3 rounded-[18px] border px-3 py-2.5 text-left", selected ? "border-sky-300/25 bg-sky-400/10" : "border-white/[0.07] bg-white/[0.035]", !ext && "opacity-50")}><span className="min-w-0"><span className="block truncate text-sm font-semibold text-white">{d?.name || d?.type || "Device"}</span><span className="mt-0.5 block truncate text-xs text-white/42">{d?.protocol || d?.adapter || d?.vendor || "device"}</span></span><span className="text-xs text-white/50">{selected ? "Selected" : typeof d?.online === "boolean" ? (d.online ? "Online" : "Offline") : "Found"}</span></button>;
+              })}
             </div>
-
-            <div className="mt-2 text-[11px] text-white/50">Select devices for this scene</div>
-            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 max-h-44 overflow-auto pr-1">
-              {items
-                .filter((d) => pickDbId(d))
-                .map((d) => {
-                  const sid = String(pickDbId(d));
-                  const selected = sceneDeviceIds.includes(sid);
-                  return (
-                    <button
-                      key={sid}
-                      type="button"
-                      onClick={() => toggleSceneDevice(sid)}
-                      className={`rounded-xl border px-3 py-2 text-left text-xs transition ${
-                        selected
-                          ? "border-cyan-400/30 bg-cyan-500/15 text-cyan-100"
-                          : "border-white/10 bg-white/5 text-white/75 hover:bg-white/10"
-                      }`}
-                    >
-                      <div className="font-semibold">{pickName(d)}</div>
-                      <div className="text-white/45">{pickRoomName(d) || "Unassigned"}</div>
-                    </button>
-                  );
-                })}
-            </div>
-
-            <div className="mt-3 flex justify-end">
-              <button
-                type="button"
-                onClick={createCustomScene}
-                className="rounded-xl bg-white text-black px-3 py-2 text-xs font-semibold hover:opacity-90"
-              >
-                Save Scene
-              </button>
-            </div>
+            {selectedCount ? <div className="mt-3 rounded-[20px] border border-white/[0.07] bg-white/[0.035] p-3"><input value={bindRoom} onChange={(e) => setBindRoom(e.target.value)} placeholder="Room name (optional)" className="h-10 w-full rounded-full border border-white/[0.08] bg-black/20 px-4 text-sm text-white outline-none placeholder:text-white/34" disabled={binding} /><button type="button" onClick={onBind} disabled={binding} className="mt-2 h-10 w-full rounded-full bg-white text-sm font-semibold text-black disabled:opacity-50">{binding ? "Adding…" : `Add ${selectedCount} device${selectedCount === 1 ? "" : "s"}`}</button></div> : null}
           </div>
-        )}
-
-        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {[
-            { key: "welcome_home", label: "Welcome", tint: "border-emerald-500/20 bg-emerald-500/10" },
-            { key: "evening", label: "Evening", tint: "border-indigo-500/20 bg-indigo-500/10" },
-            { key: "all_off", label: "All Off", tint: "border-white/15 bg-white/5" },
-            { key: "away_mode", label: "Away Mode", tint: "border-amber-500/20 bg-amber-500/10" },
-          ].map((scene) => (
-            <button
-              key={scene.key}
-              type="button"
-              onClick={() => runScene(scene.key as SceneKey)}
-              disabled={sceneBusy !== null}
-              className={`rounded-[18px] border px-3 py-2.5 text-left transition hover:bg-white/10 disabled:opacity-60 ${scene.tint}`}
-            >
-              <div className="text-sm font-semibold text-white">{scene.label}</div>
-              <div className="mt-1 text-[11px] text-white/55">
-                {sceneBusy === scene.key ? "Running…" : "Apply now"}
-              </div>
-            </button>
-          ))}
-          {customScenes.map((scene) => (
-            <button
-              key={scene.id}
-              type="button"
-              onClick={() => runCustomScene(scene)}
-              disabled={sceneBusy !== null}
-              className="rounded-[18px] border border-cyan-500/20 bg-cyan-500/10 px-3 py-2.5 text-left transition hover:bg-cyan-500/15 disabled:opacity-60"
-            >
-              <div className="text-sm font-semibold text-white">{scene.name}</div>
-              <div className="mt-1 text-[11px] text-white/60">
-                {scene.targetOn ? "Turn On" : "Turn Off"} • {scene.deviceIds.length} devices
-              </div>
-              <div className="mt-1 text-[11px] text-white/55">
-                {sceneBusy === scene.id ? "Running…" : "Apply now"}
-              </div>
-            </button>
-          ))}
-        </div>
+        </section>
       </div>
+    </div>
+  );
+}
 
-      {/* automations */}
-      <div className="mt-3 rounded-[24px] border border-white/10 bg-white/[0.035] p-3.5">
-        <div className="flex items-center justify-between gap-2">
-          <div>
-            <div className="text-sm font-semibold text-white">Automations</div>
-            <div className="text-xs text-white/45">Local quick toggles for home routines</div>
+function ControlSheet({ device, state, busy, onClose, onDetails, onToggleGang }: { device: AnyDevice; state: any; busy: boolean; onClose: () => void; onDetails: (device: AnyDevice) => void; onToggleGang: (device: AnyDevice, gangIndex: number, next: boolean) => void }) {
+  const gangCount = guessGangCount(device, state);
+  const values = Object.keys(state || {}).length ? readGangValues(gangCount, state) : Array.from({ length: gangCount }, () => null);
+  return (
+    <div className="fixed inset-0 z-[120]">
+      <div className="absolute inset-0 bg-black/65 backdrop-blur-md" onClick={onClose} />
+      <div className="absolute inset-x-0 bottom-0 px-4 pb-[calc(14px+var(--sab))]">
+        <section className="mx-auto max-w-[430px] overflow-hidden rounded-[30px] border border-white/[0.08] bg-[#050a12]/96 shadow-[0_24px_80px_rgba(0,0,0,0.62)]">
+          <div className="flex justify-center pt-3"><div className="h-1 w-10 rounded-full bg-white/18" /></div>
+          <div className="flex items-start justify-between gap-3 px-4 py-4">
+            <div className="min-w-0"><h2 className="truncate text-lg font-semibold tracking-[-0.04em] text-white">{pickName(device)}</h2><p className="mt-1 truncate text-xs text-white/46">{pickRoomName(device) || "Unassigned"} • {displayState(device, state)}</p></div>
+            <button type="button" onClick={onClose} className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white/[0.06] text-white/60"><X className="h-4 w-4" /></button>
           </div>
-          <button
-            type="button"
-            onClick={() => setAutomationFormOpen((v) => !v)}
-            className="rounded-full border border-white/15 bg-white/[0.08] px-3 py-1.5 text-xs text-white hover:bg-white/15 transition"
-          >
-            {automationFormOpen ? "Close" : "Add Automation"}
-          </button>
-        </div>
-
-        {automationFormOpen && (
-          <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-3">
-            <div className="grid gap-2 sm:grid-cols-3">
-              <input
-                value={automationName}
-                onChange={(e) => setAutomationName(e.target.value)}
-                placeholder="Automation name"
-                className="rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-white outline-none"
-              />
-              <input
-                value={automationSchedule}
-                onChange={(e) => setAutomationSchedule(e.target.value)}
-                placeholder="Schedule e.g. Every day • 7:00 PM"
-                className="rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-white outline-none"
-              />
-              <select
-                value={automationSceneId}
-                onChange={(e) => setAutomationSceneId(e.target.value)}
-                className="rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-white outline-none"
-              >
-                <option value="">Select scene</option>
-                <option value="welcome_home">Welcome</option>
-                <option value="evening">Evening</option>
-                <option value="all_off">All Off</option>
-                <option value="away_mode">Away Mode</option>
-                {customScenes.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
+          <div className="px-4 pb-4">
+            <div className="flex items-center justify-between rounded-[24px] border border-white/[0.07] bg-white/[0.035] p-4">
+              <div><div className="text-sm font-semibold text-white">Controls</div><div className="mt-1 text-xs text-white/42">{gangCount > 1 ? `${gangCount} switches` : "One-tap control"}</div></div>
+              <GangRingSwitch gangCount={gangCount} online={isOnline(device)} values={values} busy={busy} onToggleGang={(gangIndex, next) => onToggleGang(device, gangIndex, next)} size={64} />
             </div>
-
-            <div className="mt-3 flex justify-end">
-              <button
-                type="button"
-                onClick={createCustomAutomation}
-                className="rounded-xl bg-white text-black px-3 py-2 text-xs font-semibold hover:opacity-90"
-              >
-                Save Automation
-              </button>
-            </div>
+            <button type="button" onClick={() => onDetails(device)} className="mt-3 h-11 w-full rounded-full border border-white/[0.08] bg-white/[0.045] text-sm font-medium text-white/76">View simple details</button>
           </div>
-        )}
-
-        <div className="mt-3 grid gap-2 sm:grid-cols-3">
-          {[
-            { key: "night_guard", title: "Night Guard", subtitle: "Keeps selected circuits active overnight" },
-            { key: "energy_saver", title: "Energy Saver", subtitle: "Reduces idle power draw across rooms" },
-            { key: "presence_watch", title: "Presence Watch", subtitle: "Auto-reacts when occupancy changes" },
-          ].map((a) => {
-            const enabled = autoEnabled[a.key as AutomationKey];
-            return (
-              <button
-                key={a.key}
-                type="button"
-                onClick={() => toggleAutomation(a.key as AutomationKey)}
-                className={`rounded-2xl border px-3 py-3 text-left transition ${
-                  enabled
-                    ? "border-cyan-400/25 bg-cyan-500/10"
-                    : "border-white/10 bg-black/20 hover:bg-white/5"
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="text-sm font-semibold text-white">{a.title}</div>
-                  <div
-                    className={`h-2.5 w-2.5 rounded-full ${
-                      enabled ? "bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.5)]" : "bg-white/20"
-                    }`}
-                  />
-                </div>
-                <div className="mt-1 text-[11px] text-white/55">{a.subtitle}</div>
-              </button>
-            );
-          })}
-          {customAutomations.map((a) => {
-            const linkedCustom = customScenes.find((s) => s.id === a.sceneId);
-            const linkedPreset =
-              a.sceneId === "welcome_home"
-                ? "Welcome"
-                : a.sceneId === "evening"
-                ? "Evening"
-                : a.sceneId === "all_off"
-                ? "All Off"
-                : a.sceneId === "away_mode"
-                ? "Away Mode"
-                : null;
-            const sceneLabel = linkedCustom?.name || linkedPreset || "Unknown Scene";
-
-            return (
-              <button
-                key={a.id}
-                type="button"
-                onClick={() => toggleCustomAutomation(a.id)}
-                className={`rounded-2xl border px-3 py-3 text-left transition ${
-                  a.enabled
-                    ? "border-emerald-400/25 bg-emerald-500/10"
-                    : "border-white/10 bg-black/20 hover:bg-white/5"
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="text-sm font-semibold text-white">{a.name}</div>
-                  <div
-                    className={`h-2.5 w-2.5 rounded-full ${
-                      a.enabled ? "bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.5)]" : "bg-white/20"
-                    }`}
-                  />
-                </div>
-                <div className="mt-1 text-[11px] text-white/60">{a.schedule}</div>
-                <div className="mt-1 text-[11px] text-white/45">Scene: {sceneLabel}</div>
-              </button>
-            );
-          })}
-        </div>
+        </section>
       </div>
+    </div>
+  );
+}
 
-      {/* search / quick info */}
-      <div className="mt-3 rounded-[24px] border border-white/10 bg-white/[0.035] p-3.5">
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search by name, vendor, room, id…"
-          className="
-            w-full rounded-2xl
-            bg-white/5 border border-white/10
-            px-4 py-3
-            text-sm text-white/90 placeholder:text-white/35
-            outline-none focus:border-white/20
-          "
-        />
-
-        <div className="mt-3 flex gap-2 overflow-auto pb-1">
-          {[
-            { key: "all", label: "All" },
-            { key: "light", label: "Lights" },
-            { key: "switch", label: "Switches" },
-            { key: "hvac", label: "AC" },
-            { key: "camera", label: "CCTV" },
-            { key: "access", label: "Access" },
-            { key: "sensor", label: "Sensors" },
-            { key: "safety", label: "Safety" },
-          ].map((f) => (
-            <button
-              key={f.key}
-              type="button"
-              onClick={() => setFamilyFilter(f.key)}
-              className={`shrink-0 rounded-full border px-3 py-1.5 text-xs transition ${
-                familyFilter === f.key
-                  ? "border-cyan-400/30 bg-cyan-500/15 text-cyan-100"
-                  : "border-white/10 bg-white/5 text-white/75 hover:bg-white/10"
-              }`}
-            >
-              {f.label} • {familyCounts[f.key] ?? 0}
-            </button>
-          ))}
+function DetailsModal({ title, meta, loading, onClose }: { title: string; meta: { rows?: Array<{ label: string; value: string }> } | null; loading: boolean; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/65 px-5 backdrop-blur-md">
+      <section className="w-full max-w-[360px] rounded-[28px] border border-white/[0.08] bg-[#050a12]/96 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.62)]">
+        <div className="flex items-center justify-between gap-3"><h2 className="truncate text-lg font-semibold tracking-[-0.04em] text-white">{title}</h2><button type="button" onClick={onClose} className="grid h-8 w-8 place-items-center rounded-full bg-white/[0.06] text-white/60"><X className="h-4 w-4" /></button></div>
+        <div className="mt-4 space-y-2">
+          {loading ? <div className="text-sm text-white/54">Fetching state…</div> : (meta?.rows || []).map((row) => <div key={row.label} className="flex items-center justify-between gap-3 rounded-[16px] border border-white/[0.06] bg-white/[0.03] px-3 py-2.5"><span className="text-xs text-white/42">{row.label}</span><span className="truncate text-right text-sm font-medium capitalize text-white/84">{row.value}</span></div>)}
         </div>
-
-        <div className="mt-3 flex items-center justify-between text-xs text-white/45">
-          <span>{filtered.length} device{filtered.length === 1 ? "" : "s"}</span>
-          <span className="text-white/30">Tap card for controls • Tap power for full on/off</span>
-        </div>
-      </div>
-
-      {err && (
-        <div className="mt-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-          {err}
-        </div>
-      )}
-
-      {addDeviceOpen && (
-        <div className="fixed inset-0 z-[130]">
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setAddDeviceOpen(false)} />
-          <div className="absolute left-0 right-0 bottom-0 px-3 pb-[calc(12px+var(--sab))]">
-            <div className="max-w-3xl mx-auto rounded-t-3xl border border-white/10 bg-zinc-950 overflow-hidden">
-              <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-sm font-semibold text-white">Add Home Devices</div>
-                  <div className="text-[11px] text-white/45">Scan discoverable devices and bind to this home</div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={refreshDiscovery}
-                    disabled={discovering || binding}
-                    className="rounded-xl border border-white/10 bg-white/10 px-3 py-1.5 text-xs text-white/85 disabled:opacity-60"
-                  >
-                    {discovering ? "Scanning…" : "Scan"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAddDeviceOpen(false)}
-                    className="rounded-xl px-2 py-1 text-white/70 hover:bg-white/5"
-                  >
-                    ✕
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-4 space-y-3 max-h-[70vh] overflow-auto">
-                {discovering ? (
-                  <div className="flex items-center gap-3 text-sm text-white/60">
-                    <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-                    Discovering devices…
-                  </div>
-                ) : discovered.length === 0 ? (
-                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/60">
-                    No discoverable devices found.
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {discovered.map((d, idx) => {
-                      const ext = pickDiscoveryExternalId(d);
-                      const sid = ext ? String(ext) : `tmp-${idx}`;
-                      const selected = ext ? !!selectedDiscover[String(ext)] : false;
-                      return (
-                        <label
-                          key={sid}
-                          className={`flex items-center justify-between gap-3 rounded-2xl border border-white/10 px-3 py-2 ${
-                            selected ? "bg-cyan-500/15" : "bg-white/5 hover:bg-white/10"
-                          } ${ext ? "cursor-pointer" : "opacity-60"}`}
-                        >
-                          <div className="flex items-center gap-3 min-w-0">
-                            <input
-                              type="checkbox"
-                              checked={selected}
-                              disabled={!ext || binding}
-                              onChange={() => ext && toggleDiscoverySelection(String(ext))}
-                              className="accent-white"
-                            />
-                            <div className="min-w-0">
-                              <div className="text-[13px] font-semibold text-white truncate">
-                                {d?.name || d?.type || "Device"}
-                              </div>
-                              <div className="text-[11px] text-white/45 truncate">
-                                {(d?.protocol || d?.adapter || d?.vendor || "device") + ` • id:${ext || "—"}`}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="text-[11px] text-white/45">
-                            {typeof d?.online === "boolean" ? (d.online ? "Online" : "Offline") : d?.status || "Found"}
-                          </div>
-                        </label>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {selectedDiscoveryIds.length > 0 && (
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
-                    <div className="text-xs text-white/60 mb-2">{selectedDiscoveryIds.length} selected</div>
-                    <input
-                      value={bindRoom}
-                      onChange={(e) => setBindRoom(e.target.value)}
-                      placeholder="Room name (optional)"
-                      className="w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-white outline-none"
-                      disabled={binding}
-                    />
-                    <button
-                      type="button"
-                      onClick={bindSelectedDevices}
-                      disabled={binding}
-                      className="mt-2 w-full py-2.5 rounded-xl bg-white text-black text-sm font-semibold disabled:opacity-60"
-                    >
-                      {binding ? "Adding…" : "Add selected devices"}
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* grid */}
-      {loading && filtered.length === 0 ? (
-        <div className="mt-4 flex items-center gap-3 text-sm text-white/60">
-          <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-          Loading devices…
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="mt-4 rounded-[24px] border border-white/10 bg-white/[0.035] p-5 text-sm text-white/60">
-          No devices found.
-        </div>
-      ) : (
-        <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-          {filtered.map((d) => {
-            const dbId = pickDbId(d);
-            const sid = dbId ? String(dbId) : "";
-            const name = pickName(d);
-            const roomName = pickRoomName(d);
-            const vendor = pickVendor(d);
-            const online = isOnline(d);
-
-            const cached = sid ? stateMap[sid] : {};
-            const gangCount = guessGangCount(d, cached);
-            const nowOn = currentIsOn(d, cached);
-            const simpleControl = isSimpleControlDevice(d, cached);
-
-            const busy = Boolean(sid && busyId === sid);
-
-            return (
-              <button
-                key={sid || String(pickExternalId(d) || name)}
-                type="button"
-                onClick={() => (simpleControl ? toggleMasterPower(d) : openSheet(d))}
-                className="
-                  text-left rounded-[22px]
-                  border border-white/10
-                  bg-white/[0.035] hover:bg-white/[0.065]
-                  transition
-                  p-3.5
-                  relative
-                  overflow-hidden
-                "
-              >
-                {/* top row: icon + power */}
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className={`h-2 w-2 rounded-full ${statusDot(online)}`} />
-                    <div className="text-[11px] text-white/45 truncate">{vendor}</div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleMasterPower(d);
-                    }}
-                    disabled={busy}
-                    className={`
-                      h-9 w-9 rounded-full border
-                      flex items-center justify-center
-                      transition active:scale-[0.99]
-                      ${powerButtonClass(nowOn)}
-                      ${busy ? "opacity-60" : ""}
-                    `}
-                    aria-label="Power"
-                    title="Power"
-                  >
-                    {/* power icon */}
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                      <path
-                        d="M12 2v10"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                      />
-                      <path
-                        d="M7.5 4.5C5 6.3 3.5 9 3.5 12c0 4.7 3.8 8.5 8.5 8.5S20.5 16.7 20.5 12c0-3-1.5-5.7-4-7.5"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                  </button>
-                </div>
-
-                {/* name */}
-                <div className="mt-3">
-                  <div className="text-[14px] text-white/95 font-semibold leading-snug line-clamp-2">
-                    {name}
-                  </div>
-                  <div className="mt-1 text-[12px] text-white/45 truncate">
-                    {roomName || "Unassigned"}
-                  </div>
-                </div>
-
-                {/* bottom hint */}
-                <div className="mt-3 flex items-center justify-between">
-                  <div className="text-[11px] text-white/35">
-                    {simpleControl ? "Tap to control" : gangCount > 1 ? `${gangCount}-gang controls` : "Open controls"}
-                  </div>
-
-                  <div className="text-[11px] text-white/35">
-                    {busy ? "Working…" : nowOn === null ? "No state" : nowOn ? "On" : "Off"}
-                  </div>
-                </div>
-
-                {/* subtle background glow */}
-                <div
-                  className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full blur-2xl"
-                  style={{ background: "rgba(255,255,255,0.06)" }}
-                />
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* BOTTOM SHEET (card tap) */}
-      {sheetOpen && sheetDevice && (
-        <div className="fixed inset-0 z-[120]">
-          <div
-            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-            onClick={() => setSheetOpen(false)}
-          />
-
-          <div className="absolute left-0 right-0 bottom-0 px-3 pb-[calc(12px+var(--sab))]">
-            <div className="max-w-3xl mx-auto">
-              <div className="rounded-t-3xl border border-white/10 bg-zinc-950 overflow-hidden">
-                {/* grabber */}
-                <div className="pt-3 flex justify-center">
-                  <div className="h-1.5 w-12 rounded-full bg-white/15" />
-                </div>
-
-                {/* header */}
-                <div className="px-4 pt-3 pb-4 border-b border-white/10 flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-base font-semibold text-white truncate">
-                      {pickName(sheetDevice)}
-                    </div>
-                    <div className="text-xs text-white/45 mt-1 truncate">
-                      {pickRoomName(sheetDevice) || "Unassigned"} • {pickVendor(sheetDevice)}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => viewFriendlyDetails(sheetDevice)}
-                      className="rounded-2xl px-3 py-2 text-sm bg-white/10 text-white hover:bg-white/15 border border-white/10 transition"
-                    >
-                      Details
-                    </button>
-
-                    <button
-                      className="rounded-xl px-2 py-1 text-white/70 hover:bg-white/5"
-                      onClick={() => setSheetOpen(false)}
-                      aria-label="Close"
-                      type="button"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                </div>
-
-                {/* controls */}
-                <div className="p-4">
-                  {(() => {
-                    const dbId = pickDbId(sheetDevice);
-                    const sid = dbId ? String(dbId) : "";
-                    const cached = sid ? stateMap[sid] : {};
-                    const gangCount = guessGangCount(sheetDevice, cached);
-                    const ringValues = Object.keys(cached || {}).length
-                      ? readGangValues(gangCount, cached)
-                      : Array.from({ length: gangCount }, () => null);
-
-                    const busy = Boolean(sid && busyId === sid);
-                    const online = isOnline(sheetDevice);
-
-                    return (
-                      <div className="grid gap-4">
-                        <div className="rounded-3xl border border-white/10 bg-white/5 p-4 flex items-center justify-between">
-                          <div className="text-sm text-white/75">
-                            Controls
-                            <div className="text-xs text-white/40 mt-1">
-                              {gangCount > 1 ? `Switch groups: ${gangCount}` : "Switch"}
-                            </div>
-                          </div>
-
-                          <GangRingSwitch
-                            gangCount={gangCount}
-                            online={online}
-                            values={ringValues}
-                            busy={busy}
-                            onToggleGang={(gangIndex, next) => toggleGang(sheetDevice, gangIndex, next)}
-                            size={64}
-                          />
-                        </div>
-
-                        <div className="text-[11px] text-white/45">
-                          Tip: Use the power button on the card for full on/off. Use rings here for per-gang control.
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </div>
-
-                {/* footer */}
-                <div className="px-4 py-3 border-t border-white/10 text-[11px] text-white/40">
-                  Device:{" "}
-                  <span className="text-white/70 font-mono">
-                    {String(pickExternalId(sheetDevice) || "—")}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* DETAILS MODAL */}
-      {stateOpen && (
-        <div className="fixed inset-0 z-[140]">
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setStateOpen(false)} />
-          <div className="absolute left-0 right-0 top-16 px-4">
-            <div className="max-w-3xl mx-auto">
-              <div className="rounded-3xl border border-white/10 bg-zinc-950 overflow-hidden">
-                <div className="px-4 py-3 border-b border-white/10 flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold text-white truncate">{stateTitle}</div>
-                    <div className="text-xs text-white/40 mt-1 truncate">
-                      {stateMeta?.vendor ? `${stateMeta.vendor} • ` : ""}Consumer device summary
-                    </div>
-                  </div>
-
-                  <button
-                    className="rounded-xl px-2 py-1 text-white/70 hover:bg-white/5"
-                    onClick={() => setStateOpen(false)}
-                    aria-label="Close"
-                    type="button"
-                  >
-                    ✕
-                  </button>
-                </div>
-
-                <div className="p-4">
-                  {stateLoading ? (
-                    <div className="flex items-center gap-3 text-sm text-white/60">
-                      <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-                      Fetching state…
-                    </div>
-                  ) : (
-                    <div className="grid gap-2">
-                      {(stateMeta?.rows || []).map((row) => (
-                        <div key={row.label} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2.5">
-                          <span className="text-xs text-white/42">{row.label}</span>
-                          <span className="truncate text-right text-sm font-medium capitalize text-white/84">{row.value}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="px-4 py-3 border-t border-white/10 text-[11px] text-white/40">
-                  Developer payloads are hidden in the resident experience.
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </ConsumerShell>
+        <p className="mt-3 text-center text-[11px] text-white/34">Developer payloads are hidden in Oyi Home.</p>
+      </section>
+    </div>
   );
 }

@@ -20,6 +20,10 @@
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Oyi Watch uses the microphone to hear your home command and send it securely to Oyi.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Oyi Watch uses speech recognition to transcribe your command before sending it to your Oyi Home account.</string>
 	<key>WKApplication</key>
 	<true/>
 	<key>WKCompanionAppBundleIdentifier</key>

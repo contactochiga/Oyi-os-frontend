@@ -2,6 +2,7 @@ import SwiftUI
 import Foundation
 import Security
 import WatchConnectivity
+import WatchKit
 
 @main
 struct OyiWatchApp: App {
@@ -24,6 +25,16 @@ enum OyiWatchState: String, CaseIterable {
     case success
     case alert
     case failed
+}
+
+enum OyiWatchConnectionState: String {
+    case neverConnected
+    case connecting
+    case connected
+    case syncFailed
+    case offlineWithLastSync
+    case tokenMissing
+    case backendMissing
 }
 
 struct OyiGlance: Identifiable, Decodable {
@@ -80,26 +91,70 @@ struct AnyDecodable: Decodable {
     }
 }
 
+
+enum OyiSpeechError: Error {
+    case unavailable
+    case permissionDenied
+    case emptyTranscript
+}
+
+final class OyiWatchSpeechCapture {
+    @MainActor
+    func capture() async throws -> String {
+        try await withCheckedThrowingContinuation { continuation in
+            guard let controller = WKExtension.shared().visibleInterfaceController else {
+                continuation.resume(throwing: OyiSpeechError.unavailable)
+                return
+            }
+
+            controller.presentTextInputController(
+                withSuggestions: [
+                    "Show home status",
+                    "Turn off living room light",
+                    "Turn off AC",
+                    "Open activity"
+                ],
+                allowedInputMode: .plain
+            ) { results in
+                let transcript = results?
+                    .compactMap { $0 as? String }
+                    .first?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+                if transcript.isEmpty {
+                    continuation.resume(throwing: OyiSpeechError.emptyTranscript)
+                } else {
+                    continuation.resume(returning: transcript)
+                }
+            }
+        }
+    }
+}
 final class OyiWatchSession: ObservableObject {
     @Published var state: OyiWatchState = .awareness
-    @Published var title: String = "Home calm"
-    @Published var detail: String = "All systems normal"
-    @Published var homeName: String = "Oyi Home"
+    @Published var connectionState: OyiWatchConnectionState = .neverConnected
+    @Published var title: String = "Companion not connected"
+    @Published var detail: String = "Open Oyi Home on iPhone and tap Sync Watch."
+    @Published var homeName: String = "Oyi Watch"
     @Published var estateName: String = ""
     @Published var liveDataError: String?
-    @Published var glances: [OyiGlance] = OyiWatchSession.mockGlances
-    @Published var actions: [OyiQuickAction] = OyiWatchSession.mockActions
+    @Published var glances: [OyiGlance] = []
+    @Published var actions: [OyiQuickAction] = []
     @Published var pendingConfirmation: OyiConfirmation?
     @Published var activePage: Int = 0
-    @Published var isMockMode: Bool = true
-    @Published var connectionLabel: String = "Mock mode"
-    @Published var modeLabel: String = "Mock"
+    @Published var isMockMode: Bool = false
+    @Published var connectionLabel: String = "Waiting for sync"
+    @Published var modeLabel: String = "Not connected"
     @Published var backendURLPresent: Bool = false
     @Published var tokenPresent: Bool = false
     @Published var lastBackendCallStatus: String = "none"
     @Published var lastSyncAt: String = "never"
+    @Published var heardCommand: String = ""
+    @Published var lastSuccessfulSyncAt: String = "never"
+    @Published var isDeveloperPreview: Bool = false
 
     private let keychain = OyiWatchKeychain()
+    private let speechCapture = OyiWatchSpeechCapture()
     private lazy var connectivity = OyiWatchConnectivityBridge(session: self)
 
     private var baseURL: URL?
@@ -113,8 +168,13 @@ final class OyiWatchSession: ObservableObject {
     func refresh() async {
         loadConfiguration()
         guard hasBackendConfiguration else {
-            await applyMockHome()
+            await applyDisconnectedState()
             return
+        }
+        await MainActor.run {
+            connectionState = .connecting
+            connectionLabel = "Connecting"
+            if title == "Companion not connected" { detail = "Syncing your secure session" }
         }
         await fetchStatus()
         await fetchGlances()
@@ -129,6 +189,50 @@ final class OyiWatchSession: ObservableObject {
         activePage = 0
     }
 
+    func startVoiceCommand(fallbackCommand: String = "show home status") async {
+        await MainActor.run {
+            setListening()
+            heardCommand = ""
+        }
+        do {
+            let transcript = try await speechCapture.capture()
+            let command = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !command.isEmpty else { throw OyiSpeechError.emptyTranscript }
+            await MainActor.run {
+                state = .thinking
+                title = "Heard command"
+                detail = command
+                heardCommand = command
+            }
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            await run(command: command)
+        } catch let error as OyiSpeechError {
+            switch error {
+            case .permissionDenied, .unavailable:
+                await MainActor.run {
+                    state = .failed
+                    title = "Speech unavailable"
+                    detail = isDeveloperPreview ? "Using preview command" : "Use quick actions instead"
+                }
+                if isDeveloperPreview { await run(command: fallbackCommand) }
+            case .emptyTranscript:
+                await MainActor.run {
+                    state = .failed
+                    title = "Nothing heard"
+                    detail = "Tap Talk again"
+                    lastBackendCallStatus = "speech: empty"
+                }
+            }
+        } catch {
+            await MainActor.run {
+                state = .failed
+                title = "Could not listen"
+                detail = "Tap Talk again"
+                lastBackendCallStatus = "speech: \(error.localizedDescription)"
+            }
+        }
+    }
+
     func simulateVoiceCommand(_ command: String = "show home status") async {
         await MainActor.run {
             setListening()
@@ -139,16 +243,15 @@ final class OyiWatchSession: ObservableObject {
 
     func openQuickActions() {
         activePage = 1
-        state = .awareness
-        title = "Quick actions"
-        detail = "Choose one action"
+        if hasBackendConfiguration && connectionState == .connected {
+            state = .awareness
+            title = "Quick actions"
+            detail = "Choose one action"
+        }
     }
 
-    func showAlertDemo() {
-        activePage = 0
-        state = .alert
-        title = "Visitor at gate"
-        detail = "Front gate is waiting"
+    func retryConnection() {
+        Task { await refresh() }
     }
 
     func run(command: String) async {
@@ -159,7 +262,7 @@ final class OyiWatchSession: ObservableObject {
             activePage = 0
         }
         guard hasBackendConfiguration else {
-            await mockRun(command: command)
+            await commandUnavailable()
             return
         }
         do {
@@ -185,8 +288,8 @@ final class OyiWatchSession: ObservableObject {
             }
             return
         }
-        guard hasBackendConfiguration else {
-            await mockRun(action: action)
+        guard hasBackendConfiguration, connectionState == .connected else {
+            await commandUnavailable()
             return
         }
         do {
@@ -214,13 +317,7 @@ final class OyiWatchSession: ObservableObject {
             activePage = 0
         }
         guard hasBackendConfiguration else {
-            try? await Task.sleep(nanoseconds: 650_000_000)
-            await MainActor.run {
-                self.pendingConfirmation = nil
-                state = .success
-                title = "Done"
-                detail = "Action completed"
-            }
+            await commandUnavailable()
             return
         }
         do {
@@ -268,21 +365,30 @@ final class OyiWatchSession: ObservableObject {
         }
         let updated = didUpdate
         await MainActor.run {
-            isMockMode = !hasBackendConfiguration
-            modeLabel = hasBackendConfiguration ? "Synced" : "Mock"
+            isMockMode = isDeveloperPreview
+            modeLabel = hasBackendConfiguration ? "Synced" : "Not connected"
             backendURLPresent = baseURL != nil
             tokenPresent = bearerToken?.isEmpty == false
             lastSyncAt = payload["sentAt"] as? String ?? Date().formatted(date: .omitted, time: .shortened)
             lastBackendCallStatus = "sync: \(source)"
-            connectionLabel = hasBackendConfiguration ? "Connected" : "Mock mode"
+            connectionLabel = hasBackendConfiguration ? "Connecting" : "Waiting for sync"
+            connectionState = hasBackendConfiguration ? .connecting : connectionStateForMissingConfig()
             if updated {
-                title = "Watch linked"
-                detail = "Session received"
-                state = .success
+                title = "Connecting…"
+                detail = "Syncing your secure session"
+                state = .thinking
                 liveDataError = nil
             }
         }
         if didUpdate { await refresh() }
+    }
+
+    var canRunCommands: Bool {
+        connectionState == .connected
+    }
+
+    var isDisconnected: Bool {
+        connectionState == .neverConnected || connectionState == .tokenMissing || connectionState == .backendMissing || connectionState == .syncFailed
     }
 
     private var hasBackendConfiguration: Bool {
@@ -291,24 +397,39 @@ final class OyiWatchSession: ObservableObject {
 
     private func loadConfiguration() {
         let environment = ProcessInfo.processInfo.environment
+        isDeveloperPreview = environment["OYI_WATCH_DEMO_MODE"] == "1"
         let envURL = environment["OYI_WATCH_BACKEND_URL"].flatMap(URL.init(string:))
         let envToken = environment["OYI_WATCH_DEV_TOKEN"]
         let storedURL = keychain.read(account: "backendBaseURL").flatMap(URL.init(string:))
         let storedToken = keychain.read(account: "bearerToken")
         baseURL = envURL ?? storedURL
         bearerToken = envToken ?? storedToken
-        let nextMode = hasBackendConfiguration ? (envToken?.isEmpty == false ? "Dev Token" : "Synced") : "Mock"
+        let nextMode = hasBackendConfiguration ? (envToken?.isEmpty == false ? "Dev Token" : "Synced") : (isDeveloperPreview ? "Preview" : "Not connected")
         DispatchQueue.main.async {
-            self.isMockMode = !self.hasBackendConfiguration
+            self.isMockMode = self.isDeveloperPreview
             self.modeLabel = nextMode
             self.backendURLPresent = self.baseURL != nil
             self.tokenPresent = self.bearerToken?.isEmpty == false
-            self.connectionLabel = self.hasBackendConfiguration ? "Connected" : "Mock mode"
+            if self.hasBackendConfiguration {
+                if self.connectionState == .neverConnected || self.connectionState == .tokenMissing || self.connectionState == .backendMissing {
+                    self.connectionState = .connecting
+                }
+                self.connectionLabel = self.connectionState == .connected ? "Connected" : "Connecting"
+            } else {
+                self.connectionState = self.connectionStateForMissingConfig()
+                self.connectionLabel = "Waiting for sync"
+            }
         }
     }
 
+    private func connectionStateForMissingConfig() -> OyiWatchConnectionState {
+        if baseURL == nil && bearerToken?.isEmpty == false { return .backendMissing }
+        if baseURL != nil && !(bearerToken?.isEmpty == false) { return .tokenMissing }
+        return .neverConnected
+    }
+
     private func apply(_ response: OyiWatchCommandResponse) async {
-        var shouldRefresh = false
+        let shouldRefresh = response.state == "success" || response.state == "executed" || response.state == "queued"
         await MainActor.run {
             detail = response.reply
             activePage = 0
@@ -321,7 +442,6 @@ final class OyiWatchSession: ObservableObject {
                 state = .success
                 title = "Done"
                 pendingConfirmation = nil
-                shouldRefresh = true
             } else if response.state == "denied" {
                 state = .failed
                 title = "Not allowed"
@@ -333,7 +453,6 @@ final class OyiWatchSession: ObservableObject {
             } else {
                 state = .executing
                 title = "Queued"
-                shouldRefresh = true
             }
         }
         if shouldRefresh { await refreshAfterCommand() }
@@ -348,7 +467,12 @@ final class OyiWatchSession: ObservableObject {
                 homeName = payload.home_name ?? payload.title ?? homeName
                 estateName = payload.estate_name ?? estateName
                 state = payload.state == "attention" ? .alert : .awareness
+                connectionState = .connected
+                connectionLabel = "Connected"
+                isMockMode = false
+                modeLabel = "Synced"
                 liveDataError = nil
+                lastSuccessfulSyncAt = Date().formatted(date: .omitted, time: .shortened)
             }
         } catch { await applyLiveDataFailure(error) }
     }
@@ -393,11 +517,21 @@ final class OyiWatchSession: ObservableObject {
     private func applyLiveDataFailure(_ error: Error) async {
         await MainActor.run {
             state = .failed
-            title = "Live data unavailable"
-            detail = "Open iPhone to refresh"
+            if lastSuccessfulSyncAt != "never" {
+                connectionState = .offlineWithLastSync
+                connectionLabel = "Offline"
+                title = title.isEmpty ? "Offline" : title
+                detail = "Offline · Last synced: \(lastSuccessfulSyncAt)"
+                actions = actions.map { OyiQuickAction(id: $0.id, label: $0.label, prompt: $0.prompt, risk: $0.risk, enabled: false, confirmation_required: $0.confirmation_required) }
+            } else {
+                connectionState = .syncFailed
+                connectionLabel = "Retry"
+                title = "Connection failed"
+                detail = "Open iPhone and retry Sync Watch."
+                glances = []
+                actions = []
+            }
             liveDataError = error.localizedDescription.isEmpty ? "Backend unavailable" : error.localizedDescription
-            glances = []
-            actions = []
             lastBackendCallStatus = liveDataError ?? "failed"
         }
     }
@@ -437,72 +571,54 @@ final class OyiWatchSession: ObservableObject {
         }
     }
 
-    private func applyMockHome() async {
+    private func applyDisconnectedState() async {
         await MainActor.run {
-            isMockMode = true
-            modeLabel = "Mock"
+            isMockMode = isDeveloperPreview
             backendURLPresent = baseURL != nil
             tokenPresent = bearerToken?.isEmpty == false
-            connectionLabel = "Mock mode"
-            homeName = "Oyi Home"
-            estateName = ""
             liveDataError = nil
-            title = "Home calm"
-            detail = "Simulator ready"
-            glances = Self.mockGlances
-            actions = Self.mockActions
-        }
-    }
-
-    private func mockRun(command: String) async {
-        try? await Task.sleep(nanoseconds: 650_000_000)
-        let lower = command.lowercased()
-        if lower.contains("gate") || lower.contains("lock") || lower.contains("security") {
-            await MainActor.run {
-                pendingConfirmation = OyiConfirmation(tool_id: "mock_confirm", status: "pending_confirmation", ledger_id: "mock-ledger")
-                state = .confirmationRequired
-                title = "Confirm?"
-                detail = lower.contains("gate") ? "Open gate?" : "Run secure action?"
-                activePage = 2
-            }
-        } else {
-            await MainActor.run {
-                state = .success
-                title = "Done"
-                detail = lower.contains("light") ? "Lights updated" : "Status checked"
-                pendingConfirmation = nil
-            }
-        }
-    }
-
-    private func mockRun(action: OyiQuickAction) async {
-        if action.confirmation_required == true || action.risk == "medium" {
-            try? await Task.sleep(nanoseconds: 350_000_000)
-            await MainActor.run {
-                pendingConfirmation = OyiConfirmation(tool_id: action.id, status: "pending_confirmation", ledger_id: "mock-\(action.id)")
-                state = .confirmationRequired
-                title = "Confirm?"
-                detail = "\(action.label)?"
-                activePage = 2
-            }
-            return
-        }
-        try? await Task.sleep(nanoseconds: 650_000_000)
-        await MainActor.run {
-            state = .success
-            title = "Done"
-            detail = "\(action.label) completed"
             pendingConfirmation = nil
+            if isDeveloperPreview {
+                connectionState = .connected
+                modeLabel = "Preview"
+                connectionLabel = "Preview"
+                homeName = "Oyi Preview"
+                estateName = ""
+                title = "Developer preview"
+                detail = "Demo mode is explicit"
+                glances = Self.previewGlances
+                actions = Self.previewActions
+            } else {
+                connectionState = connectionStateForMissingConfig()
+                modeLabel = "Not connected"
+                connectionLabel = "Waiting for sync"
+                homeName = "Oyi Watch"
+                estateName = ""
+                title = connectionState == .tokenMissing ? "Session token missing" : connectionState == .backendMissing ? "Backend missing" : "Companion not connected"
+                detail = "Open Oyi Home on iPhone and tap Sync Watch."
+                glances = []
+                actions = []
+            }
         }
     }
 
-    static let mockGlances: [OyiGlance] = [
+    private func commandUnavailable() async {
+        await MainActor.run {
+            state = .failed
+            title = "Not connected"
+            detail = "Sync from iPhone before running commands."
+            pendingConfirmation = nil
+            activePage = 0
+        }
+    }
+
+    static let previewGlances: [OyiGlance] = [
         OyiGlance(id: "home", type: "awareness", title: "Home calm", detail: "All systems normal", state: "calm"),
         OyiGlance(id: "visitor", type: "visitor", title: "Visitor at gate", detail: "Front gate", state: "unread"),
         OyiGlance(id: "climate", type: "climate", title: "Living room", detail: "24° · Cool", state: "online")
     ]
 
-    static let mockActions: [OyiQuickAction] = [
+    static let previewActions: [OyiQuickAction] = [
         OyiQuickAction(id: "show_status", label: "Home status", prompt: "show home status", risk: "read", enabled: true, confirmation_required: false),
         OyiQuickAction(id: "all_lights_off", label: "Lights off", prompt: "turn off lights", risk: "low", enabled: true, confirmation_required: false),
         OyiQuickAction(id: "movie_mode", label: "Movie mode", prompt: "activate movie mode", risk: "low", enabled: true, confirmation_required: false),
@@ -585,32 +701,69 @@ struct AwarenessView: View {
 
     var body: some View {
         WatchSurface {
-            WatchChrome(label: session.isMockMode ? "Mock" : session.homeName, isMock: session.isMockMode) {
+            WatchChrome(label: chromeLabel, isMock: session.isDeveloperPreview || session.connectionState != .connected) {
                 session.openQuickActions()
             }
             Spacer(minLength: 2)
-            OyiOrb(state: session.state)
+            OyiOrb(state: orbState)
             Text(session.title)
-                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .font(.system(size: session.isDisconnected ? 14 : 15, weight: .semibold, design: .rounded))
                 .foregroundStyle(titleColor)
-                .lineLimit(1)
-            Text(session.detail)
-                .font(.system(size: 11, weight: .regular, design: .rounded))
-                .foregroundStyle(.white.opacity(0.68))
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
-            if session.isMockMode { WatchDiagnosticsView() }
-            if session.state == .listening {
+            Text(session.detail)
+                .font(.system(size: 10.5, weight: .regular, design: .rounded))
+                .foregroundStyle(.white.opacity(0.68))
+                .multilineTextAlignment(.center)
+                .lineLimit(3)
+            if session.connectionState == .connecting {
+                OyiWaveform(color: .blue).frame(height: 16).padding(.top, 1)
+            } else if session.isDisconnected {
+                disconnectedChips
+                WatchPillButton(title: "Retry", tint: .blue) { session.retryConnection() }
+                    .padding(.top, 1)
+            } else if session.connectionState == .offlineWithLastSync {
+                Text("Offline · actions paused")
+                    .font(.system(size: 8.5, weight: .medium, design: .rounded))
+                    .foregroundStyle(.orange.opacity(0.85))
+                WatchPillButton(title: "Retry", tint: .blue) { session.retryConnection() }
+            } else if session.state == .listening {
                 OyiWaveform(color: .blue)
                     .frame(height: 18)
                     .padding(.top, 1)
             } else {
                 HStack(spacing: 8) {
-                    WatchPillButton(title: "Talk", tint: .blue) { Task { await session.simulateVoiceCommand(session.isMockMode ? "turn off downstairs lights" : "show home status") } }
+                    WatchPillButton(title: "Talk", tint: .blue) { Task { await session.startVoiceCommand(fallbackCommand: "show home status") } }
                     WatchPillButton(title: "Actions", tint: .blue) { session.openQuickActions() }
                 }
                 .padding(.top, 2)
             }
+            if session.isDeveloperPreview { WatchDiagnosticsView() }
+        }
+    }
+
+    private var chromeLabel: String {
+        switch session.connectionState {
+        case .connected: return session.homeName
+        case .connecting: return "Connecting"
+        case .offlineWithLastSync: return "Offline"
+        case .tokenMissing: return "Token missing"
+        case .backendMissing: return "Backend missing"
+        case .syncFailed: return "Retry"
+        case .neverConnected: return "Not connected"
+        }
+    }
+
+    private var orbState: OyiWatchState {
+        if session.connectionState == .connecting { return .thinking }
+        if session.isDisconnected { return .failed }
+        return session.state
+    }
+
+    private var disconnectedChips: some View {
+        HStack(spacing: 4) {
+            StatusChip("iPhone required")
+            StatusChip(session.connectionState == .tokenMissing ? "Token missing" : "Waiting for sync")
         }
     }
 
@@ -621,6 +774,22 @@ struct AwarenessView: View {
         case .confirmationRequired: return .orange
         default: return .blue
         }
+    }
+}
+
+
+struct StatusChip: View {
+    let label: String
+    init(_ label: String) { self.label = label }
+
+    var body: some View {
+        Text(label)
+            .font(.system(size: 7.5, weight: .semibold, design: .rounded))
+            .foregroundStyle(.white.opacity(0.62))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(.white.opacity(0.055), in: Capsule())
+            .overlay(Capsule().stroke(.white.opacity(0.08), lineWidth: 1))
     }
 }
 
@@ -653,13 +822,26 @@ struct QuickActionsView: View {
 
     var body: some View {
         WatchSurface(alignment: .top) {
-            WatchChrome(label: "Actions", isMock: session.isMockMode) {
+            WatchChrome(label: "Actions", isMock: session.connectionState != .connected) {
                 session.activePage = 0
             }
-            if session.actions.isEmpty {
+            if session.connectionState != .connected {
                 VStack(spacing: 8) {
-                    OyiOrb(state: session.isMockMode ? .awareness : .failed)
-                    Text(session.isMockMode ? "Mock actions" : "No actions yet")
+                    OyiOrb(state: session.connectionState == .offlineWithLastSync ? .failed : .awareness)
+                    Text(session.connectionState == .offlineWithLastSync ? "Actions paused" : "No actions available")
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white)
+                    Text(session.connectionState == .offlineWithLastSync ? "Reconnect to Oyi Home before running commands." : "Sync from iPhone to load real home actions.")
+                        .font(.system(size: 10, weight: .regular, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.56))
+                        .multilineTextAlignment(.center)
+                    WatchPillButton(title: "Retry", tint: .blue) { session.retryConnection() }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if session.actions.isEmpty {
+                VStack(spacing: 8) {
+                    OyiOrb(state: .awareness)
+                    Text("No actions yet")
                         .font(.system(size: 14, weight: .semibold, design: .rounded))
                         .foregroundStyle(.white)
                     Text(session.liveDataError ?? "No watch-ready actions returned for this home.")
@@ -708,7 +890,7 @@ struct ConfirmationView: View {
 
     var body: some View {
         WatchSurface {
-            WatchChrome(label: "Confirm", isMock: session.isMockMode) {
+            WatchChrome(label: "Confirm", isMock: session.connectionState != .connected) {
                 session.activePage = 0
             }
             Spacer(minLength: 2)

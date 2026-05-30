@@ -88,3 +88,45 @@ export async function deleteMyAccount() {
     return { error: pickError(err, "Failed to delete account") };
   }
 }
+
+function fileToDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Failed to read profile image"));
+    reader.readAsDataURL(file);
+  });
+}
+
+export async function uploadMyProfileImage(file: File) {
+  try {
+    const base64 = await fileToDataUrl(file);
+    const res = await API.post("/me/profile/avatar", {
+      base64,
+      mime: file.type || "image/jpeg",
+      filename: file.name || "avatar.jpg",
+    });
+    return res.data;
+  } catch (err: any) {
+    const status = Number(err?.response?.status || 0);
+    if (status === 404 || status === 405) {
+      return { error: "Profile image upload is not configured yet", configured: false };
+    }
+    console.error("Upload profile image error:", err);
+    return { error: pickError(err, "Failed to upload profile image"), configured: status !== 404 };
+  }
+}
+
+export async function removeMyProfileImage() {
+  try {
+    const res = await API.delete("/me/profile/avatar");
+    return res.data;
+  } catch (err: any) {
+    const status = Number(err?.response?.status || 0);
+    if (status === 404 || status === 405) {
+      return { error: "Profile image removal is not configured yet", configured: false };
+    }
+    console.error("Remove profile image error:", err);
+    return { error: pickError(err, "Failed to remove profile image"), configured: status !== 404 };
+  }
+}

@@ -150,9 +150,9 @@ export default function HamburgerMenu() {
   };
 
   const goToAccount = (tab?: "profile" | "settings") => {
-    if (tab === "profile") return pushAndClose("/settings?tab=profile");
-    if (tab === "settings") return pushAndClose("/settings?tab=settings");
-    return pushAndClose("/settings");
+    if (tab === "profile") return pushAndClose("/profile");
+    if (tab === "settings") return pushAndClose("/profile");
+    return pushAndClose("/profile");
   };
 
   const onMenuClick = (href: string) => pushAndClose(href);

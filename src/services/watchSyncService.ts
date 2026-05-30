@@ -21,6 +21,9 @@ export type WatchSyncResult = {
   usedApplicationContext?: boolean;
   usedTransferUserInfo?: boolean;
   usedSendMessage?: boolean;
+  tokenSent?: boolean;
+  backendURLSent?: boolean;
+  lastSyncAt?: string | null;
   error?: string | null;
   lastSyncError?: string | null;
   lastActivationError?: string | null;

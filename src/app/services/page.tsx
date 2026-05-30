@@ -206,11 +206,11 @@ export default function ServicesPage() {
         </div>
       ) : null}
 
-      <section className="oyi-environment-hero rounded-[24px] p-4">
+      <section className="oyi-environment-hero rounded-[22px] p-4">
         <div className="flex items-center justify-between gap-3">
           <div>
             <div className="text-[10px] uppercase tracking-[0.24em] text-sky-100/60">Concierge Services</div>
-            <h1 className="mt-1.5 text-xl font-semibold text-white">Managed living, simplified.</h1>
+            <h1 className="mt-1.5 text-[17px] font-semibold text-white">Managed living, simplified.</h1>
             <p className="mt-1.5 text-xs leading-5 text-white/50">Utilities, internet, dues and facility services stay curated for this home.</p>
           </div>
           <div className="oyi-orb h-12 w-12 shrink-0" aria-hidden="true" />

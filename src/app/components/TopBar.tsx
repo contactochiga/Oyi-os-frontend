@@ -2,36 +2,10 @@
 "use client";
 
 import Image from "next/image";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
 import HamburgerMenu from "@/app/components/HamburgerMenu";
-import NotificationBell from "@/app/components/NotificationBell";
-import { ChatBubbleOvalLeftEllipsisIcon } from "@heroicons/react/24/outline";
-import messagesService from "@/services/messagesService";
+import MessagesInboxButton from "@/app/components/MessagesInboxButton";
 
 export default function TopBar() {
-  const router = useRouter();
-  const [unread, setUnread] = useState(0);
-
-  async function refreshUnread() {
-    try {
-      const list = await messagesService.listInbox();
-      const total = (Array.isArray(list) ? list : []).reduce(
-        (acc: number, t: any) => acc + Number(t?.unread_count || 0),
-        0
-      );
-      setUnread(total);
-    } catch {
-      setUnread(0);
-    }
-  }
-
-  useEffect(() => {
-    refreshUnread();
-    const tm = window.setInterval(refreshUnread, 15000);
-    return () => window.clearInterval(tm);
-  }, []);
-
   return (
     <header
       className="
@@ -48,11 +22,11 @@ export default function TopBar() {
         transform: "translateZ(0)",
       }}
     >
-      <div className="h-16 w-full px-4 flex items-center">
+      <div className="flex h-16 w-full items-center px-4">
         <div className="flex items-center gap-3">
           <HamburgerMenu />
 
-          <div className="h-8 w-8 rounded-lg overflow-hidden border border-white/10 bg-black/20">
+          <div className="h-8 w-8 overflow-hidden rounded-lg border border-white/10 bg-black/20">
             <Image
               src="/oyi-logo-transparent.png"
               alt="Oyi"
@@ -66,23 +40,8 @@ export default function TopBar() {
 
         <div className="flex-1" />
 
-        <div className="flex items-center gap-2">
-          <NotificationBell />
-
-          <button
-            type="button"
-            onClick={() => router.push("/messages")}
-            className="rounded-lg p-2 hover:bg-white/10 transition active:scale-[0.98] relative"
-            aria-label="Messages"
-            title="Messages"
-          >
-            <ChatBubbleOvalLeftEllipsisIcon className="h-5 w-5 text-zinc-300" />
-            {unread > 0 ? (
-              <span className="absolute -right-0.5 -top-0.5 min-w-[16px] h-4 rounded-full bg-cyan-500/90 px-1 text-[10px] leading-4 text-black font-semibold text-center">
-                {unread > 99 ? "99+" : unread}
-              </span>
-            ) : null}
-          </button>
+        <div className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/[0.028] shadow-[0_8px_26px_rgba(0,0,0,0.28)] backdrop-blur-2xl">
+          <MessagesInboxButton />
         </div>
       </div>
     </header>

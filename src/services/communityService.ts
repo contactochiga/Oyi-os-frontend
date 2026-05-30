@@ -17,6 +17,17 @@ export type CommunityPost = {
   view_count?: number;
   viewed_by_me?: boolean;
   live_link?: string | null;
+  category?: string | null;
+  is_pinned?: boolean | null;
+  pinned_until?: string | null;
+  audience_type?: string | null;
+  audience_ref?: string | null;
+  scheduled_at?: string | null;
+  priority?: string | null;
+  media?: Array<{ id?: string; type?: "image" | "video"; url: string; name?: string | null }>;
+  like_count?: number;
+  comment_count?: number;
+  liked_by_me?: boolean;
   live_session?: {
     post_id: string;
     estate_id?: string | null;
@@ -64,6 +75,12 @@ export type CreatePostPayload = {
   body?: string | null;
   media?: Array<{ id?: string; type?: "image" | "video"; url: string; name?: string | null }>;
   liveLink?: string | null;
+  category?: string | null;
+  is_pinned?: boolean | null;
+  pinned_until?: string | null;
+  audience?: { type?: string | null; ref?: string | null } | null;
+  scheduled_at?: string | null;
+  priority?: string | null;
   // optional: backend can derive from user.estate_id
   estateId?: string;
   estate_id?: string;
@@ -190,6 +207,24 @@ export const communityService = {
       return res.data;
     } catch (err: any) {
       return { error: pickError(err, "Failed to react") } as any;
+    }
+  },
+
+  async markPostRead(postId: string) {
+    try {
+      const res = await API.post(`/community/post/${encodeURIComponent(postId)}/read`);
+      return res.data;
+    } catch (err: any) {
+      return { error: pickError(err, "Failed to mark post read") } as any;
+    }
+  },
+
+  async reportPost(postId: string, payload: { reason: string; details?: string | null }) {
+    try {
+      const res = await API.post(`/community/post/${encodeURIComponent(postId)}/report`, payload);
+      return res.data;
+    } catch (err: any) {
+      return { error: pickError(err, "Failed to report post") } as any;
     }
   },
 

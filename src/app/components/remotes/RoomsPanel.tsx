@@ -49,6 +49,7 @@ export default function RoomsPanel({
   const [err, setErr] = useState<string | null>(null);
 
   const [openRoomId, setOpenRoomId] = useState<string | null>(null);
+  const [newRoomName, setNewRoomName] = useState("");
   const [cmdBusy, setCmdBusy] = useState<Record<string, boolean>>({});
 
   function touch() {
@@ -85,8 +86,8 @@ export default function RoomsPanel({
     if (!estateId) return setErr("No estate linked.");
     if (!homeId) return setErr("No home linked.");
 
-    const name = window.prompt("Room name (e.g. Living Room)");
-    if (!name) return;
+    const name = newRoomName.trim();
+    if (!name) return setErr("Enter a room name.");
 
     setLoading(true);
     setErr(null);
@@ -98,6 +99,7 @@ export default function RoomsPanel({
         type: null,
         ai_profile: null,
       });
+      setNewRoomName("");
       await loadRooms();
       touch();
     } catch (e: any) {
@@ -231,14 +233,22 @@ export default function RoomsPanel({
             </div>
           ) : null}
 
-          <button
-            onClick={createRoom}
-            disabled={loading || !homeId}
-            className="w-full py-3 rounded-2xl bg-white text-black text-sm font-semibold border border-white/20 disabled:opacity-60"
-            type="button"
-          >
-            Create room
-          </button>
+          <div className="rounded-2xl border border-white/10 bg-black/20 p-2">
+            <input
+              value={newRoomName}
+              onChange={(event) => setNewRoomName(event.target.value)}
+              placeholder="Room name"
+              className="w-full rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2 text-sm text-white outline-none placeholder:text-white/30"
+            />
+            <button
+              onClick={createRoom}
+              disabled={loading || !homeId || !newRoomName.trim()}
+              className="mt-2 w-full rounded-xl border border-white/20 bg-white py-2.5 text-sm font-semibold text-black disabled:opacity-60"
+              type="button"
+            >
+              Create room
+            </button>
+          </div>
         </div>
       )}
     </RemotePanel>

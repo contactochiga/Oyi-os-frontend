@@ -30,18 +30,18 @@ export default function RemotePanel({
   }, [lastUpdated]);
 
   return (
-    <section className="rounded-2xl border border-white/10 bg-white/5 p-4">
+    <section className="rounded-[24px] border border-white/[0.07] bg-[linear-gradient(145deg,rgba(255,255,255,0.04),rgba(255,255,255,0.015))] p-3.5 shadow-[0_16px_46px_rgba(0,0,0,0.28)] backdrop-blur-2xl">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <h2 className="truncate text-sm font-semibold text-white/90">{title}</h2>
+            <h2 className="truncate text-[14px] font-semibold tracking-[-0.02em] text-white/90">{title}</h2>
             {timeLabel ? (
-              <span className="rounded-full bg-black/20 border border-white/10 px-2 py-0.5 text-[10px] text-white/60">
+              <span className="rounded-full border border-white/[0.08] bg-black/20 px-2 py-0.5 text-[10px] text-white/50">
                 {timeLabel}
               </span>
             ) : null}
           </div>
-          {subtitle ? <div className="mt-1 text-xs text-white/45">{subtitle}</div> : null}
+          {subtitle ? <div className="mt-1 text-[11px] text-white/42">{subtitle}</div> : null}
         </div>
 
         {right ? <div className="shrink-0">{right}</div> : null}

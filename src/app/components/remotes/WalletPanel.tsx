@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import RemotePanel from "./RemotePanel";
 import useAuth from "@/hooks/useAuth";
 import { walletService } from "@/services/estateOpsService";
@@ -35,6 +36,7 @@ export default function WalletPanel({
   onInteraction?: () => void;
 }) {
   const { user } = useAuth();
+  const router = useRouter();
 
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -71,54 +73,9 @@ export default function WalletPanel({
     }
   }
 
-  async function fundWallet() {
-    setErr(null);
-    if (!user?.email) return setErr("Your account email is required to fund wallet.");
-
-    const raw = window.prompt("How much do you want to fund? (NGN)", "5000");
-    if (!raw) return;
-
-    const amount = Number(String(raw).replace(/,/g, ""));
-    if (!Number.isFinite(amount) || amount <= 0) return setErr("Enter a valid amount (e.g. 5000).");
-
-    try {
-      setLoading(true);
-      touch();
-
-      const initResp = await walletService.initPayment({ amount, email: user.email });
-      const url = extractPaystackUrl(initResp);
-      if (!url) return setErr("No authorization_url returned from Paystack init.");
-
-      window.location.href = url;
-    } catch (e: any) {
-      setErr(pickErr(e));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function payBills() {
-    setErr(null);
-
-    const raw = window.prompt("How much do you want to pay? (NGN)", "1000");
-    if (!raw) return;
-
-    const amount = Number(String(raw).replace(/,/g, ""));
-    if (!Number.isFinite(amount) || amount <= 0) return setErr("Enter a valid amount (e.g. 1000).");
-
-    const reason = window.prompt("Reason (optional)", "bills_payment") || "bills_payment";
-
-    try {
-      setLoading(true);
-      touch();
-
-      await walletService.debit({ amount, reason });
-      await load();
-    } catch (e: any) {
-      setErr(pickErr(e));
-    } finally {
-      setLoading(false);
-    }
+  function openWallet() {
+    touch();
+    router.push("/wallet");
   }
 
   useEffect(() => {
@@ -154,21 +111,21 @@ export default function WalletPanel({
 
       <div className="flex gap-2 mb-5">
         <button
-          onClick={fundWallet}
+          onClick={openWallet}
           disabled={loading}
           className="flex-1 py-3 rounded-2xl bg-white text-black text-sm font-semibold border border-white/20 disabled:opacity-50"
           type="button"
         >
-          Fund
+          Fund wallet
         </button>
 
         <button
-          onClick={payBills}
+          onClick={openWallet}
           disabled={loading}
           className="flex-1 py-3 rounded-2xl bg-white/10 text-white text-sm font-semibold border border-white/10 hover:bg-white/15 disabled:opacity-50"
           type="button"
         >
-          Pay
+          Open payments
         </button>
       </div>
 

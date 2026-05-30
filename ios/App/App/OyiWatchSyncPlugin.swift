@@ -9,6 +9,9 @@ public class OyiWatchSyncPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate 
     private var activationTimedOut = false
     private var activationCallbacks: [(WCSession) -> Void] = []
     private var activationTimeoutWorkItem: DispatchWorkItem?
+    private var lastSyncAt: String?
+    private var lastTokenSent = false
+    private var lastBackendSent = false
 
     public let identifier = "OyiWatchSyncPlugin"
     public let jsName = "OyiWatchSync"
@@ -69,12 +72,17 @@ public class OyiWatchSyncPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate 
         var usedSendMessage = false
         var syncError: String?
 
+        let sentAt = ISO8601DateFormatter().string(from: Date())
+        lastSyncAt = sentAt
+        lastTokenSent = !bearerToken.isEmpty
+        lastBackendSent = !backendBaseURL.isEmpty
+
         var payload: [String: Any] = [
             "backendBaseURL": backendBaseURL,
             "baseURL": backendBaseURL,
             "bearerToken": bearerToken,
             "authToken": bearerToken,
-            "sentAt": ISO8601DateFormatter().string(from: Date())
+            "sentAt": sentAt
         ]
 
         if let userId = call.getString("userId"), !userId.isEmpty { payload["userId"] = userId }
@@ -122,6 +130,9 @@ public class OyiWatchSyncPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate 
             "reachable": session.isReachable,
             "activationState": session.activationState.rawValue,
             "activationTimedOut": activationTimedOut,
+            "tokenSent": lastTokenSent,
+            "backendURLSent": lastBackendSent,
+            "lastSyncAt": lastSyncAt as Any,
             "lastSyncError": lastSyncError as Any,
             "lastActivationError": lastActivationError as Any,
             "synced": synced

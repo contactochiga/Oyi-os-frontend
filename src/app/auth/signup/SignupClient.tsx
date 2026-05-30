@@ -2,7 +2,6 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signUpWithEmail } from "@/services/authService";
 import { decodeToken, isExpired, setCookie } from "@/lib/auth";
@@ -336,8 +335,8 @@ export default function SignupClient() {
   }
 
   return (
-    <main className="min-h-screen text-white">
-      <div className="relative min-h-screen flex items-center justify-center px-6 py-10 overflow-hidden bg-[#070A12]">
+    <main className="min-h-screen overflow-hidden bg-[#02060b] text-white">
+      <div className="relative flex min-h-screen items-center justify-center overflow-hidden px-5 py-[calc(26px+var(--sat))]">
         {/* Background (same as landing/login) */}
         <div className="pointer-events-none absolute inset-0">
           <div
@@ -369,8 +368,8 @@ export default function SignupClient() {
           />
         </div>
 
-        <div className="relative w-full max-w-sm">
-          <div className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur p-6 shadow-[0_20px_90px_rgba(0,0,0,0.60)] overflow-hidden">
+        <div className="relative w-full max-w-[370px]">
+          <div className="relative overflow-hidden rounded-[34px] border border-white/[0.08] bg-white/[0.045] p-5 shadow-[0_24px_90px_rgba(0,0,0,0.62)] backdrop-blur-2xl">
             <div
               className="pointer-events-none absolute inset-x-0 top-0 h-[2px]"
               style={{
@@ -382,20 +381,10 @@ export default function SignupClient() {
 
             <div className="relative">
               <div className="flex flex-col items-center text-center">
-                <div className="h-16 w-16 rounded-2xl border border-white/10 bg-black/20 grid place-items-center overflow-hidden">
-                  <div className="relative h-10 w-10">
-                    <Image
-                      src="/oyi-logo-transparent.png"
-                      alt="OYI Logo"
-                      fill
-                      className="object-contain"
-                      priority
-                    />
-                  </div>
-                </div>
+                <div className="oyi-orb grid h-20 w-20 place-items-center rounded-full text-[18px] font-semibold tracking-[-0.08em]">Oyi</div>
 
-                <div className="mt-5 text-xl font-semibold text-white tracking-wide">OYI</div>
-                <div className="mt-1 text-xs text-white/45">{step === "form" ? "Create account" : "Verify email"}</div>
+                <div className="mt-5 text-[22px] font-semibold tracking-[-0.05em] text-white">{step === "form" ? "Create your home access." : "Verify your email."}</div>
+                <div className="mt-1 text-xs text-white/45">Living intelligence begins with a secure session.</div>
 
                 <div className="mt-3 flex items-center gap-2 text-[11px] text-white/35">
                   <StatusDot ok={backendOk} />
@@ -412,7 +401,7 @@ export default function SignupClient() {
                 {/* FORM */}
                 <div className="w-1/2 pr-4 space-y-3">
                   <input
-                    className="w-full rounded-2xl bg-black/20 border border-white/10 px-4 py-3 text-sm text-white placeholder-white/30 outline-none focus:border-white/20 disabled:opacity-60"
+                    className="w-full rounded-[18px] border border-white/[0.08] bg-black/24 px-4 py-3 text-sm text-white outline-none placeholder:text-white/30 focus:border-sky-300/30 disabled:opacity-60"
                     placeholder="Full name"
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
@@ -420,7 +409,7 @@ export default function SignupClient() {
                   />
 
                   <input
-                    className="w-full rounded-2xl bg-black/20 border border-white/10 px-4 py-3 text-sm text-white placeholder-white/30 outline-none focus:border-white/20 disabled:opacity-60"
+                    className="w-full rounded-[18px] border border-white/[0.08] bg-black/24 px-4 py-3 text-sm text-white outline-none placeholder:text-white/30 focus:border-sky-300/30 disabled:opacity-60"
                     placeholder="Email"
                     type="email"
                     value={email}
@@ -429,7 +418,7 @@ export default function SignupClient() {
                   />
 
                   <input
-                    className="w-full rounded-2xl bg-black/20 border border-white/10 px-4 py-3 text-sm text-white placeholder-white/30 outline-none focus:border-white/20 disabled:opacity-60"
+                    className="w-full rounded-[18px] border border-white/[0.08] bg-black/24 px-4 py-3 text-sm text-white outline-none placeholder:text-white/30 focus:border-sky-300/30 disabled:opacity-60"
                     placeholder="Password"
                     type="password"
                     value={password}

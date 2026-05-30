@@ -1,1172 +1,483 @@
-// src/app/community/page.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import useAuth from "@/hooks/useAuth";
-import ConsumerShell from "@/app/components/ConsumerShell";
 import {
-  communityService,
-  type CommunityComment,
-  type CommunityPost,
-} from "@/services/communityService";
-import { useNotificationStore } from "@/store/useNotificationStore";
-import LiveBroadcastComposer from "@/app/components/community/LiveBroadcastComposer";
-import LiveSessionPlayer from "@/app/components/community/LiveSessionPlayer";
-
-// Icons (same style you referenced)
-import {
-  MessageSquare,
   Bell,
-  Calendar,
-  Send,
-  ThumbsUp,
-  MessageCircle,
-  AlertCircle,
+  ChevronRight,
   ImagePlus,
-  Video,
-  RadioTower,
-  Check,
   LoaderCircle,
-  Play,
+  MessageCircle,
+  MoreHorizontal,
+  RadioTower,
+  Send,
+  ShieldCheck,
+  ThumbsUp,
+  Users,
+  Video,
+  Home,
+  Leaf,
 } from "lucide-react";
 
-// -------------------------------
-// helpers
-// -------------------------------
-function when(iso?: string | null) {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleString([], {
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+import LayoutWrapper from "@/app/components/LayoutWrapper";
+import HamburgerMenu from "@/app/components/HamburgerMenu";
+import MessagesInboxButton from "@/app/components/MessagesInboxButton";
+import BottomNav from "@/app/components/BottomNav";
+import LiveBroadcastComposer from "@/app/components/community/LiveBroadcastComposer";
+import LiveSessionPlayer from "@/app/components/community/LiveSessionPlayer";
+import useAuth from "@/hooks/useAuth";
+import useActiveContext from "@/hooks/useActiveContext";
+import { communityService, type CommunityComment, type CommunityPost } from "@/services/communityService";
+import { useNotificationStore } from "@/store/useNotificationStore";
 
-function pickPostId(p: any) {
-  return String(p?.id ?? p?.post_id ?? "");
-}
+const BODY_META_PREFIX = "__OYI_POST_V1__:";
+type TabKey = "updates" | "notices" | "amenities" | "residents";
+type PostAttachment = { id: string; type: "image" | "video"; url: string; name?: string | null };
 
-function pickAuthor(p: any, me?: any) {
-  const explicit =
-    p?.author_name ||
-    p?.author?.full_name ||
-    p?.author?.name ||
-    p?.author?.username ||
-    p?.created_by_name ||
-    p?.created_by_username ||
-    null;
-
-  if (explicit && String(explicit).trim()) return String(explicit).trim();
-
-  const postAuthorId = String(p?.author_id || p?.user_id || p?.created_by || "");
-  const meId = String(me?.id || "");
-  if (postAuthorId && meId && postAuthorId === meId) {
-    return (
-      String(me?.username || "").trim() ||
-      String(me?.full_name || "").trim() ||
-      "You"
-    );
-  }
-
-  return "Resident";
-}
-
-function pickRoleBadge(p: any) {
-  const r =
-    p?.author_role || p?.author?.role || p?.role || p?.created_by_role || null;
-  if (!r) return null;
-
-  const t = String(r).toLowerCase();
-  if (t.includes("admin") || t.includes("facility") || t.includes("manager"))
-    return "Admin";
-  return null;
-}
-
-function initialsFrom(name: string) {
-  const clean = String(name || "").trim();
-  if (!clean) return "R";
-  const parts = clean.split(" ").filter(Boolean);
-  const a = (parts[0]?.[0] || "R").toUpperCase();
-  const b = (parts[1]?.[0] || "").toUpperCase();
-  return (a + b).slice(0, 2);
-}
-
-function clampCount(n: any) {
-  const x = Number(n ?? 0);
-  if (!Number.isFinite(x) || x < 0) return 0;
-  return Math.floor(x);
-}
-
-function pickCommentId(c: any) {
-  return String(c?.id ?? c?.comment_id ?? "");
-}
-
-function pickCommentAuthor(c: any) {
-  return (
-    c?.author_name ||
-    c?.author?.name ||
-    c?.author?.full_name ||
-    c?.user?.name ||
-    c?.user_name ||
-    c?.created_by ||
-    "Resident"
-  );
-}
+const TABS: Array<{ key: TabKey; label: string; icon: any }> = [
+  { key: "updates", label: "Updates", icon: Bell },
+  { key: "notices", label: "Notices", icon: ShieldCheck },
+  { key: "amenities", label: "Amenities", icon: Home },
+  { key: "residents", label: "Residents", icon: Users },
+];
 
 function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
 }
 
-type PostAttachment = {
-  id: string;
-  type: "image" | "video";
-  url: string;
-  name?: string;
-};
+function when(value?: string | null) {
+  if (!value) return "Now";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Now";
+  const diff = Date.now() - date.getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "Now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return date.toLocaleDateString([], { month: "short", day: "numeric" });
+}
 
-type ParsedPostBody = {
-  text: string;
-  attachments: PostAttachment[];
-  liveLink?: string | null;
-};
+function pickPostId(post: any) {
+  return String(post?.id || post?.post_id || "");
+}
 
-const BODY_META_PREFIX = "__OYI_POST_V1__:";
+function normalizeText(value: any) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
 
-function parsePostBody(raw: any): ParsedPostBody {
-  const body = String(raw ?? "");
-  if (!body.startsWith(BODY_META_PREFIX)) {
-    return { text: body, attachments: [], liveLink: null };
-  }
-
+function parseBody(post: any) {
+  const raw = String(post?.body ?? post?.content ?? "");
+  if (!raw.startsWith(BODY_META_PREFIX)) return { text: raw, attachments: mediaFromPost(post), liveLink: post?.live_link || null };
   try {
-    const json = JSON.parse(body.slice(BODY_META_PREFIX.length));
-    const text = String(json?.text ?? "");
-    const attachments = Array.isArray(json?.attachments)
-      ? json.attachments
-          .map((a: any, idx: number) => ({
-            id: String(a?.id ?? `${idx}`),
-            type: a?.type === "video" ? "video" : "image",
-            url: String(a?.url ?? ""),
-            name: a?.name ? String(a.name) : undefined,
-          }))
-          .filter((a: PostAttachment) => !!a.url)
-      : [];
-    const liveLink = json?.liveLink ? String(json.liveLink) : null;
-    return { text, attachments, liveLink };
-  } catch {
-    return { text: body, attachments: [], liveLink: null };
-  }
-}
-
-function parsePostContent(post: any): ParsedPostBody {
-  const directMedia = Array.isArray(post?.media)
-    ? post.media
-        .map((a: any, idx: number) => ({
-          id: String(a?.id ?? `${idx}`),
-          type: a?.type === "video" || a?.mediaType === "video" ? "video" : "image",
-          url: String(a?.url ?? ""),
-          name: a?.name ? String(a.name) : undefined,
-        }))
-        .filter((a: PostAttachment) => !!a.url)
-    : [];
-  const directLiveLink = post?.live_link ? String(post.live_link) : null;
-  if (directMedia.length || directLiveLink) {
+    const json = JSON.parse(raw.slice(BODY_META_PREFIX.length));
     return {
-      text: String(post?.content ?? post?.body ?? ""),
-      attachments: directMedia,
-      liveLink: directLiveLink,
+      text: String(json?.text || ""),
+      attachments: mediaFromPost({ media: json?.attachments }),
+      liveLink: json?.liveLink ? String(json.liveLink) : post?.live_link || null,
     };
+  } catch {
+    return { text: raw, attachments: mediaFromPost(post), liveLink: post?.live_link || null };
   }
-  return parsePostBody(post?.body ?? post?.content ?? "");
 }
 
-function normalizeLine(text: string) {
-  return String(text || "")
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .trim();
+function mediaFromPost(post: any): PostAttachment[] {
+  const media = Array.isArray(post?.media) ? post.media : [];
+  return media
+    .map((item: any, index: number) => ({
+      id: String(item?.id || `${index}`),
+      type: item?.type === "video" || item?.mediaType === "video" ? "video" : "image",
+      url: String(item?.url || ""),
+      name: item?.name ? String(item.name) : null,
+    }))
+    .filter((item: PostAttachment) => Boolean(item.url));
 }
 
-function localPostKey(p: any) {
+function categoryFor(post: any): TabKey {
+  const raw = String(post?.category || post?.post_type || "").toLowerCase();
+  const title = String(post?.title || "").toLowerCase();
+  const body = String(post?.body || post?.content || "").toLowerCase();
+  const text = `${raw} ${title} ${body}`;
+  if (/amenity|booking|gym|pool|club|parking|market/.test(text)) return "amenities";
+  if (/notice|announcement|maintenance|security|policy|water|power|alert|gate/.test(text)) return "notices";
+  if (/resident|neighbor|neighbour|family|discussion|group/.test(text)) return "residents";
+  return "updates";
+}
+
+function toneFor(tab: TabKey) {
+  if (tab === "notices") return { Icon: ShieldCheck, ring: "text-emerald-200 border-emerald-300/15 bg-emerald-400/10 shadow-[0_0_14px_rgba(52,211,153,0.12)]", chip: "text-emerald-200 bg-emerald-400/10 border-emerald-300/15" };
+  if (tab === "amenities") return { Icon: Leaf, ring: "text-cyan-200 border-cyan-300/15 bg-cyan-400/10 shadow-[0_0_14px_rgba(34,211,238,0.12)]", chip: "text-cyan-200 bg-cyan-400/10 border-cyan-300/15" };
+  if (tab === "residents") return { Icon: Users, ring: "text-violet-200 border-violet-300/15 bg-violet-400/10 shadow-[0_0_14px_rgba(167,139,250,0.12)]", chip: "text-violet-200 bg-violet-400/10 border-violet-300/15" };
+  return { Icon: Bell, ring: "text-sky-200 border-sky-300/15 bg-sky-400/10 shadow-[0_0_14px_rgba(56,189,248,0.12)]", chip: "text-sky-200 bg-sky-400/10 border-sky-300/15" };
+}
+
+function categoryLabelFor(post: any, tab: TabKey) {
+  const raw = String(post?.category || post?.status || "").trim().toLowerCase();
+  const text = [raw, post?.title || "", post?.body || post?.content || ""].join(" ").toLowerCase();
+  if (/maintenance|repair|water|power|utility/.test(text)) return "Maintenance";
+  if (/security|gate|access|alert|incident/.test(text)) return "Security";
+  if (/amenity|booking|gym|pool|club|parking/.test(text)) return "Amenity";
+  if (/resident|neighbor|neighbour|discussion|group/.test(text)) return "Resident";
+  if (/notice|announcement|policy|update/.test(text) || tab === "notices") return "Notice";
+  return "General";
+}
+
+function authorName(post: any, me: any) {
+  const explicit = normalizeText(post?.author_name || post?.author?.full_name || post?.author?.name || post?.created_by_name);
+  if (explicit) return explicit;
+  if (String(post?.author_id || post?.user_id || "") === String(me?.id || "")) return "You";
+  return "Resident";
+}
+
+function canUseCommunityWrite(user: any) {
+  const scopes = [...(user?.permission_scopes || []), ...(user?.permissions || [])].map(String);
+  const role = String(user?.role || "resident").toLowerCase();
+  return scopes.includes("community.write") || !["guest", "viewer"].includes(role);
+}
+
+function canUseCommunityBroadcast(user: any) {
+  const scopes = [...(user?.permission_scopes || []), ...(user?.permissions || [])].map(String);
+  const role = String(user?.role || "resident").toLowerCase();
+  return scopes.includes("community.broadcast") || ["admin", "estate_admin", "facility_manager", "manager", "operator", "owner", "super_admin"].includes(role);
+}
+
+function createCategoryForTab(tab: TabKey) {
+  if (tab === "notices") return "notice";
+  if (tab === "amenities") return "amenity";
+  if (tab === "residents") return "resident";
+  return "resident";
+}
+
+async function toDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Failed to read media"));
+    reader.readAsDataURL(file);
+  });
+}
+
+function CommunityHeader({ unread }: { unread: number }) {
   return (
-    pickPostId(p) ||
-    String(p?.created_at || "") ||
-    `${normalizeLine(String(p?.title || ""))}:${normalizeLine(String(p?.body || p?.content || ""))}`
-  );
-}
-
-// -------------------------------
-// Tiny local UI wrappers (so we don’t change your app theme or deps)
-// -------------------------------
-function Card({
-  className,
-  children,
-}: React.PropsWithChildren<{ className?: string }>) {
-  return (
-    <div
-      className={cn(
-        "rounded-2xl border border-white/10 bg-black/20",
-        className
-      )}
-    >
-      {children}
+    <div className="flex items-start justify-between gap-3 pt-0">
+      <div className="flex items-start gap-2.5">
+        <HamburgerMenu />
+        <div>
+          <h1 className="text-[29px] font-semibold leading-none tracking-[-0.05em] text-white">Community</h1>
+          <p className="mt-2 text-[13px] leading-5 text-white/52">Estate updates and resident notices.</p>
+        </div>
+      </div>
+      <div className="relative">
+        <MessagesInboxButton />
+        {unread > 0 ? <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-blue-400 shadow-[0_0_12px_rgba(59,130,246,0.85)]" /> : null}
+      </div>
     </div>
   );
 }
 
-function CardHeader({
-  className,
-  children,
-}: React.PropsWithChildren<{ className?: string }>) {
-  return <div className={cn("p-4 pb-3", className)}>{children}</div>;
-}
-
-function CardContent({
-  className,
-  children,
-}: React.PropsWithChildren<{ className?: string }>) {
-  return <div className={cn("p-4 pt-0", className)}>{children}</div>;
-}
-
-function BadgePill({
-  children,
-  variant = "outline",
-  className,
-}: React.PropsWithChildren<{
-  variant?: "outline" | "default" | "secondary" | "destructive";
-  className?: string;
-}>) {
-  const styles =
-    variant === "destructive"
-      ? "bg-red-500/15 text-red-200 border-red-500/25"
-      : variant === "secondary"
-      ? "bg-white/8 text-white/75 border-white/10"
-      : variant === "default"
-      ? "bg-white text-black border-white/20"
-      : "bg-white/5 text-white/75 border-white/10";
-
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full border",
-        styles,
-        className
-      )}
-    >
-      {children}
-    </span>
-  );
-}
-
-function TabPill({
-  active,
-  onClick,
-  icon,
-  label,
-  badge,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: any;
-  label: string;
-  badge?: number;
-}) {
-  const Icon = icon;
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "flex-1 h-10 rounded-xl border text-sm transition flex items-center justify-center gap-2",
-        active
-          ? "bg-white/10 text-white border-white/10"
-          : "bg-transparent text-white/70 border-transparent hover:bg-white/5 hover:border-white/10"
-      )}
-    >
-      <Icon className="h-4 w-4" />
-      <span className="font-medium">{label}</span>
-      {badge && badge > 0 ? (
-        <span className="ml-1 text-[11px] px-1.5 py-0.5 rounded-full bg-red-500/20 border border-red-500/25 text-red-200">
-          {badge > 99 ? "99+" : badge}
-        </span>
-      ) : null}
-    </button>
-  );
-}
-
-// -------------------------------
-// Page
-// -------------------------------
 export default function CommunityPage() {
   const { user } = useAuth();
+  const { estate, home } = useActiveContext();
+  const notificationItems = useNotificationStore((state) => state.items);
+  const estateId = useMemo(() => String((user as any)?.estate_id || estate?.id || (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") || "" : "")), [user, estate?.id]);
 
-  const estateId = useMemo(() => {
-    return (
-      (user as any)?.estate_id ??
-      (typeof window !== "undefined"
-        ? localStorage.getItem("ochiga_estate")
-        : null)
-    );
-  }, [user]);
-
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [tab, setTab] = useState<TabKey>("updates");
   const [items, setItems] = useState<CommunityPost[]>([]);
-
-  // Composer
-  const [postDraft, setPostDraft] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [draft, setDraft] = useState("");
   const [attachments, setAttachments] = useState<PostAttachment[]>([]);
-  const [mediaError, setMediaError] = useState<string | null>(null);
-  const [mediaUploading, setMediaUploading] = useState(false);
-  const [activeUploadKind, setActiveUploadKind] = useState<"image" | "video" | "live" | null>(null);
-  const [composerExpanded, setComposerExpanded] = useState(false);
+  const [posting, setPosting] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [liveComposerOpen, setLiveComposerOpen] = useState(false);
+  const [openPost, setOpenPost] = useState<string | null>(null);
+  const [comments, setComments] = useState<Record<string, CommunityComment[]>>({});
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
+  const [busyPost, setBusyPost] = useState<Record<string, boolean>>({});
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
-  const composerRef = useRef<HTMLDivElement>(null);
-  const [posting, setPosting] = useState(false);
 
-  // Per-post interaction state
-  const [liked, setLiked] = useState<Record<string, boolean>>({});
-  const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
-  const [replyOpen, setReplyOpen] = useState<Record<string, boolean>>({});
-  const [replyDraft, setReplyDraft] = useState<Record<string, string>>({});
-  const [replyCounts, setReplyCounts] = useState<Record<string, number>>({});
-  const [busyPost, setBusyPost] = useState<Record<string, boolean>>({});
-  const [commentMap, setCommentMap] = useState<Record<string, CommunityComment[]>>({});
-  const [commentLoading, setCommentLoading] = useState<Record<string, boolean>>({});
+  const canPost = canUseCommunityWrite(user);
+  const canBroadcast = canUseCommunityBroadcast(user);
+  const unread = useMemo(() => notificationItems.filter((item: any) => String(item?.status || "") !== "read" && /community|announcement|notice/.test(`${item?.type || ""} ${item?.title || ""} ${item?.message || ""}`.toLowerCase())).length, [notificationItems]);
 
-  // Tabs
-  const [tab, setTab] = useState<"feed" | "announcements">("feed");
-  const notificationItems = useNotificationStore((s) => s.items);
-
-  // Announcements derived from same posts (no new endpoints)
-  const announcements = useMemo(() => {
-    const arr = Array.isArray(items) ? items : [];
-    const isAnnouncement = (p: any) => {
-      const badge = pickRoleBadge(p);
-      const t = String(p?.title || "").toLowerCase();
-      const admin = badge === "Admin";
-      const keyword =
-        t.includes("announcement") ||
-        t.includes("notice") ||
-        t.includes("maintenance") ||
-        t.includes("update") ||
-        t.includes("policy");
-      return admin || keyword;
-    };
-    return arr.filter(isAnnouncement);
-  }, [items]);
-
-  const unreadCount = useMemo(() => {
-    return notificationItems.filter((n: any) => {
-      if (String(n?.status || "").toLowerCase() === "read") return false;
-      const type = String(n?.type || "").toLowerCase();
-      const title = String(n?.title || "").toLowerCase();
-      const message = String(n?.message || "").toLowerCase();
-      return (
-        type.includes("community") ||
-        title.includes("announcement") ||
-        message.includes("announcement")
-      );
-    }).length;
-  }, [notificationItems]);
-
-  async function load() {
-    if (!estateId) return;
-
-    setLoading(true);
+  async function load(silent = false) {
+    if (!estateId) {
+      setLoading(false);
+      return;
+    }
+    if (!silent) setLoading(true);
     setErr(null);
     try {
-      const list = await communityService.listByEstate(String(estateId));
-      const arr = Array.isArray(list) ? list : [];
-      setItems(arr);
-
-      const nextLikes: Record<string, number> = {};
-      const nextReplies: Record<string, number> = {};
-      const nextLiked: Record<string, boolean> = {};
-      for (const p of arr as any[]) {
-        const id = pickPostId(p);
-        if (!id) continue;
-
-        const l = p?.like_count ?? p?.likes ?? p?.reactions_count ?? 0;
-        const r =
-          p?.reply_count ??
-          p?.replies_count ??
-          p?.comment_count ??
-          p?.comments ??
-          0;
-        nextLikes[id] = clampCount(l);
-        nextReplies[id] = clampCount(r);
-        nextLiked[id] = !!(p?.reacted_by_me ?? p?.liked_by_me ?? false);
-      }
-
-      if (Object.keys(nextLikes).length)
-        setLikeCounts((prev) => ({ ...prev, ...nextLikes }));
-      if (Object.keys(nextReplies).length)
-        setReplyCounts((prev) => ({ ...prev, ...nextReplies }));
-      if (Object.keys(nextLiked).length)
-        setLiked((prev) => ({ ...prev, ...nextLiked }));
-    } catch (e: any) {
-      setErr(e?.message || "Failed to load community");
+      const rows = await communityService.listByEstate(estateId);
+      setItems(Array.isArray(rows) ? rows : []);
+    } catch (error: any) {
+      setErr(error?.message || "Failed to load community updates");
       setItems([]);
     } finally {
       setLoading(false);
     }
   }
 
+  useEffect(() => { void load(); }, [estateId]);
   useEffect(() => {
     if (!estateId) return;
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const timer = window.setInterval(() => void load(true), 20000);
+    return () => window.clearInterval(timer);
   }, [estateId]);
 
-  useEffect(() => {
-    if (!estateId) return;
-    const t = window.setInterval(() => {
-      load();
-      Object.keys(replyOpen).forEach((postId) => {
-        if (replyOpen[postId]) loadComments(postId, true);
-      });
-    }, 15000);
-    return () => window.clearInterval(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [estateId, replyOpen]);
+  const decorated = useMemo(() => items.map((post: any) => ({ post, tab: categoryFor(post), parsed: parseBody(post), author: authorName(post, user), id: pickPostId(post) })), [items, user]);
+  const filtered = decorated.filter((item) => item.tab === tab || (tab === "updates" && item.tab === "updates"));
+  const pinned = decorated.find((item) => Boolean((item.post as any)?.is_pinned) || String((item.post as any)?.status || "").includes("pinned"));
+  const counts = TABS.reduce<Record<TabKey, number>>((acc, item) => { acc[item.key] = decorated.filter((post) => post.tab === item.key).length; return acc; }, { updates: 0, notices: 0, amenities: 0, residents: 0 });
 
-  useEffect(() => {
-    if (!composerExpanded) return;
-
-    const onPointerDown = (event: MouseEvent | TouchEvent) => {
-      const target = event.target as Node | null;
-      if (!target) return;
-      if (composerRef.current?.contains(target)) return;
-      setComposerExpanded(false);
-    };
-
-    document.addEventListener("mousedown", onPointerDown);
-    document.addEventListener("touchstart", onPointerDown);
-    return () => {
-      document.removeEventListener("mousedown", onPointerDown);
-      document.removeEventListener("touchstart", onPointerDown);
-    };
-  }, [composerExpanded]);
-
-  useEffect(() => {
-    setComposerExpanded(false);
-  }, [tab]);
-
-  async function loadComments(postId: string, force = false) {
-    if (!postId) return;
-    if (!force && commentMap[postId]) return;
-    setCommentLoading((p) => ({ ...p, [postId]: true }));
-    try {
-      const list = await communityService.listComments(postId);
-      setCommentMap((p) => ({ ...p, [postId]: Array.isArray(list) ? list : [] }));
-    } finally {
-      setCommentLoading((p) => ({ ...p, [postId]: false }));
-    }
-  }
-
-  async function toDataUrl(file: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result || ""));
-      reader.onerror = () => reject(new Error("Failed to read file"));
-      reader.readAsDataURL(file);
-    });
-  }
-
-  async function onPickMedia(kind: "image" | "video", files: FileList | null) {
+  async function pickMedia(kind: "image" | "video", files: FileList | null) {
     if (!files?.length) return;
-    setMediaError(null);
-    setMediaUploading(true);
-    setActiveUploadKind(kind);
-
+    setUploading(true);
+    setErr(null);
     try {
-      const selected = Array.from(files).slice(0, 3);
       const next: PostAttachment[] = [];
-      for (const file of selected) {
-        const max = kind === "image" ? 6 * 1024 * 1024 : 15 * 1024 * 1024;
-        if (file.size > max) {
-          setMediaError(
-            `${file.name} is too large. Max ${kind === "image" ? "6MB" : "15MB"}`
-          );
-          continue;
-        }
+      for (const file of Array.from(files).slice(0, 3)) {
         const dataUrl = await toDataUrl(file);
-        const uploaded: any = await communityService.uploadMedia({
-          base64: dataUrl,
-          mime: file.type || (kind === "video" ? "video/mp4" : "image/jpeg"),
-          filename: file.name,
-          mediaType: kind,
-        });
-        if (uploaded?.error || !uploaded?.url) {
-          setMediaError(String(uploaded?.error || `Failed to upload ${file.name}`));
-          continue;
-        }
-        next.push({
-          id: `a-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          type: kind,
-          url: String(uploaded.url),
-          name: file.name,
-        });
+        const res: any = await communityService.uploadMedia({ base64: dataUrl, mime: file.type, filename: file.name, mediaType: kind });
+        if (res?.error || !res?.url) throw new Error(res?.error || "Media upload failed");
+        next.push({ id: `${Date.now()}-${file.name}`, type: kind, url: String(res.url), name: file.name });
       }
-      if (next.length) {
-        setAttachments((prev) => [...prev, ...next].slice(0, 6));
-      }
-    } catch {
-      setMediaError("Failed to attach media");
+      setAttachments((prev) => [...prev, ...next].slice(0, 4));
+    } catch (error: any) {
+      setErr(error?.message || "Media upload failed");
     } finally {
-      setMediaUploading(false);
-      setActiveUploadKind(null);
+      setUploading(false);
     }
   }
-
-  function removeAttachment(id: string) {
-    setAttachments((prev) => prev.filter((a) => a.id !== id));
-  }
-
-  function setupLiveLink() {
-    setMediaError(null);
-    setComposerExpanded(false);
-    setLiveComposerOpen(true);
-  }
-
-  const latestImage = [...attachments].reverse().find((item) => item.type === "image");
-  const latestVideo = [...attachments].reverse().find((item) => item.type === "video");
 
   async function createPost() {
-    const content = postDraft.trim();
-    if (!content && !attachments.length) {
-      return setErr("Write something or attach media to share.");
-    }
-    if (!estateId) return setErr("No estate linked.");
-
+    const content = draft.trim();
+    if (!content && !attachments.length) return setErr("Write a short update or attach media.");
+    if (!estateId) return setErr("No estate linked yet.");
     setPosting(true);
     setErr(null);
     try {
-      const generatedTitle =
-        content.length > 42 ? `${content.slice(0, 42).trimEnd()}…` : content;
-      const res: any = await communityService.createPost({
-        title: generatedTitle || "Update",
-        content,
-        media: attachments,
-        estateId: String(estateId),
-      });
-
-      if (res?.error) {
-        setErr(String(res.error));
-        return;
-      }
-
-      setPostDraft("");
+      const title = content ? content.slice(0, 72) : "Community media update";
+      const res: any = await communityService.createPost({ estateId, title, content, media: attachments, category: createCategoryForTab(tab) });
+      if (res?.error) throw new Error(res.error);
       setItems((prev) => [res as CommunityPost, ...prev]);
-
-      const id = pickPostId(res);
-      if (id) {
-        setLikeCounts((p) => ({
-          ...p,
-          [id]: clampCount((res as any)?.like_count ?? 0),
-        }));
-        setReplyCounts((p) => ({
-          ...p,
-          [id]: clampCount((res as any)?.reply_count ?? 0),
-        }));
-      }
-      await load();
+      setDraft("");
       setAttachments([]);
-      setMediaError(null);
-      setComposerExpanded(false);
-    } catch (e: any) {
-      setErr(e?.message || "Failed to create post");
+      setComposerOpen(false);
+      await load(true);
+    } catch (error: any) {
+      setErr(error?.message || "Failed to post update");
     } finally {
       setPosting(false);
     }
   }
 
-  async function reactLike(post: CommunityPost) {
-    const id = pickPostId(post);
-    const key = localPostKey(post);
-
-    if (!id) {
-      setErr("This post cannot be reacted to right now.");
-      return;
-    }
-    if (busyPost[key]) return;
-    if (liked[key]) return; // keep like sticky (no auto unlike)
-
-    setBusyPost((p) => ({ ...p, [key]: true }));
-    const prevCount = likeCounts[key] ?? 0;
-
-    setLiked((p) => ({ ...p, [key]: true }));
-    setLikeCounts((p) => ({ ...p, [key]: prevCount + 1 }));
-
+  async function toggleComments(postId: string) {
+    const next = openPost === postId ? null : postId;
+    setOpenPost(next);
+    if (!next || comments[next]) return;
+    setBusyPost((prev) => ({ ...prev, [next]: true }));
     try {
-      const res: any = await communityService.reactToPost(id, "like");
-      if (res?.error) {
-        setErr(String(res.error));
-        // keep UI liked so it doesn't flash off for user
-      } else {
-        const serverCount =
-          res?.like_count ??
-          res?.likes ??
-          res?.reactions_count ??
-          res?.data?.like_count;
-        if (serverCount != null) {
-          setLikeCounts((p) => ({ ...p, [key]: clampCount(serverCount) }));
-        }
-      }
-    } catch {
-      // keep optimistic liked state; next refresh will reconcile counts
+      const rows = await communityService.listComments(next);
+      setComments((prev) => ({ ...prev, [next]: Array.isArray(rows) ? rows : [] }));
+      void communityService.markPostRead(next);
     } finally {
-      setBusyPost((p) => ({ ...p, [key]: false }));
+      setBusyPost((prev) => ({ ...prev, [next]: false }));
     }
   }
 
-  function toggleReplyBox(post: CommunityPost) {
-    const id = pickPostId(post);
-    const key = localPostKey(post);
-    const next = !replyOpen[key];
-    setReplyOpen((p) => ({ ...p, [key]: next }));
-    if (!id) {
-      setErr("Comments are not available for this post right now.");
-      return;
-    }
-    if (next) loadComments(id);
-  }
-
-  async function sendReply(post: CommunityPost) {
-    const id = pickPostId(post);
-    const key = localPostKey(post);
-    if (!id) {
-      setErr("Comments are not available for this post right now.");
-      return;
-    }
-
-    const text = (replyDraft[key] || "").trim();
-    if (!text) return;
-
-    if (busyPost[key]) return;
-    setBusyPost((p) => ({ ...p, [key]: true }));
-
-    const prev = replyCounts[key] ?? 0;
-
-    setReplyCounts((p) => ({ ...p, [key]: prev + 1 }));
-    setReplyDraft((p) => ({ ...p, [key]: "" }));
-    const optimisticComment: CommunityComment = {
-      id: `local-${Date.now()}`,
-      post_id: id,
-      user_id: String((user as any)?.id || ""),
-      content: text,
-      created_at: new Date().toISOString(),
-    };
-    setCommentMap((p) => ({ ...p, [id]: [optimisticComment, ...(p[id] || [])] }));
-
+  async function likePost(postId: string) {
+    if (!postId || busyPost[postId]) return;
+    setBusyPost((prev) => ({ ...prev, [postId]: true }));
     try {
-      const res: any = await communityService.createComment(id, { content: text });
-
-      if (res?.error) {
-        setErr(String(res.error));
-        setReplyCounts((p) => ({ ...p, [key]: prev }));
-        setReplyDraft((p) => ({ ...p, [key]: text }));
-        setCommentMap((p) => ({
-          ...p,
-          [id]: (p[id] || []).filter((c) => !String(c.id).startsWith("local-")),
-        }));
-        return;
-      }
-
-      const serverCount = res?.reply_count ?? res?.replies_count ?? res?.comment_count;
-      if (serverCount != null) {
-        setReplyCounts((p) => ({ ...p, [key]: clampCount(serverCount) }));
-      }
-      await loadComments(id, true);
-      await load();
-    } catch (e: any) {
-      setErr(e?.message || "Failed to post comment");
-      setReplyCounts((p) => ({ ...p, [key]: prev }));
-      setReplyDraft((p) => ({ ...p, [key]: text }));
-      setCommentMap((p) => ({
-        ...p,
-        [id]: (p[id] || []).filter((c) => !String(c.id).startsWith("local-")),
-      }));
+      await communityService.reactToPost(postId, "like");
+      await load(true);
     } finally {
-      setBusyPost((p) => ({ ...p, [key]: false }));
+      setBusyPost((prev) => ({ ...prev, [postId]: false }));
     }
   }
 
-  const listForTab = tab === "announcements" ? announcements : items;
+  async function sendComment(postId: string) {
+    const content = String(commentDrafts[postId] || "").trim();
+    if (!postId || !content) return;
+    setBusyPost((prev) => ({ ...prev, [postId]: true }));
+    try {
+      const res: any = await communityService.createComment(postId, { content });
+      if (res?.error) throw new Error(res.error);
+      setComments((prev) => ({ ...prev, [postId]: [...(prev[postId] || []), res] }));
+      setCommentDrafts((prev) => ({ ...prev, [postId]: "" }));
+      await load(true);
+    } catch (error: any) {
+      setErr(error?.message || "Failed to send comment");
+    } finally {
+      setBusyPost((prev) => ({ ...prev, [postId]: false }));
+    }
+  }
+
+  const estateName = String(estate?.name || (home as any)?.estate_name || "Your estate");
 
   return (
-    <ConsumerShell title="Community" subtitle="Residential updates • concierge notices • quiet estate signal">
-      <div className="oyi-living-page space-y-3 pb-8">
-      <LiveBroadcastComposer
-        open={liveComposerOpen}
-        estateId={estateId ? String(estateId) : null}
-        draft={postDraft}
-        onClose={() => setLiveComposerOpen(false)}
-        onStarted={(post) => {
-          setItems((prev) => [post, ...prev]);
-          setPostDraft("");
-          setComposerExpanded(false);
-          void load();
-        }}
-        onStopped={() => {
-          setLiveComposerOpen(false);
-          void load();
-        }}
-      />
-      <section className="oyi-environment-hero rounded-[24px] p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-[10px] uppercase tracking-[0.24em] text-sky-100/60">Estate Presence</div>
-            <h1 className="mt-1.5 text-xl font-semibold text-white">Community is calm.</h1>
-            <p className="mt-1.5 text-xs leading-5 text-white/50">
-              Announcements, services, deliveries and resident interactions stay organized here.
-            </p>
-          </div>
-          <div className="oyi-orb h-12 w-12 shrink-0" aria-hidden="true" />
-        </div>
-        <div className="mt-3 grid grid-cols-3 gap-2">
-          <div className="rounded-[16px] border border-white/10 bg-black/[0.16] px-3 py-2">
-            <div className="text-[10px] text-white/36">Updates</div>
-            <div className="mt-1 text-sm font-semibold text-white">{items.length}</div>
-          </div>
-          <div className="rounded-[16px] border border-white/10 bg-black/[0.16] px-3 py-2">
-            <div className="text-[10px] text-white/36">Notices</div>
-            <div className="mt-1 text-sm font-semibold text-white">{announcements.length}</div>
-          </div>
-          <div className="rounded-[16px] border border-white/10 bg-black/[0.16] px-3 py-2">
-            <div className="text-[10px] text-white/36">Unread</div>
-            <div className="mt-1 text-sm font-semibold text-white">{unreadCount}</div>
-          </div>
-        </div>
-      </section>
-      {/* Tabs */}
-      <div>
-        <div className="grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-white/5 p-2">
-          <TabPill
-            active={tab === "feed"}
-            onClick={() => setTab("feed")}
-            icon={MessageSquare}
-            label="Community Feed"
-          />
-          <TabPill
-            active={tab === "announcements"}
-            onClick={() => setTab("announcements")}
-            icon={Bell}
-            label="Announcements"
-            badge={unreadCount}
-          />
-        </div>
-      </div>
+    <LayoutWrapper>
+      <main className="fixed inset-0 overflow-hidden bg-[#02060b] text-white">
+        <div className="oyi-ambient-bg" />
+        <div className="relative z-10 h-full overflow-y-auto px-4 pb-[calc(132px+var(--sab))] pt-[calc(14px+var(--sat))]">
+          <div className="mx-auto w-full max-w-[760px] space-y-4">
+            <CommunityHeader unread={unread} />
 
-      {/* Composer (feed only) */}
-      {tab === "feed" && (
-        <div ref={composerRef} className="mt-4">
-          <Card className="bg-white/5">
-            <CardHeader>
-              <div className="text-sm font-semibold text-white">Share with the community</div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <input
-                ref={imageInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                className="hidden"
-                onChange={(e) => onPickMedia("image", e.target.files)}
-              />
-              <input
-                ref={videoInputRef}
-                type="file"
-                accept="video/*"
-                multiple
-                className="hidden"
-                onChange={(e) => onPickMedia("video", e.target.files)}
-              />
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {TABS.map(({ key, label, icon: Icon }) => {
+                const active = tab === key;
+                return (
+                  <button key={key} type="button" onClick={() => setTab(key)} className={cn("inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[12px] font-medium transition", active ? "border-blue-400/70 bg-blue-500/12 text-sky-200 shadow-[0_0_16px_rgba(0,122,255,0.16)]" : "border-white/[0.075] bg-white/[0.025] text-white/64") }>
+                    <Icon className="h-3.5 w-3.5" />
+                    {label}
+                    {counts[key] ? <span className="text-[10px] text-white/36">{counts[key]}</span> : null}
+                  </button>
+                );
+              })}
+            </div>
 
-              {!composerExpanded ? (
-                <button
-                  type="button"
-                  onClick={() => setComposerExpanded(true)}
-                  className="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-3 text-left text-sm text-white/60 hover:bg-white/10 transition"
-                  disabled={posting || !estateId}
-                >
-                  What’s on your mind?
-                </button>
-              ) : (
-                <textarea
-                  value={postDraft}
-                  onChange={(e) => setPostDraft(e.target.value)}
-                  placeholder="What’s on your mind?"
-                  rows={5}
-                  className="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-3 text-sm text-white outline-none resize-none"
-                  disabled={posting || !estateId}
-                />
-              )}
+            <LiveBroadcastComposer open={liveComposerOpen} estateId={estateId || null} draft={draft} onClose={() => setLiveComposerOpen(false)} onStarted={(post) => { setItems((prev) => [post, ...prev]); setLiveComposerOpen(false); void load(true); }} onStopped={() => void load(true)} />
 
-              {attachments.length > 0 ? (
-                <div className="grid grid-cols-2 gap-2">
-                  {attachments.map((a) => (
-                    <div key={a.id} className="relative rounded-xl border border-white/10 bg-black/20 overflow-hidden">
-                      {a.type === "video" ? (
-                        <video src={a.url} className="h-28 w-full object-cover" controls />
-                      ) : (
-                        <img src={a.url} alt={a.name || "attachment"} className="h-28 w-full object-cover" />
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => removeAttachment(a.id)}
-                        className="absolute top-1 right-1 rounded-md bg-black/70 text-white text-[10px] px-1.5 py-0.5"
-                      >
-                        Remove
-                      </button>
+            {pinned ? (
+              <CommunityCard data={pinned} featured onToggleComments={toggleComments} onLike={likePost} open={openPost === pinned.id} comments={comments[pinned.id] || []} commentDraft={commentDrafts[pinned.id] || ""} onCommentDraft={(value) => setCommentDrafts((prev) => ({ ...prev, [pinned.id]: value }))} onSendComment={() => sendComment(pinned.id)} busy={!!busyPost[pinned.id]} userId={String((user as any)?.id || "")} />
+            ) : null}
+
+            {canPost ? (
+              <section className="rounded-[21px] border border-white/[0.065] bg-white/[0.03] p-2.5 shadow-[0_14px_42px_rgba(0,0,0,0.22)] backdrop-blur-xl">
+                {!composerOpen ? (
+                  <button type="button" onClick={() => setComposerOpen(true)} className="flex w-full items-center justify-center gap-2 rounded-[17px] border border-sky-300/10 bg-sky-400/[0.045] px-3.5 py-2.5 text-[13px] font-semibold text-sky-200 transition active:scale-[0.99]">
+                    <MessageCircle className="h-3.5 w-3.5" />
+                    Share with estate
+                  </button>
+                ) : (
+                  <div className="space-y-3">
+                    <textarea value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={`Share a quiet update with ${estateName}...`} rows={2} className="w-full resize-none rounded-[18px] border border-white/[0.075] bg-black/25 px-3.5 py-2.5 text-[13px] leading-5 text-white outline-none placeholder:text-white/35 focus:border-sky-300/35" />
+                    {attachments.length ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        {attachments.map((item) => (
+                          <div key={item.id} className="relative overflow-hidden rounded-[16px] border border-white/[0.08] bg-black/30">
+                            {item.type === "video" ? <video src={item.url} className="h-20 w-full object-cover" muted playsInline /> : <img src={item.url} alt={item.name || "community media"} className="h-20 w-full object-cover" />}
+                            <button type="button" onClick={() => setAttachments((prev) => prev.filter((x) => x.id !== item.id))} className="absolute right-1 top-1 rounded-full bg-black/70 px-1.5 py-0.5 text-[9px] text-white/80">Remove</button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                    <input ref={imageInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(event) => void pickMedia("image", event.target.files)} />
+                    <input ref={videoInputRef} type="file" accept="video/*" multiple className="hidden" onChange={(event) => void pickMedia("video", event.target.files)} />
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <button type="button" onClick={() => imageInputRef.current?.click()} disabled={uploading} className="grid h-9 w-9 place-items-center rounded-full border border-white/[0.08] bg-white/[0.045] text-white/72"><ImagePlus className="h-4 w-4" /></button>
+                        <button type="button" onClick={() => videoInputRef.current?.click()} disabled={uploading} className="grid h-9 w-9 place-items-center rounded-full border border-white/[0.08] bg-white/[0.045] text-white/72"><Video className="h-4 w-4" /></button>
+                        {canBroadcast ? <button type="button" onClick={() => setLiveComposerOpen(true)} className="grid h-9 w-9 place-items-center rounded-full border border-red-300/12 bg-red-400/10 text-red-100" aria-label="Start live broadcast"><RadioTower className="h-4 w-4" /></button> : null}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button type="button" onClick={() => { setComposerOpen(false); setDraft(""); setAttachments([]); }} className="rounded-full px-3 py-2 text-[12px] text-white/50">Cancel</button>
+                        <button type="button" onClick={createPost} disabled={posting || uploading || (!draft.trim() && !attachments.length)} className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-[13px] font-semibold text-black disabled:opacity-50">
+                          {posting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                          Post
+                        </button>
+                      </div>
                     </div>
+                  </div>
+                )}
+              </section>
+            ) : null}
+
+            {err ? <div className="rounded-[16px] border border-red-300/15 bg-red-500/10 px-3.5 py-2.5 text-[12px] text-red-100">{err}</div> : null}
+
+            <section className="space-y-3">
+              <div className="flex items-center justify-between px-1">
+                <div className="text-[10px] uppercase tracking-[0.24em] text-white/42">{tab === "updates" ? "Estate Updates" : TABS.find((item) => item.key === tab)?.label}</div>
+                <button type="button" onClick={() => void load()} className="text-[11px] font-medium text-sky-300/76">Refresh</button>
+              </div>
+
+              {!estateId ? (
+                <EmptyState title="No estate linked yet." body="Join or select an estate to view community updates." />
+              ) : loading ? (
+                <div className="rounded-[20px] border border-white/[0.065] bg-white/[0.03] p-4 text-[12px] text-white/54">Loading community updates...</div>
+              ) : filtered.length === 0 ? (
+                <EmptyState title="No community updates yet." body="Estate notices will appear here." />
+              ) : (
+                <div className="space-y-3">
+                  {filtered.map((data) => (
+                    <CommunityCard key={data.id || `${data.post?.created_at}-${data.post?.title}`} data={data} onToggleComments={toggleComments} onLike={likePost} open={openPost === data.id} comments={comments[data.id] || []} commentDraft={commentDrafts[data.id] || ""} onCommentDraft={(value) => setCommentDrafts((prev) => ({ ...prev, [data.id]: value }))} onSendComment={() => sendComment(data.id)} busy={!!busyPost[data.id]} userId={String((user as any)?.id || "")} />
                   ))}
                 </div>
-              ) : null}
-
-              {composerExpanded ? (
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => imageInputRef.current?.click()}
-                      disabled={mediaUploading || posting}
-                      className="relative inline-flex h-11 w-11 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/5 text-white/85 transition hover:bg-white/10 disabled:opacity-50"
-                      title={mediaUploading ? "Uploading image" : "Add image"}
-                    >
-                      {latestImage?.url ? (
-                        <img
-                          src={latestImage.url}
-                          alt="Latest image upload"
-                          className="absolute inset-0 h-full w-full object-cover"
-                        />
-                      ) : null}
-                      <span className="relative z-[1]">
-                        {activeUploadKind === "image" && mediaUploading ? (
-                          <LoaderCircle className="h-4 w-4 animate-spin" />
-                        ) : latestImage?.url ? (
-                          <Check className="h-4 w-4 rounded-full bg-black/55 p-[2px] text-white" />
-                        ) : (
-                          <ImagePlus className="h-4 w-4" />
-                        )}
-                      </span>
-                      {activeUploadKind === "image" && mediaUploading ? (
-                        <span className="pointer-events-none absolute inset-0 rounded-full border-2 border-transparent border-t-cyan-300 animate-spin" />
-                      ) : null}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => videoInputRef.current?.click()}
-                      disabled={mediaUploading || posting}
-                      className="relative inline-flex h-11 w-11 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/5 text-white/85 transition hover:bg-white/10 disabled:opacity-50"
-                      title="Add video"
-                    >
-                      {latestVideo?.url ? (
-                        <video
-                          src={latestVideo.url}
-                          className="absolute inset-0 h-full w-full object-cover"
-                          muted
-                          playsInline
-                        />
-                      ) : null}
-                      <span className="relative z-[1]">
-                        {activeUploadKind === "video" && mediaUploading ? (
-                          <LoaderCircle className="h-4 w-4 animate-spin" />
-                        ) : latestVideo?.url ? (
-                          <Play className="h-4 w-4 rounded-full bg-black/55 p-[2px] text-white" />
-                        ) : (
-                          <Video className="h-4 w-4" />
-                        )}
-                      </span>
-                      {activeUploadKind === "video" && mediaUploading ? (
-                        <span className="pointer-events-none absolute inset-0 rounded-full border-2 border-transparent border-t-cyan-300 animate-spin" />
-                      ) : null}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={setupLiveLink}
-                      disabled={posting}
-                      className="relative inline-flex h-11 w-11 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/5 text-white/85 transition hover:bg-white/10 disabled:opacity-50"
-                      title="Go live"
-                    >
-                      {activeUploadKind === "live" ? (
-                        <>
-                          <LoaderCircle className="relative z-[1] h-4 w-4 animate-spin" />
-                          <span className="pointer-events-none absolute inset-0 rounded-full border-2 border-transparent border-t-red-300 animate-spin" />
-                        </>
-                      ) : (
-                        <RadioTower className="h-4 w-4" />
-                      )}
-                    </button>
-                  </div>
-                  <button
-                    onClick={createPost}
-                    disabled={posting || mediaUploading || (!postDraft.trim() && !attachments.length) || !estateId}
-                    className="px-4 py-2.5 rounded-xl bg-white text-black text-sm font-semibold disabled:opacity-50 inline-flex items-center justify-center gap-2"
-                    type="button"
-                  >
-                    <Send className="h-4 w-4" />
-                    {posting ? "Posting..." : "Post"}
-                  </button>
-                </div>
-              ) : null}
-
-              {mediaError ? <div className="text-xs text-red-300">{mediaError}</div> : null}
-            </CardContent>
-          </Card>
+              )}
+            </section>
+          </div>
         </div>
-      )}
+        <BottomNav />
+      </main>
+    </LayoutWrapper>
+  );
+}
 
-      {err && (
-        <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-200">
-          {err}
+function EmptyState({ title, body }: { title: string; body: string }) {
+  return (
+    <div className="rounded-[20px] border border-white/[0.065] bg-white/[0.03] px-4 py-5 text-center shadow-[0_18px_60px_rgba(0,0,0,0.25)] backdrop-blur-xl">
+      <div className="mx-auto grid h-9 w-9 place-items-center rounded-full border border-sky-300/15 bg-sky-400/10 text-sky-200"><Bell className="h-4 w-4" /></div>
+      <div className="mt-2.5 text-[14px] font-semibold text-white">{title}</div>
+      <div className="mt-1 text-[11px] leading-5 text-white/45">{body}</div>
+    </div>
+  );
+}
+
+function CommunityCard({ data, featured, open, comments, commentDraft, onCommentDraft, onToggleComments, onSendComment, onLike, busy, userId }: { data: { post: any; tab: TabKey; parsed: any; author: string; id: string }; featured?: boolean; open: boolean; comments: CommunityComment[]; commentDraft: string; onCommentDraft: (value: string) => void; onToggleComments: (postId: string) => void; onSendComment: () => void; onLike: (postId: string) => void; busy: boolean; userId: string }) {
+  const { post, tab, parsed, author, id } = data;
+  const tone = toneFor(tab);
+  const Icon = tone.Icon;
+  const title = normalizeText(post?.title || parsed.text || "Community update");
+  const body = normalizeText(parsed.text || post?.body || post?.content || "");
+  const likeCount = Number(post?.like_count ?? post?.likes ?? post?.reactions_count ?? 0);
+  const commentCount = Number(post?.comment_count ?? post?.comments ?? post?.reply_count ?? comments.length ?? 0);
+  const isInternalLive = String(parsed.liveLink || post?.live_link || "").startsWith("oyi-live://");
+  const liveSession = post?.live_session || null;
+  const isLive = isInternalLive && String(liveSession?.status || "").toLowerCase() !== "ended";
+
+  return (
+    <article className={cn("rounded-[21px] border bg-white/[0.03] p-3 shadow-[0_14px_42px_rgba(0,0,0,0.22)] backdrop-blur-xl", featured ? "border-sky-300/18" : "border-white/[0.075]") }>
+      <div className="flex items-center gap-2.5">
+        <div className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-full border", tone.ring)}><Icon className="h-4 w-4" /></div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <h2 className="truncate text-[14.5px] font-semibold tracking-[-0.025em] text-white">{title}</h2>
+            {featured ? <span className="rounded-full border border-sky-300/16 bg-sky-400/10 px-1.5 py-0.5 text-[9px] text-sky-200">Pinned</span> : null}
+          </div>
+          {body && body !== title ? <p className="mt-0.5 line-clamp-1 text-[12px] leading-5 text-white/58">{body}</p> : null}
+          <div className="mt-0.5 flex items-center gap-1.5 text-[10.5px] text-white/38"><span>{author}</span><span>•</span><span>{when(post?.created_at)}</span></div>
         </div>
-      )}
-
-      {!estateId ? (
-        <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/60">
-          No estate linked yet. Join/choose an estate to view updates.
-        </div>
-      ) : loading && items.length === 0 ? (
-        <div className="mt-4 flex items-center gap-3 text-sm text-white/60">
-          <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-          Loading community…
-        </div>
-      ) : listForTab.length === 0 ? (
-        <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/60">
-          {tab === "announcements" ? "No announcements yet." : "No community posts yet."}
-        </div>
-      ) : (
-        <div className="mt-4 space-y-3">
-          {listForTab.map((p: any) => {
-            const id = pickPostId(p);
-            const postKey = localPostKey(p);
-            const author = pickAuthor(p, user);
-            const badge = pickRoleBadge(p);
-
-            const likeCount = likeCounts[postKey] ?? clampCount(p?.like_count ?? p?.likes ?? 0);
-            const replyCount = replyCounts[postKey] ?? clampCount(p?.reply_count ?? p?.replies_count ?? 0);
-
-            const isLiked = !!liked[postKey];
-            const replyIsOpen = !!replyOpen[postKey];
-            const isBusy = !!busyPost[postKey];
-            const comments = commentMap[id] || [];
-            const loadingComments = !!commentLoading[id];
-            const parsed = parsePostContent(p);
-            const liveSession = (p as any)?.live_session || null;
-            const resolvedLiveLink = String(parsed.liveLink || (p as any)?.live_link || "");
-            const isInternalLive = resolvedLiveLink.startsWith("oyi-live://");
-            const liveEnded = String(liveSession?.status || "").toLowerCase() === "ended";
-            const titleText = String(p?.title || "").trim();
-            const bodyText = String(parsed.text || "").trim();
-            const duplicateTitleAndBody =
-              !!titleText &&
-              !!bodyText &&
-              normalizeLine(titleText) === normalizeLine(bodyText);
-
-            const rawType = String((p as any)?.type || (p as any)?.post_type || "").toLowerCase();
-            const type: "announcement" | "discussion" | "event" =
-              rawType === "event"
-                ? "event"
-                : rawType === "announcement" || tab === "announcements" || badge === "Admin"
-                  ? "announcement"
-                  : "discussion";
-
-            return (
-              <Card key={postKey}>
-                <CardHeader>
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div
-                        className={cn(
-                          "h-10 w-10 rounded-2xl border border-white/10 flex items-center justify-center font-semibold text-[12px]",
-                          badge ? "bg-white/10 text-white" : "bg-white/5 text-white/80"
-                        )}
-                      >
-                        {initialsFrom(author)}
-                      </div>
-
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <div className="font-semibold text-white truncate">{author}</div>
-                          {badge ? (
-                            <BadgePill variant="outline" className="text-[10px]">
-                              {badge}
-                            </BadgePill>
-                          ) : null}
-                        </div>
-                        <div className="text-xs text-white/45">{when(p.created_at)}</div>
-                      </div>
-                    </div>
-
-                    <BadgePill
-                      variant={type === "announcement" ? "default" : type === "event" ? "secondary" : "outline"}
-                    >
-                      {type === "announcement" ? <Bell className="h-3 w-3" /> : null}
-                      {type === "event" ? <Calendar className="h-3 w-3" /> : null}
-                      {type === "discussion" ? <MessageCircle className="h-3 w-3" /> : null}
-                      <span className="capitalize">{type}</span>
-                    </BadgePill>
-                  </div>
-
-                  <div className="mt-3 text-[13px] font-semibold text-white">
-                    {titleText || "Update"}
-                  </div>
-                </CardHeader>
-
-                <CardContent className="space-y-4">
-                  {parsed.attachments.length > 0 ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {parsed.attachments.map((a) => (
-                        <div key={a.id} className="rounded-xl border border-white/10 bg-black/20 overflow-hidden">
-                          {a.type === "video" ? (
-                            <video src={a.url} controls className="w-full max-h-72 bg-black" />
-                          ) : (
-                            <img src={a.url} alt={a.name || "post media"} className="w-full max-h-72 object-cover" />
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-
-                  {isInternalLive ? (
-                    <LiveSessionPlayer
-                      postId={id}
-                      userId={String((user as any)?.id || "") || null}
-                      userName={
-                        String(
-                          (user as any)?.full_name ||
-                            (user as any)?.username ||
-                            (user as any)?.name ||
-                            ""
-                        ) || null
-                      }
-                      isLive={!liveEnded}
-                      initialViewerCount={Number(liveSession?.viewer_count || 0)}
-                      hasGuest={Boolean(liveSession?.has_guest)}
-                    />
-                  ) : resolvedLiveLink ? (
-                    <a
-                      href={resolvedLiveLink}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-2 rounded-xl border border-red-400/35 bg-red-500/10 px-3 py-2 text-xs text-red-100"
-                    >
-                      Live session link
-                    </a>
-                  ) : null}
-
-                  {bodyText && !duplicateTitleAndBody ? (
-                    <p className="text-sm text-white/80 whitespace-pre-wrap">
-                      {bodyText}
-                    </p>
-                  ) : null}
-
-                  <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-white/10">
-                    <button
-                      type="button"
-                      onClick={() => reactLike(p)}
-                      disabled={isBusy}
-                      className={cn(
-                        "inline-flex items-center gap-2 text-sm px-3 py-2 rounded-xl border transition disabled:opacity-50",
-                        isLiked
-                          ? "bg-cyan-400/20 text-cyan-100 border-cyan-300/40"
-                          : "bg-white/5 text-white/80 border-white/10 hover:bg-white/10"
-                      )}
-                    >
-                      <ThumbsUp className="h-4 w-4" />
-                      {isLiked ? "Liked" : "Like"} • {likeCount}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => toggleReplyBox(p)}
-                      className="inline-flex items-center gap-2 text-sm px-3 py-2 rounded-xl border border-white/10 bg-white/5 text-white/80 hover:bg-white/10 transition"
-                    >
-                      <MessageCircle className="h-4 w-4" />
-                      Comment • {replyCount}
-                    </button>
-                  </div>
-
-                  {replyIsOpen && (
-                    <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
-                      {loadingComments ? (
-                        <div className="mb-2 text-xs text-white/50">Loading comments…</div>
-                      ) : comments.length > 0 ? (
-                        <div className="mb-3 space-y-2 max-h-48 overflow-auto pr-1">
-                          {comments.map((c) => (
-                            <div key={pickCommentId(c)} className="rounded-xl bg-black/25 border border-white/10 px-3 py-2">
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="text-[11px] font-semibold text-white/85 truncate">
-                                  {pickCommentAuthor(c)}
-                                </span>
-                                <span className="text-[10px] text-white/45">
-                                  {when(c?.created_at)}
-                                </span>
-                              </div>
-                              <div className="mt-1 text-xs text-white/75 whitespace-pre-wrap">
-                                {String(c?.content || "")}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="mb-2 text-xs text-white/45">No comments yet. Be the first.</div>
-                      )}
-
-                      <textarea
-                        value={replyDraft[postKey] ?? ""}
-                        onChange={(e) =>
-                          setReplyDraft((prev) => ({ ...prev, [postKey]: e.target.value }))
-                        }
-                        placeholder="Write a reply…"
-                        rows={3}
-                        className="w-full rounded-xl bg-black/20 border border-white/10 px-4 py-3 text-sm text-white outline-none resize-none"
-                        disabled={isBusy}
-                      />
-
-                      <div className="mt-2 flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setReplyOpen((prev) => ({ ...prev, [postKey]: false }))}
-                          className="flex-1 py-2.5 rounded-xl bg-white/10 text-white text-sm"
-                          disabled={isBusy}
-                        >
-                          Close
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => sendReply(p)}
-                          disabled={isBusy || !(replyDraft[postKey] || "").trim()}
-                          className="flex-1 py-2.5 rounded-xl bg-white text-black text-sm font-semibold disabled:opacity-50 inline-flex items-center justify-center gap-2"
-                        >
-                          <Send className="h-4 w-4" />
-                          {isBusy ? "Sending…" : "Send"}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {tab === "announcements" ? (
-                    <div className="text-[11px] text-white/45 flex items-center gap-2">
-                      <AlertCircle className="h-3 w-3" />
-                      Announcements are identified from admin posts and priority keywords.
-                    </div>
-                  ) : null}
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      )}
+        {parsed.attachments?.[0]?.url ? <img src={parsed.attachments[0].url} alt="community media" className="h-14 w-[72px] shrink-0 rounded-[13px] object-cover" /> : <MoreHorizontal className="h-4 w-4 shrink-0 text-white/32" />}
       </div>
-    </ConsumerShell>
+
+      {parsed.attachments?.length > 1 ? (
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          {parsed.attachments.slice(1, 5).map((item: PostAttachment) => item.type === "video" ? <video key={item.id} src={item.url} controls className="h-20 rounded-[13px] bg-black object-cover" /> : <img key={item.id} src={item.url} alt={item.name || "community media"} className="h-20 w-full rounded-[13px] object-cover" />)}
+        </div>
+      ) : null}
+
+      {isInternalLive ? <div className="mt-3"><LiveSessionPlayer postId={id} userId={userId || null} userName={author} isLive={isLive} initialViewerCount={Number(liveSession?.viewer_count || 0)} hasGuest={Boolean(liveSession?.has_guest)} /></div> : null}
+
+      <div className="mt-2.5 flex items-center justify-between border-t border-white/[0.055] pt-2.5">
+        <span className={cn("rounded-full border px-2 py-0.5 text-[9.5px] capitalize", tone.chip)}>{categoryLabelFor(post, tab)}</span>
+        <div className="flex items-center gap-1.5 text-[11px] text-white/52">
+          <button type="button" onClick={() => onLike(id)} disabled={busy || !id} className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 transition hover:bg-white/[0.055]"><ThumbsUp className="h-3.5 w-3.5" />{likeCount}</button>
+          <button type="button" onClick={() => onToggleComments(id)} disabled={!id} className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 transition hover:bg-white/[0.055]"><MessageCircle className="h-3.5 w-3.5" />{commentCount}</button>
+          <ChevronRight className={cn("h-4 w-4 transition", open && "rotate-90")} />
+        </div>
+      </div>
+
+      {open ? (
+        <div className="mt-2.5 rounded-[16px] border border-white/[0.07] bg-black/20 p-2.5">
+          {comments.length ? <div className="mb-3 max-h-40 space-y-1.5 overflow-auto pr-1">{comments.map((comment: any) => <div key={String(comment.id)} className="rounded-[13px] bg-white/[0.03] px-2.5 py-2"><div className="text-[11px] font-medium text-white/76">{comment.author_name || "Resident"}</div><div className="mt-1 text-[11px] leading-5 text-white/56">{comment.content}</div></div>)}</div> : <div className="mb-3 text-[12px] text-white/40">No comments yet.</div>}
+          <div className="flex items-center gap-2">
+            <input value={commentDraft} onChange={(event) => onCommentDraft(event.target.value)} placeholder="Write a calm reply..." className="h-9 min-w-0 flex-1 rounded-full border border-white/[0.08] bg-white/[0.035] px-3.5 text-[12px] text-white outline-none placeholder:text-white/32" />
+            <button type="button" onClick={onSendComment} disabled={busy || !commentDraft.trim()} className="grid h-9 w-9 place-items-center rounded-full bg-white text-black disabled:opacity-50"><Send className="h-4 w-4" /></button>
+          </div>
+        </div>
+      ) : null}
+    </article>
   );
 }
