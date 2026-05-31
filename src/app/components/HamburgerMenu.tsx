@@ -15,13 +15,14 @@ import { MdOutlinePerson, MdSettings } from "react-icons/md";
 import { decodeToken } from "@/lib/auth";
 
 // ✅ NEW: menu icons
-import { FiGrid, FiCpu, FiCreditCard, FiUsers, FiKey, FiTool, FiHome, FiZap, FiShield, FiDroplet, FiBarChart2, FiUser } from "react-icons/fi";
+import { FiGrid, FiCpu, FiCreditCard, FiUsers, FiKey, FiTool, FiHome, FiZap, FiShield, FiDroplet, FiBarChart2, FiUser, FiMoon } from "react-icons/fi";
 import { CONSUMER_MODULES, visibleModules, type ModuleDefinition } from "@/lib/moduleRegistry";
 
 const MODULE_ICONS: Record<string, any> = {
   home: FiGrid,
   rooms: FiHome,
   devices: FiCpu,
+  scenes: FiMoon,
   security: FiShield,
   utilities: FiDroplet,
   maintenance: FiTool,

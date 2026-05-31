@@ -7,7 +7,7 @@ import ConsumerShell from "@/app/components/ConsumerShell";
 import useAuth from "@/hooks/useAuth";
 import API from "@/services/api";
 import { getGenericIntegration, getTuyaIntegration } from "@/services/integrationsService";
-import { getOyiWatchSyncStatus } from "@/services/watchSyncService";
+import { describeOyiWatchStatus, getOyiWatchSyncStatus, isOyiWatchConnected } from "@/services/watchSyncService";
 
 type IntegrationItem = {
   key: string;
@@ -17,14 +17,27 @@ type IntegrationItem = {
   icon: any;
 };
 
-function isConnected(value: any) {
-  return Boolean(value?.connected || value?.synced || value?.watchAppInstalled || value?.reachable);
-}
-
 export default function DeviceIntegrationsPage() {
   const { token, ready } = useAuth() as any;
   const [items, setItems] = useState<IntegrationItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncingTuya, setSyncingTuya] = useState(false);
+  const [syncMessage, setSyncMessage] = useState("");
+
+  async function syncTuya() {
+    setSyncingTuya(true);
+    setSyncMessage("");
+    try {
+      const res = await API.post("/me/integrations/tuya/sync");
+      const created = Number(res.data?.created || 0);
+      const updated = Number(res.data?.updated || 0);
+      setSyncMessage(`Tuya sync complete. ${created} new, ${updated} updated.`);
+    } catch (err: any) {
+      setSyncMessage(err?.response?.data?.error || err?.message || "Tuya sync failed.");
+    } finally {
+      setSyncingTuya(false);
+    }
+  }
 
   useEffect(() => {
     if (!ready || !token) return;
@@ -47,7 +60,7 @@ export default function DeviceIntegrationsPage() {
       const alexaValue: any = alexa.status === "fulfilled" ? alexa.value : null;
       const edgeValue: any = edge.status === "fulfilled" ? edge.value : null;
       setItems([
-        { key: "watch", label: "Oyi Watch", status: isConnected(watchValue) ? "Connected" : "Not Connected", detail: watchValue?.lastSyncAt ? `Last sync ${new Date(watchValue.lastSyncAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : null, icon: Watch },
+        { key: "watch", label: "Oyi Watch", status: isOyiWatchConnected(watchValue) ? "Connected" : "Not Connected", detail: describeOyiWatchStatus(watchValue), icon: Watch },
         { key: "tuya", label: "Tuya / Smart Life", status: tuyaValue?.connected ? "Connected" : "Not Connected", detail: tuyaValue?.masked_uid || null, icon: Plug },
         { key: "apple", label: "Apple Home", status: appleValue?.connected ? "Connected" : "Not Connected", detail: appleValue?.masked_external_user_id || null, icon: Home },
         { key: "google", label: "Google Home", status: googleValue?.connected ? "Connected" : "Not Connected", detail: googleValue?.masked_external_user_id || null, icon: Cloud },
@@ -73,10 +86,15 @@ export default function DeviceIntegrationsPage() {
             <div key={item.key} className={`flex items-center gap-3 px-3.5 py-3 ${index ? "border-t border-white/[0.055]" : ""}`}>
               <span className={`grid h-9 w-9 place-items-center rounded-full border ${connected ? "border-emerald-300/15 bg-emerald-400/10 text-emerald-200" : "border-white/[0.07] bg-white/[0.035] text-white/48"}`}><Icon className="h-4 w-4" /></span>
               <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-white">{item.label}</span>{item.detail ? <span className="mt-0.5 block truncate text-xs text-white/42">{item.detail}</span> : null}</span>
-              <span className={`rounded-full px-2.5 py-1 text-[10px] font-medium ${connected ? "bg-emerald-400/10 text-emerald-200" : "bg-white/[0.045] text-white/48"}`}>{item.status}</span>
+              {item.key === "tuya" && connected ? (
+                <button type="button" onClick={() => void syncTuya()} disabled={syncingTuya} className="rounded-full border border-sky-300/18 bg-sky-400/10 px-2.5 py-1 text-[10px] font-medium text-sky-100 disabled:opacity-50">
+                  {syncingTuya ? "Syncing" : "Sync"}
+                </button>
+              ) : <span className={`rounded-full px-2.5 py-1 text-[10px] font-medium ${connected ? "bg-emerald-400/10 text-emerald-200" : "bg-white/[0.045] text-white/48"}`}>{item.status}</span>}
             </div>
           );
         })}
+        {syncMessage ? <div className="border-t border-white/[0.055] px-3.5 py-3 text-xs text-white/54">{syncMessage}</div> : null}
       </section>
     </ConsumerShell>
   );

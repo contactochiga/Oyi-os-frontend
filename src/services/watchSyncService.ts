@@ -28,6 +28,12 @@ export type WatchSyncResult = {
   lastSyncError?: string | null;
   lastActivationError?: string | null;
   synced?: boolean;
+  acknowledged?: boolean;
+  connected?: boolean;
+  deliveryState?: "not_connected" | "sync_queued" | "sync_sent" | "waiting_for_watch" | "connected" | "offline" | "sync_failed" | string;
+  lastAcknowledgedAt?: string | null;
+  lastBackendSuccessAt?: string | null;
+  lastWatchError?: string | null;
   reason?: string;
 };
 
@@ -75,6 +81,23 @@ export async function getOyiWatchSyncStatus() {
     return { available: false, reason: "plugin_unavailable" } satisfies WatchSyncResult;
   }
   return withWatchTimeout(OyiWatchSync.status());
+}
+
+export function isOyiWatchConnected(status: WatchSyncResult | null | undefined) {
+  return Boolean(status?.connected || status?.acknowledged);
+}
+
+export function describeOyiWatchStatus(status: WatchSyncResult | null | undefined) {
+  if (!status?.available) return "Not Connected";
+  if (isOyiWatchConnected(status)) return "Connected";
+  if (status.deliveryState === "offline" && status.lastBackendSuccessAt) {
+    return `Offline · Last synced ${new Date(status.lastBackendSuccessAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+  }
+  if (status.lastWatchError || status.lastSyncError || status.error || status.deliveryState === "sync_failed") return "Sync Failed";
+  if (status.deliveryState === "sync_queued") return "Sync Queued";
+  if (status.deliveryState === "sync_sent") return "Sync Sent";
+  if (status.deliveryState === "waiting_for_watch" || status.tokenSent || status.backendURLSent) return "Waiting for Watch";
+  return "Not Connected";
 }
 
 function withWatchTimeout<T extends WatchSyncResult>(request: Promise<T>, timeoutMs = 5000): Promise<T | WatchSyncResult> {

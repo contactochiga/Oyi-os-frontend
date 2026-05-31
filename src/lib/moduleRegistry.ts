@@ -45,6 +45,7 @@ export const CONSUMER_MODULES: ModuleDefinition[] = [
   { key: "home", label: "Home Overview", href: "/home", domain: "Smart Home Modules", anyOf: ["homes.read", "devices.read"] },
   { key: "rooms", label: "Rooms & Spaces", href: "/rooms", domain: "Smart Home Modules", anyOf: ["homes.read"] },
   { key: "devices", label: "Smart Devices", href: "/devices", domain: "Smart Home Modules", badgeKey: "devices", anyOf: ["devices.read"] },
+  { key: "scenes", label: "Scenes & Automations", href: "/scenes", domain: "Smart Home Modules", anyOf: ["devices.read"] },
   { key: "security", label: "Security & Access", href: "/security", domain: "Smart Home Modules", badgeKey: "visitors", anyOf: ["visitors.create", "visitors.manage", "cameras.view"] },
   { key: "utilities", label: "Utilities", href: "/utilities", domain: "Smart Home Modules", anyOf: ["devices.read", "homes.read"] },
   { key: "maintenance", label: "Maintenance & Support", href: "/maintenance", domain: "Smart Home Modules", badgeKey: "maintenance", anyOf: ["support.read"] },

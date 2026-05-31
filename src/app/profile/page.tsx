@@ -29,7 +29,7 @@ import { deviceService } from "@/services/deviceService";
 import { homeAccessService, type HomeAccessMember } from "@/services/homeAccessService";
 import { walletService } from "@/services/walletService";
 import { getGenericIntegration, getTuyaIntegration } from "@/services/integrationsService";
-import { getOyiWatchSyncStatus, syncOyiWatchSession, type WatchSyncResult } from "@/services/watchSyncService";
+import { describeOyiWatchStatus, getOyiWatchSyncStatus, isOyiWatchConnected, syncOyiWatchSession, type WatchSyncResult } from "@/services/watchSyncService";
 import { listMyNotifications, type AppNotification } from "@/services/notificationsService";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import API from "@/services/api";
@@ -76,10 +76,6 @@ function homeLabel(home: any, fallback?: string | null) {
   return String(home?.name || blockUnit || fallback || "No active home").trim();
 }
 
-function isConnected(value: any) {
-  return Boolean(value?.connected || value?.synced || value?.reachable || value?.tokenSent);
-}
-
 function appEnvironment() {
   const env = process.env.NEXT_PUBLIC_APP_ENV || process.env.NODE_ENV || "development";
   if (env === "production") return "Production";
@@ -106,6 +102,7 @@ export default function ProfilePage() {
   const [editOpen, setEditOpen] = useState(false);
   const [editName, setEditName] = useState("");
   const [editUsername, setEditUsername] = useState("");
+  const [editPhone, setEditPhone] = useState("");
   const [editBusy, setEditBusy] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -134,7 +131,8 @@ export default function ProfilePage() {
   useEffect(() => {
     setEditName(name);
     setEditUsername(String((user as any)?.username || "").trim());
-  }, [name, user]);
+    setEditPhone(phone);
+  }, [name, phone, user]);
 
   useEffect(() => {
     if (!ready || !token) return;
@@ -176,8 +174,8 @@ export default function ProfilePage() {
       if (cancelled) return;
       next.push({
         label: "Oyi Watch",
-        connected: isConnected(watchStatus),
-        detail: watchStatus?.lastSyncAt ? `Last sync ${new Date(watchStatus.lastSyncAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : null,
+        connected: isOyiWatchConnected(watchStatus),
+        detail: describeOyiWatchStatus(watchStatus),
       });
       const tuyaValue: any = tuya.status === "fulfilled" ? tuya.value : null;
       const alexaValue: any = alexa.status === "fulfilled" ? alexa.value : null;
@@ -218,6 +216,7 @@ export default function ProfilePage() {
     const result = await updateMyProfile({
       full_name: editName.trim(),
       username: editUsername.trim() || undefined,
+      phone: editPhone.trim() || undefined,
     });
     setEditBusy(false);
     if ((result as any)?.error) {
@@ -229,6 +228,7 @@ export default function ProfilePage() {
       ...((result as any)?.user || {}),
       full_name: editName.trim(),
       username: editUsername.trim() || (user as any)?.username,
+      phone: editPhone.trim(),
     };
     if (token && typeof setSession === "function") setSession(token, nextUser);
     setEditOpen(false);
@@ -317,27 +317,38 @@ export default function ProfilePage() {
       setWatchSyncMessage("Install Oyi Watch on your paired Apple Watch, then sync again.");
       return;
     }
-    setWatchSyncMessage(result.reachable
-      ? "Watch session synced."
-      : "Session queued securely. Open Oyi Watch to complete sync.");
+    setWatchSyncMessage(isOyiWatchConnected(result)
+      ? "Watch connected and live home status confirmed."
+      : `${describeOyiWatchStatus(result)}. Open Oyi Watch to complete sync.`);
+  }
+
+  async function handleRefreshWatchStatus() {
+    setWatchSyncBusy(true);
+    const result = await getOyiWatchSyncStatus();
+    setWatchSyncBusy(false);
+    setWatchStatus(result);
+    setWatchSyncMessage(describeOyiWatchStatus(result));
   }
 
   function renderPanel() {
     if (!panel) return null;
     const title = menu.find((item) => item.key === panel)?.label || "Profile Information";
     return (
-      <div className="fixed inset-0 z-[120] flex items-end bg-black/50 px-4 pb-4 backdrop-blur-md sm:items-center sm:justify-center">
-        <section className="w-full max-w-[430px] rounded-[26px] border border-white/[0.08] bg-[#050a12]/94 p-4 shadow-[0_24px_78px_rgba(0,0,0,0.58)]">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold tracking-[-0.04em] text-white">{title}</h2>
-            <button type="button" onClick={() => setPanel(null)} className="rounded-full bg-white/[0.06] px-3 py-1.5 text-xs text-white/60">Close</button>
+      <div className="fixed inset-0 z-[120] flex items-end bg-black/50 px-4 pb-[calc(12px+var(--sab))] backdrop-blur-md sm:items-center sm:justify-center">
+        <section className="flex max-h-[min(74dvh,620px)] w-full max-w-[430px] flex-col overflow-hidden rounded-[24px] border border-white/[0.08] bg-[#050a12]/94 shadow-[0_24px_78px_rgba(0,0,0,0.58)]">
+          <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-white/[0.055] bg-[#050a12]/96 px-3.5 py-3 backdrop-blur-2xl">
+            <h2 className="text-[17px] font-semibold tracking-[-0.04em] text-white">{title}</h2>
+            <button type="button" onClick={() => setPanel(null)} className="rounded-full bg-white/[0.06] px-3 py-1.5 text-xs text-white/60">Back</button>
           </div>
-          <div className="mt-4 space-y-2.5 text-sm">
+          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3.5 py-3 text-sm" style={{ WebkitOverflowScrolling: "touch" }}>
             {panel === "personal" ? (
               <>
                 <InfoRow label="Name" value={name} />
                 <InfoRow label="Email" value={email || "Not provided"} />
-                <InfoRow label="Phone" value={phone || "Not provided"} />
+                <label className="block">
+                  <span className="text-[11px] uppercase tracking-[0.16em] text-white/35">Phone</span>
+                  <input value={editPhone} onChange={(event) => setEditPhone(event.target.value)} placeholder="Not provided" className="mt-1.5 w-full rounded-[16px] border border-white/[0.08] bg-white/[0.045] px-3.5 py-3 text-sm text-white outline-none transition focus:border-sky-300/35" />
+                </label>
                 <InfoRow label="Address" value={address || "Not provided"} />
                 <button type="button" onClick={() => { setPanel(null); setEditOpen(true); }} className="w-full rounded-full bg-white px-4 py-2.5 text-sm font-semibold text-black">Edit profile</button>
               </>
@@ -379,8 +390,17 @@ export default function ProfilePage() {
             {panel === "integrations" ? (
               <>
                 {integrations.map((item) => <InfoRow key={item.label} label={item.label} value={item.connected ? "Connected" : "Not Connected"} detail={item.detail || undefined} />)}
+                <InfoRow label="Watch state" value={describeOyiWatchStatus(watchStatus)} />
+                <InfoRow label="Paired" value={watchStatus?.paired ? "Yes" : "No"} />
+                <InfoRow label="Watch app" value={watchStatus?.watchAppInstalled || watchStatus?.installed ? "Installed" : "Not installed"} />
+                <InfoRow label="Reachable now" value={watchStatus?.reachable ? "Yes" : "No"} />
+                <InfoRow label="Last acknowledged" value={watchStatus?.lastAcknowledgedAt ? new Date(watchStatus.lastAcknowledgedAt).toLocaleString() : "Not yet"} />
+                <InfoRow label="Last backend fetch" value={watchStatus?.lastBackendSuccessAt ? new Date(watchStatus.lastBackendSuccessAt).toLocaleString() : "Not yet"} />
                 <button type="button" onClick={() => void handleSyncWatch()} disabled={watchSyncBusy} className="w-full rounded-full bg-white px-4 py-2.5 text-sm font-semibold text-black transition disabled:cursor-wait disabled:opacity-60">
                   {watchSyncBusy ? "Syncing Watch..." : "Sync Watch"}
+                </button>
+                <button type="button" onClick={() => void handleRefreshWatchStatus()} disabled={watchSyncBusy} className="w-full rounded-full border border-white/[0.1] bg-white/[0.045] px-4 py-2.5 text-sm font-semibold text-white transition disabled:cursor-wait disabled:opacity-60">
+                  Refresh Watch Status
                 </button>
                 {watchSyncMessage ? <p className="px-1 text-xs leading-5 text-white/54">{watchSyncMessage}</p> : null}
               </>

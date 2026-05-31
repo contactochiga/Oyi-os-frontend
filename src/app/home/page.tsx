@@ -5,11 +5,9 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, useReducedMotion } from "framer-motion";
 import {
-  ArrowUp,
   ChevronDown,
   Check,
   Leaf,
-  Loader2,
   Lightbulb,
   MessageCircle,
   Moon,
@@ -46,20 +44,10 @@ import {
   listMyNotifications,
   type AppNotification,
 } from "@/services/notificationsService";
-import { aiService, type AiChatResponse } from "@/services/aiService";
 import messagesService from "@/services/messagesService";
-import { getOyiWatchSyncStatus } from "@/services/watchSyncService";
+import { describeOyiWatchStatus, getOyiWatchSyncStatus } from "@/services/watchSyncService";
 import useActiveContext, { type AvailableHomeContext } from "@/hooks/useActiveContext";
 import useAuth from "../../hooks/useAuth";
-
-type VoiceModeState =
-  | "idle"
-  | "listening"
-  | "thinking"
-  | "executing"
-  | "success"
-  | "failed"
-  | "confirmation_required";
 
 function isOnline(device: any) {
   if (typeof device?.online === "boolean") return device.online;
@@ -79,25 +67,6 @@ function asArray<T = any>(value: any): T[] {
   if (Array.isArray(value?.requests)) return value.requests;
   if (Array.isArray(value?.data)) return value.data;
   return [];
-}
-
-function aiCommandHint(tool: Record<string, any>) {
-  if (tool.status === "executed") return tool.summary || "Command completed.";
-  if (tool.status === "pending_confirmation") return "Confirmation needed.";
-  if (tool.status === "denied") {
-    return tool.reason === "missing_permission"
-      ? "You do not have permission for that action."
-      : "That action is not available.";
-  }
-  if (tool.status === "failed") return tool.error || "The command could not complete.";
-  return tool.summary || "Oyi processed that command.";
-}
-
-function aiReplyFromResponse(resp: AiChatResponse) {
-  const details = (resp.tools || []).map(aiCommandHint).filter(Boolean);
-  return [resp.reply, ...details.filter((line) => line !== resp.reply)]
-    .filter(Boolean)
-    .join("\n");
 }
 
 function getGreetingPeriod() {
@@ -168,20 +137,14 @@ export default function HomePage() {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [messageUnread, setMessageUnread] = useState<number | null>(null);
-  const [watchConnected, setWatchConnected] = useState<boolean | null>(null);
+  const [watchLabel, setWatchLabel] = useState("Unavailable");
   const [contextOpen, setContextOpen] = useState(false);
   const [contextSwitching, setContextSwitching] = useState(false);
   const [contextError, setContextError] = useState<string | null>(null);
   const [dashBusy, setDashBusy] = useState(false);
   const [dashErr, setDashErr] = useState<string | null>(null);
   const [quickPage, setQuickPage] = useState(0);
-  const [voiceOpen, setVoiceOpen] = useState(false);
-  const [voiceState, setVoiceState] = useState<VoiceModeState>("idle");
-  const [voiceInput, setVoiceInput] = useState("");
-  const [voiceMessage, setVoiceMessage] = useState("Tap and speak to Oyi.");
-  const [voiceConfirmations, setVoiceConfirmations] = useState<Array<Record<string, any>>>([]);
   const quickControlsRef = useRef<HTMLDivElement | null>(null);
-  const recognitionRef = useRef<any>(null);
 
   const estateId = useMemo(() => {
     const fromContext = activeContext.estate_id;
@@ -272,11 +235,7 @@ export default function HomePage() {
       }
       if (watchRes.status === "fulfilled") {
         const value = watchRes.value as any;
-        setWatchConnected(
-          value
-            ? Boolean(value.synced || value.reachable || value.watchAppInstalled || value.installed)
-            : null,
-        );
+        setWatchLabel(value ? describeOyiWatchStatus(value) : "Unavailable");
       }
     } catch (err: any) {
       setDashErr(err?.message || "Home context sync unavailable");
@@ -339,141 +298,6 @@ export default function HomePage() {
     } finally {
       setDeviceCommandBusy(null);
       refreshDevicePanelData();
-    }
-  }
-
-  function openOyiWithPrompt(prompt?: string) {
-    const value = String(prompt || "").trim();
-    router.push(value ? `/ai?prompt=${encodeURIComponent(value)}` : "/ai");
-  }
-
-  const aiContext = useMemo(
-    () => ({
-      surface: "consumer",
-      scope: "home",
-      estateId: (user as any)?.estate_id || estateId || null,
-      homeId: homeId || (user as any)?.home_id || null,
-    }),
-    [user, estateId, homeId],
-  );
-
-  function finishVoiceMode(delay = 1800) {
-    window.setTimeout(() => {
-      setVoiceOpen(false);
-      setVoiceState("idle");
-      setVoiceInput("");
-      setVoiceConfirmations([]);
-      setVoiceMessage("Tap and speak to Oyi.");
-    }, delay);
-  }
-
-  function handleVoiceResponse(resp: AiChatResponse) {
-    const failed = (resp.tools || []).some((tool) => tool.status === "failed");
-    const denied = (resp.tools || []).some((tool) => tool.status === "denied");
-    const confirmations = resp.confirmations || [];
-    const message = aiReplyFromResponse(resp) || "Done.";
-    setVoiceMessage(message);
-    setVoiceConfirmations(confirmations);
-    if (confirmations.length) {
-      setVoiceState("confirmation_required");
-      return;
-    }
-    setVoiceState(failed || denied ? "failed" : "success");
-    refreshDevicePanelData();
-    refreshDashboardData();
-    finishVoiceMode(failed || denied ? 2600 : 1800);
-  }
-
-  async function runVoiceCommand(command: string) {
-    const clean = command.trim();
-    if (!clean) {
-      setVoiceMessage("Type a command or try speaking again.");
-      setVoiceState("listening");
-      return;
-    }
-    setVoiceInput(clean);
-    setVoiceState("thinking");
-    setVoiceMessage(`Heard: “${clean}”`);
-    try {
-      setVoiceState("executing");
-      setVoiceMessage("Working…");
-      const resp = await aiService.chat(clean, aiContext);
-      handleVoiceResponse(resp);
-    } catch {
-      setVoiceState("failed");
-      setVoiceMessage("Oyi could not reach the command layer.");
-    }
-  }
-
-  function startVoiceMode() {
-    setVoiceOpen(true);
-    setVoiceState("listening");
-    setVoiceMessage("Listening…");
-    setVoiceInput("");
-    setVoiceConfirmations([]);
-
-    const SpeechRecognition =
-      typeof window !== "undefined"
-        ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-        : null;
-
-    if (!SpeechRecognition) {
-      setVoiceMessage("Voice is unavailable here. Type a command to test Oyi.");
-      return;
-    }
-
-    try {
-      const recognition = new SpeechRecognition();
-      recognitionRef.current = recognition;
-      recognition.lang = "en-US";
-      recognition.interimResults = false;
-      recognition.maxAlternatives = 1;
-      recognition.onresult = (event: any) => {
-        const transcript = String(event?.results?.[0]?.[0]?.transcript || "").trim();
-        void runVoiceCommand(transcript);
-      };
-      recognition.onerror = () => {
-        setVoiceMessage("Voice did not start. Type a command to test Oyi.");
-        setVoiceState("listening");
-      };
-      recognition.onend = () => {
-        recognitionRef.current = null;
-      };
-      recognition.start();
-    } catch {
-      setVoiceMessage("Voice is unavailable here. Type a command to test Oyi.");
-    }
-  }
-
-  function closeVoiceMode() {
-    try {
-      recognitionRef.current?.stop?.();
-    } catch {}
-    setVoiceOpen(false);
-    setVoiceState("idle");
-    setVoiceInput("");
-    setVoiceConfirmations([]);
-    setVoiceMessage("Tap and speak to Oyi.");
-  }
-
-  async function decideVoiceConfirmation(ledgerId: string, decision: "confirm" | "cancel") {
-    if (!ledgerId) return;
-    setVoiceState("executing");
-    setVoiceMessage(decision === "confirm" ? "Confirmed. Working…" : "Cancelling…");
-    try {
-      const result = decision === "confirm" ? await aiService.confirm(ledgerId) : await aiService.cancel(ledgerId);
-      setVoiceConfirmations([]);
-      setVoiceState(decision === "confirm" ? "success" : "failed");
-      setVoiceMessage(
-        result?.record?.result_summary ||
-          (decision === "confirm" ? "Command approved and processed." : "Cancelled. No action was executed."),
-      );
-      refreshDevicePanelData();
-      refreshDashboardData();
-      finishVoiceMode(2200);
-    } catch {
-      setVoiceState("failed");
-      setVoiceMessage("That confirmation could not be completed safely.");
     }
   }
 
@@ -570,7 +394,6 @@ export default function HomePage() {
   const maintenanceLabel = openMaintenance ? `${openMaintenance} open` : "None open";
   const communityLabel = communityPosts.length ? `${communityPosts.length} update${communityPosts.length > 1 ? "s" : ""}` : "No updates";
   const visitorLabel = activeVisitors ? `${activeVisitors} active` : "0 active";
-  const watchLabel = watchConnected === null ? "Unavailable" : watchConnected ? "Connected" : "Not connected";
   const homeStateItems = [
     {
       label: "Atmosphere",
@@ -673,7 +496,7 @@ export default function HomePage() {
             WebkitOverflowScrolling: "touch",
           }}
         >
-          <div className={`oyi-living-page oyi-page-fade mx-auto max-w-[430px] pb-5 transition duration-300 ${voiceOpen ? "scale-[0.985] blur-[2px] opacity-55" : ""}`}>
+          <div className="oyi-living-page oyi-page-fade mx-auto max-w-[430px] pb-5 transition duration-300">
             <motion.section
               initial={reduceMotion ? false : { opacity: 0, y: 18 }}
               animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
@@ -694,8 +517,8 @@ export default function HomePage() {
 
               <button
                 type="button"
-                onClick={startVoiceMode}
-                aria-label="Start Oyi voice mode"
+                onClick={() => router.push("/ai")}
+                aria-label="Open Oyi intelligence"
                 className="group relative mx-auto mt-6 grid h-[166px] w-[166px] place-items-center rounded-full transition active:scale-[0.985] sm:h-[182px] sm:w-[182px]"
               >
                 <span className="absolute inset-[-20px] rounded-full bg-sky-500/9 blur-2xl transition group-active:bg-sky-400/14" />
@@ -791,9 +614,9 @@ export default function HomePage() {
                 <QuickControl
                   icon={Moon}
                   label="Scenes"
-                  value="Movie Time"
+                  value="Scenes"
                   tone="violet"
-                  onClick={() => openOyiWithPrompt("Activate movie mode")}
+                  onClick={() => router.push("/scenes")}
                 />
               </div>
 
@@ -917,87 +740,6 @@ export default function HomePage() {
                 )}
               </div>
               {contextError ? <p className="mt-3 text-xs text-amber-100/70">{contextError}</p> : null}
-            </div>
-          </div>
-        ) : null}
-
-        {voiceOpen ? (
-          <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/46 px-5 backdrop-blur-md">
-            <div className="relative w-full max-w-[360px] overflow-hidden rounded-[34px] border border-white/[0.09] bg-[#050a12]/88 p-5 text-center shadow-[0_28px_90px_rgba(0,0,0,0.62)] backdrop-blur-2xl">
-              <button
-                type="button"
-                onClick={closeVoiceMode}
-                className="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-full bg-white/[0.06] text-white/50 transition hover:bg-white/[0.1]"
-                aria-label="Close Oyi voice mode"
-              >
-                <X className="h-4 w-4" />
-              </button>
-              <div className="mx-auto mt-3 grid h-28 w-28 place-items-center rounded-full border border-sky-300/58 bg-[radial-gradient(circle_at_45%_32%,rgba(255,255,255,0.16),transparent_17%),radial-gradient(circle_at_center,rgba(32,129,255,0.38),rgba(3,8,16,0.96)_68%)] shadow-[0_0_46px_rgba(0,132,255,0.48)]">
-                {voiceState === "thinking" || voiceState === "executing" ? (
-                  <Loader2 className="h-9 w-9 animate-spin text-sky-100" />
-                ) : voiceState === "success" ? (
-                  <Check className="h-10 w-10 text-emerald-200" />
-                ) : voiceState === "failed" ? (
-                  <X className="h-10 w-10 text-rose-200" />
-                ) : (
-                  <span className="text-[28px] font-semibold tracking-[-0.08em]">Oyi</span>
-                )}
-              </div>
-              <div className="mt-5 text-[11px] uppercase tracking-[0.22em] text-sky-100/50">
-                {voiceState.replaceAll("_", " ")}
-              </div>
-              <div className="mt-2 whitespace-pre-line text-[20px] font-semibold tracking-[-0.035em] text-white">
-                {voiceMessage}
-              </div>
-              {voiceState === "listening" ? (
-                <form
-                  className="mt-5 flex items-center gap-2 rounded-[22px] border border-white/[0.07] bg-black/26 p-2"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void runVoiceCommand(voiceInput || "Turn off living room light");
-                  }}
-                >
-                  <input
-                    value={voiceInput}
-                    onChange={(event) => setVoiceInput(event.target.value)}
-                    placeholder="Type test command…"
-                    className="min-w-0 flex-1 bg-transparent px-2 text-sm text-white outline-none placeholder:text-white/30"
-                  />
-                  <button type="submit" className="grid h-9 w-9 place-items-center rounded-full bg-sky-400 text-black">
-                    <ArrowUp className="h-4 w-4" />
-                  </button>
-                </form>
-              ) : null}
-              {voiceState === "confirmation_required" ? (
-                <div className="mt-5 space-y-3">
-                  {voiceConfirmations.map((item, index) => {
-                    const ledgerId = String(item.ledger_id || item.id || "");
-                    return (
-                      <div key={ledgerId || index} className="rounded-[22px] border border-amber-300/18 bg-amber-300/[0.08] p-3">
-                        <div className="text-sm font-medium text-amber-100">Confirm this action?</div>
-                        <div className="mt-3 flex justify-center gap-2">
-                          <button
-                            type="button"
-                            disabled={!ledgerId}
-                            onClick={() => decideVoiceConfirmation(ledgerId, "confirm")}
-                            className="rounded-full bg-white px-4 py-2 text-xs font-semibold text-black disabled:opacity-40"
-                          >
-                            Confirm
-                          </button>
-                          <button
-                            type="button"
-                            disabled={!ledgerId}
-                            onClick={() => decideVoiceConfirmation(ledgerId, "cancel")}
-                            className="rounded-full border border-white/10 bg-white/[0.06] px-4 py-2 text-xs text-white/70 disabled:opacity-40"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : null}
             </div>
           </div>
         ) : null}

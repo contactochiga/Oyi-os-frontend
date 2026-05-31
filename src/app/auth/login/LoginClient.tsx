@@ -83,6 +83,10 @@ export default function LoginClient() {
           email: (u as any)?.email ?? decoded.email ?? email.trim(),
           role: (u as any)?.role ?? decoded.role,
           full_name: (u as any)?.full_name ?? decoded.full_name,
+          username: (u as any)?.username ?? decoded.username,
+          phone: (u as any)?.phone ?? decoded.phone,
+          avatar_url: (u as any)?.avatar_url ?? decoded.avatar_url,
+          profile_image_url: (u as any)?.profile_image_url ?? decoded.profile_image_url,
           estate_id:
             (u as any)?.estate_id ?? estate?.id ?? payload?.estate_id ?? decoded.estate_id,
           home_id:

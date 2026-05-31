@@ -265,3 +265,29 @@ xcodebuild -workspace ios/App/App.xcworkspace -list
 xcodebuild -workspace ios/App/App.xcworkspace -scheme App -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO
 xcodebuild -workspace ios/App/App.xcworkspace -scheme OyiWatch -sdk watchsimulator -destination 'generic/platform=watchOS Simulator' build CODE_SIGNING_ALLOWED=NO
 ```
+
+## Phase 2 sync acknowledgement
+
+`Sync Watch` is a delivery request, not proof that the watch is live. The iPhone now reports `Connected` only after Oyi Watch:
+
+1. Receives the secure session through WatchConnectivity.
+2. Stores the backend URL and bearer token in Keychain.
+3. Fetches `GET /watch/home-status` successfully.
+4. Sends an acknowledgement back to the iPhone.
+
+The acknowledgement and last successful backend timestamp are persisted locally. If the backend becomes unavailable after a successful sync, the watch shows `Offline` with the last sync time and pauses actions.
+
+## Notification foundation
+
+The native watch app registers watchOS notification categories for:
+
+- `OYI_VISITOR_ALERT`
+- `OYI_SECURITY_ALERT`
+- `OYI_ENVIRONMENT_ALERT`
+- `OYI_DEVICE_ALERT`
+
+Opening one routes the watch into its alert state. Push delivery and server-side category assignment still require production APNs configuration.
+
+## App icon assets required before App Store submission
+
+The current `Assets.xcassets/AppIcon.appiconset` contains catalog metadata but no production image files. Add the final Oyi Watch artwork in Xcode so the asset catalog supplies all sizes required by the selected watchOS SDK, including notification, companion settings, home screen, short-look, and App Store marketing variants. Use a square master asset with no transparency and let Xcode validate the exact required slots for the active watchOS deployment target.

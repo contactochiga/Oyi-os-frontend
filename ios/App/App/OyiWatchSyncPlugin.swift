@@ -12,6 +12,12 @@ public class OyiWatchSyncPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate 
     private var lastSyncAt: String?
     private var lastTokenSent = false
     private var lastBackendSent = false
+    private var lastAcknowledgedAt: String?
+    private var lastBackendSuccessAt: String?
+    private var lastWatchError: String?
+    private var deliveryState = "not_connected"
+    private let defaults = UserDefaults.standard
+    private let acknowledgementWindow: TimeInterval = 24 * 60 * 60
 
     public let identifier = "OyiWatchSyncPlugin"
     public let jsName = "OyiWatchSync"
@@ -27,6 +33,7 @@ public class OyiWatchSyncPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate 
 
     public override func load() {
         super.load()
+        restorePersistedStatus()
         activateSessionIfNeeded()
     }
 
@@ -61,7 +68,7 @@ public class OyiWatchSyncPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate 
         }
         activateSessionIfNeeded { [weak self] activatedSession in
             guard let self else { return }
-            call.resolve(self.statusPayload(session: activatedSession, synced: false))
+            call.resolve(self.statusPayload(session: activatedSession))
         }
     }
 
@@ -76,6 +83,8 @@ public class OyiWatchSyncPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate 
         lastSyncAt = sentAt
         lastTokenSent = !bearerToken.isEmpty
         lastBackendSent = !backendBaseURL.isEmpty
+        deliveryState = "sync_queued"
+        persistStatus()
 
         var payload: [String: Any] = [
             "backendBaseURL": backendBaseURL,
@@ -105,14 +114,22 @@ public class OyiWatchSyncPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate 
 
         if session.isReachable {
             usedSendMessage = true
-            session.sendMessage(payload, replyHandler: nil) { [weak self] error in
+            deliveryState = "sync_sent"
+            session.sendMessage(payload, replyHandler: { [weak self] reply in
+                DispatchQueue.main.async {
+                    self?.handleAcknowledgement(reply)
+                }
+            }) { [weak self] error in
                 DispatchQueue.main.async {
                     self?.lastSyncError = error.localizedDescription
+                    self?.deliveryState = "sync_failed"
+                    self?.persistStatus()
                 }
             }
         }
 
-        var result = statusPayload(session: session, synced: usedApplicationContext || usedTransferUserInfo || usedSendMessage)
+        persistStatus()
+        var result = statusPayload(session: session)
         result["usedApplicationContext"] = usedApplicationContext
         result["usedTransferUserInfo"] = usedTransferUserInfo
         result["usedSendMessage"] = usedSendMessage
@@ -121,7 +138,8 @@ public class OyiWatchSyncPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate 
         return result
     }
 
-    private func statusPayload(session: WCSession, synced: Bool) -> [String: Any] {
+    private func statusPayload(session: WCSession) -> [String: Any] {
+        let connected = hasRecentAcknowledgement && deliveryState == "connected"
         return [
             "available": true,
             "paired": session.isPaired,
@@ -135,8 +153,54 @@ public class OyiWatchSyncPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate 
             "lastSyncAt": lastSyncAt as Any,
             "lastSyncError": lastSyncError as Any,
             "lastActivationError": lastActivationError as Any,
-            "synced": synced
+            "acknowledged": connected,
+            "connected": connected,
+            "synced": connected,
+            "deliveryState": deliveryState,
+            "lastAcknowledgedAt": lastAcknowledgedAt as Any,
+            "lastBackendSuccessAt": lastBackendSuccessAt as Any,
+            "lastWatchError": lastWatchError as Any
         ]
+    }
+
+    private var hasRecentAcknowledgement: Bool {
+        guard let value = lastBackendSuccessAt ?? lastAcknowledgedAt,
+              let date = ISO8601DateFormatter().date(from: value) else { return false }
+        return Date().timeIntervalSince(date) <= acknowledgementWindow
+    }
+
+    private func handleAcknowledgement(_ payload: [String: Any]) {
+        let acknowledgement = payload["oyiWatchAck"] as? [String: Any] ?? payload
+        guard String(describing: acknowledgement["type"] ?? "") == "oyi.watch.sync.ack" else { return }
+        lastAcknowledgedAt = acknowledgement["acknowledgedAt"] as? String ?? ISO8601DateFormatter().string(from: Date())
+        lastBackendSuccessAt = acknowledgement["backendSuccessAt"] as? String
+        lastWatchError = acknowledgement["error"] as? String
+        if let lastWatchError, !lastWatchError.isEmpty {
+            deliveryState = lastBackendSuccessAt == nil ? "sync_failed" : "offline"
+        } else {
+            deliveryState = lastBackendSuccessAt == nil ? "waiting_for_watch" : "connected"
+        }
+        persistStatus()
+    }
+
+    private func restorePersistedStatus() {
+        lastSyncAt = defaults.string(forKey: "oyi.watch.lastSyncAt")
+        lastAcknowledgedAt = defaults.string(forKey: "oyi.watch.lastAcknowledgedAt")
+        lastBackendSuccessAt = defaults.string(forKey: "oyi.watch.lastBackendSuccessAt")
+        lastWatchError = defaults.string(forKey: "oyi.watch.lastWatchError")
+        deliveryState = defaults.string(forKey: "oyi.watch.deliveryState") ?? "not_connected"
+        lastTokenSent = defaults.bool(forKey: "oyi.watch.tokenSent")
+        lastBackendSent = defaults.bool(forKey: "oyi.watch.backendSent")
+    }
+
+    private func persistStatus() {
+        defaults.set(lastSyncAt, forKey: "oyi.watch.lastSyncAt")
+        defaults.set(lastAcknowledgedAt, forKey: "oyi.watch.lastAcknowledgedAt")
+        defaults.set(lastBackendSuccessAt, forKey: "oyi.watch.lastBackendSuccessAt")
+        defaults.set(lastWatchError, forKey: "oyi.watch.lastWatchError")
+        defaults.set(deliveryState, forKey: "oyi.watch.deliveryState")
+        defaults.set(lastTokenSent, forKey: "oyi.watch.tokenSent")
+        defaults.set(lastBackendSent, forKey: "oyi.watch.backendSent")
     }
 
     private func activateSessionIfNeeded(completion: ((WCSession) -> Void)? = nil) {
@@ -184,4 +248,16 @@ public class OyiWatchSyncPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate 
 
     public func sessionDidBecomeInactive(_ session: WCSession) {}
     public func sessionDidDeactivate(_ session: WCSession) { session.activate() }
+
+    public func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String : Any]) {
+        DispatchQueue.main.async { [weak self] in self?.handleAcknowledgement(applicationContext) }
+    }
+
+    public func session(_ session: WCSession, didReceiveUserInfo userInfo: [String : Any]) {
+        DispatchQueue.main.async { [weak self] in self?.handleAcknowledgement(userInfo) }
+    }
+
+    public func session(_ session: WCSession, didReceiveMessage message: [String : Any]) {
+        DispatchQueue.main.async { [weak self] in self?.handleAcknowledgement(message) }
+    }
 }

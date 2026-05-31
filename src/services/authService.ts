@@ -69,6 +69,7 @@ export async function signInWithApple() {
 export async function updateMyProfile(payload: {
   username?: string;
   full_name?: string;
+  phone?: string;
 }) {
   try {
     const res = await API.patch("/me/profile", payload);

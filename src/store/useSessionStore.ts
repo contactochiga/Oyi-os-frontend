@@ -9,6 +9,9 @@ export type SessionUser = {
   estate_id?: string;
   home_id?: string;
   full_name?: string;
+  phone?: string;
+  avatar_url?: string | null;
+  profile_image_url?: string | null;
   estate_name?: string;
   unit_name?: string;
   unit_id?: string;
@@ -63,6 +66,9 @@ function deriveUserFromToken(token: string): SessionUser | null {
     home_id: decoded.home_id,
     full_name: decoded.full_name,
     username: decoded.username,
+    phone: decoded.phone,
+    avatar_url: decoded.avatar_url,
+    profile_image_url: decoded.profile_image_url,
     estate_name: decoded.estate_name,
     unit_name: decoded.unit_name,
     unit_id: decoded.unit_id,

@@ -1,11 +1,13 @@
 import SwiftUI
 import Foundation
 import Security
+import UserNotifications
 import WatchConnectivity
 import WatchKit
 
 @main
 struct OyiWatchApp: App {
+    @WKExtensionDelegateAdaptor(OyiWatchExtensionDelegate.self) private var extensionDelegate
     @StateObject private var session = OyiWatchSession()
 
     var body: some Scene {
@@ -13,6 +15,45 @@ struct OyiWatchApp: App {
             OyiWatchRootView()
                 .environmentObject(session)
         }
+    }
+}
+
+extension Notification.Name {
+    static let oyiWatchAlertReceived = Notification.Name("oyi.watch.alert.received")
+}
+
+final class OyiWatchExtensionDelegate: NSObject, WKExtensionDelegate, UNUserNotificationCenterDelegate {
+    func applicationDidFinishLaunching() {
+        let center = UNUserNotificationCenter.current()
+        center.delegate = self
+        center.setNotificationCategories([
+            category("OYI_VISITOR_ALERT"),
+            category("OYI_SECURITY_ALERT"),
+            category("OYI_ENVIRONMENT_ALERT"),
+            category("OYI_DEVICE_ALERT")
+        ])
+    }
+
+    private func category(_ identifier: String) -> UNNotificationCategory {
+        UNNotificationCategory(identifier: identifier, actions: [], intentIdentifiers: [], options: [.customDismissAction])
+    }
+
+    private func publish(_ notification: UNNotification) {
+        NotificationCenter.default.post(name: .oyiWatchAlertReceived, object: nil, userInfo: [
+            "title": notification.request.content.title,
+            "detail": notification.request.content.body,
+            "category": notification.request.content.categoryIdentifier
+        ])
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        publish(notification)
+        completionHandler([.sound])
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+        publish(response.notification)
+        completionHandler()
     }
 }
 
@@ -52,6 +93,8 @@ struct OyiQuickAction: Identifiable, Decodable {
     let risk: String
     let enabled: Bool
     let confirmation_required: Bool?
+    let device_id: String?
+    let command: [String: AnyDecodable]?
 }
 
 struct OyiWatchCommandResponse: Decodable {
@@ -85,8 +128,9 @@ struct AnyDecodable: Decodable {
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         if let value = try? container.decode(String.self) { self.value = value }
-        else if let value = try? container.decode(Int.self) { self.value = String(value) }
-        else if let value = try? container.decode(Bool.self) { self.value = value ? "true" : "false" }
+        else if let value = try? container.decode(Bool.self) { self.value = value }
+        else if let value = try? container.decode(Int.self) { self.value = value }
+        else if let value = try? container.decode(Double.self) { self.value = value }
         else { self.value = "" }
     }
 }
@@ -159,8 +203,11 @@ final class OyiWatchSession: ObservableObject {
 
     private var baseURL: URL?
     private var bearerToken: String?
+    private var lastSuccessfulBackendAtISO: String?
+    private let defaults = UserDefaults.standard
 
     init() {
+        restorePersistentState()
         loadConfiguration()
         connectivity.activate()
     }
@@ -242,7 +289,7 @@ final class OyiWatchSession: ObservableObject {
     }
 
     func openQuickActions() {
-        activePage = 1
+        activePage = 2
         if hasBackendConfiguration && connectionState == .connected {
             state = .awareness
             title = "Quick actions"
@@ -293,7 +340,12 @@ final class OyiWatchSession: ObservableObject {
             return
         }
         do {
-            let response: OyiWatchCommandResponse = try await request("/watch/command", method: "POST", body: ["action_id": action.id])
+            var body: [String: Any] = ["action_id": action.id]
+            if let deviceID = action.device_id { body["device_id"] = deviceID }
+            if let command = action.command {
+                body["device_command"] = command.mapValues(\.value)
+            }
+            let response: OyiWatchCommandResponse = try await request("/watch/command", method: "POST", body: body)
             await apply(response)
         } catch {
             await fallbackFailure(error)
@@ -306,7 +358,7 @@ final class OyiWatchSession: ObservableObject {
                 state = .awareness
                 title = "No confirmation"
                 detail = "Nothing is pending"
-                activePage = 2
+                activePage = 3
             }
             return
         }
@@ -348,6 +400,7 @@ final class OyiWatchSession: ObservableObject {
             detail = "No action taken"
             activePage = 0
         }
+        await refreshAfterCommand()
     }
 
     func applyCompanionPayload(_ payload: [String: Any], source: String = "watchconnectivity") async {
@@ -380,6 +433,7 @@ final class OyiWatchSession: ObservableObject {
                 liveDataError = nil
             }
         }
+        persistState()
         if didUpdate { await refresh() }
     }
 
@@ -437,7 +491,7 @@ final class OyiWatchSession: ObservableObject {
                 state = .confirmationRequired
                 title = "Confirm?"
                 pendingConfirmation = confirmation
-                activePage = 2
+                activePage = 3
             } else if response.state == "success" || response.state == "executed" {
                 state = .success
                 title = "Done"
@@ -461,6 +515,8 @@ final class OyiWatchSession: ObservableObject {
     private func fetchStatus() async {
         do {
             let payload: HomeStatusPayload = try await request("/watch/home-status")
+            let successfulAt = ISO8601DateFormatter().string(from: Date())
+            lastSuccessfulBackendAtISO = successfulAt
             await MainActor.run {
                 title = payload.title ?? payload.home_name ?? title
                 detail = payload.summary ?? detail
@@ -474,6 +530,8 @@ final class OyiWatchSession: ObservableObject {
                 liveDataError = nil
                 lastSuccessfulSyncAt = Date().formatted(date: .omitted, time: .shortened)
             }
+            persistState()
+            connectivity.sendAcknowledgement(payload: acknowledgementPayload())
         } catch { await applyLiveDataFailure(error) }
     }
 
@@ -522,7 +580,7 @@ final class OyiWatchSession: ObservableObject {
                 connectionLabel = "Offline"
                 title = title.isEmpty ? "Offline" : title
                 detail = "Offline · Last synced: \(lastSuccessfulSyncAt)"
-                actions = actions.map { OyiQuickAction(id: $0.id, label: $0.label, prompt: $0.prompt, risk: $0.risk, enabled: false, confirmation_required: $0.confirmation_required) }
+                actions = actions.map { OyiQuickAction(id: $0.id, label: $0.label, prompt: $0.prompt, risk: $0.risk, enabled: false, confirmation_required: $0.confirmation_required, device_id: $0.device_id, command: $0.command) }
             } else {
                 connectionState = .syncFailed
                 connectionLabel = "Retry"
@@ -534,14 +592,16 @@ final class OyiWatchSession: ObservableObject {
             liveDataError = error.localizedDescription.isEmpty ? "Backend unavailable" : error.localizedDescription
             lastBackendCallStatus = liveDataError ?? "failed"
         }
+        persistState(error: error.localizedDescription)
+        connectivity.sendAcknowledgement(payload: acknowledgementPayload())
     }
 
-    private func request<T: Decodable>(_ path: String, method: String = "GET", body: [String: String]? = nil) async throws -> T {
+    private func request<T: Decodable>(_ path: String, method: String = "GET", body: [String: Any]? = nil) async throws -> T {
         let data = try await requestRaw(path, method: method, body: body)
         return try JSONDecoder().decode(T.self, from: data)
     }
 
-    private func requestRaw(_ path: String, method: String = "GET", body: [String: String]? = nil) async throws -> Data {
+    private func requestRaw(_ path: String, method: String = "GET", body: [String: Any]? = nil) async throws -> Data {
         guard let baseURL, let bearerToken else { throw URLError(.userAuthenticationRequired) }
         var request = URLRequest(url: baseURL.appendingPathComponent(path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))))
         request.httpMethod = method
@@ -612,6 +672,46 @@ final class OyiWatchSession: ObservableObject {
         }
     }
 
+    func showAlert(title: String, detail: String) {
+        self.title = title.isEmpty ? "Home alert" : title
+        self.detail = detail.isEmpty ? "Open Oyi Home for details." : detail
+        self.state = .alert
+        self.activePage = 0
+    }
+
+    func acknowledgementPayload() -> [String: Any] {
+        var payload: [String: Any] = [
+            "type": "oyi.watch.sync.ack",
+            "acknowledgedAt": ISO8601DateFormatter().string(from: Date()),
+            "mode": modeLabel
+        ]
+        if let lastSuccessfulBackendAtISO { payload["backendSuccessAt"] = lastSuccessfulBackendAtISO }
+        if let liveDataError { payload["error"] = liveDataError }
+        return payload
+    }
+
+    private func restorePersistentState() {
+        if let stored = defaults.string(forKey: "oyi.watch.lastSuccessfulBackendAt") {
+            lastSuccessfulBackendAtISO = stored
+            lastSuccessfulSyncAt = displayTimestamp(stored)
+        }
+        if let stored = defaults.string(forKey: "oyi.watch.lastSyncAt") {
+            lastSyncAt = stored
+        }
+        liveDataError = defaults.string(forKey: "oyi.watch.lastError")
+    }
+
+    private func persistState(error: String? = nil) {
+        defaults.set(lastSuccessfulBackendAtISO, forKey: "oyi.watch.lastSuccessfulBackendAt")
+        defaults.set(lastSyncAt, forKey: "oyi.watch.lastSyncAt")
+        defaults.set(error, forKey: "oyi.watch.lastError")
+    }
+
+    private func displayTimestamp(_ value: String) -> String {
+        guard let date = ISO8601DateFormatter().date(from: value) else { return value }
+        return date.formatted(date: .omitted, time: .shortened)
+    }
+
     static let previewGlances: [OyiGlance] = [
         OyiGlance(id: "home", type: "awareness", title: "Home calm", detail: "All systems normal", state: "calm"),
         OyiGlance(id: "visitor", type: "visitor", title: "Visitor at gate", detail: "Front gate", state: "unread"),
@@ -619,10 +719,10 @@ final class OyiWatchSession: ObservableObject {
     ]
 
     static let previewActions: [OyiQuickAction] = [
-        OyiQuickAction(id: "show_status", label: "Home status", prompt: "show home status", risk: "read", enabled: true, confirmation_required: false),
-        OyiQuickAction(id: "all_lights_off", label: "Lights off", prompt: "turn off lights", risk: "low", enabled: true, confirmation_required: false),
-        OyiQuickAction(id: "movie_mode", label: "Movie mode", prompt: "activate movie mode", risk: "low", enabled: true, confirmation_required: false),
-        OyiQuickAction(id: "arm_security", label: "Arm security", prompt: "arm security", risk: "medium", enabled: true, confirmation_required: true)
+        OyiQuickAction(id: "show_status", label: "Home status", prompt: "show home status", risk: "read", enabled: true, confirmation_required: false, device_id: nil, command: nil),
+        OyiQuickAction(id: "all_lights_off", label: "Lights off", prompt: "turn off lights", risk: "low", enabled: true, confirmation_required: false, device_id: nil, command: nil),
+        OyiQuickAction(id: "movie_mode", label: "Movie mode", prompt: "activate movie mode", risk: "low", enabled: true, confirmation_required: false, device_id: nil, command: nil),
+        OyiQuickAction(id: "arm_security", label: "Arm security", prompt: "arm security", risk: "medium", enabled: true, confirmation_required: true, device_id: nil, command: nil)
     ]
 }
 
@@ -652,6 +752,24 @@ final class OyiWatchConnectivityBridge: NSObject, WCSessionDelegate {
 
     func session(_ session: WCSession, didReceiveMessage message: [String : Any]) {
         Task { await sessionModel?.applyCompanionPayload(message, source: "message") }
+    }
+
+    func session(_ session: WCSession, didReceiveMessage message: [String : Any], replyHandler: @escaping ([String : Any]) -> Void) {
+        Task {
+            await sessionModel?.applyCompanionPayload(message, source: "message")
+            replyHandler(sessionModel?.acknowledgementPayload() ?? ["type": "oyi.watch.sync.ack"])
+        }
+    }
+
+    func sendAcknowledgement(payload: [String: Any]) {
+        guard WCSession.isSupported() else { return }
+        let session = WCSession.default
+        let envelope: [String: Any] = ["oyiWatchAck": payload]
+        try? session.updateApplicationContext(envelope)
+        session.transferUserInfo(envelope)
+        if session.isReachable {
+            session.sendMessage(envelope, replyHandler: nil, errorHandler: nil)
+        }
     }
 }
 
@@ -684,15 +802,26 @@ struct OyiWatchKeychain {
 
 struct OyiWatchRootView: View {
     @EnvironmentObject var session: OyiWatchSession
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         TabView(selection: $session.activePage) {
             AwarenessView().tag(0)
-            QuickActionsView().tag(1)
-            ConfirmationView().tag(2)
+            GlancesView().tag(1)
+            QuickActionsView().tag(2)
+            ConfirmationView().tag(3)
         }
         .tabViewStyle(.verticalPage)
         .task { await session.refresh() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await session.refresh() } }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .oyiWatchAlertReceived)) { notification in
+            session.showAlert(
+                title: notification.userInfo?["title"] as? String ?? "Home alert",
+                detail: notification.userInfo?["detail"] as? String ?? "Open Oyi Home for details."
+            )
+        }
     }
 }
 
@@ -701,9 +830,7 @@ struct AwarenessView: View {
 
     var body: some View {
         WatchSurface {
-            WatchChrome(label: chromeLabel, isMock: session.isDeveloperPreview || session.connectionState != .connected) {
-                session.openQuickActions()
-            }
+            WatchChrome(label: chromeLabel, isMock: session.isDeveloperPreview || session.connectionState != .connected)
             Spacer(minLength: 2)
             OyiOrb(state: orbState)
             Text(session.title)
@@ -729,7 +856,7 @@ struct AwarenessView: View {
                 WatchPillButton(title: "Retry", tint: .blue) { session.retryConnection() }
             } else if session.state == .listening {
                 OyiWaveform(color: .blue)
-                    .frame(height: 18)
+                    .frame(height: 16 * scale)
                     .padding(.top, 1)
             } else {
                 HStack(spacing: 8) {
@@ -777,6 +904,61 @@ struct AwarenessView: View {
     }
 }
 
+struct GlancesView: View {
+    @EnvironmentObject var session: OyiWatchSession
+
+    var body: some View {
+        WatchSurface(alignment: .top) {
+            WatchChrome(label: "Glances", isMock: session.connectionState != .connected)
+            if session.connectionState != .connected {
+                VStack(spacing: 8) {
+                    OyiOrb(state: session.connectionState == .offlineWithLastSync ? .failed : .awareness)
+                    Text(session.connectionState == .offlineWithLastSync ? "Offline" : "No live glances")
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    Text(session.connectionState == .offlineWithLastSync ? "Last synced \(session.lastSuccessfulSyncAt)" : "Sync from iPhone to load home activity.")
+                        .font(.system(size: 10, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.56))
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if session.glances.isEmpty {
+                VStack(spacing: 8) {
+                    OyiOrb(state: .awareness)
+                    Text("Home is quiet")
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    Text("No watch-ready updates yet.")
+                        .font(.system(size: 10, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.56))
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 6) {
+                        ForEach(session.glances.prefix(6)) { glance in
+                            HStack(spacing: 8) {
+                                GlanceIcon(type: glance.type, state: glance.state)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(glance.title)
+                                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                        .foregroundStyle(.white)
+                                        .lineLimit(1)
+                                    Text(glance.detail)
+                                        .font(.system(size: 9, design: .rounded))
+                                        .foregroundStyle(.white.opacity(0.54))
+                                        .lineLimit(2)
+                                }
+                                Spacer(minLength: 0)
+                            }
+                            .padding(7)
+                            .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 
 struct StatusChip: View {
     let label: String
@@ -817,14 +999,13 @@ struct WatchDiagnosticsView: View {
 
 struct QuickActionsView: View {
     @EnvironmentObject var session: OyiWatchSession
+    @Environment(\.oyiWatchScale) private var scale
 
     private let columns = [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)]
 
     var body: some View {
         WatchSurface(alignment: .top) {
-            WatchChrome(label: "Actions", isMock: session.connectionState != .connected) {
-                session.activePage = 0
-            }
+            WatchChrome(label: "Actions", isMock: session.connectionState != .connected)
             if session.connectionState != .connected {
                 VStack(spacing: 8) {
                     OyiOrb(state: session.connectionState == .offlineWithLastSync ? .failed : .awareness)
@@ -867,8 +1048,8 @@ struct QuickActionsView: View {
                                 .font(.system(size: 8, weight: .regular, design: .rounded))
                                 .foregroundStyle(.white.opacity(0.45))
                         }
-                        .frame(maxWidth: .infinity, minHeight: 64)
-                        .padding(6)
+                        .frame(maxWidth: .infinity, minHeight: 54 * scale)
+                        .padding(max(4, 5 * scale))
                         .background(.white.opacity(action.enabled ? 0.07 : 0.03), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: 18).stroke(.white.opacity(0.1), lineWidth: 1))
                     }
@@ -890,9 +1071,7 @@ struct ConfirmationView: View {
 
     var body: some View {
         WatchSurface {
-            WatchChrome(label: "Confirm", isMock: session.connectionState != .connected) {
-                session.activePage = 0
-            }
+            WatchChrome(label: "Confirm", isMock: session.connectionState != .connected)
             Spacer(minLength: 2)
             OyiOrb(state: session.pendingConfirmation == nil ? session.state : .confirmationRequired)
             Text(session.pendingConfirmation == nil ? "No confirmation" : confirmationTitle)
@@ -926,47 +1105,48 @@ struct WatchSurface<Content: View>: View {
     @ViewBuilder let content: () -> Content
 
     var body: some View {
-        VStack(spacing: 7, content: content)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment == .top ? .top : .center)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 5)
-            .background(
-                ZStack {
-                    Color.black
-                    RadialGradient(colors: [.blue.opacity(0.18), .clear], center: .top, startRadius: 8, endRadius: 120)
-                    LinearGradient(colors: [.white.opacity(0.035), .clear], startPoint: .topLeading, endPoint: .bottomTrailing)
-                }
-            )
-            .containerBackground(.black.gradient, for: .navigation)
+        GeometryReader { geometry in
+            let shortSide = min(geometry.size.width, geometry.size.height)
+            let longSide = max(geometry.size.width, geometry.size.height)
+            let scale = min(max(shortSide / 184, 0.88), 1.28)
+            let horizontalPadding = max(2, shortSide * 0.018)
+            let verticalPadding = max(1, longSide * 0.008)
+            VStack(spacing: 6 * scale, content: content)
+                .environment(\.oyiWatchScale, scale)
+                .padding(.horizontal, horizontalPadding)
+                .padding(.vertical, verticalPadding)
+                .frame(width: geometry.size.width, height: geometry.size.height, alignment: alignment == .top ? .top : .center)
+        }
+        .ignoresSafeArea(.container, edges: .all)
+        .background(
+            ZStack {
+                Color.black
+                RadialGradient(colors: [.blue.opacity(0.18), .clear], center: .top, startRadius: 8, endRadius: 120)
+                LinearGradient(colors: [.white.opacity(0.035), .clear], startPoint: .topLeading, endPoint: .bottomTrailing)
+            }
+            .ignoresSafeArea()
+        )
+        .containerBackground(.black.gradient, for: .navigation)
     }
 }
 
 struct WatchChrome: View {
+    @Environment(\.oyiWatchScale) private var scale
     let label: String
     let isMock: Bool
-    let onMore: () -> Void
 
     var body: some View {
         HStack(alignment: .top) {
+            Circle()
+                .fill(isMock ? .orange.opacity(0.85) : .green.opacity(0.85))
+                .frame(width: 5, height: 5)
             Text(label)
                 .font(.system(size: 8, weight: .semibold, design: .rounded))
                 .foregroundStyle(isMock ? .orange.opacity(0.85) : .green.opacity(0.85))
                 .lineLimit(1)
             Spacer()
-            Text("9:41")
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white)
-            Button(action: onMore) {
-                VStack(spacing: 2) {
-                    Circle().fill(.white.opacity(0.72)).frame(width: 3, height: 3)
-                    Circle().fill(.white.opacity(0.52)).frame(width: 3, height: 3)
-                    Circle().fill(.white.opacity(0.34)).frame(width: 3, height: 3)
-                }
-                .frame(width: 16, height: 20)
-            }
-            .buttonStyle(.plain)
         }
-        .frame(height: 18)
+        .frame(height: 16 * scale)
     }
 }
 
@@ -992,16 +1172,17 @@ struct WatchPillButton: View {
 struct OyiOrb: View {
     let state: OyiWatchState
     @State private var pulse = false
+    @Environment(\.oyiWatchScale) private var scale
 
     var body: some View {
         ZStack {
             Circle()
                 .stroke(color.opacity(0.85), lineWidth: 2)
-                .frame(width: 76, height: 76)
+                .frame(width: 76 * scale, height: 76 * scale)
                 .blur(radius: pulse ? 0.2 : 0.9)
             Circle()
                 .fill(.radialGradient(colors: [color.opacity(0.5), .blue.opacity(0.11), .black], center: .center, startRadius: 3, endRadius: 43))
-                .frame(width: 68, height: 68)
+                .frame(width: 68 * scale, height: 68 * scale)
                 .shadow(color: color.opacity(0.75), radius: state == .alert ? 18 : 13)
             orbMark
         }
@@ -1043,6 +1224,42 @@ struct OyiOrb: View {
         case .executing, .thinking, .listening: return .blue
         default: return .blue
         }
+    }
+}
+
+private struct OyiWatchScaleKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 1
+}
+
+extension EnvironmentValues {
+    var oyiWatchScale: CGFloat {
+        get { self[OyiWatchScaleKey.self] }
+        set { self[OyiWatchScaleKey.self] = newValue }
+    }
+}
+
+struct GlanceIcon: View {
+    let type: String
+    let state: String?
+
+    var body: some View {
+        Circle()
+            .fill(color.opacity(0.17))
+            .frame(width: 30, height: 30)
+            .overlay(Image(systemName: symbol).font(.system(size: 13, weight: .semibold)).foregroundStyle(color))
+    }
+
+    private var symbol: String {
+        let key = type.lowercased()
+        if key.contains("visitor") { return "person.fill" }
+        if key.contains("security") || key.contains("access") { return "lock.shield.fill" }
+        if key.contains("climate") || key.contains("hvac") { return "thermometer.medium" }
+        if key.contains("device") || key.contains("light") { return "lightbulb.fill" }
+        return "house.fill"
+    }
+
+    private var color: Color {
+        String(state ?? "").lowercased().contains("offline") ? .red : .blue
     }
 }
 

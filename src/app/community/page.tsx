@@ -436,11 +436,14 @@ function CommunityCard({ data, featured, open, comments, commentDraft, onComment
   const isInternalLive = String(parsed.liveLink || post?.live_link || "").startsWith("oyi-live://");
   const liveSession = post?.live_session || null;
   const isLive = isInternalLive && String(liveSession?.status || "").toLowerCase() !== "ended";
+  const authorAvatar = normalizeText(post?.author_avatar_url || post?.profile_image_url || post?.avatar_url || post?.author?.profile_image_url || post?.author?.avatar_url);
 
   return (
     <article className={cn("rounded-[21px] border bg-white/[0.03] p-3 shadow-[0_14px_42px_rgba(0,0,0,0.22)] backdrop-blur-xl", featured ? "border-sky-300/18" : "border-white/[0.075]") }>
       <div className="flex items-center gap-2.5">
-        <div className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-full border", tone.ring)}><Icon className="h-4 w-4" /></div>
+        <div className={cn("grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full border", tone.ring)}>
+          {authorAvatar ? <img src={authorAvatar} alt={author} className="h-full w-full object-cover" /> : <Icon className="h-4 w-4" />}
+        </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h2 className="truncate text-[14.5px] font-semibold tracking-[-0.025em] text-white">{title}</h2>

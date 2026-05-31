@@ -34,10 +34,10 @@ import BottomNav from "@/app/components/BottomNav";
 import useAuth from "@/hooks/useAuth";
 import { roomsService, RoomDTO } from "@/services/roomsService";
 import { deviceService } from "@/services/deviceService";
+import { sceneService, type ConsumerScene } from "@/services/sceneService";
 import { getDeviceFamily, getDeviceIcon } from "@/lib/devicePresentation";
 
 type AnyDevice = Record<string, any>;
-type CustomScene = { id: string; name: string; targetOn: boolean; deviceIds: string[] };
 type TwinRoom = {
   id: string;
   name: string;
@@ -145,7 +145,7 @@ export default function RoomsClient() {
   const [newSpaceName, setNewSpaceName] = useState("");
   const [stateMap, setStateMap] = useState<Record<string, any>>({});
   const [onMap, setOnMap] = useState<Record<string, boolean | null>>({});
-  const [customScenes, setCustomScenes] = useState<CustomScene[]>([]);
+  const [configuredScenes, setConfiguredScenes] = useState<ConsumerScene[]>([]);
 
   async function loadRooms() {
     if (!homeId) return;
@@ -170,15 +170,12 @@ export default function RoomsClient() {
   }, [homeId]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const raw = localStorage.getItem(`oyi_custom_scenes_${estateId || "global"}`);
-      const parsed = raw ? JSON.parse(raw) : [];
-      setCustomScenes(Array.isArray(parsed) ? parsed : []);
-    } catch {
-      setCustomScenes([]);
-    }
-  }, [estateId]);
+    let cancelled = false;
+    sceneService.listScenes()
+      .then((items) => { if (!cancelled) setConfiguredScenes(items); })
+      .catch(() => { if (!cancelled) setConfiguredScenes([]); });
+    return () => { cancelled = true; };
+  }, [estateId, homeId]);
 
   const allDevices = useMemo(() => rooms.flatMap((room) => (Array.isArray(room.devices) ? room.devices.map((device) => ({ ...device, __roomId: room.id, __roomName: room.name })) : [])), [rooms]);
   const selectedRoom = useMemo(() => rooms.find((room) => String(room.id) === selectedId) || null, [rooms, selectedId]);
@@ -285,8 +282,8 @@ export default function RoomsClient() {
   const favoriteControls = selectedDevices.filter((device) => !["camera", "lock", "security"].includes(deviceFamily(device))).slice(0, 6);
   const scenes = useMemo(() => {
     const allow = new Set(selectedDevices.map((device) => String(pickId(device) || "")).filter(Boolean));
-    return customScenes.filter((scene) => !selectedRoom || !scene.deviceIds?.length || scene.deviceIds.some((id) => allow.has(String(id))));
-  }, [customScenes, selectedDevices, selectedRoom]);
+    return configuredScenes.filter((scene) => !selectedRoom || !scene.actions?.length || scene.actions.some((action) => allow.has(String(action.device_id))));
+  }, [configuredScenes, selectedDevices, selectedRoom]);
 
   const chips = [{ id: "all", label: "All Spaces", Icon: Grid2X2 }, ...rooms.map((room, index) => ({ id: String(room.id), label: shortRoomName(room.name || `Space ${index + 1}`), Icon: roomIcon(room.name || "", index) }))];
   const selectedLabel = selectedRoom?.name || "All Spaces";
@@ -418,14 +415,14 @@ export default function RoomsClient() {
             <section className="space-y-2">
               <div className="flex items-center justify-between px-1">
                 <h2 className="text-[17px] font-semibold tracking-[-0.04em] text-white">Active Scenes</h2>
-                <button type="button" onClick={() => router.push("/devices")} className="text-[11px] font-medium text-sky-300/76">Manage</button>
+                <button type="button" onClick={() => router.push("/scenes")} className="text-[11px] font-medium text-sky-300/76">Manage</button>
               </div>
               {scenes.length ? (
                 <div className="flex snap-x gap-2.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                   {scenes.slice(0, 6).map((scene, index) => {
                     const Icon = [Moon, Lightbulb, Home, ShieldCheck, Leaf][index % 5];
                     return (
-                      <button key={scene.id} type="button" onClick={() => router.push("/devices")} className="w-[112px] shrink-0 snap-start rounded-[18px] border border-sky-300/24 bg-sky-400/[0.04] p-3 text-center shadow-[0_0_16px_rgba(0,122,255,0.12)]">
+                      <button key={scene.id} type="button" onClick={() => router.push("/scenes")} className="w-[112px] shrink-0 snap-start rounded-[18px] border border-sky-300/24 bg-sky-400/[0.04] p-3 text-center shadow-[0_0_16px_rgba(0,122,255,0.12)]">
                         <span className="mx-auto grid h-8 w-8 place-items-center rounded-full border border-sky-300/12 bg-sky-400/10 text-sky-200"><Icon className="h-3.5 w-3.5" /></span>
                         <div className="mt-2 truncate text-[12px] font-semibold text-white">{scene.name}</div>
                         <div className="mt-1 text-[10px] text-emerald-300">Configured</div>

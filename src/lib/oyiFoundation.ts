@@ -37,6 +37,9 @@ export type OyiIdentity = {
   email?: string;
   username?: string;
   full_name?: string;
+  phone?: string;
+  avatar_url?: string | null;
+  profile_image_url?: string | null;
   estate_name?: string;
   unit_name?: string;
   unit_id?: string;

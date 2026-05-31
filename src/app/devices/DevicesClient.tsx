@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Fan,
   Home,
+  Moon,
   Plus,
   Search,
   X,
@@ -496,9 +497,12 @@ export default function DeviceClient() {
                 <h1 className="text-[30px] font-semibold leading-none tracking-[-0.055em] text-white">Devices</h1>
                 <p className="mt-2 text-[13px] leading-5 text-white/56">Control your connected home.</p>
               </div>
-              <button type="button" onClick={openAddDevice} className="inline-flex items-center gap-1.5 rounded-full border border-sky-300/18 bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-100 shadow-[0_0_18px_rgba(0,132,255,0.14)] active:scale-[0.98]">
-                <Plus className="h-3.5 w-3.5" /> Add
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button type="button" onClick={() => window.location.assign("/scenes")} className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-2 text-xs font-medium text-white/68 active:scale-[0.98]"><Moon className="h-3.5 w-3.5" /> Scenes</button>
+                <button type="button" onClick={openAddDevice} className="inline-flex items-center gap-1.5 rounded-full border border-sky-300/18 bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-100 shadow-[0_0_18px_rgba(0,132,255,0.14)] active:scale-[0.98]">
+                  <Plus className="h-3.5 w-3.5" /> Add
+                </button>
+              </div>
             </header>
 
             {err ? <div className="mt-4 rounded-[18px] border border-red-300/16 bg-red-500/10 px-3.5 py-3 text-xs text-red-100">{err}</div> : null}
