@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowUp, Check, Clock3, Mic, Square, X } from "lucide-react";
+import { ArrowLeft, ArrowUp, Check, Clock3, Copy, Mic, Square, ThumbsUp, Volume2, X } from "lucide-react";
 
 import LayoutWrapper from "@/app/components/LayoutWrapper";
 import useAuth from "@/hooks/useAuth";
@@ -33,6 +33,7 @@ const DEFAULT_SUGGESTIONS: Suggestion[] = [
 
 const USAGE_KEY = "oyi_ai_shortcut_usage_v1";
 const CONVERSATIONS_KEY = "oyi_ai_conversations_v1";
+const FEEDBACK_KEY = "oyi_ai_helpful_feedback_v1";
 
 function createId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -179,6 +180,7 @@ export default function OyiAiCommandCenter() {
   const [voiceMode, setVoiceMode] = useState<VoiceMode>("idle");
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>("Listening");
   const [voiceError, setVoiceError] = useState("");
+  const [helpfulResponses, setHelpfulResponses] = useState<Record<string, boolean>>({});
   const [transcript, setTranscript] = useState("");
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const recognitionRef = useRef<any>(null);
@@ -213,6 +215,7 @@ export default function OyiAiCommandCenter() {
   useEffect(() => {
     setUsage(loadJson<Record<string, number>>(USAGE_KEY, {}));
     setConversations(loadJson<Conversation[]>(CONVERSATIONS_KEY, []));
+    setHelpfulResponses(loadJson<Record<string, boolean>>(FEEDBACK_KEY, {}));
   }, []);
 
   useEffect(() => {
@@ -273,7 +276,10 @@ export default function OyiAiCommandCenter() {
       const nextMessages = baseMessages.map((item) => item.id === pendingId ? { ...item, pending: false, content, state, confirmations: resp.confirmations || [] } : item);
       setMessages(nextMessages);
       persistConversation(nextMessages);
-      if (options?.fromVoice) setVoiceStatus(state === "failed" || state === "denied" ? "Failed" : "Done");
+      if (options?.fromVoice) {
+        setVoiceStatus(state === "failed" || state === "denied" ? "Failed" : "Speaking");
+        if (state !== "failed" && state !== "denied") speakResponse(content, true);
+      }
     } catch {
       const nextMessages = baseMessages.map((item) => item.id === pendingId ? { ...item, pending: false, state: "failed" as const, content: "Oyi could not reach the command layer right now." } : item);
       setMessages(nextMessages);
@@ -283,6 +289,31 @@ export default function OyiAiCommandCenter() {
       setBusy(false);
       if (options?.fromVoice) window.setTimeout(() => setVoiceMode("idle"), 900);
     }
+  }
+
+  async function copyResponse(text: string) {
+    if (!text || typeof navigator === "undefined") return;
+    await navigator.clipboard?.writeText(text);
+  }
+
+  function speakResponse(text: string, fromVoiceConversation = false) {
+    if (!text || typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 0.96;
+    if (fromVoiceConversation) {
+      utterance.onend = () => setVoiceStatus("Done");
+      utterance.onerror = () => setVoiceStatus("Done");
+    }
+    window.speechSynthesis.speak(utterance);
+  }
+
+  function markHelpful(message: AiMessage) {
+    setHelpfulResponses((current) => {
+      const next = { ...current, [message.id]: !current[message.id] };
+      saveJson(FEEDBACK_KEY, next);
+      return next;
+    });
   }
 
   function submitSuggestion(item: Suggestion) {
@@ -476,6 +507,13 @@ export default function OyiAiCommandCenter() {
                     <div className={`max-w-[84%] rounded-[24px] px-4 py-3 text-sm leading-5 shadow-[0_16px_42px_rgba(0,0,0,0.24)] ${message.role === "user" ? "rounded-br-[8px] bg-white text-black" : "rounded-bl-[8px] border border-white/[0.07] bg-white/[0.045] text-white/82 backdrop-blur-xl"}`}>
                       <div className="whitespace-pre-line">{message.pending ? <span className="inline-flex items-center gap-2"><Spinner /> {message.content}</span> : message.content}</div>
                       {message.confirmations?.length ? message.confirmations.map((confirmation, index) => <ConfirmationCard key={String(confirmation?.ledger_id || confirmation?.id || index)} confirmation={confirmation} disabled={busy} onDecision={decideConfirmation} />) : null}
+                      {message.role === "assistant" && !message.pending ? (
+                        <div className="mt-2.5 flex items-center gap-1.5 border-t border-white/[0.055] pt-2">
+                          <button type="button" onClick={() => void copyResponse(message.content)} className="grid h-7 w-7 place-items-center rounded-full text-white/30 transition hover:bg-white/[0.055] hover:text-white/72 active:scale-95" aria-label="Copy Oyi response"><Copy className="h-3.5 w-3.5" /></button>
+                          <button type="button" onClick={() => speakResponse(message.content)} className="grid h-7 w-7 place-items-center rounded-full text-white/30 transition hover:bg-white/[0.055] hover:text-white/72 active:scale-95" aria-label="Listen to Oyi response"><Volume2 className="h-3.5 w-3.5" /></button>
+                          <button type="button" onClick={() => markHelpful(message)} className={`grid h-7 w-7 place-items-center rounded-full transition hover:bg-white/[0.055] active:scale-95 ${helpfulResponses[message.id] ? "text-sky-200" : "text-white/30 hover:text-white/72"}`} aria-label="Mark Oyi response helpful"><ThumbsUp className={`h-3.5 w-3.5 ${helpfulResponses[message.id] ? "fill-current" : ""}`} /></button>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 ))}
