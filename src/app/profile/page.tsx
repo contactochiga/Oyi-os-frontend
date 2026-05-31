@@ -91,6 +91,10 @@ export default function ProfilePage() {
 
   const [devices, setDevices] = useState<any[]>([]);
   const [members, setMembers] = useState<HomeAccessMember[]>([]);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("resident");
+  const [accessBusy, setAccessBusy] = useState("");
+  const [accessMessage, setAccessMessage] = useState<string | null>(null);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [watchStatus, setWatchStatus] = useState<WatchSyncResult | null>(null);
@@ -126,6 +130,9 @@ export default function ProfilePage() {
   const unreadSecurity = notifications.filter((item) => item.status !== "read" && String(item.type || "").toLowerCase().includes("security")).length;
   const securityState = unreadSecurity ? "Attention Needed" : active.home_id ? "Protected" : "Pending Setup";
   const role = String((user as any)?.role || "resident");
+  const currentMembership = members.find((member) => String(member.users?.id || "") === String((user as any)?.id || ""));
+  const homeRole = String(currentMembership?.role || role || "resident").toLowerCase();
+  const canManageMembers = ["owner", "admin"].includes(homeRole) || ["owner", "admin"].includes(role.toLowerCase());
   const address = String((user as any)?.address || active.home?.name || "").trim();
 
   useEffect(() => {
@@ -330,6 +337,53 @@ export default function ProfilePage() {
     setWatchSyncMessage(describeOyiWatchStatus(result));
   }
 
+  async function refreshMembers() {
+    if (!active.home_id) return setMembers([]);
+    setMembers(await homeAccessService.listHomeUsers(active.home_id));
+  }
+
+  async function inviteMember() {
+    if (!active.home_id || !inviteEmail.trim()) return;
+    setAccessBusy("invite");
+    setAccessMessage(null);
+    try {
+      await homeAccessService.inviteHomeUser(active.home_id, { email: inviteEmail.trim(), role: inviteRole });
+      setInviteEmail("");
+      setAccessMessage("Invitation created.");
+      await refreshMembers();
+    } catch (error: any) {
+      setAccessMessage(error?.response?.data?.error || error?.message || "Invite could not be created.");
+    } finally {
+      setAccessBusy("");
+    }
+  }
+
+  async function updateMember(member: HomeAccessMember, patch: { role?: string; status?: string }) {
+    setAccessBusy(member.id);
+    setAccessMessage(null);
+    try {
+      await homeAccessService.updateHomeUser(member.id, patch);
+      await refreshMembers();
+    } catch (error: any) {
+      setAccessMessage(error?.response?.data?.error || error?.message || "Member access could not be updated.");
+    } finally {
+      setAccessBusy("");
+    }
+  }
+
+  async function removeMember(member: HomeAccessMember) {
+    setAccessBusy(member.id);
+    setAccessMessage(null);
+    try {
+      await homeAccessService.removeHomeUser(member.id);
+      await refreshMembers();
+    } catch (error: any) {
+      setAccessMessage(error?.response?.data?.error || error?.message || "Member could not be removed.");
+    } finally {
+      setAccessBusy("");
+    }
+  }
+
   function renderPanel() {
     if (!panel) return null;
     const title = menu.find((item) => item.key === panel)?.label || "Profile Information";
@@ -356,12 +410,43 @@ export default function ProfilePage() {
             {panel === "access" ? (
               <>
                 <InfoRow label="Current home" value={currentHome} />
-                <InfoRow label="Role" value={role} />
+                <InfoRow label="Role" value={homeRole} />
                 <InfoRow label="Home members" value={`${members.length}`} />
                 <InfoRow label="Homes available" value={`${active.available_contexts.length}`} />
-                <div className="rounded-[18px] border border-white/[0.06] bg-white/[0.025] px-3.5 py-3 text-xs leading-5 text-white/46">
-                  Access changes are controlled by the home administrator and existing permission assignments.
+                <div className="space-y-2">
+                  {members.map((member) => {
+                    const memberName = member.users?.full_name || member.users?.username || member.users?.email || "Resident";
+                    const memberStatus = String(member.status || "active");
+                    return (
+                      <div key={member.id} className="rounded-[18px] border border-white/[0.06] bg-white/[0.025] px-3 py-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0"><div className="truncate text-sm font-medium text-white/84">{memberName}</div><div className="truncate text-xs text-white/40">{member.users?.email || "No email"} · {memberStatus}</div></div>
+                          <span className="rounded-full bg-white/[0.05] px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-white/48">{member.role || "resident"}</span>
+                        </div>
+                        {canManageMembers && String(member.users?.id || "") !== String((user as any)?.id || "") ? (
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            <select value={member.role || "resident"} onChange={(event) => void updateMember(member, { role: event.target.value })} disabled={accessBusy === member.id} className="rounded-full border border-white/[0.08] bg-[#07101c] px-2 py-1.5 text-xs text-white/70">
+                              <option value="owner">Home Owner</option><option value="admin">Admin</option><option value="resident">Resident</option><option value="guest">Guest</option>
+                            </select>
+                            <button type="button" onClick={() => void updateMember(member, { status: memberStatus === "disabled" ? "active" : "disabled" })} disabled={accessBusy === member.id} className="rounded-full border border-white/[0.08] bg-white/[0.035] px-2.5 py-1.5 text-xs text-white/62">{memberStatus === "disabled" ? "Activate" : "Suspend"}</button>
+                            <button type="button" onClick={() => void removeMember(member)} disabled={accessBusy === member.id} className="rounded-full border border-red-300/15 bg-red-500/[0.06] px-2.5 py-1.5 text-xs text-red-100/72">Remove</button>
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
                 </div>
+                {canManageMembers ? (
+                  <div className="rounded-[18px] border border-sky-300/12 bg-sky-400/[0.045] p-3">
+                    <div className="text-xs font-semibold text-sky-100">Invite member</div>
+                    <input value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} placeholder="Resident email" className="mt-2 w-full rounded-[14px] border border-white/[0.08] bg-black/20 px-3 py-2 text-sm text-white outline-none" />
+                    <div className="mt-2 flex gap-2">
+                      <select value={inviteRole} onChange={(event) => setInviteRole(event.target.value)} className="min-w-0 flex-1 rounded-full border border-white/[0.08] bg-[#07101c] px-3 py-2 text-xs text-white/72"><option value="owner">Home Owner</option><option value="admin">Admin</option><option value="resident">Resident</option><option value="guest">Guest</option></select>
+                      <button type="button" onClick={() => void inviteMember()} disabled={accessBusy === "invite" || !inviteEmail.trim()} className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-black disabled:opacity-45">{accessBusy === "invite" ? "Sending..." : "Invite"}</button>
+                    </div>
+                  </div>
+                ) : <div className="rounded-[18px] border border-white/[0.06] bg-white/[0.025] px-3.5 py-3 text-xs leading-5 text-white/46">Only a Home Owner or Admin can change access.</div>}
+                {accessMessage ? <p className="px-1 text-xs leading-5 text-white/56">{accessMessage}</p> : null}
               </>
             ) : null}
             {panel === "security" ? (

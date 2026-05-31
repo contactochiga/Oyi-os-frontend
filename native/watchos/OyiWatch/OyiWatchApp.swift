@@ -39,11 +39,13 @@ final class OyiWatchExtensionDelegate: NSObject, WKExtensionDelegate, UNUserNoti
     }
 
     private func publish(_ notification: UNNotification) {
-        NotificationCenter.default.post(name: .oyiWatchAlertReceived, object: nil, userInfo: [
-            "title": notification.request.content.title,
-            "detail": notification.request.content.body,
-            "category": notification.request.content.categoryIdentifier
-        ])
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .oyiWatchAlertReceived, object: nil, userInfo: [
+                "title": notification.request.content.title,
+                "detail": notification.request.content.body,
+                "category": notification.request.content.categoryIdentifier
+            ])
+        }
     }
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
@@ -174,6 +176,7 @@ final class OyiWatchSpeechCapture {
         }
     }
 }
+@MainActor
 final class OyiWatchSession: ObservableObject {
     @Published var state: OyiWatchState = .awareness
     @Published var connectionState: OyiWatchConnectionState = .neverConnected
@@ -195,6 +198,7 @@ final class OyiWatchSession: ObservableObject {
     @Published var lastSyncAt: String = "never"
     @Published var heardCommand: String = ""
     @Published var lastSuccessfulSyncAt: String = "never"
+    @Published var lastAcknowledgedAt: String = "never"
     @Published var isDeveloperPreview: Bool = false
 
     private let keychain = OyiWatchKeychain()
@@ -204,6 +208,7 @@ final class OyiWatchSession: ObservableObject {
     private var baseURL: URL?
     private var bearerToken: String?
     private var lastSuccessfulBackendAtISO: String?
+    private var lastAcknowledgedAtISO: String?
     private let defaults = UserDefaults.standard
 
     init() {
@@ -459,20 +464,18 @@ final class OyiWatchSession: ObservableObject {
         baseURL = envURL ?? storedURL
         bearerToken = envToken ?? storedToken
         let nextMode = hasBackendConfiguration ? (envToken?.isEmpty == false ? "Dev Token" : "Synced") : (isDeveloperPreview ? "Preview" : "Not connected")
-        DispatchQueue.main.async {
-            self.isMockMode = self.isDeveloperPreview
-            self.modeLabel = nextMode
-            self.backendURLPresent = self.baseURL != nil
-            self.tokenPresent = self.bearerToken?.isEmpty == false
-            if self.hasBackendConfiguration {
-                if self.connectionState == .neverConnected || self.connectionState == .tokenMissing || self.connectionState == .backendMissing {
-                    self.connectionState = .connecting
-                }
-                self.connectionLabel = self.connectionState == .connected ? "Connected" : "Connecting"
-            } else {
-                self.connectionState = self.connectionStateForMissingConfig()
-                self.connectionLabel = "Waiting for sync"
+        isMockMode = isDeveloperPreview
+        modeLabel = nextMode
+        backendURLPresent = baseURL != nil
+        tokenPresent = bearerToken?.isEmpty == false
+        if hasBackendConfiguration {
+            if connectionState == .neverConnected || connectionState == .tokenMissing || connectionState == .backendMissing {
+                connectionState = .connecting
             }
+            connectionLabel = connectionState == .connected ? "Connected" : "Connecting"
+        } else {
+            connectionState = connectionStateForMissingConfig()
+            connectionLabel = "Waiting for sync"
         }
     }
 
@@ -680,9 +683,13 @@ final class OyiWatchSession: ObservableObject {
     }
 
     func acknowledgementPayload() -> [String: Any] {
+        let acknowledgedAt = ISO8601DateFormatter().string(from: Date())
+        lastAcknowledgedAtISO = acknowledgedAt
+        lastAcknowledgedAt = displayTimestamp(acknowledgedAt)
+        defaults.set(acknowledgedAt, forKey: "oyi.watch.lastAcknowledgedAt")
         var payload: [String: Any] = [
             "type": "oyi.watch.sync.ack",
-            "acknowledgedAt": ISO8601DateFormatter().string(from: Date()),
+            "acknowledgedAt": acknowledgedAt,
             "mode": modeLabel
         ]
         if let lastSuccessfulBackendAtISO { payload["backendSuccessAt"] = lastSuccessfulBackendAtISO }
@@ -698,7 +705,29 @@ final class OyiWatchSession: ObservableObject {
         if let stored = defaults.string(forKey: "oyi.watch.lastSyncAt") {
             lastSyncAt = stored
         }
+        if let stored = defaults.string(forKey: "oyi.watch.lastAcknowledgedAt") {
+            lastAcknowledgedAtISO = stored
+            lastAcknowledgedAt = displayTimestamp(stored)
+        }
         liveDataError = defaults.string(forKey: "oyi.watch.lastError")
+    }
+
+    var appVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
+    }
+
+    var buildNumber: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
+    }
+
+    var watchConnectivityStatus: String {
+        guard WCSession.isSupported() else { return "Unsupported" }
+        switch WCSession.default.activationState {
+        case .activated: return WCSession.default.isReachable ? "Active · reachable" : "Active · background"
+        case .inactive: return "Inactive"
+        case .notActivated: return "Not activated"
+        @unknown default: return "Unknown"
+        }
     }
 
     private func persistState(error: String? = nil) {
@@ -743,19 +772,25 @@ final class OyiWatchConnectivityBridge: NSObject, WCSessionDelegate {
     func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {}
 
     func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String : Any]) {
-        Task { await sessionModel?.applyCompanionPayload(applicationContext, source: "applicationContext") }
+        Task { @MainActor in
+            await sessionModel?.applyCompanionPayload(applicationContext, source: "applicationContext")
+        }
     }
 
     func session(_ session: WCSession, didReceiveUserInfo userInfo: [String : Any]) {
-        Task { await sessionModel?.applyCompanionPayload(userInfo, source: "userInfo") }
+        Task { @MainActor in
+            await sessionModel?.applyCompanionPayload(userInfo, source: "userInfo")
+        }
     }
 
     func session(_ session: WCSession, didReceiveMessage message: [String : Any]) {
-        Task { await sessionModel?.applyCompanionPayload(message, source: "message") }
+        Task { @MainActor in
+            await sessionModel?.applyCompanionPayload(message, source: "message")
+        }
     }
 
     func session(_ session: WCSession, didReceiveMessage message: [String : Any], replyHandler: @escaping ([String : Any]) -> Void) {
-        Task {
+        Task { @MainActor in
             await sessionModel?.applyCompanionPayload(message, source: "message")
             replyHandler(sessionModel?.acknowledgementPayload() ?? ["type": "oyi.watch.sync.ack"])
         }
@@ -810,6 +845,8 @@ struct OyiWatchRootView: View {
             GlancesView().tag(1)
             QuickActionsView().tag(2)
             ConfirmationView().tag(3)
+            SettingsView().tag(4)
+            DiagnosticsView().tag(5)
         }
         .tabViewStyle(.verticalPage)
         .task { await session.refresh() }
@@ -827,10 +864,14 @@ struct OyiWatchRootView: View {
 
 struct AwarenessView: View {
     @EnvironmentObject var session: OyiWatchSession
+    @Environment(\.oyiWatchScale) private var scale
 
     var body: some View {
         WatchSurface {
             WatchChrome(label: chromeLabel, isMock: session.isDeveloperPreview || session.connectionState != .connected)
+            Text("Build \(session.appVersion).\(session.buildNumber)")
+                .font(.system(size: 7, weight: .medium, design: .rounded))
+                .foregroundStyle(.white.opacity(0.34))
             Spacer(minLength: 2)
             OyiOrb(state: orbState)
             Text(session.title)
@@ -859,9 +900,10 @@ struct AwarenessView: View {
                     .frame(height: 16 * scale)
                     .padding(.top, 1)
             } else {
-                HStack(spacing: 8) {
+                HStack(spacing: 5) {
                     WatchPillButton(title: "Talk", tint: .blue) { Task { await session.startVoiceCommand(fallbackCommand: "show home status") } }
                     WatchPillButton(title: "Actions", tint: .blue) { session.openQuickActions() }
+                    WatchPillButton(title: "Settings", tint: .gray) { session.activePage = 4 }
                 }
                 .padding(.top, 2)
             }
@@ -994,6 +1036,71 @@ struct WatchDiagnosticsView: View {
                 .lineLimit(1)
         }
         .padding(.horizontal, 4)
+    }
+}
+
+struct SettingsView: View {
+    @EnvironmentObject var session: OyiWatchSession
+
+    var body: some View {
+        WatchSurface {
+            WatchChrome(label: "Settings", isMock: session.connectionState != .connected)
+            Spacer(minLength: 4)
+            OyiOrb(state: .awareness)
+            Text("Oyi Watch")
+                .font(.system(size: 15, weight: .semibold, design: .rounded))
+            WatchPillButton(title: "Diagnostics", tint: .blue) { session.activePage = 5 }
+            WatchPillButton(title: "Refresh", tint: .gray) { session.retryConnection() }
+            Spacer(minLength: 2)
+        }
+    }
+}
+
+struct DiagnosticsView: View {
+    @EnvironmentObject var session: OyiWatchSession
+
+    var body: some View {
+        WatchSurface(alignment: .top) {
+            WatchChrome(label: "Diagnostics", isMock: session.connectionState != .connected)
+            ScrollView {
+                VStack(spacing: 5) {
+                    DiagnosticRow("Version", "\(session.appVersion) (\(session.buildNumber))")
+                    DiagnosticRow("Bundle", Bundle.main.bundleIdentifier ?? "Unknown")
+                    DiagnosticRow("Install", "Installed")
+                    DiagnosticRow("WCSession", session.watchConnectivityStatus)
+                    DiagnosticRow("Mode", session.modeLabel)
+                    DiagnosticRow("Last sync", session.lastSyncAt)
+                    DiagnosticRow("Backend", session.lastBackendCallStatus)
+                    DiagnosticRow("Last fetch", session.lastSuccessfulSyncAt)
+                    DiagnosticRow("Last ack", session.lastAcknowledgedAt)
+                }
+            }
+        }
+    }
+}
+
+struct DiagnosticRow: View {
+    let label: String
+    let value: String
+
+    init(_ label: String, _ value: String) {
+        self.label = label
+        self.value = value
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 5) {
+            Text(label)
+                .foregroundStyle(.white.opacity(0.4))
+            Spacer(minLength: 2)
+            Text(value)
+                .foregroundStyle(.white.opacity(0.78))
+                .multilineTextAlignment(.trailing)
+        }
+        .font(.system(size: 8, weight: .medium, design: .rounded))
+        .padding(.horizontal, 7)
+        .padding(.vertical, 5)
+        .background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }
 

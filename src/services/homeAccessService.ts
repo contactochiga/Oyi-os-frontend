@@ -17,16 +17,16 @@ export type HomeAccessMember = {
 };
 
 export const homeAccessService = {
-  async listHomeUsers(homeId: string): Promise<HomeAccessMember[]> {
-    const res = await API.get(`/facility/homes/${encodeURIComponent(homeId)}/users`);
+  async listHomeUsers(_homeId?: string): Promise<HomeAccessMember[]> {
+    const res = await API.get("/home/members");
     return Array.isArray(res.data?.users) ? (res.data.users as HomeAccessMember[]) : [];
   },
 
   async inviteHomeUser(
-    homeId: string,
+    _homeId: string,
     input: { email: string; role?: string; permissions?: Record<string, any> }
   ) {
-    const res = await API.post(`/facility/homes/${encodeURIComponent(homeId)}/invite`, input);
+    const res = await API.post("/home/members/invite", input);
     return res.data as {
       message?: string;
       inviteUrl?: string;
@@ -46,12 +46,12 @@ export const homeAccessService = {
       email?: string;
     }
   ) {
-    const res = await API.patch(`/facility/home-users/${encodeURIComponent(membershipId)}`, patch);
+    const res = await API.patch(`/home/members/${encodeURIComponent(membershipId)}`, patch);
     return res.data as { membership?: HomeAccessMember | null };
   },
 
   async removeHomeUser(membershipId: string) {
-    const res = await API.delete(`/facility/home-users/${encodeURIComponent(membershipId)}`);
+    const res = await API.delete(`/home/members/${encodeURIComponent(membershipId)}`);
     return res.data as { message?: string };
   },
 };

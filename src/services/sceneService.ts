@@ -1,7 +1,7 @@
 import API from "./api";
 
 export type SceneAction = { device_id: string; command: Record<string, any> };
-export type ConsumerScene = { id: string; name: string; icon?: string; mood?: string; actions: SceneAction[]; enabled?: boolean };
+export type ConsumerScene = { id: string; name: string; description?: string | null; icon?: string; mood?: string; actions: SceneAction[]; enabled?: boolean };
 export type ConsumerAutomation = { id: string; name: string; trigger: Record<string, any>; condition?: Record<string, any>; actions: SceneAction[]; enabled: boolean };
 
 export const sceneService = {
@@ -9,11 +9,11 @@ export const sceneService = {
     const res = await API.get("/scenes");
     return Array.isArray(res.data?.scenes) ? res.data.scenes : [];
   },
-  async createScene(input: { name: string; icon?: string; mood?: string; actions: SceneAction[] }) {
+  async createScene(input: { name: string; description?: string; icon?: string; mood?: string; actions: SceneAction[] }) {
     const res = await API.post("/scenes", input);
     return res.data as ConsumerScene;
   },
-  async updateScene(id: string, input: Partial<{ name: string; icon?: string; mood?: string; actions: SceneAction[] }>) {
+  async updateScene(id: string, input: Partial<{ name: string; description?: string; icon?: string; mood?: string; actions: SceneAction[] }>) {
     const res = await API.patch(`/scenes/${encodeURIComponent(id)}`, input);
     return res.data as ConsumerScene;
   },
