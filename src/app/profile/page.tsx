@@ -28,7 +28,7 @@ import { deleteMyAccount, removeMyProfileImage, updateMyProfile, uploadMyProfile
 import { deviceService } from "@/services/deviceService";
 import { homeAccessService, type HomeAccessMember } from "@/services/homeAccessService";
 import { walletService } from "@/services/walletService";
-import { getGenericIntegration, getTuyaIntegration } from "@/services/integrationsService";
+import { formatTuyaSyncSummary, getGenericIntegration, getStoredTuyaSyncSummary, getTuyaIntegration, syncTuyaDevices, type TuyaSyncSummary } from "@/services/integrationsService";
 import { describeOyiWatchStatus, getOyiWatchSyncStatus, isOyiWatchConnected, syncOyiWatchSession, type WatchSyncResult } from "@/services/watchSyncService";
 import { listMyNotifications, type AppNotification } from "@/services/notificationsService";
 import { replayOnboardingTour } from "@/services/onboardingTour";
@@ -102,6 +102,9 @@ export default function ProfilePage() {
   const [watchSyncBusy, setWatchSyncBusy] = useState(false);
   const [watchSyncMessage, setWatchSyncMessage] = useState<string | null>(null);
   const [integrations, setIntegrations] = useState<IntegrationStatus[]>([]);
+  const [tuyaSyncBusy, setTuyaSyncBusy] = useState(false);
+  const [tuyaSyncMessage, setTuyaSyncMessage] = useState<string | null>(null);
+  const [lastTuyaSync, setLastTuyaSync] = useState<TuyaSyncSummary | null>(() => getStoredTuyaSyncSummary());
   const [panel, setPanel] = useState<PanelKey>(null);
   const [logoutOpen, setLogoutOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -338,6 +341,20 @@ export default function ProfilePage() {
     setWatchSyncMessage(describeOyiWatchStatus(result));
   }
 
+  async function handleTuyaSync() {
+    setTuyaSyncBusy(true);
+    setTuyaSyncMessage(null);
+    try {
+      const result = await syncTuyaDevices();
+      setLastTuyaSync(result);
+      setTuyaSyncMessage(`Smart Life sync complete. ${formatTuyaSyncSummary(result)}.`);
+    } catch (error: any) {
+      setTuyaSyncMessage(error?.message || "Smart Life sync failed.");
+    } finally {
+      setTuyaSyncBusy(false);
+    }
+  }
+
   async function refreshMembers() {
     if (!active.home_id) return setMembers([]);
     setMembers(await homeAccessService.listHomeUsers(active.home_id));
@@ -475,7 +492,17 @@ export default function ProfilePage() {
             ) : null}
             {panel === "integrations" ? (
               <>
-                {integrations.map((item) => <InfoRow key={item.label} label={item.label} value={item.connected ? "Connected" : "Not Connected"} detail={item.detail || undefined} />)}
+                {integrations.map((item) => item.label === "Tuya / Smart Life" ? (
+                  <div key={item.label} className="rounded-[18px] border border-white/[0.06] bg-white/[0.025] px-3.5 py-3">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-white/34">{item.label}</div>
+                    <div className="mt-1 flex items-center justify-between gap-3">
+                      <div className="min-w-0"><div className="text-sm font-medium text-white/82">{item.connected ? "Connected" : "Not Connected"}</div>{item.detail ? <div className="mt-1 truncate text-xs text-white/42">{item.detail}</div> : null}</div>
+                      {item.connected ? <button type="button" onClick={() => void handleTuyaSync()} disabled={tuyaSyncBusy} className="shrink-0 rounded-full border border-sky-300/18 bg-sky-400/10 px-3 py-1.5 text-xs font-medium text-sky-100 disabled:opacity-50">{tuyaSyncBusy ? "Syncing" : "Sync devices"}</button> : null}
+                    </div>
+                    {lastTuyaSync ? <div className="mt-2 text-[11px] leading-5 text-white/42">Last sync {new Date(lastTuyaSync.synced_at).toLocaleString()}<br />{formatTuyaSyncSummary(lastTuyaSync)}</div> : null}
+                    {tuyaSyncMessage ? <div className="mt-2 text-xs leading-5 text-white/56">{tuyaSyncMessage}</div> : null}
+                  </div>
+                ) : <InfoRow key={item.label} label={item.label} value={item.connected ? "Connected" : "Not Connected"} detail={item.detail || undefined} />)}
                 <InfoRow label="Watch state" value={describeOyiWatchStatus(watchStatus)} />
                 <InfoRow label="Paired" value={watchStatus?.paired ? "Yes" : "No"} />
                 <InfoRow label="Watch app" value={watchStatus?.watchAppInstalled || watchStatus?.installed ? "Installed" : "Not installed"} />

@@ -982,6 +982,8 @@ Consumer has an integration layer, not a generic third-party browser plugin SDK.
 | --- | --- | --- |
 | `GET` | `/me/integrations/tuya` | Get Tuya link status |
 | `PATCH` | `/me/integrations/tuya` | Save Tuya UID |
+| `POST` | `/integrations/tuya/sync` | Pull the latest linked Smart Life / Tuya registry into Oyi |
+| `POST` | `/me/integrations/tuya/sync` | Compatibility alias for manual Tuya registry sync |
 | `GET` | `/me/integrations/:provider` | Get supported generic provider status |
 | `PATCH` | `/me/integrations/:provider` | Save generic external account ID |
 
@@ -1466,3 +1468,122 @@ src/services/watchAdapterService.ts
 ```
 
 When code and this handbook diverge, update the handbook in the same pull request as the contract change.
+
+---
+
+## 32. Final Consumer / Watch Handoff Status
+
+### Resident menu
+
+The Consumer hamburger menu is a resident navigation surface, not a module registry display. It exposes:
+
+```text
+Home
+Spaces
+Devices
+Scenes
+Activity
+Community
+Messages
+Visitors
+Maintenance
+Wallet
+Services
+Security
+Utilities
+Reports
+```
+
+Footer destinations:
+
+```text
+Profile
+Connected Systems
+Help / Support
+Sign out
+```
+
+`/settings` and `/account` remain redirect-only aliases for `/profile`. The menu does not render fake badge counts. Profile image priority is `profile_image_url`, then `avatar_url`, then resident initials.
+
+### Home members and resident access
+
+Profile Home & Access binds to:
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/home/members` | List scoped home members |
+| `POST` | `/home/members/invite` | Invite a member |
+| `PATCH` | `/home/members/:id` | Update role or status |
+| `DELETE` | `/home/members/:id` | Remove member access |
+
+Owner and admin management actions remain backend-authorized. Resident views remain read-only where permission scope requires it.
+
+### Scenes and automations
+
+Resident scenes and automation definitions bind to:
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/scenes` | List scoped scenes |
+| `POST` | `/scenes` | Create a scene |
+| `PATCH` | `/scenes/:id` | Edit a scene |
+| `DELETE` | `/scenes/:id` | Delete a scene |
+| `POST` | `/scenes/:id/run` | Execute a scene through guarded device commands |
+| `GET` | `/scenes/automations` | List resident automation definitions |
+| `POST` | `/scenes/automations` | Create an automation definition |
+| `PATCH` | `/scenes/automations/:id` | Update, pause, or resume an automation |
+| `DELETE` | `/scenes/automations/:id` | Delete an automation |
+
+Automatic scheduling must remain honest: stored definitions do not imply scheduler execution unless the backend worker is enabled.
+
+### Tuya / Smart Life sync foundation
+
+The connected-systems surface exposes manual Tuya registry sync. The backend adapter upserts provider devices using stable external identity, preserves existing Oyi assignment state, and marks missing provider devices unavailable rather than deleting them. Home and Spaces render assigned devices only.
+
+Provider rollout still requires production Tuya credentials, linked-account validation, and a polling or webhook schedule if automatic refresh is desired.
+
+### Digital Twin boundary
+
+Spaces uses a lightweight interactive floorplan placeholder around real room and device context. The visual floorplan is not yet a production render engine. Future provider contracts remain:
+
+```text
+GET /spaces/twin
+GET /spaces/model
+GET /spaces/render
+```
+
+### Facility-controlled onboarding boundary
+
+Future controlled onboarding remains an architecture contract, not a public rollout:
+
+```text
+Facility creates resident
+-> invite email / link / QR
+-> Consumer opens invite
+-> resident sets username and password
+-> resident joins assigned home
+```
+
+Public signup should only be disabled after invite validation, credential setup, and recovery paths are production-tested.
+
+### Release state
+
+| Area | Status |
+| --- | --- |
+| Consumer OS resident experience | `100%` implementation handoff |
+| AI Command Center | `100%` implementation handoff |
+| Tuya sync foundation | Complete; production provider credentials and automatic refresh remain rollout work |
+| Native watchOS package, icon catalog, signing relationship, simulator build | Complete |
+| Physical Apple Watch installation | Blocked by Apple CoreDevice tunnel transport on the current paired Watch |
+| Overall Consumer / Watch readiness | `97-98%` until physical Watch transport and store rollout checks pass |
+
+The physical Watch blocker captured on May 31, 2026 is:
+
+```text
+CoreDeviceError 4000
+Timed out while attempting to establish tunnel using negotiated network parameters.
+Ensure the device is accessible from this machine over an infrastructure network,
+or ensure WiFi is enabled on both machines.
+```
+
+The embedded Watch bundle validates independently of this transport issue.

@@ -124,7 +124,6 @@ export default function HomePage() {
   const activeContext = useActiveContext();
 
   const [assignedDevices, setAssignedDevices] = useState<any[]>([]);
-  const [discoveryDevices, setDiscoveryDevices] = useState<any[]>([]);
   const [devicesBusy, setDevicesBusy] = useState(false);
   const [devicesErr, setDevicesErr] = useState<string | null>(null);
   const [deviceCommandBusy, setDeviceCommandBusy] = useState<string | null>(
@@ -183,15 +182,8 @@ export default function HomePage() {
     setDevicesBusy(true);
     setDevicesErr(null);
     try {
-      const [assigned, discovered] = await Promise.allSettled([
-        estateId ? deviceService.getAssignedDevices(estateId) : Promise.resolve([]),
-        deviceService.discoverDevices(),
-      ]);
-      if (assigned.status === "fulfilled") setAssignedDevices(asArray(assigned.value));
-      if (discovered.status === "fulfilled") setDiscoveryDevices(asArray(discovered.value));
-      if (assigned.status === "rejected" && discovered.status === "rejected") {
-        throw assigned.reason;
-      }
+      const assigned = await deviceService.getAssignedDevices(estateId);
+      setAssignedDevices(asArray(assigned).filter((device) => String(device?.home_id || "") === String(homeId || "")));
     } catch (err: any) {
       setDevicesErr(err?.message || "Device sync unavailable");
     } finally {
@@ -248,13 +240,12 @@ export default function HomePage() {
     if (!ready || !token) return;
     refreshDevicePanelData();
     refreshDashboardData();
-  }, [ready, token, estateId]);
+  }, [ready, token, estateId, homeId]);
 
   const canMountAuthedBridges = !!ready && !!token;
 
   const favoriteDevices = useMemo(() => {
-    const devices = assignedDevices.length ? assignedDevices : discoveryDevices;
-    return devices
+    return assignedDevices
       .filter((device) => {
         const type = String(
           device?.device_type || device?.type || device?.category || "",
@@ -268,7 +259,7 @@ export default function HomePage() {
         );
       })
       .slice(0, 6);
-  }, [assignedDevices, discoveryDevices]);
+  }, [assignedDevices]);
 
   function pickDeviceId(device: any) {
     return String(
@@ -371,7 +362,7 @@ export default function HomePage() {
     ),
   ).length;
   const unread = notifications.filter((item) => item.status !== "read").length;
-  const totalVisibleDevices = assignedDevices.length || discoveryDevices.length;
+  const totalVisibleDevices = assignedDevices.length;
   const activeDevices = assignedDevices.filter(isOnline).length;
   const homeState = dashErr ? "Needs attention" : unread || openMaintenance ? "Aware" : "Calm";
   const securityState = activeVisitors ? `${activeVisitors} visitor${activeVisitors > 1 ? "s" : ""}` : "Protected";

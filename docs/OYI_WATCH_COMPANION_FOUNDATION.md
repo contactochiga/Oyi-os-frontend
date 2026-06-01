@@ -1,112 +1,267 @@
-# Oyi Watch OS Companion Foundation
+# Oyi Watch Companion - Production Handoff
 
-This is the native smartwatch companion foundation for Oyi Home. The existing `/watch` web route is a concept preview only and must not be treated as the production watch app.
+## 1. Product Boundary
 
-## Backend endpoints
+Oyi Watch is the native, orb-first smartwatch companion for Oyi Home. It is not the `/watch` web concept preview and it does not replicate the phone dashboard.
 
-All endpoints require the same Oyi Home bearer token/session model:
+Core behavior:
 
-- `GET /watch/home-status`
-- `GET /watch/glances`
-- `GET /watch/quick-actions`
-- `POST /watch/command`
-- `POST /watch/confirm`
-- `POST /watch/cancel`
+- glance-first awareness
+- voice-first commands
+- permission-aware quick actions
+- confirmation for sensitive actions
+- calm offline and stale-state handling
+- secure iPhone-to-Watch session handoff
 
-The watch adapter reuses:
+The `/watch` Consumer route remains a labeled development/reference preview only.
 
-- authenticated user identity
-- role/permission scope
-- Oyi AI command router
-- device command worker
-- AI execution ledger
-- audit events
-- notification/activity records
+## 2. Native Projects
 
-## watchOS structure
+Production install path:
 
-Foundation files live at:
+```text
+ios/App/App.xcworkspace
+  App target
+    -> Embed Watch Content
+      -> App.app/Watch/OyiWatch.app
+```
 
-- `native/watchos/OyiWatch/OyiWatchApp.swift`
+Shared watch source:
 
-Recommended Xcode integration:
+```text
+native/watchos/OyiWatch/OyiWatchApp.swift
+native/watchos/OyiWatch/Info.plist
+native/watchos/OyiWatch/Assets.xcassets
+```
 
-1. Open the existing iOS Capacitor project in `ios/App`.
-2. Add a new watchOS App target named `OyiWatch`.
-3. Add `native/watchos/OyiWatch/OyiWatchApp.swift` to the watch target.
-4. Enable WatchConnectivity in the iOS app and watch extension.
-5. After Oyi Home login, send the backend base URL and short-lived bearer token to the watch using `WCSession`.
-6. Never store raw credentials in the watch bundle.
+The standalone project remains available for isolated simulator UI testing:
 
-## Wear OS structure
+```text
+native/watchos/OyiWatch/OyiWatch.xcodeproj
+```
 
-Foundation files live at:
+Both the integrated target and standalone project reference the same SwiftUI source and icon catalog.
 
-- `native/wearos/OyiWear/app/src/main/java/com/oyi/watch/OyiWearMainActivity.kt`
+## 3. Bundle Relationship
 
-Recommended Android integration:
+```text
+Parent iOS app:                    com.ochiga.oyios
+Watch app:                         com.ochiga.oyios.watch
+WKCompanionAppBundleIdentifier:    com.ochiga.oyios
+WKRunsIndependentlyOfCompanionApp: false
+```
 
-1. Add an Android project or Wear module once the Android native project is checked into this repo.
-2. Create a Wear OS app module named `OyiWear`.
-3. Add the Kotlin Compose activity file above.
-4. Use the Data Layer API or encrypted local storage to receive a short-lived Oyi Home token from the phone.
-5. Call the `/watch/*` backend adapter endpoints with `Authorization: Bearer <token>`.
+The parent App and embedded Watch target use the same Apple Developer Team:
 
-## UX rules
+```text
+WK3GZ22BSG
+```
 
-The watch is not a phone UI.
+## 4. Session Handoff
 
-- orb-first
-- voice-first
-- glance-first
-- confirmation-focused
-- no bottom nav
-- no dashboards
-- no dense menus
+The iPhone native bridge lives at:
 
-## Command strategy
+```text
+ios/App/App/OyiWatchSyncPlugin.swift
+src/services/watchSyncService.ts
+```
 
-Low-risk actions:
+After login, session restoration, or manual Profile sync, the iPhone sends safe session context:
 
-- lights on/off
-- simple scenes
-- fan/climate status
-- show home status
+```json
+{
+  "backendBaseURL": "https://oyi-os.onrender.com",
+  "bearerToken": "<JWT>",
+  "userId": "<USER_ID>",
+  "homeId": "<HOME_ID>",
+  "estateId": "<ESTATE_ID>",
+  "role": "resident"
+}
+```
 
-Medium-risk actions:
+The token is never logged. The plugin activates `WCSession` before sync and uses:
 
-- arm security
-- gates
-- locks
-- visitor/access flows
+- `updateApplicationContext` for durable latest state
+- `transferUserInfo` as queued delivery fallback
+- `sendMessage` for immediate delivery when reachable
 
-High-risk actions remain disabled or require admin approval:
+## 5. Truthful Acknowledgement Model
 
-- wallet debit
-- permission changes
-- estate lockdown
-- camera disable
-- admin mutations
+Submitting a payload is not treated as proof that the Watch is live.
 
-## Notification strategy
+The Watch reports acknowledgement only after:
 
-Watch glances should come from:
+1. receiving the payload
+2. storing backend URL and bearer token in Keychain
+3. fetching `GET /watch/home-status` successfully
+4. updating local Watch state
+5. sending acknowledgement to the iPhone
 
-- `/watch/glances`
-- push notification payloads
-- activity/notification records
-- future realtime bridge where available
+Persisted diagnostics include:
 
-Payload tone should be calm and concise:
+- last session sync
+- last successful backend fetch
+- last acknowledgement
+- last error summary
+- WatchConnectivity state
 
-- `Visitor at gate`
-- `Package delivered`
-- `Power restored`
-- `Room 2 AC turned off`
+Resident-facing status distinguishes:
 
-## Remaining blockers
+```text
+Not Connected
+Sync Queued
+Sync Sent
+Waiting for Watch
+Connected
+Offline / Last synced <time>
+Sync Failed
+```
 
-- Xcode target must be created inside the local iOS project manually because `.xcodeproj` target mutation is safer inside Xcode.
-- Android native project is not currently checked in, so Wear OS is provided as a Compose module foundation.
-- Watch token handoff needs WatchConnectivity/Data Layer implementation in the phone app.
-- Production push notification categories need APNs/FCM watch companion configuration.
+## 6. Backend Watch Adapter
+
+All Watch endpoints use the same Oyi bearer-token model, device command path, permissions, ledger, and audit flow as Consumer:
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/watch/home-status` | Real scoped home state |
+| `GET` | `/watch/glances` | Real watch-ready awareness feed |
+| `GET` | `/watch/quick-actions` | Real permitted action list |
+| `POST` | `/watch/command` | Send transcript or explicit action |
+| `POST` | `/watch/confirm` | Confirm pending ledger action |
+| `POST` | `/watch/cancel` | Cancel pending ledger action |
+
+Safety rules:
+
+- read surfaces require resident context and `devices.read`
+- command execution requires `devices.control`
+- explicit device IDs are re-scoped to the active home and estate
+- cross-home commands fail closed
+- low-risk actions may execute immediately
+- medium-risk actions require confirmation
+- unsupported high-risk actions remain denied
+- provider errors, queued state, offline state, and permission denial remain honest
+
+## 7. Native UI States
+
+Production SwiftUI states:
+
+- disconnected
+- connecting
+- awareness
+- glances
+- listening
+- thinking
+- executing
+- confirmation
+- success
+- alert
+- failed
+- offline with last sync
+- diagnostics
+
+The app uses geometry-based adaptive sizing for modern Apple Watch display sizes and no longer depends on mock `9:41` chrome or fake navigation dots.
+
+## 8. Notifications Foundation
+
+The native Watch app registers:
+
+```text
+OYI_VISITOR_ALERT
+OYI_SECURITY_ALERT
+OYI_ENVIRONMENT_ALERT
+OYI_DEVICE_ALERT
+```
+
+Notification taps route into the relevant Watch alert state. Production APNs validation and backend category assignment remain rollout checks.
+
+## 9. Icon Catalog
+
+`native/watchos/OyiWatch/Assets.xcassets/AppIcon.appiconset` contains real branded image files for notification, companion settings, launcher, quick-look, and marketing slots.
+
+The physical-device build packages:
+
+```text
+App.app/Watch/OyiWatch.app/Assets.car
+App.app/Watch/OyiWatch.app/embedded.mobileprovision
+App.app/Watch/OyiWatch.app/_CodeSignature
+App.app/Watch/OyiWatch.app/OyiWatch
+```
+
+## 10. Current Physical Install Blocker
+
+On May 31, 2026, build `50` validated as an embedded physical Watch bundle. The paired Series 9 runs watchOS `26.6`, above the `10.0` deployment target. Developer Mode is enabled.
+
+The unresolved physical installation issue is device transport, not bundle validation:
+
+```text
+CoreDeviceError 4000
+Timed out while attempting to establish tunnel using negotiated network parameters.
+Ensure the device is accessible from this machine over an infrastructure network,
+or ensure WiFi is enabled on both machines.
+```
+
+The Watch CoreDevice record reported:
+
+```text
+pairingState: paired
+transportType: localNetwork
+tunnelState: disconnected
+```
+
+Recovery checklist:
+
+1. Put Mac, iPhone, and Watch on the same normal Wi-Fi network.
+2. Disable VPN, hotspot, and guest-network isolation temporarily.
+3. Keep Watch unlocked, near iPhone, and preferably charging.
+4. Delete Oyi Home from iPhone.
+5. Reboot iPhone and Watch.
+6. Reinstall the parent App scheme from `ios/App/App.xcworkspace`.
+7. Open iPhone Watch app and install Oyi Watch.
+
+The temporary display name `Oyi Watch 50` is intentionally retained until the physical listing proves it is reading the refreshed bundle. Revert it to `Oyi Watch` after confirmation.
+
+## 11. Build Commands
+
+```bash
+cd /Users/ochigaidoko/Oyi-os-frontend
+npm run build
+npx cap sync ios
+
+xcodebuild \
+  -workspace ios/App/App.xcworkspace \
+  -scheme App \
+  -sdk iphonesimulator \
+  -destination 'generic/platform=iOS Simulator' \
+  build CODE_SIGNING_ALLOWED=NO
+
+xcodebuild \
+  -project native/watchos/OyiWatch/OyiWatch.xcodeproj \
+  -scheme OyiWatch \
+  -sdk watchsimulator \
+  -destination 'generic/platform=watchOS Simulator' \
+  build CODE_SIGNING_ALLOWED=NO
+```
+
+## 12. Wear OS Status
+
+Wear OS remains a documented Android companion foundation under:
+
+```text
+native/wearos
+```
+
+It is not production-ready and must not be presented as equivalent to the native watchOS app until Android Data Layer session handoff, secure storage, UI completion, and physical-device tests are implemented.
+
+## 13. Release Status
+
+| Area | Status |
+| --- | --- |
+| Native watchOS package | Complete |
+| Embedded iPhone companion relationship | Complete |
+| Icon catalog and packaged assets | Complete |
+| WatchConnectivity session handoff | Complete |
+| Truthful acknowledgement model | Complete |
+| Watch adapter API | Complete foundation |
+| Simulator build | Passing |
+| Physical Apple Watch install | Blocked by CoreDevice network tunnel |
+| Wear OS | Foundation only |

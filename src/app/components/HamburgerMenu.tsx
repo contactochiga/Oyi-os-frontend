@@ -2,20 +2,18 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import useAuth from "@/hooks/useAuth";
 import { createPortal } from "react-dom";
 
 import { XMarkIcon, Bars3Icon } from "@heroicons/react/24/outline";
-import { FiChevronDown, FiChevronUp, FiLogOut } from "react-icons/fi";
-import { MdOutlinePerson, MdSettings } from "react-icons/md";
+import { FiLogOut } from "react-icons/fi";
 
 // ✅ NEW: token decode fallback (so iOS always has email)
 import { decodeToken } from "@/lib/auth";
 
 // ✅ NEW: menu icons
-import { FiGrid, FiCpu, FiCreditCard, FiUsers, FiKey, FiTool, FiHome, FiZap, FiShield, FiDroplet, FiBarChart2, FiUser, FiMoon } from "react-icons/fi";
+import { FiActivity, FiBarChart2, FiBriefcase, FiCpu, FiCreditCard, FiGrid, FiHelpCircle, FiHome, FiKey, FiLink, FiMessageSquare, FiMoon, FiShield, FiTool, FiUsers, FiDroplet, FiUser } from "react-icons/fi";
 import { CONSUMER_MODULES, visibleModules, type ModuleDefinition } from "@/lib/moduleRegistry";
 
 const MODULE_ICONS: Record<string, any> = {
@@ -23,14 +21,16 @@ const MODULE_ICONS: Record<string, any> = {
   rooms: FiHome,
   devices: FiCpu,
   scenes: FiMoon,
+  activity: FiActivity,
+  messages: FiMessageSquare,
   security: FiShield,
   utilities: FiDroplet,
   maintenance: FiTool,
   visitors: FiKey,
   community: FiUsers,
   wallet: FiCreditCard,
+  services: FiBriefcase,
   reports: FiBarChart2,
-  ai: FiZap,
   account: FiUser,
 };
 
@@ -89,13 +89,12 @@ export default function HamburgerMenu() {
 
   const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const [estateName, setEstateName] = useState<string | null>(null);
   const [homeLabel, setHomeLabel] = useState<string | null>(null);
 
-  // ✅ NEW: notification-style badges (UI-only for now, wire later)
+  // Badge values remain empty until each module has a real unread-count source.
   const [badges, setBadges] = useState({
     devices: 0,
     wallet: 0,
@@ -139,21 +138,19 @@ export default function HamburgerMenu() {
     return "Resident";
   }, [user, email]);
 
+  const avatarUrl = useMemo(
+    () => String((user as any)?.profile_image_url || (user as any)?.avatar_url || "").trim(),
+    [user],
+  );
+
   const closeAll = () => {
     setOpen(false);
-    setProfileOpen(false);
     setShowLogoutConfirm(false);
   };
 
   const pushAndClose = (href: string) => {
     closeAll();
     router.push(href);
-  };
-
-  const goToAccount = (tab?: "profile" | "settings") => {
-    if (tab === "profile") return pushAndClose("/profile");
-    if (tab === "settings") return pushAndClose("/profile");
-    return pushAndClose("/profile");
   };
 
   const onMenuClick = (href: string) => pushAndClose(href);
@@ -239,26 +236,13 @@ export default function HamburgerMenu() {
     };
   }, [token, user?.estate_id, user?.home_id]);
 
-  // ✅ Badge counts: UI-only seeded numbers for now (no breaking changes).
-  // When you’re ready we can replace with a real endpoint e.g. GET /me/badges.
+  // Never invent resident updates. Real unread-count endpoints can hydrate this later.
   useEffect(() => {
-    if (!token) {
-      setBadges({
-        devices: 0,
-        wallet: 0,
-        community: 0,
-        visitors: 0,
-        maintenance: 0,
-      });
-      return;
-    }
-
-    // Safe default counts (feel free to change)
     setBadges({
       devices: 0,
       wallet: 0,
-      community: 2,
-      visitors: 1,
+      community: 0,
+      visitors: 0,
       maintenance: 0,
     });
   }, [token]);
@@ -331,27 +315,20 @@ export default function HamburgerMenu() {
                 }}
               >
                 {/* Header */}
-                <div className="px-4 pt-4 pb-3 border-b border-white/10">
+                <div className="border-b border-white/[0.08] px-4 pb-3 pt-4">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="h-9 w-9 rounded-2xl overflow-hidden border border-white/10 bg-white/5">
-                        <Image
-                          src="/oyi-logo-transparent.png"
-                          alt="Oyi"
-                          width={40}
-                          height={40}
-                          className="h-full w-full object-cover"
-                          priority
-                        />
+                      <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-full border border-sky-300/25 bg-white/[0.06] shadow-[0_0_28px_rgba(14,165,233,0.16)]">
+                        {avatarUrl ? (
+                          <img src={avatarUrl} alt={displayName} className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="grid h-full w-full place-items-center text-sm font-semibold text-white">{initials}</div>
+                        )}
                       </div>
 
                       <div className="min-w-0">
-                        <div className="text-[13px] font-semibold text-white truncate">
-                          Oyi OS
-                        </div>
-                        <div className="text-[11px] text-white/45 truncate">
-                          Resident App
-                        </div>
+                        <div className="truncate text-[14px] font-semibold text-white">{displayName}</div>
+                        <div className="truncate text-[11px] text-sky-100/55">Resident Access</div>
                       </div>
                     </div>
 
@@ -366,50 +343,34 @@ export default function HamburgerMenu() {
                   </div>
 
                   {shouldShowContext ? (
-                    <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
-                      <div className="text-[11px] text-white/45">Estate</div>
-
-                      <div className="text-[13px] text-white truncate font-medium">
-                        {estateName || "—"}
-                      </div>
-
-                      {homeLabel ? (
-                        <div className="text-[11px] text-white/45 mt-1 truncate">
-                          Home:{" "}
-                          <span className="text-white/70">{homeLabel}</span>
-                        </div>
-                      ) : null}
+                    <div className="mt-3 rounded-2xl border border-white/[0.08] bg-white/[0.035] px-3 py-2.5">
+                      <div className="truncate text-[12px] font-medium text-white/82">{homeLabel || estateName}</div>
+                      {homeLabel && estateName ? <div className="mt-0.5 truncate text-[11px] text-white/42">{estateName}</div> : null}
                     </div>
                   ) : null}
                 </div>
 
                 {/* Menu */}
                 <nav className="flex-1 overflow-y-auto px-2 py-3">
-                  <div className="px-2 pb-2 text-[11px] text-white/35">
-                    Smart Home Modules
+                  <div className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/34">
+                    Your Home
                   </div>
 
                   <div className="space-y-1">
-                    {menuItems.map((item, index) => {
+                    {menuItems.map((item) => {
                       const href = item.href;
                       const active = isActivePath(pathname || "/", href);
                       const Icon = item.icon;
-                      const showDomain = index === 0 || menuItems[index - 1]?.domain !== item.domain;
                       const badgeValue = item.badgeKey ? clampBadge((badges as any)[item.badgeKey]) : 0;
 
                       return (
                         <div key={item.key}>
-                          {showDomain ? (
-                            <div className="px-3 pt-3 pb-1 text-[9.5px] font-semibold uppercase tracking-[0.16em] text-white/35">
-                              {item.domain}
-                            </div>
-                          ) : null}
                           <button
                             onClick={() => onMenuClick(href)}
                             className={`w-full text-left rounded-lg px-3 py-2.5 text-[13px] transition border
                               ${
                                 active
-                                  ? "bg-gradient-to-r from-violet-600 to-blue-600/70 text-white border-violet-500/45 shadow-[0_12px_30px_rgba(99,102,241,0.2)]"
+                                  ? "border-sky-400/30 bg-sky-400/[0.11] text-white shadow-[0_10px_28px_rgba(14,165,233,0.14)]"
                                   : "bg-transparent text-white/70 border-transparent hover:bg-white/5 hover:border-white/10 hover:text-white"
                               }
                             `}
@@ -442,70 +403,22 @@ export default function HamburgerMenu() {
                   </div>
                 </nav>
 
-                {/* Account footer (UNCHANGED) */}
-                <div className="border-t border-white/10 bg-white/[0.03] px-4 pt-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <button
-                      onClick={() => goToAccount("profile")}
-                      className="flex items-center gap-3 min-w-0"
-                      type="button"
-                    >
-                      <div className="w-11 h-11 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-white font-semibold">
-                        {initials}
-                      </div>
-
-                      <div className="text-left min-w-0">
-                        <p className="text-white text-[13px] font-semibold truncate">
-                          {displayName}
-                        </p>
-                        <p className="text-white/45 text-[11px] truncate">
-                          {email || "Account"}
-                        </p>
-                      </div>
+                {/* Resident footer */}
+                <div className="border-t border-white/[0.08] bg-white/[0.025] px-3 pb-3 pt-2">
+                  {[
+                    [FiUser, "Profile", "/profile"],
+                    [FiLink, "Connected Systems", "/devices/integrations"],
+                    [FiHelpCircle, "Help / Support", "/profile"],
+                  ].map(([Icon, label, href]: any) => (
+                    <button key={label} onClick={() => pushAndClose(href)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-[13px] text-white/68 transition hover:bg-white/[0.055] hover:text-white" type="button">
+                      <Icon className="text-[15px]" />
+                      <span>{label}</span>
                     </button>
-
-                    <button
-                      onClick={() => setProfileOpen((v) => !v)}
-                      className="text-white/60 rounded-xl p-2 hover:bg-white/10"
-                      aria-label="Toggle account menu"
-                      type="button"
-                    >
-                      {profileOpen ? <FiChevronUp /> : <FiChevronDown />}
-                    </button>
-                  </div>
-
-                  {profileOpen && (
-                    <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 overflow-hidden">
-                      <button
-                        onClick={() => goToAccount("profile")}
-                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition text-white"
-                        type="button"
-                      >
-                        <MdOutlinePerson />{" "}
-                        <span className="text-[13px]">Profile</span>
-                      </button>
-
-                      <button
-                        onClick={() => goToAccount("settings")}
-                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition text-white"
-                        type="button"
-                      >
-                        <MdSettings />{" "}
-                        <span className="text-[13px]">Settings</span>
-                      </button>
-
-                      <button
-                        onClick={() => setShowLogoutConfirm(true)}
-                        className="w-full flex items-center gap-3 px-4 py-3 text-white/80 hover:bg-white/5 transition"
-                        type="button"
-                      >
-                        <FiLogOut />{" "}
-                        <span className="text-[13px]">Logout</span>
-                      </button>
-                    </div>
-                  )}
-
-                  <div className="h-3" />
+                  ))}
+                  <button onClick={() => setShowLogoutConfirm(true)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-[13px] text-red-100/72 transition hover:bg-red-400/[0.08]" type="button">
+                    <FiLogOut className="text-[15px]" />
+                    <span>Sign out</span>
+                  </button>
                 </div>
               </div>
 
@@ -528,10 +441,10 @@ export default function HamburgerMenu() {
                     onClick={(e) => e.stopPropagation()}
                   >
                     <p className="text-white text-center font-semibold text-lg mb-2">
-                      Logout?
+                      Sign out?
                     </p>
                     <p className="text-white/55 text-center text-sm mb-6">
-                      You’ll need to sign in again to access your estate.
+                      You’ll need to sign in again to access your home.
                     </p>
 
                     <div className="flex gap-3">
@@ -548,7 +461,7 @@ export default function HamburgerMenu() {
                         className="flex-1 py-3 rounded-2xl bg-white text-black font-semibold"
                         type="button"
                       >
-                        Logout
+                        Sign out
                       </button>
                     </div>
                   </div>

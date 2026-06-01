@@ -6,7 +6,7 @@ import { Plug, Watch, Home, Speaker, Cloud, Cpu } from "lucide-react";
 import ConsumerShell from "@/app/components/ConsumerShell";
 import useAuth from "@/hooks/useAuth";
 import API from "@/services/api";
-import { getGenericIntegration, getTuyaIntegration } from "@/services/integrationsService";
+import { formatTuyaSyncSummary, getGenericIntegration, getStoredTuyaSyncSummary, getTuyaIntegration, syncTuyaDevices, type TuyaSyncSummary } from "@/services/integrationsService";
 import { describeOyiWatchStatus, getOyiWatchSyncStatus, isOyiWatchConnected } from "@/services/watchSyncService";
 
 type IntegrationItem = {
@@ -23,15 +23,15 @@ export default function DeviceIntegrationsPage() {
   const [loading, setLoading] = useState(true);
   const [syncingTuya, setSyncingTuya] = useState(false);
   const [syncMessage, setSyncMessage] = useState("");
+  const [lastTuyaSync, setLastTuyaSync] = useState<TuyaSyncSummary | null>(() => getStoredTuyaSyncSummary());
 
   async function syncTuya() {
     setSyncingTuya(true);
     setSyncMessage("");
     try {
-      const res = await API.post("/me/integrations/tuya/sync");
-      const created = Number(res.data?.created || 0);
-      const updated = Number(res.data?.updated || 0);
-      setSyncMessage(`Tuya sync complete. ${created} new, ${updated} updated.`);
+      const result = await syncTuyaDevices();
+      setLastTuyaSync(result);
+      setSyncMessage(`Smart Life sync complete. ${formatTuyaSyncSummary(result)}.`);
     } catch (err: any) {
       setSyncMessage(err?.response?.data?.error || err?.message || "Tuya sync failed.");
     } finally {
@@ -95,6 +95,7 @@ export default function DeviceIntegrationsPage() {
           );
         })}
         {syncMessage ? <div className="border-t border-white/[0.055] px-3.5 py-3 text-xs text-white/54">{syncMessage}</div> : null}
+        {lastTuyaSync ? <div className="border-t border-white/[0.055] px-3.5 py-3 text-[11px] leading-5 text-white/42">Last sync {new Date(lastTuyaSync.synced_at).toLocaleString()} · {formatTuyaSyncSummary(lastTuyaSync)}</div> : null}
       </section>
     </ConsumerShell>
   );

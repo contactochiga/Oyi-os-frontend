@@ -12,6 +12,67 @@ export type GenericIntegrationResponse = {
   masked_external_user_id?: string | null;
 };
 
+export type TuyaSyncSummary = {
+  ok: boolean;
+  provider: "tuya";
+  synced_at: string;
+  discovered: number;
+  added: number;
+  updated: number;
+  unchanged: number;
+  unavailable: number;
+  errors: string[];
+};
+
+const TUYA_SYNC_STORAGE_KEY = "oyi_tuya_last_sync";
+
+export function formatTuyaSyncSummary(summary?: Partial<TuyaSyncSummary> | null) {
+  if (!summary) return "";
+  return `Added ${Number(summary.added || 0)} · Updated ${Number(summary.updated || 0)} · Unavailable ${Number(summary.unavailable || 0)}`;
+}
+
+export function getStoredTuyaSyncSummary(): TuyaSyncSummary | null {
+  try {
+    if (typeof window === "undefined") return null;
+    const raw = window.localStorage.getItem(TUYA_SYNC_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as TuyaSyncSummary) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function syncTuyaDevices() {
+  try {
+    const res = await API.post("/integrations/tuya/sync");
+    const summary = res.data as TuyaSyncSummary;
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(TUYA_SYNC_STORAGE_KEY, JSON.stringify(summary));
+      window.dispatchEvent(new CustomEvent("oyi:device-registry-updated", { detail: summary }));
+    }
+    return summary;
+  } catch (err: any) {
+    const status = Number(err?.response?.status || 0);
+    const message = pickError(err, "Smart Life sync failed");
+    if (status === 404) {
+      try {
+        const fallback = await API.post("/me/integrations/tuya/sync");
+        const summary = fallback.data as TuyaSyncSummary;
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(TUYA_SYNC_STORAGE_KEY, JSON.stringify(summary));
+          window.dispatchEvent(new CustomEvent("oyi:device-registry-updated", { detail: summary }));
+        }
+        return summary;
+      } catch (fallbackErr: any) {
+        throw new Error(pickError(fallbackErr, "Smart Life sync failed"));
+      }
+    }
+    if (status === 401 || status === 409 || /credential|token|linked|expired|unauthor/i.test(message)) {
+      throw new Error("Reconnect Smart Life");
+    }
+    throw new Error(message);
+  }
+}
+
 export async function getTuyaIntegration() {
   try {
     const res = await API.get("/me/integrations/tuya");

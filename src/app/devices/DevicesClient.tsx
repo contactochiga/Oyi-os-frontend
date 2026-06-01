@@ -266,7 +266,7 @@ export default function DeviceClient() {
     setLoading(true);
     setErr(null);
     try {
-      const list = await deviceService.getDevices(estateId || undefined);
+      const list = await deviceService.getRegistryDevices(estateId || undefined);
       const nextList = Array.isArray(list) ? list : [];
       setItems(nextList);
       await hydrateStates(nextList);
@@ -280,6 +280,13 @@ export default function DeviceClient() {
 
   useEffect(() => {
     void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [estateId]);
+
+  useEffect(() => {
+    const refresh = () => void load();
+    window.addEventListener("oyi:device-registry-updated", refresh);
+    return () => window.removeEventListener("oyi:device-registry-updated", refresh);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [estateId]);
 
@@ -391,6 +398,10 @@ export default function DeviceClient() {
   }
 
   function openDevice(device: AnyDevice) {
+    if (!device?.home_id) {
+      void openAddDevice();
+      return;
+    }
     const sid = String(pickDbId(device) || "");
     const cached = sid ? stateMap[sid] : {};
     if (isSimpleControlDevice(device, cached)) void toggleMasterPower(device);

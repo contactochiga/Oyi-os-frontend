@@ -53,6 +53,23 @@ export const deviceService = {
   },
 
   /**
+   * Registry view for the Devices page. Includes estate-scoped provider devices
+   * waiting for room/home assignment without leaking them into Home controls.
+   */
+  async getRegistryDevices(estateId?: string) {
+    if (!estateId) return [];
+    try {
+      const res = await API.get(`/devices/estate/${encodeURIComponent(estateId)}`, {
+        params: { include_unassigned: true },
+      });
+      return res.data?.devices ?? res.data ?? [];
+    } catch (err) {
+      console.warn("deviceService.getRegistryDevices error:", err);
+      return [];
+    }
+  },
+
+  /**
    * ✅ Backward-compatible helper
    * - If estateId provided -> ASSIGNED
    * - If not -> DISCOVERY

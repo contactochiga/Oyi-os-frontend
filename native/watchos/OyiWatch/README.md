@@ -288,6 +288,17 @@ The native watch app registers watchOS notification categories for:
 
 Opening one routes the watch into its alert state. Push delivery and server-side category assignment still require production APNs configuration.
 
-## App icon assets required before App Store submission
+## App icon assets and physical installation
 
-The current `Assets.xcassets/AppIcon.appiconset` contains catalog metadata but no production image files. Add the final Oyi Watch artwork in Xcode so the asset catalog supplies all sizes required by the selected watchOS SDK, including notification, companion settings, home screen, short-look, and App Store marketing variants. Use a square master asset with no transparency and let Xcode validate the exact required slots for the active watchOS deployment target.
+`Assets.xcassets/AppIcon.appiconset` contains branded Watch artwork for notification, companion settings, launcher, quick-look, and App Store marketing variants. The build-50 physical parent bundle packages the compiled Watch `Assets.car`, provisioning profile, code signature, and executable under `App.app/Watch/OyiWatch.app`.
+
+The remaining real-device installation blocker captured on May 31, 2026 is an Apple CoreDevice remote-pairing tunnel timeout, not a missing icon catalog or invalid embedded bundle:
+
+```text
+CoreDeviceError 4000
+Timed out while attempting to establish tunnel using negotiated network parameters.
+Ensure the device is accessible from this machine over an infrastructure network,
+or ensure WiFi is enabled on both machines.
+```
+
+The temporary display name `Oyi Watch 50` should remain until the iPhone Watch listing proves it is reading the refreshed embedded metadata. Revert it to `Oyi Watch` after physical installation succeeds.
