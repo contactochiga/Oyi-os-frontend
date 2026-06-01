@@ -27,6 +27,7 @@ export default function ScenesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
+  const [preselectedDeviceId, setPreselectedDeviceId] = useState("");
   const [editingItem, setEditingItem] = useState<ConsumerScene | ConsumerAutomation | null>(null);
   const [deletingItem, setDeletingItem] = useState<ConsumerScene | ConsumerAutomation | null>(null);
   const [busyId, setBusyId] = useState("");
@@ -52,9 +53,15 @@ export default function ScenesPage() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const requestedTab = new URLSearchParams(window.location.search).get("tab");
+    const params = new URLSearchParams(window.location.search);
+    const requestedTab = params.get("tab");
     if (requestedTab === "automations") setTab("automations");
     if (requestedTab === "scenes") setTab("scenes");
+    if (params.get("create") === "scene") {
+      setTab("scenes");
+      setPreselectedDeviceId(params.get("deviceId") || "");
+      setCreateOpen(true);
+    }
   }, []);
 
   useEffect(() => { void refresh(); }, [estateId]);
@@ -127,7 +134,7 @@ export default function ScenesPage() {
           </div>
         </div>
         <BottomNav />
-        {createOpen ? <CreateSheet tab={tab} initial={editingItem} devices={devices} onClose={() => { setCreateOpen(false); setEditingItem(null); }} onSaved={async () => { setCreateOpen(false); setEditingItem(null); await refresh(); }} /> : null}
+        {createOpen ? <CreateSheet tab={tab} initial={editingItem} initialDeviceId={preselectedDeviceId} devices={devices} onClose={() => { setCreateOpen(false); setEditingItem(null); setPreselectedDeviceId(""); }} onSaved={async () => { setCreateOpen(false); setEditingItem(null); setPreselectedDeviceId(""); await refresh(); }} /> : null}
         {deletingItem ? (
           <div className="fixed inset-0 z-[150] flex items-end justify-center bg-black/55 px-4 pb-[calc(16px+var(--sab))] backdrop-blur-md">
             <button className="absolute inset-0" onClick={() => setDeletingItem(null)} aria-label="Cancel delete" />
@@ -149,8 +156,8 @@ export default function ScenesPage() {
 
 function Empty({ title, body }: { title: string; body: string }) { return <div className="mt-3 rounded-[22px] border border-white/[0.06] bg-white/[0.025] p-5 text-center"><Sparkles className="mx-auto h-5 w-5 text-sky-200/62" /><div className="mt-2 text-sm font-semibold">{title}</div><div className="mt-1 text-xs leading-5 text-white/42">{body}</div></div>; }
 
-function CreateSheet({ tab, initial, devices, onClose, onSaved }: { tab: Tab; initial?: ConsumerScene | ConsumerAutomation | null; devices: AnyDevice[]; onClose: () => void; onSaved: () => void }) {
-  const initialDeviceIds = Array.isArray(initial?.actions) ? initial!.actions.map((action) => String(action.device_id || "")).filter(Boolean) : [];
+function CreateSheet({ tab, initial, initialDeviceId, devices, onClose, onSaved }: { tab: Tab; initial?: ConsumerScene | ConsumerAutomation | null; initialDeviceId?: string; devices: AnyDevice[]; onClose: () => void; onSaved: () => void }) {
+  const initialDeviceIds = Array.isArray(initial?.actions) ? initial!.actions.map((action) => String(action.device_id || "")).filter(Boolean) : initialDeviceId ? [initialDeviceId] : [];
   const [name, setName] = useState(initial?.name || "");
   const [description, setDescription] = useState((initial as ConsumerScene | null)?.description || "");
   const [selectedIds, setSelectedIds] = useState<string[]>(initialDeviceIds);

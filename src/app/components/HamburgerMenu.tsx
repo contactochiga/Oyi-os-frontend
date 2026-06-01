@@ -158,8 +158,6 @@ export default function HamburgerMenu() {
   const handleLogout = async () => {
     closeAll();
     await logout?.();
-    if (typeof window !== "undefined") localStorage.clear();
-    router.replace("/auth/login");
   };
 
   // lock scroll + sidebar-open class

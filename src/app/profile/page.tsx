@@ -300,7 +300,6 @@ export default function ProfilePage() {
       return;
     }
     await logout?.();
-    router.replace("/auth/login");
   }
 
   async function handleSyncWatch() {

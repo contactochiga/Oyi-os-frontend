@@ -1,7 +1,9 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 import { loginWithEmail } from "@/services/authService";
 import { decodeToken, isExpired, setCookie } from "@/lib/auth";
 import { useSessionStore } from "@/store/useSessionStore";
@@ -153,6 +155,10 @@ export default function LoginClient() {
         </div>
 
         <div className="relative w-full max-w-[370px]">
+          <Link href="/" className="mb-4 inline-flex items-center gap-2 text-xs font-medium text-white/46 transition hover:text-white/72">
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Welcome to Oyi
+          </Link>
           <div className="relative overflow-hidden rounded-[34px] border border-white/[0.08] bg-white/[0.045] p-5 shadow-[0_24px_90px_rgba(0,0,0,0.62)] backdrop-blur-2xl">
             <div
               className="pointer-events-none absolute inset-x-0 top-0 h-[2px]"

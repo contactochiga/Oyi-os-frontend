@@ -90,8 +90,8 @@ export default function LandingPage() {
                     <LogIn className="h-4.5 w-4.5 text-white/62" />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-semibold text-white">I already have an account</span>
-                    <span className="mt-0.5 block text-xs text-white/42">Sign in to your existing home.</span>
+                    <span className="block text-sm font-semibold text-white">Sign in</span>
+                    <span className="mt-0.5 block text-xs text-white/42">Open your existing Oyi Home.</span>
                   </span>
                   <ArrowRight className="h-4 w-4 text-white/34" />
                 </button>

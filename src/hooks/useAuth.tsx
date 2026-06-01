@@ -6,6 +6,7 @@ import { deleteCookie } from "@/lib/auth";
 import { useSessionStore, type SessionUser } from "@/store/useSessionStore";
 import API, { setApiAuthToken } from "@/services/api";
 import { syncOyiWatchSession } from "@/services/watchSyncService";
+import { clearOnboardingTourTemporaryState } from "@/services/onboardingTour";
 
 type AuthContextType = {
   user: SessionUser | null;
@@ -109,7 +110,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     deleteCookie("oyi_consumer_token");
     setApiAuthToken(null);
     clear();
-    router.replace("/auth/login");
+    clearOnboardingTourTemporaryState();
+    if (typeof window !== "undefined") {
+      [
+        "oyi_estate_id",
+        "estate_id",
+        "ochiga_estate",
+        "oyi_home_id",
+        "home_id",
+        "ochiga_home",
+      ].forEach((key) => window.localStorage.removeItem(key));
+    }
+    router.replace("/");
   }
 
   const value = useMemo<AuthContextType>(

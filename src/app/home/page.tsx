@@ -7,7 +7,6 @@ import { motion, useReducedMotion } from "framer-motion";
 import {
   ChevronDown,
   Check,
-  Leaf,
   Lightbulb,
   MessageCircle,
   Moon,
@@ -46,6 +45,7 @@ import {
 } from "@/services/notificationsService";
 import messagesService from "@/services/messagesService";
 import { describeOyiWatchStatus, getOyiWatchSyncStatus } from "@/services/watchSyncService";
+import { sceneService, type ConsumerScene } from "@/services/sceneService";
 import useActiveContext, { type AvailableHomeContext } from "@/hooks/useActiveContext";
 import useAuth from "../../hooks/useAuth";
 
@@ -135,6 +135,7 @@ export default function HomePage() {
   const [maintenance, setMaintenance] = useState<MaintenanceTicket[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const [scenes, setScenes] = useState<ConsumerScene[]>([]);
   const [messageUnread, setMessageUnread] = useState<number | null>(null);
   const [watchLabel, setWatchLabel] = useState("Unavailable");
   const [contextOpen, setContextOpen] = useState(false);
@@ -196,7 +197,7 @@ export default function HomePage() {
     setDashBusy(true);
     setDashErr(null);
     try {
-      const [visitorRes, communityRes, maintenanceRes, notificationRes, walletRes, messagesRes, watchRes] =
+      const [visitorRes, communityRes, maintenanceRes, notificationRes, walletRes, messagesRes, watchRes, scenesRes] =
         await Promise.allSettled([
           visitorService.listMine(),
           estateId ? communityService.listByEstate(estateId) : Promise.resolve([]),
@@ -205,6 +206,7 @@ export default function HomePage() {
           walletService.getWallet().catch(() => null),
           messagesService.listInbox(),
           getOyiWatchSyncStatus().catch(() => null),
+          sceneService.listScenes(),
         ]);
 
       if (visitorRes.status === "fulfilled") setVisitors(asArray<VisitorAccess>(visitorRes.value));
@@ -229,6 +231,7 @@ export default function HomePage() {
         const value = watchRes.value as any;
         setWatchLabel(value ? describeOyiWatchStatus(value) : "Unavailable");
       }
+      if (scenesRes.status === "fulfilled") setScenes(scenesRes.value);
     } catch (err: any) {
       setDashErr(err?.message || "Home context sync unavailable");
     } finally {
@@ -385,12 +388,13 @@ export default function HomePage() {
   const maintenanceLabel = openMaintenance ? `${openMaintenance} open` : "None open";
   const communityLabel = communityPosts.length ? `${communityPosts.length} update${communityPosts.length > 1 ? "s" : ""}` : "No updates";
   const visitorLabel = activeVisitors ? `${activeVisitors} active` : "0 active";
+  const scenesLabel = scenes.length ? scenes[0].name : "Create your first scene";
   const homeStateItems = [
     {
-      label: "Atmosphere",
-      value: homeState,
-      href: "/activity",
-      Icon: Leaf,
+      label: "Scenes",
+      value: scenesLabel,
+      href: "/scenes?create=scene",
+      Icon: Moon,
       iconClass: "text-sky-300 drop-shadow-[0_0_12px_rgba(56,189,248,0.70)]",
     },
     {
@@ -560,7 +564,7 @@ export default function HomePage() {
               </div>
             </motion.section>
 
-            <motion.section
+            {favoriteDevices.length ? <motion.section
               initial={reduceMotion ? false : { opacity: 0, y: 12 }}
               animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
               transition={{ duration: 0.48, delay: 0.28, ease: [0.22, 1, 0.36, 1] }}
@@ -591,7 +595,7 @@ export default function HomePage() {
                 <QuickControl
                   icon={Thermometer}
                   label="Climate"
-                  value="24° Cool"
+                  value={assignedDevices.some((device) => String(device?.device_type || device?.type || device?.category || "").toLowerCase().match(/climate|ac|hvac|thermostat/)) ? "Available" : "Not configured"}
                   tone="sky"
                   onClick={() => router.push("/utilities")}
                 />
@@ -605,9 +609,9 @@ export default function HomePage() {
                 <QuickControl
                   icon={Moon}
                   label="Scenes"
-                  value="Scenes"
+                  value={scenesLabel}
                   tone="violet"
-                  onClick={() => router.push("/scenes")}
+                  onClick={() => router.push("/scenes?create=scene")}
                 />
               </div>
 
@@ -623,7 +627,22 @@ export default function HomePage() {
                   />
                 ))}
               </div>
-            </motion.section>
+            </motion.section> : (
+              <motion.section
+                initial={reduceMotion ? false : { opacity: 0, y: 12 }}
+                animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+                transition={{ duration: 0.48, delay: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                className="mt-6 rounded-[24px] border border-white/[0.06] bg-white/[0.025] p-4 backdrop-blur-2xl"
+              >
+                <h2 className="text-[17px] font-semibold tracking-[-0.04em] text-white">No devices connected yet.</h2>
+                <p className="mt-1.5 text-xs leading-5 text-white/46">Sync Smart Life or add an available device when your home is ready.</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button type="button" onClick={() => router.push("/devices/integrations")} className="rounded-full border border-sky-300/20 bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-100">Sync Smart Life</button>
+                  <button type="button" onClick={() => router.push("/devices?add=1")} className="rounded-full border border-white/[0.08] bg-white/[0.045] px-3 py-2 text-xs font-medium text-white/72">Add Device</button>
+                  <button type="button" onClick={() => router.push("/devices")} className="rounded-full px-3 py-2 text-xs font-medium text-white/48">Learn More</button>
+                </div>
+              </motion.section>
+            )}
 
             {favoriteDevices.length ? (
               <section className="mt-5 rounded-[24px] border border-white/[0.055] bg-white/[0.02] p-2.5 backdrop-blur-2xl">

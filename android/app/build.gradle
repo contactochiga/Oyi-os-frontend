@@ -3,6 +3,12 @@ apply plugin: 'com.android.application'
 android {
     namespace "com.ochiga.oyios"
     compileSdk rootProject.ext.compileSdkVersion
+    buildFeatures {
+        dataBinding true
+    }
+    dataBinding {
+        enabled = true
+    }
     defaultConfig {
         applicationId "com.ochiga.oyios"
         minSdkVersion rootProject.ext.minSdkVersion

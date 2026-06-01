@@ -26,48 +26,48 @@ const TOUR_STEPS = [
     icon: Sparkles,
   },
   {
-    title: "Home",
-    body: "See your home status, wallet, security, visitors, messages, and quick controls.",
+    title: "Meet Oyi",
+    body: "Ask by voice or text. Oyi helps your home respond with care.",
+    icon: Bot,
+  },
+  {
+    title: "Your Home",
+    body: "See the daily rhythm of your home, from security to visitors and messages.",
     icon: Home,
   },
   {
     title: "Spaces",
-    body: "Move through your rooms, view devices, scenes, and living environment.",
+    body: "Move through rooms and discover the environments that make your home yours.",
     icon: Layers3,
   },
   {
     title: "Devices",
-    body: "Control assigned smart devices safely. New devices must be synced or assigned first.",
+    body: "Connect Smart Life and control assigned devices safely.",
     icon: Lightbulb,
   },
   {
     title: "Visitors",
-    body: "Create visitor passes. Security verifies the access code at the gate.",
+    body: "Welcome guests with a pass your estate security can verify.",
     icon: DoorOpen,
   },
   {
-    title: "Services & Wallet",
-    body: "Pay service charges, utilities, estate services, and track history.",
+    title: "Wallet & Services",
+    body: "Handle estate services and payments without leaving home.",
     icon: CreditCard,
   },
   {
-    title: "Scenes & Automations",
-    body: "Create moods and routines for your home.",
-    icon: WandSparkles,
-  },
-  {
     title: "Community",
-    body: "Receive estate notices and communicate with your neighborhood.",
+    body: "Stay close to estate notices and the people around you.",
     icon: MessagesSquare,
   },
   {
-    title: "Oyi AI",
-    body: "Ask Oyi questions or run safe commands by voice or text.",
-    icon: Bot,
+    title: "Scenes & Automations",
+    body: "Create moods and routines that let your home respond naturally.",
+    icon: WandSparkles,
   },
   {
-    title: "You’re ready.",
-    body: "Welcome home. Your living intelligence is ready when you are.",
+    title: "Ready",
+    body: "Welcome to Oyi Home. Your living intelligence is ready when you are.",
     icon: Check,
   },
 ] as const;
@@ -117,24 +117,27 @@ export default function OnboardingTourPage() {
         </header>
 
         <section className="flex flex-1 flex-col justify-center py-8">
-          <div className="text-center">
-            <div className="oyi-orb mx-auto grid h-24 w-24 place-items-center rounded-full">
-              <Icon className="h-8 w-8 text-sky-100" />
+          <div className="rounded-[32px] border border-white/[0.08] bg-white/[0.04] px-5 py-8 text-center shadow-[0_28px_100px_rgba(0,0,0,0.56)] backdrop-blur-2xl">
+            <div className="relative mx-auto h-28 w-28">
+              <span className="absolute inset-[-14px] animate-pulse rounded-full bg-sky-500/10 blur-2xl" />
+              <div className="oyi-orb relative grid h-28 w-28 place-items-center rounded-full">
+                <Icon className="h-8 w-8 text-sky-100" />
+              </div>
             </div>
-            <p className="mt-7 text-[10px] font-semibold uppercase tracking-[0.26em] text-sky-200/52">
+            <p className="mt-6 text-[10px] font-semibold uppercase tracking-[0.26em] text-sky-200/52">
               {index + 1} of {TOUR_STEPS.length}
             </p>
-            <h1 className="mt-3 text-[30px] font-semibold tracking-[-0.065em]">{step.title}</h1>
+            <h1 className="mt-3 text-[28px] font-semibold tracking-[-0.065em]">{step.title}</h1>
             <p className="mx-auto mt-3 max-w-[330px] text-sm leading-6 text-white/52">{step.body}</p>
-          </div>
 
-          <div className="mt-8 flex justify-center gap-1.5">
-            {TOUR_STEPS.map((item, stepIndex) => (
-              <span
-                key={item.title}
-                className={`h-1.5 rounded-full transition-all ${stepIndex === index ? "w-7 bg-sky-400" : "w-1.5 bg-white/16"}`}
-              />
-            ))}
+            <div className="mt-7 flex justify-center gap-1.5">
+              {TOUR_STEPS.map((item, stepIndex) => (
+                <span
+                  key={item.title}
+                  className={`h-1.5 rounded-full transition-all ${stepIndex === index ? "w-7 bg-sky-400" : "w-1.5 bg-white/16"}`}
+                />
+              ))}
+            </div>
           </div>
         </section>
 
@@ -144,7 +147,7 @@ export default function OnboardingTourPage() {
             onClick={() => (isLast ? finish() : setIndex((current) => current + 1))}
             className="flex w-full items-center justify-center gap-2 rounded-[18px] bg-sky-500 px-4 py-3.5 text-sm font-semibold text-white transition active:scale-[0.99]"
           >
-            {isLast ? "Enter Oyi Home" : "Continue"}
+            {isLast ? "Finish" : "Next"}
             {isLast ? <Check className="h-4 w-4" /> : <ArrowRight className="h-4 w-4" />}
           </button>
         </div>

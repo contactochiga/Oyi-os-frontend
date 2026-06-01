@@ -2,7 +2,9 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 import { signUpWithEmail } from "@/services/authService";
 import { decodeToken, isExpired, setCookie } from "@/lib/auth";
 import { useSessionStore } from "@/store/useSessionStore";
@@ -369,6 +371,10 @@ export default function SignupClient() {
         </div>
 
         <div className="relative w-full max-w-[370px]">
+          <Link href="/" className="mb-4 inline-flex items-center gap-2 text-xs font-medium text-white/46 transition hover:text-white/72">
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Back to secure invitation
+          </Link>
           <div className="relative overflow-hidden rounded-[34px] border border-white/[0.08] bg-white/[0.045] p-5 shadow-[0_24px_90px_rgba(0,0,0,0.62)] backdrop-blur-2xl">
             <div
               className="pointer-events-none absolute inset-x-0 top-0 h-[2px]"
@@ -383,8 +389,9 @@ export default function SignupClient() {
               <div className="flex flex-col items-center text-center">
                 <div className="oyi-orb grid h-20 w-20 place-items-center rounded-full text-[18px] font-semibold tracking-[-0.08em]">Oyi</div>
 
+                <div className="mt-4 rounded-full border border-amber-300/16 bg-amber-300/[0.07] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-100/72">Development signup</div>
                 <div className="mt-5 text-[22px] font-semibold tracking-[-0.05em] text-white">{step === "form" ? "Create your home access." : "Verify your email."}</div>
-                <div className="mt-1 text-xs text-white/45">Living intelligence begins with a secure session.</div>
+                <div className="mt-1 text-xs text-white/45">Production residents activate through an estate invitation.</div>
 
                 <div className="mt-3 flex items-center gap-2 text-[11px] text-white/35">
                   <StatusDot ok={backendOk} />

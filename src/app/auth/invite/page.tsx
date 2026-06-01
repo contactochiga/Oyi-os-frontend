@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   ArrowRight,
   CalendarClock,
+  Camera,
   CameraOff,
   CheckCircle2,
   Home,
@@ -20,6 +21,7 @@ import { activateInvite, type InvitePreview, validateInvite } from "@/services/a
 import { extractInviteToken } from "@/lib/inviteToken";
 import { establishConsumerSession } from "@/services/sessionBootstrap";
 import { markOnboardingTourPending } from "@/services/onboardingTour";
+import { scanInviteQrCode } from "@/services/inviteScanner";
 import { useSessionStore } from "@/store/useSessionStore";
 
 function friendlyInviteError(message?: string) {
@@ -50,8 +52,9 @@ function InviteActivationClient() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const [scanBusy, setScanBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [cameraMessage, setCameraMessage] = useState<string | null>(params.get("mode") === "scan" ? "Camera scanner is not installed in this build. Paste your setup link instead." : null);
+  const [cameraMessage, setCameraMessage] = useState<string | null>(null);
 
   async function runValidation(rawEntry = entry) {
     const token = extractInviteToken(rawEntry);
@@ -80,6 +83,26 @@ function InviteActivationClient() {
     const token = params.get("token");
     if (token) void runValidation(token);
     // Query token is intentionally validated once on entry.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function scanInvitation() {
+    setScanBusy(true);
+    setError(null);
+    const result = await scanInviteQrCode();
+    setScanBusy(false);
+    if (!result.ok) {
+      setCameraMessage(result.message);
+      return;
+    }
+    setEntry(result.value);
+    setCameraMessage(null);
+    await runValidation(result.value);
+  }
+
+  useEffect(() => {
+    if (params.get("mode") === "scan") void scanInvitation();
+    // Scanner is intentionally opened once when the resident chooses Scan Invitation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -151,9 +174,14 @@ function InviteActivationClient() {
                 ) : (
                   <div className="rounded-[18px] border border-sky-400/15 bg-sky-500/8 px-3.5 py-3 text-xs leading-5 text-sky-100/76">
                     <div className="flex items-center gap-2 font-semibold"><QrCode className="h-4 w-4" /> Invitation scanner</div>
-                    <p className="mt-1.5">QR scanning is scanner-ready. Paste your secure setup link if camera scanning is unavailable.</p>
+                    <p className="mt-1.5">Scan the secure QR code from your estate team, or paste your setup link below.</p>
                   </div>
                 )}
+
+                <button type="button" onClick={() => void scanInvitation()} disabled={scanBusy || busy} className="flex w-full items-center justify-center gap-2 rounded-[18px] border border-sky-300/18 bg-sky-400/10 px-4 py-3 text-sm font-semibold text-sky-100 transition disabled:opacity-45">
+                  {scanBusy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+                  {scanBusy ? "Opening camera…" : "Scan invitation QR"}
+                </button>
 
                 <label className="block">
                   <span className="text-xs font-medium text-white/62">Setup link or invite token</span>

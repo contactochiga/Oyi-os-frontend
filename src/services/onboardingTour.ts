@@ -27,6 +27,10 @@ export function replayOnboardingTour() {
   write(TOUR_PENDING_KEY, "1");
 }
 
+export function clearOnboardingTourTemporaryState() {
+  remove(TOUR_PENDING_KEY);
+}
+
 export function isOnboardingTourComplete() {
   try {
     return typeof window !== "undefined" && Boolean(localStorage.getItem(TOUR_COMPLETE_KEY));
