@@ -216,10 +216,10 @@ export default function LoginClient() {
 
                 <button
                   onClick={() => router.push("/auth/signup")}
-                  className="w-full py-3 rounded-2xl bg-white/10 text-white/85 text-sm font-semibold hover:bg-white/15 transition active:scale-[0.99] border border-white/10"
+                  className="w-full py-2 text-xs font-medium text-white/38 transition hover:text-white/60 active:scale-[0.99]"
                   type="button"
                 >
-                  Create account
+                  Development signup
                 </button>
 
                 <div className="pt-1 text-center text-[11px] text-white/32">

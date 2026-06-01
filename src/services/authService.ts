@@ -54,6 +54,40 @@ export async function loginWithEmail(email: string, password: string) {
   }
 }
 
+export type InvitePreview = {
+  invite_id: string;
+  estate: { id: string; name: string };
+  home: { id: string; label: string };
+  invited_email?: string | null;
+  role: string;
+  expires_at: string;
+};
+
+export type InviteActivationPayload = {
+  token: string;
+  username: string;
+  password: string;
+  confirmPassword: string;
+};
+
+export async function validateInvite(token: string) {
+  try {
+    const res = await API.post("/auth/invites/validate", { token });
+    return res.data as { ok: true; preview: InvitePreview };
+  } catch (err: any) {
+    return { error: pickError(err, "This invitation could not be validated.") };
+  }
+}
+
+export async function activateInvite(payload: InviteActivationPayload) {
+  try {
+    const res = await API.post("/auth/invites/activate", payload);
+    return res.data;
+  } catch (err: any) {
+    return { error: pickError(err, "This invitation could not be activated.") };
+  }
+}
+
 /**
  * ✅ For now, disable Supabase OAuth here so consumer auth stays same as facility.
  * We can re-enable later and exchange Supabase session -> backend JWT if you want.

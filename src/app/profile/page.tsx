@@ -31,6 +31,7 @@ import { walletService } from "@/services/walletService";
 import { getGenericIntegration, getTuyaIntegration } from "@/services/integrationsService";
 import { describeOyiWatchStatus, getOyiWatchSyncStatus, isOyiWatchConnected, syncOyiWatchSession, type WatchSyncResult } from "@/services/watchSyncService";
 import { listMyNotifications, type AppNotification } from "@/services/notificationsService";
+import { replayOnboardingTour } from "@/services/onboardingTour";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import API from "@/services/api";
 import pkg from "../../../package.json";
@@ -502,6 +503,7 @@ export default function ProfilePage() {
             ) : null}
             {panel === "support" ? (
               <>
+                <button type="button" onClick={() => { replayOnboardingTour(); router.push("/onboarding"); }} className="w-full rounded-[18px] border border-white/[0.06] bg-white/[0.025] px-3.5 py-3 text-left text-sm font-medium text-white/82 transition hover:bg-white/[0.05]">Replay Home Tour</button>
                 <button type="button" onClick={() => router.push("/reports")} className="w-full rounded-[18px] border border-white/[0.06] bg-white/[0.025] px-3.5 py-3 text-left text-sm font-medium text-white/82 transition hover:bg-white/[0.05]">Documentation</button>
                 <button type="button" onClick={() => router.push("/maintenance")} className="w-full rounded-[18px] border border-white/[0.06] bg-white/[0.025] px-3.5 py-3 text-left text-sm font-medium text-white/82 transition hover:bg-white/[0.05]">Contact Support</button>
                 <button type="button" onClick={() => router.push("/maintenance")} className="w-full rounded-[18px] border border-white/[0.06] bg-white/[0.025] px-3.5 py-3 text-left text-sm font-medium text-white/82 transition hover:bg-white/[0.05]">Report Issue</button>
