@@ -10,6 +10,7 @@ import {
   Moon,
   Plus,
   Search,
+  Star,
   X,
 } from "lucide-react";
 
@@ -281,6 +282,7 @@ export default function DeviceClient() {
   const [bindRoom, setBindRoom] = useState("");
   const [assignDevice, setAssignDevice] = useState<AnyDevice | null>(null);
   const [assignRoom, setAssignRoom] = useState("");
+  const [editingFavorites, setEditingFavorites] = useState(false);
 
   async function hydrateStates(list: AnyDevice[]) {
     const jobs = list
@@ -325,6 +327,7 @@ export default function DeviceClient() {
 
   useEffect(() => {
     if (["1", "device"].includes(String(searchParams.get("add") || ""))) void openAddDevice();
+    if (String(searchParams.get("edit") || "") === "favorites") setEditingFavorites(true);
     // Open the resident device picker once when linked from Home empty state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
@@ -491,6 +494,29 @@ export default function DeviceClient() {
     }
   }
 
+  async function toggleFavorite(device: AnyDevice) {
+    const dbId = pickDbId(device);
+    if (!dbId || !device?.home_id || busyId) return;
+    const sid = String(dbId);
+    const favorite = !isFavoriteDevice(device);
+    setBusyId(sid);
+    setErr(null);
+    try {
+      await deviceService.setFavorite(sid, favorite);
+      setItems((current) =>
+        current.map((item) =>
+          String(pickDbId(item) || "") === sid
+            ? { ...item, metadata: { ...(item?.metadata || {}), favorite } }
+            : item,
+        ),
+      );
+    } catch (e: any) {
+      setErr(e?.response?.data?.error || e?.message || "Failed to update favorite");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function viewFriendlyDetails(device: AnyDevice) {
     const dbId = pickDbId(device);
     if (!dbId) return;
@@ -601,7 +627,10 @@ export default function DeviceClient() {
             <section className="mt-5">
               <div className="mb-2.5 flex items-center justify-between">
                 <h2 className="text-[17px] font-semibold tracking-[-0.04em] text-white">Favorite Controls</h2>
-                <button type="button" onClick={load} disabled={loading} className="text-xs text-sky-200/76 disabled:text-white/30">{loading ? "Syncing" : "Refresh"}</button>
+                <div className="flex items-center gap-3">
+                  <button type="button" onClick={() => setEditingFavorites((current) => !current)} className="text-xs text-sky-200/76">{editingFavorites ? "Done" : "Edit favorites"}</button>
+                  <button type="button" onClick={load} disabled={loading} className="text-xs text-sky-200/76 disabled:text-white/30">{loading ? "Syncing" : "Refresh"}</button>
+                </div>
               </div>
               {favorites.length ? (
                 <div className="flex snap-x gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -644,7 +673,7 @@ export default function DeviceClient() {
             <section className="mt-5">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <h2 className="text-[17px] font-semibold tracking-[-0.04em] text-white">All Devices</h2>
-                <a href="/activity" className="inline-flex items-center gap-1 text-xs text-sky-200/80">View Activity <ChevronRight className="h-3.5 w-3.5" /></a>
+                <button type="button" onClick={() => router.push("/activity")} className="inline-flex items-center gap-1 text-xs text-sky-200/80">View Activity <ChevronRight className="h-3.5 w-3.5" /></button>
               </div>
               <label className="flex h-11 items-center gap-2 rounded-full border border-white/[0.075] bg-white/[0.035] px-4 text-white/70 shadow-[0_12px_34px_rgba(0,0,0,0.24)] backdrop-blur-2xl focus-within:border-sky-300/25 focus-within:bg-sky-400/[0.045]">
                 <Search className="h-4 w-4 text-white/36" />
@@ -654,7 +683,7 @@ export default function DeviceClient() {
               <div className="mt-3 overflow-hidden rounded-[24px] border border-white/[0.07] bg-[linear-gradient(145deg,rgba(255,255,255,0.042),rgba(255,255,255,0.012))] shadow-[0_14px_48px_rgba(0,0,0,0.29)] backdrop-blur-2xl">
                 {loading && !filtered.length ? <div className="px-4 py-5 text-sm text-white/50">Loading devices…</div> : null}
                 {!loading && !filtered.length ? <div className="px-4 py-5 text-sm text-white/50">No devices available.</div> : null}
-                {filtered.map((device, index) => <DeviceRow key={String(pickDbId(device) || pickExternalId(device) || pickName(device))} device={device} state={stateMap[String(pickDbId(device))] || {}} busy={busyId === String(pickDbId(device))} bordered={index > 0} onOpen={openDevice} onPower={toggleMasterPower} />)}
+                {filtered.map((device, index) => <DeviceRow key={String(pickDbId(device) || pickExternalId(device) || pickName(device))} device={device} state={stateMap[String(pickDbId(device))] || {}} busy={busyId === String(pickDbId(device))} bordered={index > 0} editingFavorites={editingFavorites} onOpen={openDevice} onPower={toggleMasterPower} onFavorite={toggleFavorite} />)}
               </div>
             </section>
           </div>
@@ -688,12 +717,13 @@ function FavoriteCard({ device, state, busy, onOpen, onPower }: { device: AnyDev
 }
 
 function RoomCard({ room }: { room: { key: string; roomId: string; name: string; devices: AnyDevice[] } }) {
+  const router = useRouter();
   return (
-    <a href={`/room?roomId=${encodeURIComponent(room.roomId)}`} className="rounded-[22px] border border-white/[0.07] bg-[linear-gradient(145deg,rgba(255,255,255,0.042),rgba(255,255,255,0.012))] p-3.5 shadow-[0_12px_36px_rgba(0,0,0,0.25)] backdrop-blur-2xl transition active:scale-[0.985]">
+    <button type="button" onClick={() => router.push(`/room?roomId=${encodeURIComponent(room.roomId)}`)} className="rounded-[22px] border border-white/[0.07] bg-[linear-gradient(145deg,rgba(255,255,255,0.042),rgba(255,255,255,0.012))] p-3.5 text-left shadow-[0_12px_36px_rgba(0,0,0,0.25)] backdrop-blur-2xl transition active:scale-[0.985]">
       <div className="grid h-9 w-9 place-items-center rounded-full border border-sky-300/14 bg-sky-400/10 text-sky-200"><Home className="h-4.5 w-4.5" /></div>
       <div className="mt-3 truncate text-[15px] font-semibold tracking-[-0.035em] text-white">{room.name}</div>
       <div className="mt-1 text-xs text-white/48">{room.devices.length} device{room.devices.length === 1 ? "" : "s"}</div>
-    </a>
+    </button>
   );
 }
 
@@ -732,20 +762,22 @@ function UnassignedDeviceSheet({ device, room, setRoom, binding, onClose, onAssi
   );
 }
 
-function DeviceRow({ device, state, busy, bordered, onOpen, onPower }: { device: AnyDevice; state: any; busy: boolean; bordered: boolean; onOpen: (device: AnyDevice) => void; onPower: (device: AnyDevice) => void }) {
+function DeviceRow({ device, state, busy, bordered, editingFavorites, onOpen, onPower, onFavorite }: { device: AnyDevice; state: any; busy: boolean; bordered: boolean; editingFavorites: boolean; onOpen: (device: AnyDevice) => void; onPower: (device: AnyDevice) => void; onFavorite: (device: AnyDevice) => void }) {
   const Icon = deviceIcon(device);
   const simple = isSimpleControlDevice(device, state);
   const stateText = busy ? "Working…" : displayState(device, state);
   return (
-    <button type="button" onClick={() => onOpen(device)} className={cn("flex w-full items-center gap-3 px-3.5 py-3 text-left transition hover:bg-white/[0.035]", bordered && "border-t border-white/[0.055]")}>
-      <span className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-full border", iconTone(device))}><Icon className="h-5 w-5" /></span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-[14px] font-semibold tracking-[-0.025em] text-white">{pickName(device)}</span>
-        <span className="mt-0.5 block truncate text-xs text-white/44">{pickRoomName(device) || "Unassigned"}</span>
-      </span>
+    <div className={cn("flex w-full items-center gap-3 px-3.5 py-3 transition hover:bg-white/[0.035]", bordered && "border-t border-white/[0.055]")}>
+      <button type="button" onClick={() => onOpen(device)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+        <span className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-full border", iconTone(device))}><Icon className="h-5 w-5" /></span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[14px] font-semibold tracking-[-0.025em] text-white">{pickName(device)}</span>
+          <span className="mt-0.5 block truncate text-xs text-white/44">{pickRoomName(device) || "Unassigned"}</span>
+        </span>
+      </button>
       <span className="shrink-0 text-right text-[13px] font-medium text-white/72">{stateText}</span>
-      {simple ? <span onClick={(e) => { e.stopPropagation(); void onPower(device); }} className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.05] text-white/60"><ChevronRight className="h-4 w-4" /></span> : <ChevronRight className="h-4 w-4 shrink-0 text-white/32" />}
-    </button>
+      {editingFavorites && device?.home_id ? <button type="button" onClick={() => void onFavorite(device)} className={cn("grid h-8 w-8 shrink-0 place-items-center rounded-full border transition", isFavoriteDevice(device) ? "border-amber-300/35 bg-amber-300/12 text-amber-200" : "border-white/10 bg-white/[0.05] text-white/38")} aria-label={isFavoriteDevice(device) ? "Remove favorite" : "Add favorite"}><Star className={cn("h-4 w-4", isFavoriteDevice(device) && "fill-current")} /></button> : simple ? <button type="button" onClick={() => void onPower(device)} className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.05] text-white/60" aria-label={`Toggle ${pickName(device)}`}><ChevronRight className="h-4 w-4" /></button> : <ChevronRight className="h-4 w-4 shrink-0 text-white/32" />}
+    </div>
   );
 }
 

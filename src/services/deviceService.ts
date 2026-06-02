@@ -126,6 +126,14 @@ export const deviceService = {
     return res.data;
   },
 
+  async setFavorite(deviceId: string, favorite: boolean) {
+    const res = await API.patch(`/devices/${encodeURIComponent(deviceId)}/preferences`, { favorite });
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("oyi:device-registry-updated", { detail: res.data }));
+    }
+    return res.data;
+  },
+
   /**
    * ✅ COMMAND execution
    */

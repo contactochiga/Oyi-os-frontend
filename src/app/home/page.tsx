@@ -71,6 +71,18 @@ function isSimpleFavorite(device: any) {
   return /light|switch|socket|plug|bulb|lamp/.test(type);
 }
 
+function favoritePreference(device: any) {
+  const values = [
+    device?.favorite,
+    device?.is_favorite,
+    device?.pinned,
+    device?.metadata?.favorite,
+    device?.metadata?.is_favorite,
+    device?.metadata?.pinned,
+  ];
+  return values.find((value) => typeof value === "boolean");
+}
+
 function readFavoritePower(device: any) {
   const raw = device?.switch ?? device?.power ?? device?.on ?? device?.state?.switch ?? device?.state?.power ?? device?.state?.on;
   if (typeof raw === "boolean") return raw;
@@ -281,8 +293,7 @@ export default function HomePage() {
   const canMountAuthedBridges = !!ready && !!token;
 
   const favoriteDevices = useMemo(() => {
-    return assignedDevices
-      .filter((device) => {
+    const candidates = assignedDevices.filter((device) => {
         const type = String(
           device?.device_type || device?.type || device?.category || "",
         ).toLowerCase();
@@ -293,8 +304,9 @@ export default function HomePage() {
           type.includes("climate") ||
           type.includes("ac")
         );
-      })
-      .slice(0, 6);
+      });
+    const hasSavedPreferences = candidates.some((device) => typeof favoritePreference(device) === "boolean");
+    return (hasSavedPreferences ? candidates.filter((device) => favoritePreference(device) === true) : candidates).slice(0, 6);
   }, [assignedDevices]);
 
   function pickDeviceId(device: any) {
@@ -620,7 +632,7 @@ export default function HomePage() {
                 <h2 className="text-[18px] font-medium tracking-[-0.04em] text-white/76">Quick controls</h2>
                 <button
                   type="button"
-                  onClick={() => router.push("/devices")}
+                  onClick={() => router.push("/devices?edit=favorites")}
                   className="text-[14px] font-medium text-sky-300 transition hover:text-sky-200 active:scale-[0.98]"
                 >
                   Edit
