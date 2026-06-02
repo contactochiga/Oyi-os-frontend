@@ -664,7 +664,7 @@ export default function HomePage() {
                 <h2 className="text-[17px] font-semibold tracking-[-0.04em] text-white">No devices connected yet.</h2>
                 <p className="mt-1.5 text-xs leading-5 text-white/46">Add your first device to begin controlling your home.</p>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <button type="button" onClick={() => router.push("/devices/integrations")} className="rounded-full border border-sky-300/20 bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-100">Add Device</button>
+                  <button type="button" onClick={() => router.push("/devices?add=device")} className="rounded-full border border-sky-300/20 bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-100">Add Device</button>
                   <button type="button" onClick={() => setLearnMoreOpen(true)} className="rounded-full px-3 py-2 text-xs font-medium text-white/48">Learn More</button>
                 </div>
               </motion.section>

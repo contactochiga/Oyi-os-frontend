@@ -287,7 +287,7 @@ export default function DeviceClient() {
   }, [estateId]);
 
   useEffect(() => {
-    if (searchParams.get("add") === "1") void openAddDevice();
+    if (["1", "device"].includes(String(searchParams.get("add") || ""))) void openAddDevice();
     // Open the resident device picker once when linked from Home empty state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
