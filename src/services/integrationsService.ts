@@ -76,7 +76,14 @@ export async function syncTuyaDevices() {
 export async function getTuyaIntegration() {
   try {
     const res = await API.get("/me/integrations/tuya");
-    return res.data as { provider: "tuya"; connected: boolean; tuya_uid?: string | null; masked_uid?: string | null };
+    return res.data as {
+      provider: "tuya";
+      connected: boolean;
+      provider_ready?: boolean;
+      credential_status?: "ready" | "missing";
+      tuya_uid?: string | null;
+      masked_uid?: string | null;
+    };
   } catch (err: any) {
     return { error: pickError(err, "Failed to load Tuya integration") } as any;
   }

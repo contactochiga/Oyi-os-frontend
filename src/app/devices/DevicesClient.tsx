@@ -24,6 +24,7 @@ import { getDeviceFamily, getDeviceIcon, getDeviceIconTone, isSimplePowerDevice 
 
 type AnyDevice = Record<string, any>;
 type DiscoveryDevice = Record<string, any>;
+type AddDeviceTab = "nearby" | "provider" | "manual";
 type CategoryKey = "all" | "lights" | "climate" | "security" | "entertainment" | "sensors";
 
 const CATEGORIES: Array<{ key: CategoryKey; label: string }> = [
@@ -239,6 +240,7 @@ export default function DeviceClient() {
   const [stateMeta, setStateMeta] = useState<{ rows?: Array<{ label: string; value: string }> } | null>(null);
   const [stateLoading, setStateLoading] = useState(false);
   const [addDeviceOpen, setAddDeviceOpen] = useState(false);
+  const [addDeviceTab, setAddDeviceTab] = useState<AddDeviceTab>("nearby");
   const [discovering, setDiscovering] = useState(false);
   const [binding, setBinding] = useState(false);
   const [discovered, setDiscovered] = useState<DiscoveryDevice[]>([]);
@@ -307,6 +309,7 @@ export default function DeviceClient() {
   }, [items]);
 
   const selectedDiscoveryIds = useMemo(() => Object.keys(selectedDiscover).filter((k) => selectedDiscover[k]), [selectedDiscover]);
+  const providerDevices = useMemo(() => items.filter((device) => !device?.home_id && String(device?.provider || device?.vendor || device?.adapter || "").toLowerCase() === "tuya"), [items]);
 
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();
@@ -439,11 +442,11 @@ export default function DeviceClient() {
     }
   }
 
-  async function refreshDiscovery() {
+  async function refreshDiscovery(adapter = addDeviceTab === "nearby" ? "ssdp" : "tuya") {
     setDiscovering(true);
     setErr(null);
     try {
-      const found = await deviceService.discoverDevices();
+      const found = await deviceService.discoverDevices(adapter);
       setDiscovered(Array.isArray(found) ? found : []);
     } catch (e: any) {
       setErr(e?.response?.data?.error || e?.message || "Failed to discover devices");
@@ -455,8 +458,9 @@ export default function DeviceClient() {
 
   async function openAddDevice() {
     setAddDeviceOpen(true);
+    setAddDeviceTab("nearby");
     setSelectedDiscover({});
-    await refreshDiscovery();
+    await refreshDiscovery("ssdp");
   }
 
   async function bindSelectedDevices() {
@@ -464,9 +468,9 @@ export default function DeviceClient() {
     setBinding(true);
     setErr(null);
     try {
-      const targets = discovered.filter((d) => {
+      const targets = [...discovered, ...providerDevices].filter((d, index, list) => {
         const ext = pickDiscoveryExternalId(d);
-        return ext ? selectedDiscover[String(ext)] : false;
+        return ext && selectedDiscover[String(ext)] && list.findIndex((entry) => String(pickDiscoveryExternalId(entry)) === String(ext)) === index;
       });
       const payload: any = {
         devices: targets.map((d) => ({
@@ -589,7 +593,7 @@ export default function DeviceClient() {
           </div>
         </div>
 
-        {addDeviceOpen ? <AddDeviceSheet discovering={discovering} binding={binding} discovered={discovered} selectedDiscover={selectedDiscover} selectedCount={selectedDiscoveryIds.length} bindRoom={bindRoom} setBindRoom={setBindRoom} setSelectedDiscover={setSelectedDiscover} onClose={() => setAddDeviceOpen(false)} onScan={refreshDiscovery} onBind={bindSelectedDevices} /> : null}
+        {addDeviceOpen ? <AddDeviceSheet tab={addDeviceTab} setTab={setAddDeviceTab} discovering={discovering} binding={binding} discovered={discovered} providerDevices={providerDevices} selectedDiscover={selectedDiscover} selectedCount={selectedDiscoveryIds.length} bindRoom={bindRoom} setBindRoom={setBindRoom} setSelectedDiscover={setSelectedDiscover} onClose={() => setAddDeviceOpen(false)} onScan={refreshDiscovery} onBind={bindSelectedDevices} /> : null}
         {sheetOpen && sheetDevice ? <ControlSheet device={sheetDevice} state={stateMap[String(pickDbId(sheetDevice))] || {}} busy={busyId === String(pickDbId(sheetDevice))} onClose={() => setSheetOpen(false)} onDetails={viewFriendlyDetails} onToggleGang={toggleGang} onCreateScene={(device) => router.push(`/scenes?create=scene&deviceId=${encodeURIComponent(String(pickDbId(device) || ""))}`)} /> : null}
         {stateOpen ? <DetailsModal title={stateTitle} meta={stateMeta} loading={stateLoading} onClose={() => setStateOpen(false)} /> : null}
         <BottomNav />
@@ -655,25 +659,31 @@ function AmbientEmpty({ title, body, className }: { title: string; body: string;
   return <div className={cn("rounded-[22px] border border-white/[0.07] bg-white/[0.025] p-4 text-sm text-white/54", className)}><div className="font-medium text-white/74">{title}</div><div className="mt-1 text-xs text-white/42">{body}</div></div>;
 }
 
-function AddDeviceSheet({ discovering, binding, discovered, selectedDiscover, selectedCount, bindRoom, setBindRoom, setSelectedDiscover, onClose, onScan, onBind }: any) {
+function AddDeviceSheet({ tab, setTab, discovering, binding, discovered, providerDevices, selectedDiscover, selectedCount, bindRoom, setBindRoom, setSelectedDiscover, onClose, onScan, onBind }: any) {
+  const visibleDevices = tab === "provider" ? providerDevices : discovered;
   return (
     <div className="fixed inset-0 z-[130]">
       <div className="absolute inset-0 bg-black/65 backdrop-blur-md" onClick={onClose} />
       <div className="absolute inset-x-0 bottom-0 px-4 pb-[calc(14px+var(--sab))]">
         <section className="mx-auto max-w-[430px] overflow-hidden rounded-[28px] border border-white/[0.08] bg-[#050a12]/96 shadow-[0_24px_80px_rgba(0,0,0,0.62)]">
           <div className="flex items-center justify-between gap-3 border-b border-white/[0.06] px-4 py-3">
-            <div><h2 className="text-base font-semibold tracking-[-0.035em] text-white">Add Devices</h2><p className="mt-0.5 text-xs text-white/44">Scan and connect available home devices.</p></div>
-            <div className="flex items-center gap-2"><button type="button" onClick={onScan} disabled={discovering || binding} className="rounded-full border border-sky-300/16 bg-sky-400/10 px-3 py-1.5 text-xs text-sky-100 disabled:opacity-50">{discovering ? "Scanning" : "Scan"}</button><button type="button" onClick={onClose} className="grid h-8 w-8 place-items-center rounded-full bg-white/[0.06] text-white/60"><X className="h-4 w-4" /></button></div>
+            <div><h2 className="text-base font-semibold tracking-[-0.035em] text-white">Add Devices</h2><p className="mt-0.5 text-xs text-white/44">Discover and assign devices to this home.</p></div>
+            <button type="button" onClick={onClose} className="grid h-8 w-8 place-items-center rounded-full bg-white/[0.06] text-white/60"><X className="h-4 w-4" /></button>
           </div>
           <div className="max-h-[62vh] overflow-y-auto p-4">
-            {discovering ? <div className="text-sm text-white/56">Scanning for devices…</div> : null}
-            {!discovering && !discovered.length ? <AmbientEmpty title="No devices found" body="Awaiting device sync." /> : null}
+            <div className="flex gap-1.5 overflow-x-auto pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {([["nearby", "Nearby / Local"], ["provider", "Provider Devices"], ["manual", "Manual Setup"]] as const).map(([key, label]) => <button key={key} type="button" onClick={() => { setTab(key); setSelectedDiscover({}); if (key === "nearby") void onScan("ssdp"); }} className={cn("shrink-0 rounded-full border px-3 py-1.5 text-xs", tab === key ? "border-sky-300/35 bg-sky-400/10 text-sky-100" : "border-white/[0.07] bg-white/[0.025] text-white/52")}>{label}</button>)}
+            </div>
+            {tab === "manual" ? <AmbientEmpty title="Automatic discovery first" body="Connect a provider or install Oyi Edge to discover devices automatically. Manual enrollment is not enabled for this home." /> : null}
+            {tab !== "manual" ? <div className="mb-3 flex items-center justify-between gap-3"><p className="text-xs leading-5 text-white/42">{tab === "nearby" ? "Search supported LAN devices. Deeper local discovery requires Oyi Edge." : "Assign devices imported from Tuya / Smart Life cloud sync."}</p>{tab === "nearby" ? <button type="button" onClick={() => void onScan("ssdp")} disabled={discovering || binding} className="shrink-0 rounded-full border border-sky-300/16 bg-sky-400/10 px-3 py-1.5 text-xs text-sky-100 disabled:opacity-50">{discovering ? "Scanning" : "Scan"}</button> : null}</div> : null}
+            {tab !== "manual" && discovering ? <div className="text-sm text-white/56">Scanning for devices…</div> : null}
+            {tab !== "manual" && !discovering && !visibleDevices.length ? <AmbientEmpty title={tab === "provider" ? "No provider devices ready" : "No nearby devices found"} body={tab === "provider" ? "Sync your provider in Connected Systems, then return to assign imported devices." : "Local discovery requires Oyi Edge or supported LAN devices."} /> : null}
             <div className="space-y-2">
-              {discovered.map((d: DiscoveryDevice, index: number) => {
+              {tab !== "manual" && visibleDevices.map((d: DiscoveryDevice, index: number) => {
                 const ext = pickDiscoveryExternalId(d);
                 const key = ext ? String(ext) : `tmp-${index}`;
                 const selected = ext ? Boolean(selectedDiscover[String(ext)]) : false;
-                return <button key={key} type="button" disabled={!ext || binding} onClick={() => ext && setSelectedDiscover((prev: Record<string, boolean>) => ({ ...prev, [String(ext)]: !prev[String(ext)] }))} className={cn("flex w-full items-center justify-between gap-3 rounded-[18px] border px-3 py-2.5 text-left", selected ? "border-sky-300/25 bg-sky-400/10" : "border-white/[0.07] bg-white/[0.035]", !ext && "opacity-50")}><span className="min-w-0"><span className="block truncate text-sm font-semibold text-white">{d?.name || d?.type || "Device"}</span><span className="mt-0.5 block truncate text-xs text-white/42">{d?.protocol || d?.adapter || d?.vendor || "device"}</span></span><span className="text-xs text-white/50">{selected ? "Selected" : typeof d?.online === "boolean" ? (d.online ? "Online" : "Offline") : "Found"}</span></button>;
+                return <button key={key} type="button" disabled={!ext || binding} onClick={() => ext && setSelectedDiscover((prev: Record<string, boolean>) => ({ ...prev, [String(ext)]: !prev[String(ext)] }))} className={cn("flex w-full items-center justify-between gap-3 rounded-[18px] border px-3 py-2.5 text-left", selected ? "border-sky-300/25 bg-sky-400/10" : "border-white/[0.07] bg-white/[0.035]", !ext && "opacity-50")}><span className="min-w-0"><span className="block truncate text-sm font-semibold text-white">{d?.name || d?.type || "Device"}</span><span className="mt-0.5 block truncate text-xs text-white/42">{d?.protocol || d?.adapter || d?.vendor || "device"} · {tab === "provider" ? "Available / Unassigned" : "Nearby"}</span></span><span className="text-xs text-white/50">{selected ? "Selected" : typeof d?.online === "boolean" ? (d.online ? "Online" : "Offline") : "Found"}</span></button>;
               })}
             </div>
             {selectedCount ? <div className="mt-3 rounded-[20px] border border-white/[0.07] bg-white/[0.035] p-3"><input value={bindRoom} onChange={(e) => setBindRoom(e.target.value)} placeholder="Room name (optional)" className="h-10 w-full rounded-full border border-white/[0.08] bg-black/20 px-4 text-sm text-white outline-none placeholder:text-white/34" disabled={binding} /><button type="button" onClick={onBind} disabled={binding} className="mt-2 h-10 w-full rounded-full bg-white text-sm font-semibold text-black disabled:opacity-50">{binding ? "Adding…" : `Add ${selectedCount} device${selectedCount === 1 ? "" : "s"}`}</button></div> : null}

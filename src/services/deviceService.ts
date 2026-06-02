@@ -25,9 +25,9 @@ export const deviceService = {
    * ✅ DISCOVERY ONLY
    * Always scans discoverable devices (Tuya / adapter).
    */
-  async discoverDevices() {
+  async discoverDevices(adapter = "tuya") {
     try {
-      const res = await API.get("/devices/discover");
+      const res = await API.get("/devices/discover", { params: { adapter } });
       return res.data?.devices ?? res.data ?? [];
     } catch (err: any) {
       const status = Number(err?.response?.status || 0);
