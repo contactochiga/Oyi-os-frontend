@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Plug, Watch, Home, Speaker, Cloud, Cpu } from "lucide-react";
 
 import ConsumerShell from "@/app/components/ConsumerShell";
@@ -18,6 +19,7 @@ type IntegrationItem = {
 };
 
 export default function DeviceIntegrationsPage() {
+  const router = useRouter();
   const { token, user, ready } = useAuth() as any;
   const [items, setItems] = useState<IntegrationItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -27,6 +29,7 @@ export default function DeviceIntegrationsPage() {
   const [tuyaStatus, setTuyaStatus] = useState<any>(null);
   const [tuyaUid, setTuyaUid] = useState("");
   const [savingTuya, setSavingTuya] = useState(false);
+  const [showAdvancedTuya, setShowAdvancedTuya] = useState(false);
   const [watchStatus, setWatchStatus] = useState<WatchSyncResult | null>(null);
   const [watchBusy, setWatchBusy] = useState(false);
   const [watchMessage, setWatchMessage] = useState("");
@@ -148,16 +151,21 @@ export default function DeviceIntegrationsPage() {
             <div className="text-xs font-medium text-white/76">UID linked {tuyaStatus?.masked_uid ? `· ${tuyaStatus.masked_uid}` : ""}</div>
             <div className="mt-2 flex flex-wrap gap-2">
               <button type="button" onClick={() => void syncTuya()} disabled={syncingTuya || !tuyaStatus?.provider_ready} className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-black disabled:opacity-45">{syncingTuya ? "Syncing…" : "Sync Now"}</button>
+              <button type="button" onClick={() => router.push("/devices?add=device")} className="rounded-full border border-sky-300/18 bg-sky-400/10 px-3 py-2 text-xs text-sky-100">Open Add Device</button>
               <button type="button" onClick={() => setTuyaStatus((current: any) => ({ ...current, connected: false }))} className="rounded-full border border-white/[0.09] bg-white/[0.04] px-3 py-2 text-xs text-white/68">Reconnect</button>
             </div>
           </div>
         ) : (
           <div className="mt-3">
-            <label className="text-xs text-white/54">Tuya UID or supported account identifier</label>
-            <div className="mt-2 flex gap-2">
-              <input value={tuyaUid} onChange={(event) => setTuyaUid(event.target.value)} placeholder="Enter Tuya UID" className="h-10 min-w-0 flex-1 rounded-full border border-white/[0.08] bg-black/20 px-4 text-sm text-white outline-none placeholder:text-white/30" />
-              <button type="button" onClick={() => void saveTuyaUid()} disabled={savingTuya || !tuyaUid.trim()} className="rounded-full bg-white px-3 text-xs font-semibold text-black disabled:opacity-45">{savingTuya ? "Saving…" : "Connect"}</button>
-            </div>
+            <button type="button" onClick={() => setSyncMessage("Smart Life app-account QR linking is pending provider authorization setup. Use the advanced UID fallback for pilot accounts.")} disabled={tuyaStatus?.provider_ready === false} className="h-10 rounded-full bg-white px-4 text-xs font-semibold text-black disabled:opacity-45">Connect Smart Life</button>
+            <button type="button" onClick={() => setShowAdvancedTuya((current) => !current)} className="ml-2 h-10 rounded-full border border-white/[0.09] bg-white/[0.04] px-4 text-xs text-white/68">Advanced UID fallback</button>
+            {showAdvancedTuya ? <div className="mt-3 rounded-[18px] border border-white/[0.07] bg-white/[0.025] p-3">
+              <label className="text-xs text-white/54">Developer / pilot Tuya UID</label>
+              <div className="mt-2 flex gap-2">
+                <input value={tuyaUid} onChange={(event) => setTuyaUid(event.target.value)} placeholder="Enter Tuya UID" className="h-10 min-w-0 flex-1 rounded-full border border-white/[0.08] bg-black/20 px-4 text-sm text-white outline-none placeholder:text-white/30" />
+                <button type="button" onClick={() => void saveTuyaUid()} disabled={savingTuya || !tuyaUid.trim()} className="rounded-full bg-white px-3 text-xs font-semibold text-black disabled:opacity-45">{savingTuya ? "Saving…" : "Save UID"}</button>
+              </div>
+            </div> : null}
           </div>
         )}
         {lastTuyaSync ? <div className="mt-3 text-[11px] leading-5 text-white/42">Last sync {new Date(lastTuyaSync.synced_at).toLocaleString()} · {formatTuyaSyncSummary(lastTuyaSync)} · Unchanged {lastTuyaSync.unchanged || 0}{lastTuyaSync.errors?.length ? ` · Errors ${lastTuyaSync.errors.length}` : ""}</div> : null}

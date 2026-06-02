@@ -2,8 +2,10 @@
 import API from "./api";
 
 export type AssignDevicesPayload = {
-  deviceIds: string[];
+  deviceIds?: string[];
+  devices?: Array<Record<string, any>>;
   room?: string | null;
+  room_id?: string | null;
 };
 
 export type DeviceStateResponse = {
@@ -118,6 +120,9 @@ export const deviceService = {
    */
   async assignDevices(payload: AssignDevicesPayload) {
     const res = await API.post("/devices/assign", payload);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("oyi:device-registry-updated", { detail: res.data }));
+    }
     return res.data;
   },
 

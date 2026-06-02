@@ -144,6 +144,7 @@ export default function HomePage() {
   const activeContext = useActiveContext();
 
   const [assignedDevices, setAssignedDevices] = useState<any[]>([]);
+  const [registryDevices, setRegistryDevices] = useState<any[]>([]);
   const [devicesBusy, setDevicesBusy] = useState(false);
   const [devicesErr, setDevicesErr] = useState<string | null>(null);
   const [deviceCommandBusy, setDeviceCommandBusy] = useState<string | null>(
@@ -204,8 +205,12 @@ export default function HomePage() {
     setDevicesBusy(true);
     setDevicesErr(null);
     try {
-      const assigned = await deviceService.getAssignedDevices(estateId);
+      const [assigned, registry] = await Promise.all([
+        deviceService.getAssignedDevices(estateId),
+        deviceService.getRegistryDevices(estateId),
+      ]);
       setAssignedDevices(asArray(assigned).filter((device) => String(device?.home_id || "") === String(homeId || "")));
+      setRegistryDevices(asArray(registry));
     } catch (err: any) {
       setDevicesErr(err?.message || "Device sync unavailable");
     } finally {
@@ -264,6 +269,13 @@ export default function HomePage() {
     if (!ready || !token) return;
     refreshDevicePanelData();
     refreshDashboardData();
+  }, [ready, token, estateId, homeId]);
+
+  useEffect(() => {
+    if (!ready || !token) return;
+    const refresh = () => void refreshDevicePanelData();
+    window.addEventListener("oyi:device-registry-updated", refresh);
+    return () => window.removeEventListener("oyi:device-registry-updated", refresh);
   }, [ready, token, estateId, homeId]);
 
   const canMountAuthedBridges = !!ready && !!token;
@@ -393,6 +405,13 @@ export default function HomePage() {
   ).length;
   const unread = notifications.filter((item) => item.status !== "read").length;
   const totalVisibleDevices = assignedDevices.length;
+  const assignableDevices = registryDevices.filter((device) => {
+    if (device?.home_id) return false;
+    const status = String(device?.status || "").toLowerCase();
+    const syncState = String(device?.sync_state || "").toLowerCase();
+    return status !== "unavailable" && syncState !== "unavailable" && device?.is_managed_disabled !== true;
+  });
+  const availableToAssign = assignableDevices.length;
   const activeDevices = assignedDevices.filter(isOnline).length;
   const homeState = dashErr ? "Needs attention" : unread || openMaintenance ? "Aware" : "Calm";
   const securityState = activeVisitors ? `${activeVisitors} visitor${activeVisitors > 1 ? "s" : ""}` : "Protected";
@@ -591,7 +610,7 @@ export default function HomePage() {
               </div>
             </motion.section>
 
-            {favoriteDevices.length ? <motion.section
+            {totalVisibleDevices ? <motion.section
               initial={reduceMotion ? false : { opacity: 0, y: 12 }}
               animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
               transition={{ duration: 0.48, delay: 0.28, ease: [0.22, 1, 0.36, 1] }}
@@ -654,7 +673,21 @@ export default function HomePage() {
                   />
                 ))}
               </div>
-            </motion.section> : (
+            </motion.section> : availableToAssign ? (
+              <motion.section
+                initial={reduceMotion ? false : { opacity: 0, y: 12 }}
+                animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+                transition={{ duration: 0.48, delay: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                className="mt-6 rounded-[24px] border border-sky-300/12 bg-sky-400/[0.045] p-4 backdrop-blur-2xl"
+              >
+                <h2 className="text-[17px] font-semibold tracking-[-0.04em] text-white">Devices discovered and ready to assign.</h2>
+                <p className="mt-1.5 text-xs leading-5 text-white/46">{availableToAssign} device{availableToAssign === 1 ? "" : "s"} available. Assign them to this home to begin controlling your spaces.</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button type="button" onClick={() => router.push("/devices?add=device")} className="rounded-full border border-sky-300/24 bg-sky-400/12 px-3 py-2 text-xs font-medium text-sky-100">Assign Devices</button>
+                  <button type="button" onClick={() => router.push("/devices")} className="rounded-full px-3 py-2 text-xs font-medium text-white/56">Open Devices</button>
+                </div>
+              </motion.section>
+            ) : (
               <motion.section
                 initial={reduceMotion ? false : { opacity: 0, y: 12 }}
                 animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
@@ -792,10 +825,10 @@ export default function HomePage() {
                 <button type="button" onClick={() => setLearnMoreOpen(false)} className="grid h-9 w-9 place-items-center rounded-full bg-white/[0.06] text-white/52" aria-label="Close device guidance"><X className="h-4 w-4" /></button>
               </div>
               <div className="mt-4 space-y-2 text-sm leading-5 text-white/56">
-                <p>Connect supported smart devices through Connected Systems.</p>
-                <p>Assign devices to rooms, create scenes, and control your home safely from Oyi.</p>
+                <p>Connected Systems links external providers and syncs supported smart devices into Oyi.</p>
+                <p>Add Device discovers or assigns devices. Organize them into rooms, create scenes, and control your home safely from Oyi.</p>
               </div>
-              <button type="button" onClick={() => router.push("/devices/integrations")} className="mt-4 w-full rounded-full bg-white px-4 py-3 text-sm font-semibold text-black">Open Connected Systems</button>
+              <button type="button" onClick={() => router.push("/devices?add=device")} className="mt-4 w-full rounded-full bg-white px-4 py-3 text-sm font-semibold text-black">Open Add Device</button>
             </section>
           </div>
         ) : null}

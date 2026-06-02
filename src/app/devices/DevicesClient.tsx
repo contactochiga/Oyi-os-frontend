@@ -64,6 +64,10 @@ function pickRoomKey(d: AnyDevice) {
   return String(d?.room_id || d?.room?.id || pickRoomName(d) || "unassigned").toLowerCase();
 }
 
+function pickRoomId(d: AnyDevice) {
+  return d?.room_id || d?.room?.id || null;
+}
+
 function pickDiscoveryExternalId(d: DiscoveryDevice) {
   return d?.external_id || d?.externalId || d?.device_id || d?.dev_id || d?.uuid || null;
 }
@@ -75,7 +79,7 @@ function isOnline(d: AnyDevice): boolean | null {
   if (typeof d?.status === "string") {
     const s = d.status.toLowerCase();
     if (s.includes("online") || s.includes("active")) return true;
-    if (s.includes("offline") || s.includes("lost")) return false;
+    if (s.includes("offline") || s.includes("lost") || s.includes("unavailable") || s.includes("disabled")) return false;
   }
   return null;
 }
@@ -219,6 +223,35 @@ function attentionReason(device: AnyDevice, state: any) {
   return null;
 }
 
+function providerLabel(device: AnyDevice) {
+  const provider = String(device?.provider || device?.vendor || device?.adapter || "device").toLowerCase();
+  if (provider === "tuya") return "Tuya / Smart Life";
+  if (provider === "ssdp") return "Local network";
+  if (provider === "onvif") return "ONVIF";
+  return provider.replace(/_/g, " ");
+}
+
+function suggestedRoom(device: AnyDevice) {
+  return device?.metadata?.provider_room_name || device?.metadata?.room_name || device?.metadata?.room || device?.metadata?.tuya?.room_name || null;
+}
+
+function friendlyCapabilities(device: AnyDevice) {
+  const raw = Array.isArray(device?.capabilities) ? device.capabilities : [];
+  const labels = raw
+    .map((capability: any) => String(capability?.name || capability?.label || capability?.code || capability || "").toLowerCase())
+    .map((capability: string) => {
+      if (/switch|power|on_off/.test(capability)) return "Power";
+      if (/bright|dimmer/.test(capability)) return "Brightness";
+      if (/temp|climate|thermostat/.test(capability)) return "Temperature";
+      if (/colour|color|hue|saturation/.test(capability)) return "Color";
+      if (/curtain|blind|position/.test(capability)) return "Position";
+      if (/lock|unlock/.test(capability)) return "Lock";
+      return null;
+    })
+    .filter(Boolean) as string[];
+  return Array.from(new Set(labels)).slice(0, 6);
+}
+
 export default function DeviceClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -246,6 +279,8 @@ export default function DeviceClient() {
   const [discovered, setDiscovered] = useState<DiscoveryDevice[]>([]);
   const [selectedDiscover, setSelectedDiscover] = useState<Record<string, boolean>>({});
   const [bindRoom, setBindRoom] = useState("");
+  const [assignDevice, setAssignDevice] = useState<AnyDevice | null>(null);
+  const [assignRoom, setAssignRoom] = useState("");
 
   async function hydrateStates(list: AnyDevice[]) {
     const jobs = list
@@ -327,14 +362,16 @@ export default function DeviceClient() {
     });
   }, [items, q, category, stateMap]);
 
-  const favorites = useMemo(() => items.filter(isFavoriteDevice).slice(0, 8), [items]);
+  const favorites = useMemo(() => items.filter((device) => Boolean(device?.home_id) && isFavoriteDevice(device)).slice(0, 8), [items]);
 
   const roomGroups = useMemo(() => {
-    const map = new Map<string, { key: string; name: string; devices: AnyDevice[] }>();
+    const map = new Map<string, { key: string; roomId: string; name: string; devices: AnyDevice[] }>();
     items.forEach((device) => {
+      const roomId = pickRoomId(device);
+      if (!device?.home_id || !roomId) return;
       const key = pickRoomKey(device);
-      const name = pickRoomName(device) || "Unassigned";
-      const current = map.get(key) || { key, name, devices: [] as AnyDevice[] };
+      const name = pickRoomName(device) || "Room";
+      const current = map.get(key) || { key, roomId: String(roomId), name, devices: [] as AnyDevice[] };
       current.devices.push(device);
       map.set(key, current);
     });
@@ -391,6 +428,7 @@ export default function DeviceClient() {
   async function toggleMasterPower(device: AnyDevice) {
     const dbId = pickDbId(device);
     if (!dbId) return setErr("This device is not assigned yet.");
+    if (isOnline(device) === false) return setErr(`${pickName(device)} is offline.`);
     const sid = String(dbId);
     setBusyId(sid);
     setErr(null);
@@ -411,7 +449,8 @@ export default function DeviceClient() {
 
   function openDevice(device: AnyDevice) {
     if (!device?.home_id) {
-      void openAddDevice();
+      setAssignDevice(device);
+      setAssignRoom(String(suggestedRoom(device) || ""));
       return;
     }
     const sid = String(pickDbId(device) || "");
@@ -421,6 +460,34 @@ export default function DeviceClient() {
       setSheetDevice(device);
       setSheetOpen(true);
       void warmState(device);
+    }
+  }
+
+  async function assignListedDevice() {
+    if (!assignDevice || binding) return;
+    setBinding(true);
+    setErr(null);
+    try {
+      await deviceService.assignDevices({
+        devices: [{
+          external_id: String(pickExternalId(assignDevice) || ""),
+          vendor: assignDevice?.vendor || assignDevice?.adapter || assignDevice?.provider || "tuya",
+          adapter: assignDevice?.adapter || assignDevice?.vendor || assignDevice?.provider || "tuya",
+          name: pickName(assignDevice),
+          type: assignDevice?.type || assignDevice?.category || "device",
+          icon: assignDevice?.icon,
+          online: typeof assignDevice?.online === "boolean" ? assignDevice.online : undefined,
+          metadata: assignDevice?.metadata || {},
+        }],
+        room: assignRoom.trim() || null,
+      } as any);
+      setAssignDevice(null);
+      setAssignRoom("");
+      await load();
+    } catch (e: any) {
+      setErr(e?.response?.data?.error || e?.message || "Failed to assign device");
+    } finally {
+      setBinding(false);
     }
   }
 
@@ -594,6 +661,7 @@ export default function DeviceClient() {
         </div>
 
         {addDeviceOpen ? <AddDeviceSheet tab={addDeviceTab} setTab={setAddDeviceTab} discovering={discovering} binding={binding} discovered={discovered} providerDevices={providerDevices} selectedDiscover={selectedDiscover} selectedCount={selectedDiscoveryIds.length} bindRoom={bindRoom} setBindRoom={setBindRoom} setSelectedDiscover={setSelectedDiscover} onClose={() => setAddDeviceOpen(false)} onScan={refreshDiscovery} onBind={bindSelectedDevices} /> : null}
+        {assignDevice ? <UnassignedDeviceSheet device={assignDevice} room={assignRoom} setRoom={setAssignRoom} binding={binding} onClose={() => setAssignDevice(null)} onAssign={assignListedDevice} /> : null}
         {sheetOpen && sheetDevice ? <ControlSheet device={sheetDevice} state={stateMap[String(pickDbId(sheetDevice))] || {}} busy={busyId === String(pickDbId(sheetDevice))} onClose={() => setSheetOpen(false)} onDetails={viewFriendlyDetails} onToggleGang={toggleGang} onCreateScene={(device) => router.push(`/scenes?create=scene&deviceId=${encodeURIComponent(String(pickDbId(device) || ""))}`)} /> : null}
         {stateOpen ? <DetailsModal title={stateTitle} meta={stateMeta} loading={stateLoading} onClose={() => setStateOpen(false)} /> : null}
         <BottomNav />
@@ -619,13 +687,48 @@ function FavoriteCard({ device, state, busy, onOpen, onPower }: { device: AnyDev
   );
 }
 
-function RoomCard({ room }: { room: { key: string; name: string; devices: AnyDevice[] } }) {
+function RoomCard({ room }: { room: { key: string; roomId: string; name: string; devices: AnyDevice[] } }) {
   return (
-    <a href={`/rooms?room=${encodeURIComponent(room.name)}`} className="rounded-[22px] border border-white/[0.07] bg-[linear-gradient(145deg,rgba(255,255,255,0.042),rgba(255,255,255,0.012))] p-3.5 shadow-[0_12px_36px_rgba(0,0,0,0.25)] backdrop-blur-2xl transition active:scale-[0.985]">
+    <a href={`/room?roomId=${encodeURIComponent(room.roomId)}`} className="rounded-[22px] border border-white/[0.07] bg-[linear-gradient(145deg,rgba(255,255,255,0.042),rgba(255,255,255,0.012))] p-3.5 shadow-[0_12px_36px_rgba(0,0,0,0.25)] backdrop-blur-2xl transition active:scale-[0.985]">
       <div className="grid h-9 w-9 place-items-center rounded-full border border-sky-300/14 bg-sky-400/10 text-sky-200"><Home className="h-4.5 w-4.5" /></div>
       <div className="mt-3 truncate text-[15px] font-semibold tracking-[-0.035em] text-white">{room.name}</div>
       <div className="mt-1 text-xs text-white/48">{room.devices.length} device{room.devices.length === 1 ? "" : "s"}</div>
     </a>
+  );
+}
+
+function UnassignedDeviceSheet({ device, room, setRoom, binding, onClose, onAssign }: { device: AnyDevice; room: string; setRoom: (value: string) => void; binding: boolean; onClose: () => void; onAssign: () => void }) {
+  const Icon = deviceIcon(device);
+  const capabilities = friendlyCapabilities(device);
+  const suggestion = suggestedRoom(device);
+  return (
+    <div className="fixed inset-0 z-[135]">
+      <div className="absolute inset-0 bg-black/65 backdrop-blur-md" onClick={onClose} />
+      <div className="absolute inset-x-0 bottom-0 px-4 pb-[calc(14px+var(--sab))]">
+        <section className="mx-auto max-w-[430px] overflow-hidden rounded-[28px] border border-white/[0.08] bg-[#050a12]/96 shadow-[0_24px_80px_rgba(0,0,0,0.62)]">
+          <div className="flex items-start justify-between gap-3 border-b border-white/[0.06] px-4 py-4">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-full border", iconTone(device))}><Icon className="h-5 w-5" /></span>
+              <div className="min-w-0"><h2 className="truncate text-base font-semibold text-white">{pickName(device)}</h2><p className="mt-0.5 text-xs capitalize text-white/44">{providerLabel(device)} · {inferFamily(device)}</p></div>
+            </div>
+            <button type="button" onClick={onClose} className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white/[0.06] text-white/60"><X className="h-4 w-4" /></button>
+          </div>
+          <div className="p-4">
+            <div className="rounded-[20px] border border-white/[0.07] bg-white/[0.03] p-3">
+              <div className="flex items-center justify-between text-xs"><span className="text-white/42">Connection</span><span className={isOnline(device) === false ? "text-amber-200" : "text-emerald-200"}>{isOnline(device) === false ? "Offline" : isOnline(device) === true ? "Online" : "Awaiting sync"}</span></div>
+              {capabilities.length ? <div className="mt-3 flex flex-wrap gap-1.5">{capabilities.map((capability) => <span key={capability} className="rounded-full border border-white/[0.07] bg-white/[0.035] px-2 py-1 text-[10px] text-white/56">{capability}</span>)}</div> : <p className="mt-3 text-xs text-white/42">Capabilities will appear after assignment and provider state sync.</p>}
+            </div>
+            <div className="mt-3 rounded-[20px] border border-white/[0.07] bg-white/[0.03] p-3">
+              <div className="text-xs font-medium text-white/76">Assign to this home</div>
+              <p className="mt-1 text-xs leading-5 text-white/42">Assign this imported device before controlling it. Add a room now or organize it later.</p>
+              {suggestion ? <p className="mt-2 text-[11px] text-sky-200/72">Suggested room: {String(suggestion)}</p> : null}
+              <input value={room} onChange={(event) => setRoom(event.target.value)} placeholder="Room name (optional)" className="mt-3 h-10 w-full rounded-full border border-white/[0.08] bg-black/20 px-4 text-sm text-white outline-none placeholder:text-white/30" disabled={binding} />
+              <button type="button" onClick={onAssign} disabled={binding} className="mt-2 h-10 w-full rounded-full bg-white text-sm font-semibold text-black disabled:opacity-45">{binding ? "Assigning…" : "Add to Oyi Home"}</button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
   );
 }
 
