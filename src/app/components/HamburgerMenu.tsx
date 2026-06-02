@@ -7,55 +7,27 @@ import useAuth from "@/hooks/useAuth";
 import { createPortal } from "react-dom";
 
 import { XMarkIcon, Bars3Icon } from "@heroicons/react/24/outline";
-import { FiLogOut } from "react-icons/fi";
-
 // ✅ NEW: token decode fallback (so iOS always has email)
 import { decodeToken } from "@/lib/auth";
 
 // ✅ NEW: menu icons
-import { FiActivity, FiBarChart2, FiBriefcase, FiCpu, FiCreditCard, FiGrid, FiHelpCircle, FiHome, FiKey, FiLink, FiMessageSquare, FiMoon, FiShield, FiTool, FiUsers, FiDroplet, FiUser } from "react-icons/fi";
+import { FiBarChart2, FiBriefcase, FiCpu, FiCreditCard, FiGrid, FiKey, FiMessageSquare, FiMoon, FiShield, FiTool, FiDroplet } from "react-icons/fi";
 import { CONSUMER_MODULES, visibleModules, type ModuleDefinition } from "@/lib/moduleRegistry";
 
 const MODULE_ICONS: Record<string, any> = {
-  home: FiGrid,
-  rooms: FiHome,
   devices: FiCpu,
   scenes: FiMoon,
-  activity: FiActivity,
   messages: FiMessageSquare,
   security: FiShield,
   utilities: FiDroplet,
   maintenance: FiTool,
   visitors: FiKey,
-  community: FiUsers,
   wallet: FiCreditCard,
   services: FiBriefcase,
   reports: FiBarChart2,
-  account: FiUser,
 };
 
 type MenuItem = ModuleDefinition & { icon: any };
-
-function getApiBase() {
-  return (
-    process.env.NEXT_PUBLIC_API_BASE_URL ||
-    process.env.NEXT_PUBLIC_BACKEND_URL ||
-    process.env.NEXT_PUBLIC_API_URL ||
-    "https://oyi-os.onrender.com"
-  ).replace(/\/$/, "");
-}
-
-function buildHomeLabel(home: any): string | null {
-  if (!home) return null;
-  const block = String(home.block || "").trim();
-  const unit = String(home.unit || "").trim();
-  if (block && unit) return `${block} / ${unit}`;
-  if (block) return block;
-  if (unit) return unit;
-  const name = String(home.name || "").trim();
-  if (name) return name;
-  return null;
-}
 
 function isActivePath(pathname: string, href: string) {
   if (href === "/home") return pathname === "/home";
@@ -85,14 +57,10 @@ function BadgePill({ value }: { value: number }) {
 export default function HamburgerMenu() {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, token, logout } = useAuth();
+  const { user, token } = useAuth();
 
   const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
-  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
-
-  const [estateName, setEstateName] = useState<string | null>(null);
-  const [homeLabel, setHomeLabel] = useState<string | null>(null);
 
   // Badge values remain empty until each module has a real unread-count source.
   const [badges, setBadges] = useState({
@@ -145,7 +113,6 @@ export default function HamburgerMenu() {
 
   const closeAll = () => {
     setOpen(false);
-    setShowLogoutConfirm(false);
   };
 
   const pushAndClose = (href: string) => {
@@ -154,11 +121,6 @@ export default function HamburgerMenu() {
   };
 
   const onMenuClick = (href: string) => pushAndClose(href);
-
-  const handleLogout = async () => {
-    closeAll();
-    await logout?.();
-  };
 
   // lock scroll + sidebar-open class
   useEffect(() => {
@@ -183,57 +145,6 @@ export default function HamburgerMenu() {
     };
   }, [open]);
 
-  // Fetch consumer context (supports multiple backend response shapes)
-  useEffect(() => {
-    let cancelled = false;
-
-    async function run() {
-      setEstateName(null);
-      setHomeLabel(null);
-      if (!token) return;
-
-      try {
-        const api = getApiBase();
-        const res = await fetch(`${api}/me/context`, {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          cache: "no-store",
-        });
-
-        if (!res.ok) return;
-
-        const data = await res.json();
-        if (cancelled) return;
-
-        const root = (data as any)?.data ?? data;
-
-        const estate =
-          root?.estate ?? root?.context?.estate ?? root?.user?.estate ?? null;
-        const home =
-          root?.home ?? root?.context?.home ?? root?.user?.home ?? null;
-
-        const estateNameResolved = estate?.name
-          ? String(estate.name)
-          : root?.estate_name
-          ? String(root.estate_name)
-          : null;
-
-        setEstateName(estateNameResolved);
-        setHomeLabel(home ? buildHomeLabel(home) : null);
-      } catch {
-        // silent
-      }
-    }
-
-    run();
-    return () => {
-      cancelled = true;
-    };
-  }, [token, user?.estate_id, user?.home_id]);
-
   // Never invent resident updates. Real unread-count endpoints can hydrate this later.
   useEffect(() => {
     setBadges({
@@ -250,13 +161,8 @@ export default function HamburgerMenu() {
       visibleModules(user as any, CONSUMER_MODULES).map((item) => ({
         ...item,
         icon: MODULE_ICONS[item.key] || FiGrid,
-      })),
+      })).filter((item) => ["devices", "scenes", "visitors", "messages", "maintenance", "wallet", "services", "security", "utilities", "reports"].includes(item.key)),
     [user],
-  );
-
-  const shouldShowContext = useMemo(
-    () => !!estateName || !!homeLabel,
-    [estateName, homeLabel],
   );
 
   const OVERLAY_Z = 2147483646;
@@ -340,12 +246,6 @@ export default function HamburgerMenu() {
                     </button>
                   </div>
 
-                  {shouldShowContext ? (
-                    <div className="mt-3 rounded-2xl border border-white/[0.08] bg-white/[0.035] px-3 py-2.5">
-                      <div className="truncate text-[12px] font-medium text-white/82">{homeLabel || estateName}</div>
-                      {homeLabel && estateName ? <div className="mt-0.5 truncate text-[11px] text-white/42">{estateName}</div> : null}
-                    </div>
-                  ) : null}
                 </div>
 
                 {/* Menu */}
@@ -401,70 +301,7 @@ export default function HamburgerMenu() {
                   </div>
                 </nav>
 
-                {/* Resident footer */}
-                <div className="border-t border-white/[0.08] bg-white/[0.025] px-3 pb-3 pt-2">
-                  {[
-                    [FiUser, "Profile", "/profile"],
-                    [FiLink, "Connected Systems", "/devices/integrations"],
-                    [FiHelpCircle, "Help / Support", "/profile"],
-                  ].map(([Icon, label, href]: any) => (
-                    <button key={label} onClick={() => pushAndClose(href)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-[13px] text-white/68 transition hover:bg-white/[0.055] hover:text-white" type="button">
-                      <Icon className="text-[15px]" />
-                      <span>{label}</span>
-                    </button>
-                  ))}
-                  <button onClick={() => setShowLogoutConfirm(true)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-[13px] text-red-100/72 transition hover:bg-red-400/[0.08]" type="button">
-                    <FiLogOut className="text-[15px]" />
-                    <span>Sign out</span>
-                  </button>
-                </div>
               </div>
-
-              {/* Logout confirm (UNCHANGED) */}
-              {showLogoutConfirm && (
-                <div
-                  className="fixed inset-0 flex items-center justify-center px-6"
-                  style={{
-                    zIndex: DRAWER_Z,
-                    backgroundColor: "rgba(0,0,0,0.56)",
-                    backdropFilter: "blur(18px)",
-                    WebkitBackdropFilter: "blur(18px)",
-                    paddingTop: "var(--sat)",
-                    paddingBottom: "calc(var(--sab) + var(--kb))",
-                  }}
-                  onClick={() => setShowLogoutConfirm(false)}
-                >
-                  <div
-                    className="bg-[#06080e] p-6 rounded-3xl w-full max-w-sm border border-white/10"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <p className="text-white text-center font-semibold text-lg mb-2">
-                      Sign out?
-                    </p>
-                    <p className="text-white/55 text-center text-sm mb-6">
-                      You’ll need to sign in again to access your home.
-                    </p>
-
-                    <div className="flex gap-3">
-                      <button
-                        onClick={() => setShowLogoutConfirm(false)}
-                        className="flex-1 py-3 rounded-2xl bg-white/10 text-white"
-                        type="button"
-                      >
-                        Cancel
-                      </button>
-
-                      <button
-                        onClick={handleLogout}
-                        className="flex-1 py-3 rounded-2xl bg-white text-black font-semibold"
-                        type="button"
-                      >
-                        Sign out
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
             </aside>
           </>,
           document.body,

@@ -34,6 +34,7 @@ export async function establishConsumerSession(
       role: contextUser?.role ?? fallbackUser?.role ?? decoded.role,
       estate_id: contextUser?.estate_id ?? estate?.id ?? payload?.estate_id ?? fallbackUser?.estate_id ?? decoded.estate_id,
       home_id: contextUser?.home_id ?? home?.id ?? payload?.home_id ?? fallbackUser?.home_id ?? decoded.home_id,
+      onboarding_complete: payload?.onboarding_complete === true || contextUser?.onboarding_complete === true,
     } as SessionUser;
 
     setSession(token, mergedUser);

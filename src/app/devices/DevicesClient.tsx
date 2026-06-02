@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
   ChevronRight,
@@ -219,6 +219,7 @@ function attentionReason(device: AnyDevice, state: any) {
 }
 
 export default function DeviceClient() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
   const estateId = useMemo(() => (user as any)?.estate_id ?? (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null), [user]);
@@ -517,7 +518,7 @@ export default function DeviceClient() {
                 <p className="mt-2 text-[13px] leading-5 text-white/56">Control your connected home.</p>
               </div>
               <div className="flex items-center gap-1.5">
-                <button type="button" onClick={() => window.location.assign("/scenes?create=scene")} className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-2 text-xs font-medium text-white/68 active:scale-[0.98]"><Moon className="h-3.5 w-3.5" /> Scenes</button>
+                <button type="button" onClick={() => router.push("/scenes?create=scene")} className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-2 text-xs font-medium text-white/68 active:scale-[0.98]"><Moon className="h-3.5 w-3.5" /> Scenes</button>
                 <button type="button" onClick={openAddDevice} className="inline-flex items-center gap-1.5 rounded-full border border-sky-300/18 bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-100 shadow-[0_0_18px_rgba(0,132,255,0.14)] active:scale-[0.98]">
                   <Plus className="h-3.5 w-3.5" /> Add
                 </button>
@@ -589,7 +590,7 @@ export default function DeviceClient() {
         </div>
 
         {addDeviceOpen ? <AddDeviceSheet discovering={discovering} binding={binding} discovered={discovered} selectedDiscover={selectedDiscover} selectedCount={selectedDiscoveryIds.length} bindRoom={bindRoom} setBindRoom={setBindRoom} setSelectedDiscover={setSelectedDiscover} onClose={() => setAddDeviceOpen(false)} onScan={refreshDiscovery} onBind={bindSelectedDevices} /> : null}
-        {sheetOpen && sheetDevice ? <ControlSheet device={sheetDevice} state={stateMap[String(pickDbId(sheetDevice))] || {}} busy={busyId === String(pickDbId(sheetDevice))} onClose={() => setSheetOpen(false)} onDetails={viewFriendlyDetails} onToggleGang={toggleGang} /> : null}
+        {sheetOpen && sheetDevice ? <ControlSheet device={sheetDevice} state={stateMap[String(pickDbId(sheetDevice))] || {}} busy={busyId === String(pickDbId(sheetDevice))} onClose={() => setSheetOpen(false)} onDetails={viewFriendlyDetails} onToggleGang={toggleGang} onCreateScene={(device) => router.push(`/scenes?create=scene&deviceId=${encodeURIComponent(String(pickDbId(device) || ""))}`)} /> : null}
         {stateOpen ? <DetailsModal title={stateTitle} meta={stateMeta} loading={stateLoading} onClose={() => setStateOpen(false)} /> : null}
         <BottomNav />
       </main>
@@ -683,7 +684,7 @@ function AddDeviceSheet({ discovering, binding, discovered, selectedDiscover, se
   );
 }
 
-function ControlSheet({ device, state, busy, onClose, onDetails, onToggleGang }: { device: AnyDevice; state: any; busy: boolean; onClose: () => void; onDetails: (device: AnyDevice) => void; onToggleGang: (device: AnyDevice, gangIndex: number, next: boolean) => void }) {
+function ControlSheet({ device, state, busy, onClose, onDetails, onToggleGang, onCreateScene }: { device: AnyDevice; state: any; busy: boolean; onClose: () => void; onDetails: (device: AnyDevice) => void; onToggleGang: (device: AnyDevice, gangIndex: number, next: boolean) => void; onCreateScene: (device: AnyDevice) => void }) {
   const gangCount = guessGangCount(device, state);
   const values = Object.keys(state || {}).length ? readGangValues(gangCount, state) : Array.from({ length: gangCount }, () => null);
   return (
@@ -702,6 +703,7 @@ function ControlSheet({ device, state, busy, onClose, onDetails, onToggleGang }:
               <GangRingSwitch gangCount={gangCount} online={isOnline(device)} values={values} busy={busy} onToggleGang={(gangIndex, next) => onToggleGang(device, gangIndex, next)} size={64} />
             </div>
             <button type="button" onClick={() => onDetails(device)} className="mt-3 h-11 w-full rounded-full border border-white/[0.08] bg-white/[0.045] text-sm font-medium text-white/76">View simple details</button>
+            <button type="button" onClick={() => onCreateScene(device)} className="mt-2 h-11 w-full rounded-full border border-sky-300/16 bg-sky-400/10 text-sm font-medium text-sky-100">Create scene with this device</button>
           </div>
         </section>
       </div>

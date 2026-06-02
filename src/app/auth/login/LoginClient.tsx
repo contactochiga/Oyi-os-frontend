@@ -93,6 +93,7 @@ export default function LoginClient() {
             (u as any)?.estate_id ?? estate?.id ?? payload?.estate_id ?? decoded.estate_id,
           home_id:
             (u as any)?.home_id ?? home?.id ?? payload?.home_id ?? decoded.home_id,
+          onboarding_complete: payload?.onboarding_complete === true || (u as any)?.onboarding_complete === true,
         };
 
         setSession(res.token, mergedUser as any);
@@ -220,13 +221,15 @@ export default function LoginClient() {
                   {loading ? "Signing in…" : "Continue"}
                 </button>
 
-                <button
-                  onClick={() => router.push("/auth/signup")}
-                  className="w-full py-2 text-xs font-medium text-white/38 transition hover:text-white/60 active:scale-[0.99]"
-                  type="button"
-                >
-                  Development signup
-                </button>
+                {process.env.NODE_ENV === "development" ? (
+                  <button
+                    onClick={() => router.push("/auth/signup")}
+                    className="w-full py-2 text-xs font-medium text-white/38 transition hover:text-white/60 active:scale-[0.99]"
+                    type="button"
+                  >
+                    Development signup
+                  </button>
+                ) : null}
 
                 <div className="pt-1 text-center text-[11px] text-white/32">
                   Calm home control · estate access · Oyi intelligence

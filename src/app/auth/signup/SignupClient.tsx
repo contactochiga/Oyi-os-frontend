@@ -172,6 +172,7 @@ function Otp6({
 
 export default function SignupClient() {
   const router = useRouter();
+  const signupEnabled = process.env.NODE_ENV === "development";
   const searchParams = useSearchParams();
   const { setSession, hydrate, token } = useSessionStore();
 
@@ -198,6 +199,10 @@ export default function SignupClient() {
   useEffect(() => {
     hydrate();
   }, [hydrate]);
+
+  useEffect(() => {
+    if (!signupEnabled) router.replace("/");
+  }, [router, signupEnabled]);
 
   useEffect(() => {
     if (!token) return;
@@ -335,6 +340,8 @@ export default function SignupClient() {
     setResendLocked(true);
     setStep("form");
   }
+
+  if (!signupEnabled) return null;
 
   return (
     <main className="min-h-screen overflow-hidden bg-[#02060b] text-white">

@@ -60,6 +60,26 @@ function isOnline(device: any) {
   );
 }
 
+function isUnavailable(device: any) {
+  if (typeof device?.online === "boolean") return !device.online;
+  const status = String(device?.status || "").toLowerCase();
+  return status.includes("offline") || status.includes("unavailable") || status.includes("inactive") || status.includes("lost");
+}
+
+function isSimpleFavorite(device: any) {
+  const type = String(device?.device_type || device?.type || device?.category || "").toLowerCase();
+  return /light|switch|socket|plug|bulb|lamp/.test(type);
+}
+
+function readFavoritePower(device: any) {
+  const raw = device?.switch ?? device?.power ?? device?.on ?? device?.state?.switch ?? device?.state?.power ?? device?.state?.on;
+  if (typeof raw === "boolean") return raw;
+  const status = String(device?.status || device?.state || "").toLowerCase();
+  if (status === "on") return true;
+  if (status === "off") return false;
+  return null;
+}
+
 function asArray<T = any>(value: any): T[] {
   if (Array.isArray(value)) return value;
   if (Array.isArray(value?.items)) return value.items;
@@ -144,6 +164,7 @@ export default function HomePage() {
   const [dashBusy, setDashBusy] = useState(false);
   const [dashErr, setDashErr] = useState<string | null>(null);
   const [quickPage, setQuickPage] = useState(0);
+  const [learnMoreOpen, setLearnMoreOpen] = useState(false);
   const quickControlsRef = useRef<HTMLDivElement | null>(null);
 
   const estateId = useMemo(() => {
@@ -278,14 +299,20 @@ export default function HomePage() {
   async function toggleFavoriteDevice(device: any) {
     const deviceId = pickDeviceId(device);
     if (!deviceId || deviceCommandBusy) return;
-    const currentlyOn = isOnline(device);
+    if (!isSimpleFavorite(device)) {
+      router.push("/devices");
+      return;
+    }
+    if (isUnavailable(device)) return;
+    const currentlyOn = readFavoritePower(device);
+    const next = currentlyOn === null ? true : !currentlyOn;
     setDeviceCommandBusy(deviceId);
     try {
-      await deviceService.commandDevice(deviceId, { switch: !currentlyOn });
+      await deviceService.commandDevice(deviceId, { switch: next });
       setAssignedDevices((items) =>
         items.map((item) =>
           pickDeviceId(item) === deviceId
-            ? { ...item, online: !currentlyOn, status: !currentlyOn ? "online" : "off" }
+            ? { ...item, switch: next, power: next, on: next, status: next ? "on" : "off" }
             : item,
         ),
       );
@@ -635,11 +662,10 @@ export default function HomePage() {
                 className="mt-6 rounded-[24px] border border-white/[0.06] bg-white/[0.025] p-4 backdrop-blur-2xl"
               >
                 <h2 className="text-[17px] font-semibold tracking-[-0.04em] text-white">No devices connected yet.</h2>
-                <p className="mt-1.5 text-xs leading-5 text-white/46">Sync Smart Life or add an available device when your home is ready.</p>
+                <p className="mt-1.5 text-xs leading-5 text-white/46">Add your first device to begin controlling your home.</p>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <button type="button" onClick={() => router.push("/devices/integrations")} className="rounded-full border border-sky-300/20 bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-100">Sync Smart Life</button>
-                  <button type="button" onClick={() => router.push("/devices?add=1")} className="rounded-full border border-white/[0.08] bg-white/[0.045] px-3 py-2 text-xs font-medium text-white/72">Add Device</button>
-                  <button type="button" onClick={() => router.push("/devices")} className="rounded-full px-3 py-2 text-xs font-medium text-white/48">Learn More</button>
+                  <button type="button" onClick={() => router.push("/devices/integrations")} className="rounded-full border border-sky-300/20 bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-100">Add Device</button>
+                  <button type="button" onClick={() => setLearnMoreOpen(true)} className="rounded-full px-3 py-2 text-xs font-medium text-white/48">Learn More</button>
                 </div>
               </motion.section>
             )}
@@ -650,6 +676,9 @@ export default function HomePage() {
                   {favoriteDevices.map((device) => {
                     const deviceId = pickDeviceId(device);
                     const online = isOnline(device);
+                    const unavailable = isUnavailable(device);
+                    const simple = isSimpleFavorite(device);
+                    const power = readFavoritePower(device);
                     const busy = deviceCommandBusy === deviceId;
                     const Icon = getDeviceIcon(device);
                     const tone = getDeviceIconTone(device);
@@ -657,9 +686,9 @@ export default function HomePage() {
                       <button
                         key={deviceId || device?.name}
                         type="button"
-                        disabled={busy}
-                        onClick={() => toggleFavoriteDevice(device)}
-                        className="min-w-[118px] rounded-[20px] border border-white/[0.055] bg-black/16 px-3 py-3 text-left transition hover:bg-white/[0.04] disabled:opacity-60 active:scale-[0.98]"
+                        disabled={busy || unavailable}
+                        onClick={() => simple ? void toggleFavoriteDevice(device) : router.push("/devices")}
+                        className="min-w-[118px] rounded-[20px] border border-white/[0.055] bg-black/16 px-3 py-3 text-left transition hover:bg-white/[0.04] disabled:cursor-not-allowed disabled:opacity-45 active:scale-[0.98]"
                       >
                         <span className={`grid h-8 w-8 place-items-center rounded-full border ${tone}`}>
                           <Icon className="h-4 w-4" />
@@ -668,7 +697,7 @@ export default function HomePage() {
                           {device?.name || device?.label || "Device"}
                         </span>
                         <span className="mt-0.5 block text-[11px] text-white/40">
-                          {busy ? "Working" : online ? "On" : "Off"}
+                          {busy ? "Working" : unavailable ? "Unavailable" : power === true ? "On" : power === false ? "Off" : simple ? "Ready" : online ? "Open controls" : "Open controls"}
                         </span>
                       </button>
                     );
@@ -751,6 +780,23 @@ export default function HomePage() {
               </div>
               {contextError ? <p className="mt-3 text-xs text-amber-100/70">{contextError}</p> : null}
             </div>
+          </div>
+        ) : null}
+
+        {learnMoreOpen ? (
+          <div className="fixed inset-0 z-[115] flex items-end justify-center bg-black/52 px-4 pb-[calc(18px+var(--sab))] backdrop-blur-md sm:items-center sm:pb-4">
+            <button type="button" className="absolute inset-0" aria-label="Close device guidance" onClick={() => setLearnMoreOpen(false)} />
+            <section className="relative w-full max-w-[390px] rounded-[28px] border border-white/[0.08] bg-[#050a12]/95 p-4 shadow-[0_28px_90px_rgba(0,0,0,0.62)]">
+              <div className="flex items-start justify-between gap-3">
+                <div><p className="text-[10px] uppercase tracking-[0.2em] text-sky-100/48">Connected home</p><h2 className="mt-1 text-[18px] font-semibold tracking-[-0.04em]">Add your first device</h2></div>
+                <button type="button" onClick={() => setLearnMoreOpen(false)} className="grid h-9 w-9 place-items-center rounded-full bg-white/[0.06] text-white/52" aria-label="Close device guidance"><X className="h-4 w-4" /></button>
+              </div>
+              <div className="mt-4 space-y-2 text-sm leading-5 text-white/56">
+                <p>Connect supported smart devices through Connected Systems.</p>
+                <p>Assign devices to rooms, create scenes, and control your home safely from Oyi.</p>
+              </div>
+              <button type="button" onClick={() => router.push("/devices/integrations")} className="mt-4 w-full rounded-full bg-white px-4 py-3 text-sm font-semibold text-black">Open Connected Systems</button>
+            </section>
           </div>
         ) : null}
 

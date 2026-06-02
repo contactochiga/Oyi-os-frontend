@@ -17,6 +17,7 @@ export type SessionUser = {
   unit_id?: string;
   permissions?: string[];
   permission_scopes?: string[];
+  onboarding_complete?: boolean;
 };
 
 type SessionState = {

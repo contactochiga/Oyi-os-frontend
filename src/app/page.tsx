@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Link2, LogIn, QrCode, Sparkles } from "lucide-react";
+import { ArrowRight, Link2, LogIn, Sparkles } from "lucide-react";
 import { decodeToken, isExpired } from "@/lib/auth";
 import { useSessionStore } from "@/store/useSessionStore";
 
@@ -53,30 +53,15 @@ export default function LandingPage() {
               <div className="space-y-2.5">
                 <button
                   type="button"
-                  onClick={() => router.push("/auth/invite?mode=scan")}
+                  onClick={() => router.push("/auth/invite")}
                   className="flex w-full items-center gap-3 rounded-[18px] border border-sky-400/20 bg-sky-500/12 px-4 py-3.5 text-left transition hover:bg-sky-500/18 active:scale-[0.99]"
                 >
                   <span className="grid h-10 w-10 place-items-center rounded-full border border-sky-400/20 bg-sky-500/12">
-                    <QrCode className="h-4.5 w-4.5 text-sky-100" />
+                    <Link2 className="h-4.5 w-4.5 text-sky-100" />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-semibold text-white">Scan invitation</span>
-                    <span className="mt-0.5 block text-xs text-white/42">Use the QR code from your estate.</span>
-                  </span>
-                  <ArrowRight className="h-4 w-4 text-white/34" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => router.push("/auth/invite")}
-                  className="flex w-full items-center gap-3 rounded-[18px] border border-white/[0.08] bg-white/[0.035] px-4 py-3.5 text-left transition hover:bg-white/[0.06] active:scale-[0.99]"
-                >
-                  <span className="grid h-10 w-10 place-items-center rounded-full border border-white/[0.08] bg-white/[0.045]">
-                    <Link2 className="h-4.5 w-4.5 text-white/68" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-semibold text-white">Paste setup link</span>
-                    <span className="mt-0.5 block text-xs text-white/42">Enter your secure invitation manually.</span>
+                    <span className="block text-sm font-semibold text-white">Connect with Invitation</span>
+                    <span className="mt-0.5 block text-xs text-white/42">Scan a QR code or paste your setup link.</span>
                   </span>
                   <ArrowRight className="h-4 w-4 text-white/34" />
                 </button>
@@ -99,7 +84,7 @@ export default function LandingPage() {
             )}
           </div>
 
-          {!preparing ? (
+          {!preparing && process.env.NODE_ENV === "development" ? (
             <button type="button" onClick={() => router.push("/auth/signup")} className="mx-auto mt-5 block text-xs text-white/28 transition hover:text-white/48">
               Development signup
             </button>

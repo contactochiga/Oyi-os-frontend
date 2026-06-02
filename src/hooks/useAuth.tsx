@@ -86,6 +86,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           profile_image_url: (u as any)?.profile_image_url ?? (user as any)?.profile_image_url,
           estate_id: (u as any)?.estate_id ?? estate?.id ?? payload?.estate_id ?? user?.estate_id,
           home_id: (u as any)?.home_id ?? home?.id ?? payload?.home_id ?? user?.home_id,
+          onboarding_complete: payload?.onboarding_complete === true || (u as any)?.onboarding_complete === true,
         };
 
         setSession(token, mergedUser as any);

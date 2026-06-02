@@ -28,8 +28,6 @@ import { deleteMyAccount, removeMyProfileImage, updateMyProfile, uploadMyProfile
 import { deviceService } from "@/services/deviceService";
 import { homeAccessService, type HomeAccessMember } from "@/services/homeAccessService";
 import { walletService } from "@/services/walletService";
-import { formatTuyaSyncSummary, getGenericIntegration, getStoredTuyaSyncSummary, getTuyaIntegration, syncTuyaDevices, type TuyaSyncSummary } from "@/services/integrationsService";
-import { describeOyiWatchStatus, getOyiWatchSyncStatus, isOyiWatchConnected, syncOyiWatchSession, type WatchSyncResult } from "@/services/watchSyncService";
 import { listMyNotifications, type AppNotification } from "@/services/notificationsService";
 import { replayOnboardingTour } from "@/services/onboardingTour";
 import { useSettingsStore } from "@/store/useSettingsStore";
@@ -46,10 +44,13 @@ type PanelKey =
   | "support"
   | null;
 
-type IntegrationStatus = {
-  label: string;
-  connected: boolean;
-  detail?: string | null;
+type ResidentVerificationContext = {
+  onboarding_complete?: boolean;
+  active_estate_membership?: { status?: string | null } | null;
+  active_home_membership?: { status?: string | null } | null;
+  estate_id?: string | null;
+  home_id?: string | null;
+  user?: { estate_id?: string | null; home_id?: string | null; onboarding_complete?: boolean } | null;
 };
 
 function asArray<T = any>(value: any): T[] {
@@ -98,13 +99,7 @@ export default function ProfilePage() {
   const [accessMessage, setAccessMessage] = useState<string | null>(null);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  const [watchStatus, setWatchStatus] = useState<WatchSyncResult | null>(null);
-  const [watchSyncBusy, setWatchSyncBusy] = useState(false);
-  const [watchSyncMessage, setWatchSyncMessage] = useState<string | null>(null);
-  const [integrations, setIntegrations] = useState<IntegrationStatus[]>([]);
-  const [tuyaSyncBusy, setTuyaSyncBusy] = useState(false);
-  const [tuyaSyncMessage, setTuyaSyncMessage] = useState<string | null>(null);
-  const [lastTuyaSync, setLastTuyaSync] = useState<TuyaSyncSummary | null>(() => getStoredTuyaSyncSummary());
+  const [residentContext, setResidentContext] = useState<ResidentVerificationContext | null>(null);
   const [panel, setPanel] = useState<PanelKey>(null);
   const [logoutOpen, setLogoutOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -128,8 +123,26 @@ export default function ProfilePage() {
   const phone = String((user as any)?.phone || (user as any)?.phone_number || "").trim();
   const avatarUrl = String((user as any)?.avatar_url || (user as any)?.profile_image_url || (user as any)?.image || "").trim();
   const displayedAvatarUrl = avatarPreview || avatarUrl;
-  const verified = Boolean((user as any)?.email_verified || (user as any)?.verified || (user as any)?.is_verified);
-  const verificationLabel = verified ? "Verified" : "Pending verification";
+  const verification = residentContext || {};
+  const contextUser = verification.user || user || {};
+  const estateMembershipStatus = String(verification.active_estate_membership?.status || "").toLowerCase();
+  const homeMembershipStatus = String(verification.active_home_membership?.status || "").toLowerCase();
+  const onboardingComplete = verification.onboarding_complete === true || contextUser.onboarding_complete === true;
+  const contextEstateId = contextUser.estate_id || verification.estate_id || active.estate_id;
+  const contextHomeId = contextUser.home_id || verification.home_id || active.home_id;
+  const estateConnected = Boolean(contextEstateId) && (!estateMembershipStatus || estateMembershipStatus === "active");
+  const homeConnected = Boolean(contextHomeId) && (!homeMembershipStatus || homeMembershipStatus === "active");
+  const verified = onboardingComplete && estateConnected && homeConnected;
+  const invitationPending = estateMembershipStatus === "invited" || homeMembershipStatus === "invited";
+  const verificationLabel = verified
+    ? "Verified Resident"
+    : invitationPending
+      ? "Invitation Pending"
+      : !onboardingComplete
+        ? "Verification Required"
+        : !homeConnected
+          ? "Home Assignment Required"
+          : "Verification Required";
   const currentHome = homeLabel(active.home, (user as any)?.unit_name || (user as any)?.home_name);
   const unreadSecurity = notifications.filter((item) => item.status !== "read" && String(item.type || "").toLowerCase().includes("security")).length;
   const securityState = unreadSecurity ? "Attention Needed" : active.home_id ? "Protected" : "Pending Setup";
@@ -149,12 +162,12 @@ export default function ProfilePage() {
     if (!ready || !token) return;
     let cancelled = false;
     async function load() {
-      const [deviceRes, memberRes, walletRes, notificationRes, watchRes] = await Promise.allSettled([
+      const [deviceRes, memberRes, walletRes, notificationRes, contextRes] = await Promise.allSettled([
         deviceService.getAssignedDevices(active.estate_id || (user as any)?.estate_id),
         active.home_id ? homeAccessService.listHomeUsers(active.home_id) : Promise.resolve([]),
         walletService.getWallet(),
         listMyNotifications(),
-        getOyiWatchSyncStatus().catch(() => null),
+        API.get("/me/context"),
       ]);
       if (cancelled) return;
       if (deviceRes.status === "fulfilled") setDevices(asArray(deviceRes.value));
@@ -163,46 +176,16 @@ export default function ProfilePage() {
         setWalletBalance(Number((walletRes.value as any)?.balance ?? 0));
       }
       if (notificationRes.status === "fulfilled") setNotifications(asArray<AppNotification>(notificationRes.value));
-      if (watchRes.status === "fulfilled") setWatchStatus(watchRes.value || null);
+      if (contextRes.status === "fulfilled") {
+        const payload = (contextRes.value as any)?.data?.data ?? (contextRes.value as any)?.data ?? null;
+        setResidentContext(payload);
+      }
     }
     void load();
     return () => {
       cancelled = true;
     };
   }, [ready, token, active.estate_id, active.home_id, user]);
-
-  useEffect(() => {
-    if (!ready || !token) return;
-    let cancelled = false;
-    async function loadIntegrations() {
-      const next: IntegrationStatus[] = [];
-      const [tuya, alexa, google, appleHome] = await Promise.allSettled([
-        getTuyaIntegration(),
-        getGenericIntegration("alexa"),
-        getGenericIntegration("google_assistant"),
-        API.get("/me/integrations/apple_home").then((res) => res.data).catch(() => ({ connected: false })),
-      ]);
-      if (cancelled) return;
-      next.push({
-        label: "Oyi Watch",
-        connected: isOyiWatchConnected(watchStatus),
-        detail: describeOyiWatchStatus(watchStatus),
-      });
-      const tuyaValue: any = tuya.status === "fulfilled" ? tuya.value : null;
-      const alexaValue: any = alexa.status === "fulfilled" ? alexa.value : null;
-      const googleValue: any = google.status === "fulfilled" ? google.value : null;
-      const appleValue: any = appleHome.status === "fulfilled" ? appleHome.value : null;
-      next.push({ label: "Tuya / Smart Life", connected: Boolean(tuyaValue?.connected), detail: tuyaValue?.masked_uid || null });
-      next.push({ label: "Apple Home", connected: Boolean(appleValue?.connected), detail: appleValue?.masked_external_user_id || null });
-      next.push({ label: "Google Home", connected: Boolean(googleValue?.connected), detail: googleValue?.masked_external_user_id || null });
-      next.push({ label: "Alexa", connected: Boolean(alexaValue?.connected), detail: alexaValue?.masked_external_user_id || null });
-      setIntegrations(next);
-    }
-    void loadIntegrations();
-    return () => {
-      cancelled = true;
-    };
-  }, [ready, token, watchStatus]);
 
   const overview = [
     { label: "Current Home", value: currentHome, icon: Home, tint: "text-sky-300" },
@@ -216,7 +199,7 @@ export default function ProfilePage() {
     { key: "access" as const, label: "Homes & Access", body: "Manage your homes and permissions", icon: Home, color: "text-emerald-300" },
     { key: "security" as const, label: "Security", body: "Passwords, 2FA, and session management", icon: ShieldCheck, color: "text-violet-300" },
     { key: "notifications" as const, label: "Notifications", body: "Alert preferences and delivery", icon: Bell, color: "text-amber-300" },
-    { key: "integrations" as const, label: "Integrations", body: "Connected services and devices", icon: Plug, color: "text-sky-300" },
+    { key: "integrations" as const, label: "Connected Systems", body: "External services and device providers", icon: Plug, color: "text-sky-300" },
     { key: "preferences" as const, label: "Preferences", body: "Units, language, appearance", icon: Settings, color: "text-white/55" },
     { key: "support" as const, label: "Help & Support", body: "FAQs, guides, and contact us", icon: HelpCircle, color: "text-white/55" },
   ];
@@ -300,58 +283,6 @@ export default function ProfilePage() {
       return;
     }
     await logout?.();
-  }
-
-  async function handleSyncWatch() {
-    setWatchSyncBusy(true);
-    setWatchSyncMessage(null);
-    const result = await syncOyiWatchSession(token, user);
-    setWatchSyncBusy(false);
-    setWatchStatus(result);
-
-    if (!result.available) {
-      setWatchSyncMessage(result.reason === "ios_native_only"
-        ? "Watch sync requires the iPhone app. Please open Oyi Home on iPhone."
-        : "Watch sync is unavailable in this app build.");
-      return;
-    }
-    if (result.error || result.lastSyncError) {
-      setWatchSyncMessage(String(result.error || result.lastSyncError));
-      return;
-    }
-    if (!result.paired) {
-      setWatchSyncMessage("No paired Apple Watch was found.");
-      return;
-    }
-    if (!(result.watchAppInstalled || result.installed)) {
-      setWatchSyncMessage("Install Oyi Watch on your paired Apple Watch, then sync again.");
-      return;
-    }
-    setWatchSyncMessage(isOyiWatchConnected(result)
-      ? "Watch connected and live home status confirmed."
-      : `${describeOyiWatchStatus(result)}. Open Oyi Watch to complete sync.`);
-  }
-
-  async function handleRefreshWatchStatus() {
-    setWatchSyncBusy(true);
-    const result = await getOyiWatchSyncStatus();
-    setWatchSyncBusy(false);
-    setWatchStatus(result);
-    setWatchSyncMessage(describeOyiWatchStatus(result));
-  }
-
-  async function handleTuyaSync() {
-    setTuyaSyncBusy(true);
-    setTuyaSyncMessage(null);
-    try {
-      const result = await syncTuyaDevices();
-      setLastTuyaSync(result);
-      setTuyaSyncMessage(`Smart Life sync complete. ${formatTuyaSyncSummary(result)}.`);
-    } catch (error: any) {
-      setTuyaSyncMessage(error?.message || "Smart Life sync failed.");
-    } finally {
-      setTuyaSyncBusy(false);
-    }
   }
 
   async function refreshMembers() {
@@ -470,6 +401,8 @@ export default function ProfilePage() {
               <>
                 <InfoRow label="Security state" value={securityState} />
                 <InfoRow label="Verification" value={verificationLabel} />
+                <InfoRow label="Estate connection" value={estateConnected ? "Connected" : "Not connected"} />
+                <InfoRow label="Home connection" value={homeConnected ? "Connected" : "Not connected"} />
                 <InfoRow label="2FA" value={String((user as any)?.mfa_enabled ? "Enabled" : "Not enabled")} />
                 <InfoRow label="Trusted device" value="This session" />
                 <div className="rounded-[18px] border border-red-300/12 bg-red-500/[0.045] p-3">
@@ -487,34 +420,6 @@ export default function ProfilePage() {
                 <InfoRow label="Email" value={String((user as any)?.email_notifications_enabled ? "Enabled" : "Not configured")} />
                 <InfoRow label="SMS" value={String((user as any)?.sms_notifications_enabled ? "Enabled" : "Not configured")} />
                 <InfoRow label="Unread alerts" value={`${notifications.filter((item) => item.status !== "read").length}`} />
-              </>
-            ) : null}
-            {panel === "integrations" ? (
-              <>
-                {integrations.map((item) => item.label === "Tuya / Smart Life" ? (
-                  <div key={item.label} className="rounded-[18px] border border-white/[0.06] bg-white/[0.025] px-3.5 py-3">
-                    <div className="text-[11px] uppercase tracking-[0.18em] text-white/34">{item.label}</div>
-                    <div className="mt-1 flex items-center justify-between gap-3">
-                      <div className="min-w-0"><div className="text-sm font-medium text-white/82">{item.connected ? "Connected" : "Not Connected"}</div>{item.detail ? <div className="mt-1 truncate text-xs text-white/42">{item.detail}</div> : null}</div>
-                      {item.connected ? <button type="button" onClick={() => void handleTuyaSync()} disabled={tuyaSyncBusy} className="shrink-0 rounded-full border border-sky-300/18 bg-sky-400/10 px-3 py-1.5 text-xs font-medium text-sky-100 disabled:opacity-50">{tuyaSyncBusy ? "Syncing" : "Sync devices"}</button> : null}
-                    </div>
-                    {lastTuyaSync ? <div className="mt-2 text-[11px] leading-5 text-white/42">Last sync {new Date(lastTuyaSync.synced_at).toLocaleString()}<br />{formatTuyaSyncSummary(lastTuyaSync)}</div> : null}
-                    {tuyaSyncMessage ? <div className="mt-2 text-xs leading-5 text-white/56">{tuyaSyncMessage}</div> : null}
-                  </div>
-                ) : <InfoRow key={item.label} label={item.label} value={item.connected ? "Connected" : "Not Connected"} detail={item.detail || undefined} />)}
-                <InfoRow label="Watch state" value={describeOyiWatchStatus(watchStatus)} />
-                <InfoRow label="Paired" value={watchStatus?.paired ? "Yes" : "No"} />
-                <InfoRow label="Watch app" value={watchStatus?.watchAppInstalled || watchStatus?.installed ? "Installed" : "Not installed"} />
-                <InfoRow label="Reachable now" value={watchStatus?.reachable ? "Yes" : "No"} />
-                <InfoRow label="Last acknowledged" value={watchStatus?.lastAcknowledgedAt ? new Date(watchStatus.lastAcknowledgedAt).toLocaleString() : "Not yet"} />
-                <InfoRow label="Last backend fetch" value={watchStatus?.lastBackendSuccessAt ? new Date(watchStatus.lastBackendSuccessAt).toLocaleString() : "Not yet"} />
-                <button type="button" onClick={() => void handleSyncWatch()} disabled={watchSyncBusy} className="w-full rounded-full bg-white px-4 py-2.5 text-sm font-semibold text-black transition disabled:cursor-wait disabled:opacity-60">
-                  {watchSyncBusy ? "Syncing Watch..." : "Sync Watch"}
-                </button>
-                <button type="button" onClick={() => void handleRefreshWatchStatus()} disabled={watchSyncBusy} className="w-full rounded-full border border-white/[0.1] bg-white/[0.045] px-4 py-2.5 text-sm font-semibold text-white transition disabled:cursor-wait disabled:opacity-60">
-                  Refresh Watch Status
-                </button>
-                {watchSyncMessage ? <p className="px-1 text-xs leading-5 text-white/54">{watchSyncMessage}</p> : null}
               </>
             ) : null}
             {panel === "preferences" ? (
@@ -567,6 +472,7 @@ export default function ProfilePage() {
                   <div className={`mt-2.5 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${verified ? "bg-emerald-400/12 text-emerald-300" : "bg-amber-300/12 text-amber-200"}`}>
                     <ShieldCheck className="h-3.5 w-3.5" /> {verificationLabel}
                   </div>
+                  {verified ? <div className="mt-1.5 text-[11px] text-emerald-200/62">Home Connected · Estate Connected</div> : null}
                 </div>
               </div>
 
@@ -604,7 +510,7 @@ export default function ProfilePage() {
               {menu.map((item, index) => {
                 const Icon = item.icon;
                 return (
-                  <button key={item.key} type="button" onClick={() => setPanel(item.key)} className={`flex w-full items-center gap-3 py-3 text-left ${index ? "border-t border-white/[0.055]" : ""}`}>
+                  <button key={item.key} type="button" onClick={() => item.key === "integrations" ? router.push("/devices/integrations") : setPanel(item.key)} className={`flex w-full items-center gap-3 py-3 text-left ${index ? "border-t border-white/[0.055]" : ""}`}>
                     <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/[0.035] ${item.color}`}><Icon className="h-5 w-5" /></span>
                     <span className="min-w-0 flex-1">
                       <span className="block text-[15px] font-semibold tracking-[-0.03em] text-white">{item.label}</span>
