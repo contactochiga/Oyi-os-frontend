@@ -655,7 +655,7 @@ final class OyiWatchSession: ObservableObject {
                 connectionState = connectionStateForMissingConfig()
                 modeLabel = "Not connected"
                 connectionLabel = "Waiting for sync"
-                homeName = "Oyi Watch"
+                homeName = "Oyi"
                 estateName = ""
                 title = connectionState == .tokenMissing ? "Session token missing" : connectionState == .backendMissing ? "Backend missing" : "Companion not connected"
                 detail = "Open Oyi Home on iPhone and tap Sync Watch."
@@ -1047,7 +1047,7 @@ struct SettingsView: View {
             WatchChrome(label: "Settings", isMock: session.connectionState != .connected)
             Spacer(minLength: 4)
             OyiOrb(state: .awareness)
-            Text("Oyi Watch")
+            Text("Oyi")
                 .font(.system(size: 15, weight: .semibold, design: .rounded))
             WatchPillButton(title: "Diagnostics", tint: .blue) { session.activePage = 5 }
             WatchPillButton(title: "Refresh", tint: .gray) { session.retryConnection() }

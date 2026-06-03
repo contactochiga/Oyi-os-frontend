@@ -301,4 +301,4 @@ Ensure the device is accessible from this machine over an infrastructure network
 or ensure WiFi is enabled on both machines.
 ```
 
-The temporary display name `Oyi Watch 50` should remain until the iPhone Watch listing proves it is reading the refreshed embedded metadata. Revert it to `Oyi Watch` after physical installation succeeds.
+The temporary physical-install display name has been removed after successful hardware installation. The production watchOS display name is `Oyi`, while build and version remain visible only in Diagnostics.

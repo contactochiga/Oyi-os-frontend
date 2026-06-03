@@ -328,6 +328,9 @@ export default function DeviceClient() {
   useEffect(() => {
     if (["1", "device"].includes(String(searchParams.get("add") || ""))) void openAddDevice();
     if (String(searchParams.get("edit") || "") === "favorites") setEditingFavorites(true);
+    const categoryParam = String(searchParams.get("category") || "").toLowerCase();
+    const normalizedCategory = categoryParam === "light" ? "lights" : categoryParam;
+    if (CATEGORIES.some((item) => item.key === normalizedCategory)) setCategory(normalizedCategory as CategoryKey);
     // Open the resident device picker once when linked from Home empty state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);

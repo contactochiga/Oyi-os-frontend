@@ -173,7 +173,7 @@ export default function DeviceIntegrationsPage() {
       </section>
       <section className="mt-3 rounded-[22px] border border-white/[0.07] bg-white/[0.025] p-3.5 backdrop-blur-2xl">
         <div className="text-sm font-semibold text-white">Oyi Watch</div>
-        <p className="mt-1 text-xs leading-5 text-white/46">{describeOyiWatchStatus(watchStatus)}. Pair your Watch from the iPhone app and keep Oyi Watch open during first sync.</p>
+        <p className="mt-1 text-xs leading-5 text-white/46">{describeOyiWatchStatus(watchStatus)}. Apple Watch may sleep between refreshes; if paired and installed, Oyi will queue sync and refresh when the Watch is reachable.</p>
         <div className="mt-3 flex flex-wrap gap-2">
           <button type="button" onClick={() => void syncWatch()} disabled={watchBusy} className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-black disabled:opacity-45">{watchBusy ? "Syncing..." : "Sync Watch"}</button>
           <button type="button" onClick={() => void refreshWatch()} disabled={watchBusy} className="rounded-full border border-white/[0.09] bg-white/[0.04] px-3 py-2 text-xs text-white/68 disabled:opacity-45">Refresh status</button>

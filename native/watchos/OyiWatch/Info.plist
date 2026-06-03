@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Oyi Watch 50</string>
+	<string>Oyi</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -21,9 +21,9 @@
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Oyi Watch uses the microphone to hear your home command and send it securely to Oyi.</string>
+	<string>Oyi uses the microphone to hear your home command and send it securely to Oyi.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Oyi Watch uses speech recognition to transcribe your command before sending it to your Oyi Home account.</string>
+	<string>Oyi uses speech recognition to transcribe your command before sending it to your Oyi Home account.</string>
 	<key>WKApplication</key>
 	<true/>
 	<key>WKCompanionAppBundleIdentifier</key>

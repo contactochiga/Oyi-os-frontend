@@ -97,6 +97,10 @@ export function describeOyiWatchStatus(status: WatchSyncResult | null | undefine
   if (status.deliveryState === "sync_queued") return "Sync Queued";
   if (status.deliveryState === "sync_sent") return "Sync Sent";
   if (status.deliveryState === "waiting_for_watch" || status.tokenSent || status.backendURLSent) return "Waiting for Watch";
+  if (status.reachable) return "Reachable";
+  if (status.paired && status.watchAppInstalled) return "Installed · Paired";
+  if (status.watchAppInstalled || status.installed) return "Installed";
+  if (status.paired) return "Paired";
   return "Not Connected";
 }
 

@@ -648,14 +648,14 @@ export default function HomePage() {
                   label="Lights"
                   value={deviceStateLabel}
                   tone="gold"
-                  onClick={() => router.push("/devices")}
+                  onClick={() => router.push("/devices?category=lights")}
                 />
                 <QuickControl
                   icon={Thermometer}
                   label="Climate"
                   value={assignedDevices.some((device) => String(device?.device_type || device?.type || device?.category || "").toLowerCase().match(/climate|ac|hvac|thermostat/)) ? "Available" : "Not configured"}
                   tone="sky"
-                  onClick={() => router.push("/utilities")}
+                  onClick={() => router.push("/devices?category=climate")}
                 />
                 <QuickControl
                   icon={ShieldCheck}
