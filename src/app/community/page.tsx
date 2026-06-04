@@ -102,6 +102,7 @@ function categoryFor(post: any): TabKey {
   const title = String(post?.title || "").toLowerCase();
   const body = String(post?.body || post?.content || "").toLowerCase();
   const text = `${raw} ${title} ${body} ${String(post?.priority || "")}`.toLowerCase();
+  if (post?.is_urgent === true) return "urgent";
   if (/urgent|critical|emergency|alert|incident|security|gate|water|power|outage/.test(text)) return "urgent";
   if (Array.isArray(post?.media) && post.media.length) return "media";
   if (/question|ask|help|recommend|where|how do|anyone/.test(text)) return "questions";
@@ -136,6 +137,14 @@ function authorName(post: any, me: any) {
 }
 
 function officialIdentity(post: any) {
+  const sourceLabel = normalizeText(post?.source_label);
+  if (post?.is_official === true || String(post?.source_type || "").toLowerCase() === "facility") {
+    if (/security/i.test(sourceLabel)) return { label: sourceLabel || "Security Desk", Icon: ShieldCheck };
+    if (/maintenance/i.test(sourceLabel)) return { label: sourceLabel || "Maintenance Team", Icon: Wrench };
+    if (/admin/i.test(sourceLabel)) return { label: sourceLabel || "Administration", Icon: Building2 };
+    if (/moderator/i.test(sourceLabel)) return { label: sourceLabel || "Community Moderator", Icon: ShieldCheck };
+    return { label: sourceLabel || "Estate Operations", Icon: Megaphone };
+  }
   const roleText = `${post?.author_role || ""} ${post?.created_by_role || ""} ${post?.created_by_type || ""} ${post?.source || ""}`.toLowerCase();
   const systemText = `${post?.category || ""} ${post?.status || ""} ${post?.post_type || ""}`.toLowerCase();
   const text = `${roleText} ${systemText}`;

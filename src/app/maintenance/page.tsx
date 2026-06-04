@@ -39,6 +39,7 @@ export default function MaintenancePage() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [tickets, setTickets] = useState<MaintenanceTicket[]>([]);
+  const [selectedTicket, setSelectedTicket] = useState<MaintenanceTicket | null>(null);
 
   const [showNew, setShowNew] = useState(false);
   const [form, setForm] = useState({
@@ -99,6 +100,15 @@ export default function MaintenancePage() {
     load();
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const requestId = String(params.get("requestId") || params.get("ticketId") || "").trim();
+    if (!requestId || !tickets.length) return;
+    const found = tickets.find((ticket) => String(ticket.id) === requestId);
+    if (found) setSelectedTicket(found);
+  }, [tickets]);
+
   return (
     <ConsumerShell
       title="Maintenance"
@@ -158,8 +168,10 @@ export default function MaintenancePage() {
         ) : (
           <div className="mt-3 space-y-2.5">
             {tickets.map((t) => (
-              <div
+              <button
                 key={t.id}
+                type="button"
+                onClick={() => setSelectedTicket(t)}
                 className="oyi-presence-row rounded-[20px] p-3.5 transition hover:bg-white/[0.055]"
               >
                 <div className="flex items-start justify-between gap-3">
@@ -189,7 +201,7 @@ export default function MaintenancePage() {
                 ) : (
                   <div className="mt-3 text-sm text-white/40">—</div>
                 )}
-              </div>
+              </button>
             ))}
           </div>
         )}
@@ -291,6 +303,27 @@ export default function MaintenancePage() {
           </div>
         </div>
       )}
+      {selectedTicket ? (
+        <div className="fixed inset-0 z-[125]">
+          <button type="button" aria-label="Close request details" className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setSelectedTicket(null)} />
+          <section className="absolute inset-x-4 bottom-[calc(16px+var(--sab))] mx-auto max-w-xl rounded-[26px] border border-white/10 bg-zinc-950 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.55)]">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-[10px] uppercase tracking-[0.22em] text-sky-100/54">Maintenance request</div>
+                <h2 className="mt-1 truncate text-lg font-semibold tracking-[-0.04em] text-white">{selectedTicket.title || "Maintenance request"}</h2>
+                <div className="mt-1 text-xs text-white/42">{when(selectedTicket.created_at)} · {selectedTicket.category ? String(selectedTicket.category).toUpperCase() : "GENERAL"}</div>
+              </div>
+              <span className={pill(selectedTicket.status)}>{nice(selectedTicket.status)}</span>
+            </div>
+            <p className="mt-4 whitespace-pre-line text-sm leading-6 text-white/62">{selectedTicket.description || "No description provided."}</p>
+            <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-3"><div className="text-white/38">Priority</div><div className="mt-1 font-medium uppercase text-white/76">{selectedTicket.priority || "—"}</div></div>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-3"><div className="text-white/38">Updated</div><div className="mt-1 font-medium text-white/76">{when((selectedTicket as any).updated_at || selectedTicket.created_at)}</div></div>
+            </div>
+            <button type="button" onClick={() => setSelectedTicket(null)} className="mt-4 h-11 w-full rounded-full bg-white text-sm font-semibold text-black">Close</button>
+          </section>
+        </div>
+      ) : null}
       </div>
     </ConsumerShell>
   );

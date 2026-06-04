@@ -85,6 +85,15 @@ function appEnvironment() {
   return "Development";
 }
 
+function appBuildNumber() {
+  return process.env.NEXT_PUBLIC_APP_BUILD_NUMBER || process.env.NEXT_PUBLIC_BUILD_NUMBER || "";
+}
+
+function appCommitHash() {
+  const raw = process.env.NEXT_PUBLIC_GIT_COMMIT || process.env.NEXT_PUBLIC_COMMIT_SHA || "";
+  return raw ? raw.slice(0, 7) : "";
+}
+
 export default function ProfilePage() {
   const router = useRouter();
   const { user, token, logout, ready, setSession } = useAuth() as any;
@@ -529,7 +538,7 @@ export default function ProfilePage() {
 
             <button type="button" onClick={() => setPanel("preferences")} className="mt-4 flex w-full items-center gap-3 rounded-[24px] border border-white/[0.07] bg-[linear-gradient(145deg,rgba(255,255,255,0.042),rgba(255,255,255,0.012))] p-3 text-left shadow-[0_14px_48px_rgba(0,0,0,0.28)] backdrop-blur-2xl">
               <span className="grid h-14 w-14 place-items-center rounded-full border border-sky-300/36 bg-[radial-gradient(circle_at_center,rgba(0,132,255,0.24),rgba(2,7,14,0.95)_66%)] text-[20px] font-semibold tracking-[-0.08em] shadow-[0_0_18px_rgba(0,132,255,0.30)]">Oyi</span>
-              <span className="min-w-0 flex-1"><span className="block text-[16px] font-semibold text-white">Oyi Home</span><span className="mt-0.5 block text-[13px] text-white/58">Version {pkg.version}</span><span className="mt-0.5 block text-[13px] text-sky-200/72">Environment: {appEnvironment()}</span>{walletBalance !== null ? <span className="mt-0.5 block text-[11px] text-white/38">Wallet balance: ₦{walletBalance.toLocaleString()}</span> : null}</span>
+              <span className="min-w-0 flex-1"><span className="block text-[16px] font-semibold text-white">Oyi Home</span><span className="mt-0.5 block text-[13px] text-white/58">Version {pkg.version}{appBuildNumber() ? ` · Build ${appBuildNumber()}` : ""}{appCommitHash() ? ` · ${appCommitHash()}` : ""}</span><span className="mt-0.5 block text-[13px] text-sky-200/72">Environment: {appEnvironment()}</span>{walletBalance !== null ? <span className="mt-0.5 block text-[11px] text-white/38">Wallet balance: ₦{walletBalance.toLocaleString()}</span> : null}</span>
               <ChevronRight className="h-[18px] w-[18px] text-white/38" />
             </button>
           </div>

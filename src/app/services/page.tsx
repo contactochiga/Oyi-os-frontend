@@ -117,6 +117,13 @@ export default function ServicesPage() {
   }, [activeServiceKey, history]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const serviceId = String(new URLSearchParams(window.location.search).get("serviceId") || "").trim() as ServiceKey;
+    if (!serviceId) return;
+    if (SERVICE_ITEMS.some((item) => item.key === serviceId)) setActiveServiceKey(serviceId);
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     async function loadConfigs() {
       if (!estateId) {

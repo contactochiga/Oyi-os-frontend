@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Bell,
@@ -24,7 +24,8 @@ import MessagesInboxButton from "@/app/components/MessagesInboxButton";
 import BottomNav from "@/app/components/BottomNav";
 import { getSocket } from "@/services/socket";
 import { getDeviceIconFromText } from "@/lib/devicePresentation";
-import { getActivityFeed, type ActivityCategory, type ActivityEvent, type ActivitySummary } from "@/services/activityService";
+import { acknowledgeActivityEvent, acknowledgeSeenActivityEvents, getActivityFeed, notificationIdFromActivity, type ActivityCategory, type ActivityEvent, type ActivitySummary } from "@/services/activityService";
+import { useNotificationStore } from "@/store/useNotificationStore";
 
 type FilterKey = "all" | "alerts" | "devices" | "people";
 
@@ -77,6 +78,8 @@ export default function ActivityPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<string | null>(null);
+  const acknowledgedRef = useRef<Set<string>>(new Set());
+  const markNotificationsRead = useNotificationStore((state) => state.markNotificationsRead);
 
   async function load(silent = false) {
     if (silent) setRefreshing(true);
@@ -92,6 +95,16 @@ export default function ActivityPage() {
       setSummary(result.summary || EMPTY_SUMMARY);
       setSources(result.sources || {});
       setLastSync(result.generated_at || new Date().toISOString());
+      const unseen = result.items.filter((item) => {
+        const notificationId = notificationIdFromActivity(item);
+        return notificationId && !acknowledgedRef.current.has(notificationId);
+      });
+      if (unseen.length) {
+        void acknowledgeSeenActivityEvents(unseen).then((ids) => {
+          ids.forEach((id) => acknowledgedRef.current.add(id));
+          markNotificationsRead(ids);
+        });
+      }
     }
     setLoading(false);
     setRefreshing(false);
@@ -99,6 +112,7 @@ export default function ActivityPage() {
 
   useEffect(() => {
     void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -241,6 +255,7 @@ function SummaryCell({ icon: Icon, label, value, color }: { icon: any; label: st
 
 function ActivityRow({ item }: { item: ActivityEvent }) {
   const router = useRouter();
+  const markNotificationsRead = useNotificationStore((state) => state.markNotificationsRead);
   const tone = eventTone(item.category, item.severity);
   const Icon = item.category === "device" ? getDeviceIconFromText(`  `) : tone.Icon;
   const actionable = Boolean(item.action?.href);
@@ -270,7 +285,14 @@ function ActivityRow({ item }: { item: ActivityEvent }) {
       <div className="absolute -left-[50px] top-5 w-[42px] pr-2.5 text-right text-[11px] font-medium text-white/42">{formatTime(item.occurred_at)}</div>
       <div className={`absolute -left-[9px] top-6 h-2 w-2 rounded-full border border-[#02060b] ${actionable ? "bg-sky-300 shadow-[0_0_14px_rgba(56,189,248,0.42)]" : "bg-slate-700 shadow-[0_0_12px_rgba(56,189,248,0.20)]"}`} />
       {actionable ? (
-        <button type="button" onClick={() => item.action?.href && router.push(item.action.href)} className="w-full rounded-[20px] border border-sky-300/14 bg-[linear-gradient(145deg,rgba(56,189,248,0.07),rgba(255,255,255,0.012))] px-3 py-2.5 text-left shadow-[0_12px_38px_rgba(0,0,0,0.26)] backdrop-blur-2xl transition active:scale-[0.99]">
+        <button type="button" onClick={() => {
+          const notificationId = notificationIdFromActivity(item);
+          if (notificationId) {
+            markNotificationsRead([notificationId]);
+            void acknowledgeActivityEvent(item);
+          }
+          if (item.action?.href) router.push(item.action.href);
+        }} className="w-full rounded-[20px] border border-sky-300/14 bg-[linear-gradient(145deg,rgba(56,189,248,0.07),rgba(255,255,255,0.012))] px-3 py-2.5 text-left shadow-[0_12px_38px_rgba(0,0,0,0.26)] backdrop-blur-2xl transition active:scale-[0.99]">
           {content}
         </button>
       ) : (

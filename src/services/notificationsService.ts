@@ -43,3 +43,17 @@ export async function markNotificationRead(id: string) {
     return { error: pickError(err, "Failed to mark notification as read") } as any;
   }
 }
+
+/**
+ * POST /notifications/ack/:id
+ * Falls back to the legacy read endpoint if the backend has not deployed the alias yet.
+ */
+export async function acknowledgeNotification(id: string) {
+  try {
+    const res = await API.post(`/notifications/ack/${id}`);
+    return (res.data?.item || res.data) as AppNotification;
+  } catch (err: any) {
+    if (err?.response?.status === 404) return markNotificationRead(id);
+    return { error: pickError(err, "Failed to acknowledge notification") } as any;
+  }
+}

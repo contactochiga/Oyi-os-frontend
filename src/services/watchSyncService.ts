@@ -91,13 +91,13 @@ export function isOyiWatchConnected(status: WatchSyncResult | null | undefined) 
 export function describeOyiWatchStatus(status: WatchSyncResult | null | undefined) {
   if (!status?.available) return "Not Connected";
   if (isOyiWatchConnected(status)) return "Connected";
+  if (status.deliveryState === "sync_queued") return "Sync Queued";
+  if (status.deliveryState === "sync_sent") return "Sync Sent";
+  if (status.deliveryState === "waiting_for_watch" || status.tokenSent || status.backendURLSent) return "Waiting for Watch";
   if (status.deliveryState === "offline" && status.lastBackendSuccessAt) {
     return `Offline · Last synced ${new Date(status.lastBackendSuccessAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
   }
   if (status.lastWatchError || status.lastSyncError || status.error || status.deliveryState === "sync_failed") return "Sync Failed";
-  if (status.deliveryState === "sync_queued") return "Sync Queued";
-  if (status.deliveryState === "sync_sent") return "Sync Sent";
-  if (status.deliveryState === "waiting_for_watch" || status.tokenSent || status.backendURLSent) return "Waiting for Watch";
   if (status.reachable) return "Reachable";
   if (status.paired && status.watchAppInstalled) return "Installed · Paired";
   if (status.watchAppInstalled || status.installed) return "Installed";

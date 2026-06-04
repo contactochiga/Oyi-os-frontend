@@ -4,13 +4,21 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
+  CalendarClock,
   ChevronRight,
+  Clock,
   Fan,
   Home,
+  Minus,
   Moon,
+  Power,
   Plus,
   Search,
+  SlidersHorizontal,
   Star,
+  Thermometer,
+  Volume2,
+  VolumeX,
   X,
 } from "lucide-react";
 
@@ -191,7 +199,7 @@ function displayState(device: AnyDevice, state: any) {
 
 function isSimpleControlDevice(device: AnyDevice, state: any) {
   const gangCount = guessGangCount(device, state);
-  return gangCount === 1 && isSimplePowerDevice(device);
+  return gangCount === 1 && canSwitchDevice(device);
 }
 
 function isFavoriteDevice(device: AnyDevice) {
@@ -211,6 +219,17 @@ function friendlyStateRows(device: AnyDevice, state: any) {
   if (power !== null && rows[0].value !== (power ? "On" : "Off")) rows.push({ label: "Power", value: power ? "On" : "Off" });
   const lastSeen = state?.last_seen || state?.lastSeen || device?.last_seen || device?.lastSeen || device?.updated_at;
   if (lastSeen) rows.push({ label: "Last active", value: new Date(lastSeen).toLocaleString() });
+  const caps = uiCapabilities(device);
+  const supported = [
+    caps.canSwitch && "Power",
+    caps.timer && "Timer",
+    caps.schedule && "Schedule",
+    caps.cycle && "Cycle",
+    caps.inching && "Inching",
+    caps.tv.length ? "TV remote" : null,
+    caps.ac.length ? "AC remote" : null,
+  ].filter(Boolean);
+  if (supported.length) rows.push({ label: "Supported controls", value: supported.join(", ") });
   return rows;
 }
 
@@ -251,6 +270,25 @@ function friendlyCapabilities(device: AnyDevice) {
     })
     .filter(Boolean) as string[];
   return Array.from(new Set(labels)).slice(0, 6);
+}
+
+function uiCapabilities(device: AnyDevice) {
+  const ui = device?.ui_capabilities && typeof device.ui_capabilities === "object" ? device.ui_capabilities : {};
+  const supported = Array.isArray(ui.supported_commands) ? ui.supported_commands.map((item: any) => String(item).toLowerCase()) : [];
+  return {
+    canSwitch: Boolean(ui.can_switch || supported.includes("switch") || friendlyCapabilities(device).includes("Power")),
+    timer: Boolean(ui.timer || supported.includes("timer")),
+    schedule: Boolean(ui.schedule || supported.includes("schedule")),
+    cycle: Boolean(ui.cycle || supported.includes("cycle")),
+    inching: Boolean(ui.inching || supported.includes("inching")),
+    tv: Array.isArray(ui?.remote?.tv) ? ui.remote.tv.map((item: any) => String(item).toLowerCase()) : [],
+    ac: Array.isArray(ui?.remote?.ac) ? ui.remote.ac.map((item: any) => String(item).toLowerCase()) : [],
+  };
+}
+
+function canSwitchDevice(device: AnyDevice) {
+  const caps = uiCapabilities(device);
+  return caps.canSwitch || isSimplePowerDevice(device);
 }
 
 export default function DeviceClient() {
@@ -343,6 +381,17 @@ export default function DeviceClient() {
   }, [estateId]);
 
   useEffect(() => {
+    const targetId = String(searchParams.get("deviceId") || "").trim();
+    if (!targetId || !items.length) return;
+    const target = items.find((device) => {
+      const ids = [pickDbId(device), pickExternalId(device), device?.device_id, device?.dev_id].map((value) => String(value || ""));
+      return ids.includes(targetId);
+    });
+    if (target) openDevice(target);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, searchParams]);
+
+  useEffect(() => {
     if (!items.length) return;
     const t = window.setInterval(() => void hydrateStates(items), 20000);
     return () => window.clearInterval(t);
@@ -414,6 +463,7 @@ export default function DeviceClient() {
   async function toggleGang(device: AnyDevice, gangIndex: number, next: boolean) {
     const dbId = pickDbId(device);
     if (!dbId) return setErr("This device is not assigned yet.");
+    if (!canSwitchDevice(device)) return setErr(`${pickName(device)} does not expose a supported power command.`);
     const sid = String(dbId);
     setBusyId(sid);
     setErr(null);
@@ -435,6 +485,7 @@ export default function DeviceClient() {
     const dbId = pickDbId(device);
     if (!dbId) return setErr("This device is not assigned yet.");
     if (isOnline(device) === false) return setErr(`${pickName(device)} is offline.`);
+    if (!canSwitchDevice(device)) return setErr(`${pickName(device)} does not expose a supported power command.`);
     const sid = String(dbId);
     setBusyId(sid);
     setErr(null);
@@ -694,7 +745,7 @@ export default function DeviceClient() {
 
         {addDeviceOpen ? <AddDeviceSheet tab={addDeviceTab} setTab={setAddDeviceTab} discovering={discovering} binding={binding} discovered={discovered} providerDevices={providerDevices} selectedDiscover={selectedDiscover} selectedCount={selectedDiscoveryIds.length} bindRoom={bindRoom} setBindRoom={setBindRoom} setSelectedDiscover={setSelectedDiscover} onClose={() => setAddDeviceOpen(false)} onScan={refreshDiscovery} onBind={bindSelectedDevices} /> : null}
         {assignDevice ? <UnassignedDeviceSheet device={assignDevice} room={assignRoom} setRoom={setAssignRoom} binding={binding} onClose={() => setAssignDevice(null)} onAssign={assignListedDevice} /> : null}
-        {sheetOpen && sheetDevice ? <ControlSheet device={sheetDevice} state={stateMap[String(pickDbId(sheetDevice))] || {}} busy={busyId === String(pickDbId(sheetDevice))} onClose={() => setSheetOpen(false)} onDetails={viewFriendlyDetails} onToggleGang={toggleGang} onCreateScene={(device) => router.push(`/scenes?create=scene&deviceId=${encodeURIComponent(String(pickDbId(device) || ""))}`)} /> : null}
+        {sheetOpen && sheetDevice ? <ControlSheet device={sheetDevice} state={stateMap[String(pickDbId(sheetDevice))] || {}} busy={busyId === String(pickDbId(sheetDevice))} onClose={() => setSheetOpen(false)} onDetails={viewFriendlyDetails} onToggleGang={toggleGang} onPower={toggleMasterPower} onCreateScene={(device) => router.push(`/scenes?create=scene&deviceId=${encodeURIComponent(String(pickDbId(device) || ""))}`)} /> : null}
         {stateOpen ? <DetailsModal title={stateTitle} meta={stateMeta} loading={stateLoading} onClose={() => setStateOpen(false)} /> : null}
         <BottomNav />
       </main>
@@ -832,9 +883,14 @@ function AddDeviceSheet({ tab, setTab, discovering, binding, discovered, provide
   );
 }
 
-function ControlSheet({ device, state, busy, onClose, onDetails, onToggleGang, onCreateScene }: { device: AnyDevice; state: any; busy: boolean; onClose: () => void; onDetails: (device: AnyDevice) => void; onToggleGang: (device: AnyDevice, gangIndex: number, next: boolean) => void; onCreateScene: (device: AnyDevice) => void }) {
+function ControlSheet({ device, state, busy, onClose, onDetails, onToggleGang, onPower, onCreateScene }: { device: AnyDevice; state: any; busy: boolean; onClose: () => void; onDetails: (device: AnyDevice) => void; onToggleGang: (device: AnyDevice, gangIndex: number, next: boolean) => void; onPower: (device: AnyDevice) => void; onCreateScene: (device: AnyDevice) => void }) {
   const gangCount = guessGangCount(device, state);
   const values = Object.keys(state || {}).length ? readGangValues(gangCount, state) : Array.from({ length: gangCount }, () => null);
+  const caps = uiCapabilities(device);
+  const family = inferFamily(device);
+  const tvControls = caps.tv;
+  const acControls = caps.ac;
+  const hasRemotePanel = tvControls.length > 0 || acControls.length > 0 || family === "tv" || family === "remote" || family === "climate" || family === "thermostat";
   return (
     <div className="fixed inset-0 z-[120]">
       <div className="absolute inset-0 bg-black/65 backdrop-blur-md" onClick={onClose} />
@@ -848,14 +904,85 @@ function ControlSheet({ device, state, busy, onClose, onDetails, onToggleGang, o
           <div className="px-4 pb-4">
             <div className="flex items-center justify-between rounded-[24px] border border-white/[0.07] bg-white/[0.035] p-4">
               <div><div className="text-sm font-semibold text-white">Controls</div><div className="mt-1 text-xs text-white/42">{gangCount > 1 ? `${gangCount} switches` : "One-tap control"}</div></div>
-              <GangRingSwitch gangCount={gangCount} online={isOnline(device)} values={values} busy={busy} onToggleGang={(gangIndex, next) => onToggleGang(device, gangIndex, next)} size={64} />
+              {caps.canSwitch ? <GangRingSwitch gangCount={gangCount} online={isOnline(device)} values={values} busy={busy} onToggleGang={(gangIndex, next) => onToggleGang(device, gangIndex, next)} size={64} /> : <span className="rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-2 text-xs text-white/44">Unavailable</span>}
             </div>
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              <CapabilityButton icon={Clock} label="Timer" enabled={caps.timer || caps.cycle || caps.inching} detail={caps.timer ? "Countdown available" : caps.cycle || caps.inching ? "Provider timer mode" : "Unavailable"} onClick={() => onDetails(device)} />
+              <CapabilityButton icon={CalendarClock} label="Schedule" enabled={caps.schedule} detail={caps.schedule ? "Device supports schedule" : "Unavailable"} onClick={() => onDetails(device)} />
+              <CapabilityButton icon={SlidersHorizontal} label="Settings" enabled={friendlyCapabilities(device).length > 0} detail={friendlyCapabilities(device).length ? "Capability details" : "Unavailable"} onClick={() => onDetails(device)} />
+            </div>
+            {hasRemotePanel ? <RemoteControls device={device} state={state} caps={caps} busy={busy} onPower={onPower} /> : null}
             <button type="button" onClick={() => onDetails(device)} className="mt-3 h-11 w-full rounded-full border border-white/[0.08] bg-white/[0.045] text-sm font-medium text-white/76">View simple details</button>
             <button type="button" onClick={() => onCreateScene(device)} className="mt-2 h-11 w-full rounded-full border border-sky-300/16 bg-sky-400/10 text-sm font-medium text-sky-100">Create scene with this device</button>
           </div>
         </section>
       </div>
     </div>
+  );
+}
+
+function CapabilityButton({ icon: Icon, label, detail, enabled, onClick }: { icon: any; label: string; detail: string; enabled: boolean; onClick?: () => void }) {
+  return (
+    <button type="button" disabled={!enabled} onClick={onClick} className={cn("rounded-[18px] border px-2.5 py-2.5 text-left transition", enabled ? "border-sky-300/14 bg-sky-400/10 text-sky-100 active:scale-[0.98]" : "border-white/[0.06] bg-white/[0.025] text-white/34")}>
+      <Icon className="h-4 w-4" />
+      <span className="mt-1 block text-xs font-semibold">{label}</span>
+      <span className="mt-0.5 block text-[10px] leading-4 opacity-65">{detail}</span>
+    </button>
+  );
+}
+
+function RemoteControls({ device, state, caps, busy, onPower }: { device: AnyDevice; state: any; caps: ReturnType<typeof uiCapabilities>; busy: boolean; onPower: (device: AnyDevice) => void }) {
+  const power = readPowerState(state);
+  const tv = caps.tv;
+  const ac = caps.ac;
+  const hasTv = tv.length > 0 || ["tv", "remote"].includes(inferFamily(device));
+  const hasAc = ac.length > 0 || ["climate", "thermostat"].includes(inferFamily(device));
+  const canPower = caps.canSwitch || tv.includes("power") || ac.includes("power");
+  const temp = readTemperature(state) || "Temp";
+  return (
+    <div className="mt-3 rounded-[24px] border border-white/[0.07] bg-white/[0.03] p-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-sm font-semibold text-white">{hasAc ? "Climate remote" : "Remote controls"}</div>
+          <div className="mt-1 text-xs text-white/42">Only supported commands are enabled.</div>
+        </div>
+        <button type="button" disabled={!canPower || busy || isOnline(device) === false} onClick={() => onPower(device)} className={cn("grid h-10 w-10 place-items-center rounded-full border", canPower ? "border-sky-300/18 bg-sky-400/10 text-sky-100" : "border-white/[0.06] bg-white/[0.025] text-white/28")} aria-label="Power">
+          <Power className={cn("h-4 w-4", power ? "fill-current" : "")} />
+        </button>
+      </div>
+      {hasAc ? (
+        <div className="mt-3 grid grid-cols-4 gap-2">
+          <RemoteButton icon={Minus} label="Temp -" enabled={false} />
+          <div className="grid place-items-center rounded-[16px] border border-white/[0.06] bg-black/20 text-xs font-semibold text-white/76">{temp}</div>
+          <RemoteButton icon={Plus} label="Temp +" enabled={false} />
+          <RemoteButton icon={Fan} label="Fan" enabled={ac.includes("fan")} />
+          <RemoteButton icon={Thermometer} label="Mode" enabled={ac.includes("mode")} />
+          <RemoteButton icon={SlidersHorizontal} label="Swing" enabled={ac.includes("swing")} />
+          <RemoteButton icon={Clock} label="Timer" enabled={ac.includes("timer")} />
+          <RemoteButton icon={ChevronRight} label="More" enabled={false} />
+        </div>
+      ) : hasTv ? (
+        <div className="mt-3 grid grid-cols-4 gap-2">
+          <RemoteButton icon={VolumeX} label="Mute" enabled={tv.includes("mute")} />
+          <RemoteButton icon={Minus} label="Vol -" enabled={tv.includes("volume")} />
+          <RemoteButton icon={Volume2} label="Vol +" enabled={tv.includes("volume")} />
+          <RemoteButton icon={ChevronRight} label="Input" enabled={tv.includes("input")} />
+          <RemoteButton icon={ChevronRight} label="Menu" enabled={tv.includes("menu")} />
+          <RemoteButton icon={ChevronRight} label="OK" enabled={tv.includes("ok")} />
+          <RemoteButton icon={ChevronRight} label="Back" enabled={tv.includes("back")} />
+          <RemoteButton icon={ChevronRight} label="D-pad" enabled={tv.includes("dpad")} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function RemoteButton({ icon: Icon, label, enabled }: { icon: any; label: string; enabled: boolean }) {
+  return (
+    <button type="button" disabled className={cn("min-h-12 rounded-[16px] border px-2 py-2 text-center", enabled ? "border-white/[0.08] bg-white/[0.04] text-white/56" : "border-white/[0.045] bg-white/[0.018] text-white/24")} title={enabled ? "Provider capability detected. Command UI is pending safe backend mapping." : "Unavailable for this device"}>
+      <Icon className="mx-auto h-3.5 w-3.5" />
+      <span className="mt-1 block text-[10px]">{enabled ? label : "Unavailable"}</span>
+    </button>
   );
 }
 

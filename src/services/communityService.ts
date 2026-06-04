@@ -24,6 +24,11 @@ export type CommunityPost = {
   audience_ref?: string | null;
   scheduled_at?: string | null;
   priority?: string | null;
+  author_role?: string | null;
+  source_type?: "facility" | "resident" | string | null;
+  source_label?: string | null;
+  is_official?: boolean | null;
+  is_urgent?: boolean | null;
   media?: Array<{ id?: string; type?: "image" | "video"; url: string; name?: string | null }>;
   like_count?: number;
   comment_count?: number;

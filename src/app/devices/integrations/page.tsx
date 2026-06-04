@@ -18,6 +18,14 @@ type IntegrationItem = {
   icon: any;
 };
 
+function watchIntegrationStatus(status: WatchSyncResult | null): IntegrationItem["status"] {
+  if (isOyiWatchConnected(status)) return "Connected";
+  if (status?.deliveryState === "sync_failed" || status?.lastSyncError || status?.lastWatchError || status?.error) return "Needs reconnect";
+  if (status?.deliveryState === "sync_queued" || status?.deliveryState === "sync_sent" || status?.deliveryState === "waiting_for_watch") return "Pending setup";
+  if (status?.paired || status?.watchAppInstalled || status?.installed || status?.reachable) return "Pending setup";
+  return "Not connected";
+}
+
 export default function DeviceIntegrationsPage() {
   const router = useRouter();
   const { token, user, ready } = useAuth() as any;
@@ -74,6 +82,9 @@ export default function DeviceIntegrationsPage() {
 
   async function syncWatch() {
     setWatchBusy(true);
+    const queued: WatchSyncResult = { available: true, deliveryState: "sync_queued", synced: false };
+    setWatchStatus(queued);
+    setWatchMessage(describeOyiWatchStatus(queued));
     const status = await syncOyiWatchSession(token, user);
     setWatchStatus(status);
     setWatchMessage(describeOyiWatchStatus(status));
@@ -103,7 +114,7 @@ export default function DeviceIntegrationsPage() {
       const alexaValue: any = alexa.status === "fulfilled" ? alexa.value : null;
       const edgeValue: any = edge.status === "fulfilled" ? edge.value : null;
       setItems([
-        { key: "watch", label: "Oyi Watch", status: isOyiWatchConnected(watchValue) ? "Connected" : "Pending setup", detail: describeOyiWatchStatus(watchValue), icon: Watch },
+        { key: "watch", label: "Oyi Watch", status: watchIntegrationStatus(watchValue), detail: describeOyiWatchStatus(watchValue), icon: Watch },
         { key: "tuya", label: "Tuya / Smart Life", status: tuyaValue?.provider_ready === false ? "Needs reconnect" : tuyaValue?.connected ? "Connected" : "Not connected", detail: tuyaValue?.masked_uid || null, icon: Plug },
         { key: "apple", label: "Apple Home", status: appleValue?.connected ? "Connected" : "Coming soon", detail: appleValue?.masked_external_user_id || null, icon: Home },
         { key: "google", label: "Google Assistant", status: googleValue?.connected ? "Connected" : "Not connected", detail: googleValue?.masked_external_user_id || null, icon: Cloud },

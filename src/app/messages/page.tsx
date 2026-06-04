@@ -142,6 +142,17 @@ export default function MessagesPage() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const threadId = String(new URLSearchParams(window.location.search).get("threadId") || "").trim();
+    if (!threadId || !threads.length) return;
+    const found = threads.find((thread) => String(thread.id) === threadId);
+    if (found) {
+      setActiveThread(found);
+      setView("chat");
+    }
+  }, [threads]);
+
+  useEffect(() => {
     if (!activeThread?.id) return;
     void loadThreadMessages(activeThread);
     // eslint-disable-next-line react-hooks/exhaustive-deps

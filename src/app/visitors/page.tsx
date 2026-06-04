@@ -210,6 +210,15 @@ export default function VisitorsPage() {
     loadMine();
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const visitorId = String(new URLSearchParams(window.location.search).get("visitorId") || "").trim();
+    if (!visitorId || !items.length) return;
+    const found = items.find((item) => String(item.id) === visitorId);
+    if (found) void openVisitorInfo(visitorId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items]);
+
   async function createVisitor() {
     if (!canCreate) return;
 

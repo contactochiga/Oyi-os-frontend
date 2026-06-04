@@ -8,6 +8,7 @@ type State = {
   setItems: (items: AppNotification[]) => void;
   upsert: (n: AppNotification) => void;
   upsertMany: (items: AppNotification[]) => void;
+  markNotificationsRead: (ids: string[]) => void;
   markBucketViewed: (bucket: string) => void;
 };
 
@@ -68,6 +69,13 @@ export const useNotificationStore = create<State>((set, get) => ({
     );
 
     set({ items: merged, unreadCount: computeUnread(merged), unreadByBucket: computeBuckets(merged) });
+  },
+
+  markNotificationsRead: (ids) => {
+    const target = new Set(ids.map((id) => String(id)).filter(Boolean));
+    if (!target.size) return;
+    const next = get().items.map((item) => (target.has(String(item.id)) ? { ...item, status: "read" as const } : item));
+    set({ items: next, unreadCount: computeUnread(next), unreadByBucket: computeBuckets(next) });
   },
 
   markBucketViewed: (bucket) => {

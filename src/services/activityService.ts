@@ -1,5 +1,5 @@
 import API from "./api";
-import { listMyNotifications } from "./notificationsService";
+import { acknowledgeNotification, listMyNotifications } from "./notificationsService";
 import { maintenanceService } from "./maintenanceService";
 import { visitorService } from "./visitorService";
 
@@ -29,6 +29,7 @@ export type ActivityEvent = {
     href: string;
     label?: string;
     kind?: string;
+    entity_id?: string | null;
   } | null;
 };
 
@@ -97,7 +98,8 @@ function actionForNotification(item: any, category: ActivityCategory) {
   const postId = firstString(payload.post_id, payload.postId, payload.community_post_id, item.post_id);
   const commentId = firstString(payload.comment_id, payload.commentId);
   const threadId = firstString(payload.thread_id, payload.threadId, payload.conversation_id, payload.message_thread_id);
-  const visitorId = firstString(payload.visitor_id, payload.visitorId, payload.invite_id, payload.inviteId);
+  const inviteId = firstString(payload.invite_id, payload.inviteId, payload.invitation_id);
+  const visitorId = firstString(payload.visitor_id, payload.visitorId);
   const maintenanceId = firstString(payload.ticket_id, payload.ticketId, payload.maintenance_id, payload.maintenanceId, payload.request_id);
   const transactionId = firstString(payload.transaction_id, payload.transactionId, payload.wallet_transaction_id);
   const serviceId = firstString(payload.service_id, payload.serviceId);
@@ -105,10 +107,11 @@ function actionForNotification(item: any, category: ActivityCategory) {
   const roomId = firstString(payload.room_id, payload.roomId, payload.space_id, payload.spaceId);
   const automationId = firstString(payload.automation_id, payload.automationId);
 
+  if (inviteId) return { href: `/invites?inviteId=${encodeURIComponent(inviteId)}`, label: "Open invite", kind: "invite" };
   if (postId) return { href: `/community?postId=${encodeURIComponent(postId)}${commentId ? `&commentId=${encodeURIComponent(commentId)}` : ""}`, label: commentId ? "Open thread" : "Open post", kind: "community" };
   if (threadId || category === "community" && /message|comment|reply/.test(typeText)) return { href: `/messages${threadId ? `?threadId=${encodeURIComponent(threadId)}` : ""}`, label: "Open thread", kind: "message" };
   if (visitorId) return { href: `/visitors?visitorId=${encodeURIComponent(visitorId)}`, label: "Open visitor", kind: "visitor" };
-  if (maintenanceId) return { href: `/maintenance?ticketId=${encodeURIComponent(maintenanceId)}`, label: "Open ticket", kind: "maintenance" };
+  if (maintenanceId) return { href: `/maintenance?requestId=${encodeURIComponent(maintenanceId)}`, label: "Open request", kind: "maintenance" };
   if (transactionId) return { href: `/wallet?transactionId=${encodeURIComponent(transactionId)}`, label: "Open transaction", kind: "wallet" };
   if (serviceId) return { href: `/services?serviceId=${encodeURIComponent(serviceId)}`, label: "Open service", kind: "service" };
   if (deviceId) return { href: `/devices?deviceId=${encodeURIComponent(deviceId)}`, label: "Open device", kind: "device" };
@@ -169,7 +172,7 @@ async function getLocalFallbackFeed(): Promise<ActivityResponse> {
       occurred_at: String(item.updated_at || item.created_at || new Date().toISOString()),
       source: "maintenance_requests",
       label: "Service",
-      action: item.id ? { href: `/maintenance?ticketId=${encodeURIComponent(String(item.id))}`, label: "Open ticket", kind: "maintenance" } : null,
+      action: item.id ? { href: `/maintenance?requestId=${encodeURIComponent(String(item.id))}`, label: "Open request", kind: "maintenance" } : null,
     })),
   ].sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime());
 
@@ -191,7 +194,7 @@ export async function getActivityFeed(): Promise<ActivityResponse | { error: str
     const res = await API.get("/activity/feed");
     const items = Array.isArray(res.data?.items) ? res.data.items : [];
     return {
-      items: items.map((item: any) => ({ ...item, action: item.action || item.metadata?.action || actionForNotification(item, categoryFrom(`${item.category} ${item.type} ${item.title} ${item.description}`)) })),
+      items: items.map(normalizeActivityItem),
       summary: res.data?.summary || emptySummary(),
       sources: res.data?.sources || {},
       generated_at: res.data?.generated_at,
@@ -203,7 +206,7 @@ export async function getActivityFeed(): Promise<ActivityResponse | { error: str
         const prefixed = await API.get("/api/activity/feed");
         const items = Array.isArray(prefixed.data?.items) ? prefixed.data.items : [];
         return {
-          items: items.map((item: any) => ({ ...item, action: item.action || item.metadata?.action || actionForNotification(item, categoryFrom(`${item.category} ${item.type} ${item.title} ${item.description}`)) })),
+          items: items.map(normalizeActivityItem),
           summary: prefixed.data?.summary || emptySummary(),
           sources: prefixed.data?.sources || {},
           generated_at: prefixed.data?.generated_at,
@@ -215,6 +218,36 @@ export async function getActivityFeed(): Promise<ActivityResponse | { error: str
     }
     return { error: pickError(err, "Failed to load activity") };
   }
+}
+
+function normalizeActivityItem(item: any): ActivityEvent {
+  const category = categoryFrom(`${item.category} ${item.type} ${item.title} ${item.description}`);
+  const action = item.action && typeof item.action?.href === "string"
+    ? item.action
+    : item.metadata?.action || actionForNotification(item, category);
+  return { ...item, category: item.category || category, action };
+}
+
+export function notificationIdFromActivity(item: ActivityEvent) {
+  const id = String(item?.id || "");
+  return id.startsWith("notification:") ? id.slice("notification:".length) : "";
+}
+
+export async function acknowledgeActivityEvent(item: ActivityEvent) {
+  const notificationId = notificationIdFromActivity(item);
+  if (!notificationId) return { ok: true, skipped: true };
+  return acknowledgeNotification(notificationId);
+}
+
+export async function acknowledgeSeenActivityEvents(items: ActivityEvent[]) {
+  const ids = items
+    .filter((item) => item.source === "notifications" || String(item.id || "").startsWith("notification:"))
+    .filter((item) => item.category !== "security" && item.severity !== "high")
+    .map(notificationIdFromActivity)
+    .filter(Boolean);
+
+  await Promise.allSettled(ids.map((id) => acknowledgeNotification(id)));
+  return Array.from(new Set(ids));
 }
 
 export async function getActivitySummary(): Promise<ActivitySummary | { error: string }> {

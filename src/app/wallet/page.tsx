@@ -36,6 +36,7 @@ export default function WalletPage() {
 
   const [amount, setAmount] = useState<string>("");
   const [servicePayments, setServicePayments] = useState<ServicePayment[]>([]);
+  const [selectedPayment, setSelectedPayment] = useState<ServicePayment | null>(null);
 
   async function load() {
     setLoading(true);
@@ -59,6 +60,14 @@ export default function WalletPage() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const transactionId = String(new URLSearchParams(window.location.search).get("transactionId") || "").trim();
+    if (!transactionId || !servicePayments.length) return;
+    const found = servicePayments.find((payment) => String(payment.id) === transactionId || String(payment.reference || "") === transactionId);
+    if (found) setSelectedPayment(found);
+  }, [servicePayments]);
 
   useEffect(() => {
     (async () => {
@@ -259,7 +268,7 @@ export default function WalletPage() {
         <div className="mt-3 space-y-2">
           {servicePayments.length ? (
             servicePayments.map((p) => (
-              <div key={p.id} className="oyi-presence-row rounded-[16px] px-3 py-2">
+              <button key={p.id} type="button" onClick={() => setSelectedPayment(p)} className="oyi-presence-row w-full rounded-[16px] px-3 py-2 text-left">
                 <div className="text-xs text-white/90">
                   {(p.service_title || p.service_key.replaceAll("_", " "))} • {formatMoney(p.amount, currency)}
                 </div>
@@ -275,13 +284,29 @@ export default function WalletPage() {
                     {p.computed_units} {p.unit_name} @ {formatMoney(Number(p.unit_cost || 0), currency)}
                   </div>
                 ) : null}
-              </div>
+              </button>
             ))
           ) : (
             <div className="text-xs text-white/40">No service payments yet.</div>
           )}
         </div>
       </section>
+      {selectedPayment ? (
+        <div className="fixed inset-0 z-[125]">
+          <button type="button" aria-label="Close transaction details" className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setSelectedPayment(null)} />
+          <section className="absolute inset-x-4 bottom-[calc(16px+var(--sab))] mx-auto max-w-xl rounded-[26px] border border-white/10 bg-zinc-950 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.55)]">
+            <div className="text-[10px] uppercase tracking-[0.22em] text-sky-100/54">Wallet transaction</div>
+            <h2 className="mt-1 text-lg font-semibold tracking-[-0.04em] text-white">{selectedPayment.service_title || selectedPayment.service_key.replaceAll("_", " ")}</h2>
+            <div className="mt-2 text-2xl font-semibold text-cyan-100">{formatMoney(selectedPayment.amount, currency)}</div>
+            <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.035] p-3 text-xs text-white/58">
+              <div>Reference: <span className="text-white/82">{selectedPayment.reference || "—"}</span></div>
+              <div className="mt-1">Status: <span className="capitalize text-white/82">{selectedPayment.status || "recorded"}</span></div>
+              <div className="mt-1">Date: <span className="text-white/82">{selectedPayment.created_at ? new Date(selectedPayment.created_at).toLocaleString() : "—"}</span></div>
+            </div>
+            <button type="button" onClick={() => setSelectedPayment(null)} className="mt-4 h-11 w-full rounded-full bg-white text-sm font-semibold text-black">Close</button>
+          </section>
+        </div>
+      ) : null}
       </div>
     </ConsumerShell>
   );

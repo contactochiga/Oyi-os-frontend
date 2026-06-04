@@ -78,10 +78,6 @@ export default function BottomNav() {
               type="button"
               onClick={() => {
                 if (item.key === "community") markBucketViewed("community");
-                if (item.key === "activity") {
-                  markBucketViewed("activity");
-                  markBucketViewed("messages");
-                }
                 if (item.key === "profile") markBucketViewed("profile");
                 router.push(item.href);
               }}
