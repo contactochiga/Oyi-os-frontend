@@ -4,6 +4,7 @@ import { AuthProvider } from "@/hooks/useAuth";
 import CapacitorBoot from "@/app/components/CapacitorBoot";
 import ViewportKeyboardFix from "@/app/components/ViewportKeyboardFix";
 import PushNotificationsBridge from "@/app/components/PushNotificationsBridge";
+import NotificationsBridge from "@/app/components/NotificationsBridge";
 import PresenceBridge from "@/app/components/PresenceBridge";
 import GeoFenceBridge from "@/app/components/GeoFenceBridge";
 
@@ -27,6 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ReactQueryProvider>
           <AuthProvider>
             <PushNotificationsBridge />
+            <NotificationsBridge />
             <PresenceBridge />
             <GeoFenceBridge />
             {children}

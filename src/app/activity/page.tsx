@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Bell,
   Bolt,
@@ -239,30 +240,44 @@ function SummaryCell({ icon: Icon, label, value, color }: { icon: any; label: st
 }
 
 function ActivityRow({ item }: { item: ActivityEvent }) {
+  const router = useRouter();
   const tone = eventTone(item.category, item.severity);
   const Icon = item.category === "device" ? getDeviceIconFromText(`  `) : tone.Icon;
+  const actionable = Boolean(item.action?.href);
+  const content = (
+    <>
+      <div className="flex items-center gap-3">
+        <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full border ${tone.ring}`}><Icon className="h-4 w-4" /></span>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[14px] font-semibold tracking-[-0.025em] text-white">{item.title}</div>
+          <div className="mt-0.5 truncate text-[12px] text-white/50">{item.description}</div>
+        </div>
+        {item.thumbnail_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={item.thumbnail_url} alt="" className="h-8 w-8 rounded-[12px] object-cover" />
+        ) : item.severity === "high" ? (
+          <span className="rounded-full border border-red-300/18 bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold text-red-200">High</span>
+        ) : (
+          <span className="max-w-[58px] truncate text-[11px] text-white/42">{item.label || item.category}</span>
+        )}
+        {actionable ? <ChevronRight className="h-4 w-4 text-sky-200/55" /> : item.thumbnail_url || item.severity === "high" ? <ChevronRight className="h-4 w-4 text-white/24" /> : null}
+      </div>
+      {actionable ? <div className="mt-2 pl-12 text-[10px] font-medium text-sky-200/62">{item.action?.label || "Open"}</div> : null}
+    </>
+  );
   return (
     <article className="relative">
       <div className="absolute -left-[50px] top-5 w-[42px] pr-2.5 text-right text-[11px] font-medium text-white/42">{formatTime(item.occurred_at)}</div>
-      <div className="absolute -left-[9px] top-6 h-2 w-2 rounded-full border border-[#02060b] bg-slate-700 shadow-[0_0_12px_rgba(56,189,248,0.20)]" />
-      <div className="rounded-[20px] border border-white/[0.07] bg-[linear-gradient(145deg,rgba(255,255,255,0.044),rgba(255,255,255,0.012))] px-3 py-2.5 shadow-[0_12px_38px_rgba(0,0,0,0.26)] backdrop-blur-2xl">
-        <div className="flex items-center gap-3">
-          <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full border ${tone.ring}`}><Icon className="h-4 w-4" /></span>
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-[14px] font-semibold tracking-[-0.025em] text-white">{item.title}</div>
-            <div className="mt-0.5 truncate text-[12px] text-white/50">{item.description}</div>
-          </div>
-          {item.thumbnail_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={item.thumbnail_url} alt="" className="h-8 w-8 rounded-[12px] object-cover" />
-          ) : item.severity === "high" ? (
-            <span className="rounded-full border border-red-300/18 bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold text-red-200">High</span>
-          ) : (
-            <span className="max-w-[58px] truncate text-[11px] text-white/42">{item.label || item.category}</span>
-          )}
-          {item.thumbnail_url || item.severity === "high" ? <ChevronRight className="h-4 w-4 text-white/35" /> : null}
+      <div className={`absolute -left-[9px] top-6 h-2 w-2 rounded-full border border-[#02060b] ${actionable ? "bg-sky-300 shadow-[0_0_14px_rgba(56,189,248,0.42)]" : "bg-slate-700 shadow-[0_0_12px_rgba(56,189,248,0.20)]"}`} />
+      {actionable ? (
+        <button type="button" onClick={() => item.action?.href && router.push(item.action.href)} className="w-full rounded-[20px] border border-sky-300/14 bg-[linear-gradient(145deg,rgba(56,189,248,0.07),rgba(255,255,255,0.012))] px-3 py-2.5 text-left shadow-[0_12px_38px_rgba(0,0,0,0.26)] backdrop-blur-2xl transition active:scale-[0.99]">
+          {content}
+        </button>
+      ) : (
+        <div className="rounded-[20px] border border-white/[0.07] bg-[linear-gradient(145deg,rgba(255,255,255,0.044),rgba(255,255,255,0.012))] px-3 py-2.5 shadow-[0_12px_38px_rgba(0,0,0,0.26)] backdrop-blur-2xl">
+          {content}
         </div>
-      </div>
+      )}
     </article>
   );
 }

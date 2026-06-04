@@ -4,23 +4,46 @@ import type { AppNotification } from "@/services/notificationsService";
 type State = {
   items: AppNotification[];
   unreadCount: number;
+  unreadByBucket: Record<string, number>;
   setItems: (items: AppNotification[]) => void;
   upsert: (n: AppNotification) => void;
   upsertMany: (items: AppNotification[]) => void;
+  markBucketViewed: (bucket: string) => void;
 };
 
 function computeUnread(items: AppNotification[]) {
   return items.filter((n) => n.status !== "read").length;
 }
 
+function bucketFor(n: AppNotification) {
+  const text = `${n.type || ""} ${n.title || ""} ${n.message || ""}`.toLowerCase();
+  if (/community|announcement|notice|post|comment|reply/.test(text)) return "community";
+  if (/message|inbox|chat|thread/.test(text)) return "messages";
+  if (/visitor|guest|gate|access/.test(text)) return "activity";
+  if (/maintenance|repair|service|wallet|payment|transaction|device|scene|automation|security|alert/.test(text)) return "activity";
+  if (/profile|verify|verification|account|home assignment|invite/.test(text)) return "profile";
+  return "activity";
+}
+
+function computeBuckets(items: AppNotification[]) {
+  return items.reduce<Record<string, number>>((acc, item) => {
+    if (item.status === "read") return acc;
+    const bucket = bucketFor(item);
+    acc[bucket] = (acc[bucket] || 0) + 1;
+    return acc;
+  }, {});
+}
+
 export const useNotificationStore = create<State>((set, get) => ({
   items: [],
   unreadCount: 0,
+  unreadByBucket: {},
 
   setItems: (items) =>
     set({
       items,
       unreadCount: computeUnread(items),
+      unreadByBucket: computeBuckets(items),
     }),
 
   upsert: (n) => {
@@ -32,7 +55,7 @@ export const useNotificationStore = create<State>((set, get) => ({
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
 
-    set({ items: merged, unreadCount: computeUnread(merged) });
+    set({ items: merged, unreadCount: computeUnread(merged), unreadByBucket: computeBuckets(merged) });
   },
 
   upsertMany: (incoming) => {
@@ -44,6 +67,11 @@ export const useNotificationStore = create<State>((set, get) => ({
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
 
-    set({ items: merged, unreadCount: computeUnread(merged) });
+    set({ items: merged, unreadCount: computeUnread(merged), unreadByBucket: computeBuckets(merged) });
+  },
+
+  markBucketViewed: (bucket) => {
+    const next = get().items.map((item) => (bucketFor(item) === bucket ? { ...item, status: "read" as const } : item));
+    set({ items: next, unreadCount: computeUnread(next), unreadByBucket: computeBuckets(next) });
   },
 }));

@@ -25,6 +25,11 @@ export type ActivityEvent = {
   source: string;
   label?: string;
   thumbnail_url?: string | null;
+  action?: {
+    href: string;
+    label?: string;
+    kind?: string;
+  } | null;
 };
 
 export type ActivitySummary = {
@@ -78,6 +83,45 @@ function calculateSummary(items: ActivityEvent[]): ActivitySummary {
   };
 }
 
+function firstString(...values: any[]) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  }
+  return "";
+}
+
+function actionForNotification(item: any, category: ActivityCategory) {
+  const payload = item?.payload || {};
+  const typeText = `${item?.type || ""} ${item?.title || ""} ${item?.message || ""}`.toLowerCase();
+  const postId = firstString(payload.post_id, payload.postId, payload.community_post_id, item.post_id);
+  const commentId = firstString(payload.comment_id, payload.commentId);
+  const threadId = firstString(payload.thread_id, payload.threadId, payload.conversation_id, payload.message_thread_id);
+  const visitorId = firstString(payload.visitor_id, payload.visitorId, payload.invite_id, payload.inviteId);
+  const maintenanceId = firstString(payload.ticket_id, payload.ticketId, payload.maintenance_id, payload.maintenanceId, payload.request_id);
+  const transactionId = firstString(payload.transaction_id, payload.transactionId, payload.wallet_transaction_id);
+  const serviceId = firstString(payload.service_id, payload.serviceId);
+  const deviceId = firstString(payload.device_id, payload.deviceId);
+  const roomId = firstString(payload.room_id, payload.roomId, payload.space_id, payload.spaceId);
+  const automationId = firstString(payload.automation_id, payload.automationId);
+
+  if (postId) return { href: `/community?postId=${encodeURIComponent(postId)}${commentId ? `&commentId=${encodeURIComponent(commentId)}` : ""}`, label: commentId ? "Open thread" : "Open post", kind: "community" };
+  if (threadId || category === "community" && /message|comment|reply/.test(typeText)) return { href: `/messages${threadId ? `?threadId=${encodeURIComponent(threadId)}` : ""}`, label: "Open thread", kind: "message" };
+  if (visitorId) return { href: `/visitors?visitorId=${encodeURIComponent(visitorId)}`, label: "Open visitor", kind: "visitor" };
+  if (maintenanceId) return { href: `/maintenance?ticketId=${encodeURIComponent(maintenanceId)}`, label: "Open ticket", kind: "maintenance" };
+  if (transactionId) return { href: `/wallet?transactionId=${encodeURIComponent(transactionId)}`, label: "Open transaction", kind: "wallet" };
+  if (serviceId) return { href: `/services?serviceId=${encodeURIComponent(serviceId)}`, label: "Open service", kind: "service" };
+  if (deviceId) return { href: `/devices?deviceId=${encodeURIComponent(deviceId)}`, label: "Open device", kind: "device" };
+  if (roomId) return { href: `/spaces?roomId=${encodeURIComponent(roomId)}`, label: "Open space", kind: "space" };
+  if (automationId) return { href: `/scenes?tab=automations&automationId=${encodeURIComponent(automationId)}`, label: "Open automation", kind: "automation" };
+
+  if (category === "community" && /post|announcement|notice|comment|reply/.test(typeText)) return { href: "/community", label: "Open community", kind: "community" };
+  if (category === "visitor" && !/heartbeat|sync|completed/.test(typeText)) return { href: "/visitors", label: "Open visitors", kind: "visitor" };
+  if (category === "maintenance" && !/sync|completed/.test(typeText)) return { href: "/maintenance", label: "Open maintenance", kind: "maintenance" };
+  if (category === "wallet" && !/sync|completed/.test(typeText)) return { href: "/wallet", label: "Open wallet", kind: "wallet" };
+  return null;
+}
+
 async function getLocalFallbackFeed(): Promise<ActivityResponse> {
   const [notificationRes, visitorRes, maintenanceRes] = await Promise.allSettled([
     listMyNotifications(),
@@ -90,17 +134,21 @@ async function getLocalFallbackFeed(): Promise<ActivityResponse> {
   const maintenance = maintenanceRes.status === "fulfilled" && Array.isArray(maintenanceRes.value as any) ? (maintenanceRes.value as any[]) : [];
 
   const items: ActivityEvent[] = [
-    ...notifications.map((item: any) => ({
-      id: `notification:${item.id}`,
-      category: categoryFrom(`${item.type} ${item.title} ${item.message}`),
-      severity: severityFrom(`${item.status} ${item.title} ${item.type}`),
-      title: String(item.title || "Home update"),
-      description: String(item.message || "Oyi activity"),
-      occurred_at: String(item.created_at || new Date().toISOString()),
-      source: "notifications",
-      label: String(item.type || "Activity"),
-      thumbnail_url: typeof item?.payload?.thumbnail_url === "string" ? item.payload.thumbnail_url : null,
-    })),
+    ...notifications.map((item: any) => {
+      const category = categoryFrom(`${item.type} ${item.title} ${item.message}`);
+      return {
+        id: `notification:${item.id}`,
+        category,
+        severity: severityFrom(`${item.status} ${item.title} ${item.type}`),
+        title: String(item.title || "Home update"),
+        description: String(item.message || "Oyi activity"),
+        occurred_at: String(item.created_at || new Date().toISOString()),
+        source: "notifications",
+        label: String(item.type || "Activity"),
+        thumbnail_url: typeof item?.payload?.thumbnail_url === "string" ? item.payload.thumbnail_url : null,
+        action: actionForNotification(item, category),
+      };
+    }),
     ...visitors.map((item: any) => ({
       id: `visitor:${item.id}`,
       category: "visitor" as ActivityCategory,
@@ -110,6 +158,7 @@ async function getLocalFallbackFeed(): Promise<ActivityResponse> {
       occurred_at: String(item.updated_at || item.created_at || new Date().toISOString()),
       source: "visitors",
       label: "People",
+      action: item.id ? { href: `/visitors?visitorId=${encodeURIComponent(String(item.id))}`, label: "Open visitor", kind: "visitor" } : null,
     })),
     ...maintenance.map((item: any) => ({
       id: `maintenance:${item.id}`,
@@ -120,6 +169,7 @@ async function getLocalFallbackFeed(): Promise<ActivityResponse> {
       occurred_at: String(item.updated_at || item.created_at || new Date().toISOString()),
       source: "maintenance_requests",
       label: "Service",
+      action: item.id ? { href: `/maintenance?ticketId=${encodeURIComponent(String(item.id))}`, label: "Open ticket", kind: "maintenance" } : null,
     })),
   ].sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime());
 
@@ -139,8 +189,9 @@ async function getLocalFallbackFeed(): Promise<ActivityResponse> {
 export async function getActivityFeed(): Promise<ActivityResponse | { error: string }> {
   try {
     const res = await API.get("/activity/feed");
+    const items = Array.isArray(res.data?.items) ? res.data.items : [];
     return {
-      items: Array.isArray(res.data?.items) ? res.data.items : [],
+      items: items.map((item: any) => ({ ...item, action: item.action || item.metadata?.action || actionForNotification(item, categoryFrom(`${item.category} ${item.type} ${item.title} ${item.description}`)) })),
       summary: res.data?.summary || emptySummary(),
       sources: res.data?.sources || {},
       generated_at: res.data?.generated_at,
@@ -150,8 +201,9 @@ export async function getActivityFeed(): Promise<ActivityResponse | { error: str
     if (status === 404) {
       try {
         const prefixed = await API.get("/api/activity/feed");
+        const items = Array.isArray(prefixed.data?.items) ? prefixed.data.items : [];
         return {
-          items: Array.isArray(prefixed.data?.items) ? prefixed.data.items : [],
+          items: items.map((item: any) => ({ ...item, action: item.action || item.metadata?.action || actionForNotification(item, categoryFrom(`${item.category} ${item.type} ${item.title} ${item.description}`)) })),
           summary: prefixed.data?.summary || emptySummary(),
           sources: prefixed.data?.sources || {},
           generated_at: prefixed.data?.generated_at,

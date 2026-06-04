@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, Clock3, Moon, Pencil, Plus, Sparkles, Trash2, X, Zap } from "lucide-react";
+import { BatteryCharging, Check, Clock3, Film, Home, Lock, Moon, Pencil, Plane, Plus, ShieldCheck, Sparkles, SunMedium, Trash2, X, Zap } from "lucide-react";
 
 import BottomNav from "@/app/components/BottomNav";
 import HamburgerMenu from "@/app/components/HamburgerMenu";
@@ -13,6 +13,20 @@ import { sceneService, type ConsumerAutomation, type ConsumerScene } from "@/ser
 
 type Tab = "scenes" | "automations";
 type AnyDevice = Record<string, any>;
+type SceneTemplate = { name: string; icon: any; description: string; power: "on" | "off"; trigger?: string };
+
+const SCENE_TEMPLATES: SceneTemplate[] = [
+  { name: "Good Morning", icon: SunMedium, description: "Wake the home gently with selected lights and devices.", power: "on" },
+  { name: "Good Night", icon: Moon, description: "Quiet selected devices before sleep.", power: "off" },
+  { name: "Leaving Home", icon: Lock, description: "Turn selected devices off as you step out.", power: "off" },
+  { name: "Welcome Home", icon: Home, description: "Bring selected devices back on when you return.", power: "on" },
+  { name: "Movie Time", icon: Film, description: "Prepare selected lights or media devices for a calm evening.", power: "on" },
+  { name: "Relax", icon: Sparkles, description: "Set selected devices into a softer home mood.", power: "on" },
+  { name: "Away Mode", icon: ShieldCheck, description: "Reduce selected devices while the home is empty.", power: "off" },
+  { name: "Energy Saver", icon: BatteryCharging, description: "Switch selected non-essential devices off.", power: "off" },
+  { name: "Vacation Mode", icon: Plane, description: "Prepare selected devices for an extended absence.", power: "off" },
+  { name: "Security Lockdown", icon: ShieldCheck, description: "Group supported safety devices into one manual scene.", power: "on" },
+];
 
 function deviceId(device: AnyDevice) { return String(device?.id || device?.external_id || ""); }
 function deviceName(device: AnyDevice) { return String(device?.name || device?.alias || "Device"); }
@@ -28,6 +42,7 @@ export default function ScenesPage() {
   const [error, setError] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [preselectedDeviceId, setPreselectedDeviceId] = useState("");
+  const [selectedTemplate, setSelectedTemplate] = useState<SceneTemplate | null>(null);
   const [editingItem, setEditingItem] = useState<ConsumerScene | ConsumerAutomation | null>(null);
   const [deletingItem, setDeletingItem] = useState<ConsumerScene | ConsumerAutomation | null>(null);
   const [busyId, setBusyId] = useState("");
@@ -112,8 +127,28 @@ export default function ScenesPage() {
               {(["scenes", "automations"] as Tab[]).map((key) => <button key={key} type="button" onClick={() => setTab(key)} className={`rounded-full border px-3.5 py-2 text-xs font-medium capitalize ${tab === key ? "border-sky-300/55 bg-sky-400/12 text-sky-100" : "border-white/[0.07] bg-white/[0.025] text-white/52"}`}>{key}</button>)}
             </div>
             <section className="mt-5">
-              <div className="flex items-center justify-between"><h2 className="text-[17px] font-semibold tracking-[-0.04em]">{tab === "scenes" ? "Your scenes" : "Your automations"}</h2><button type="button" onClick={() => setCreateOpen(true)} className="inline-flex items-center gap-1.5 rounded-full border border-sky-300/25 bg-sky-400/10 px-3 py-2 text-xs text-sky-100"><Plus className="h-3.5 w-3.5" /> Create</button></div>
+              <div className="flex items-center justify-between"><h2 className="text-[17px] font-semibold tracking-[-0.04em]">{tab === "scenes" ? "Your scenes" : "Your automations"}</h2><button type="button" onClick={() => { setSelectedTemplate(null); setCreateOpen(true); }} className="inline-flex items-center gap-1.5 rounded-full border border-sky-300/25 bg-sky-400/10 px-3 py-2 text-xs text-sky-100"><Plus className="h-3.5 w-3.5" /> Create</button></div>
               {error ? <p className="mt-3 rounded-[18px] border border-red-300/14 bg-red-500/[0.06] p-3 text-xs text-red-100">{error}</p> : null}
+              {tab === "scenes" ? (
+                <div className="mt-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <h3 className="text-[12px] font-semibold uppercase tracking-[0.18em] text-white/42">Starter scenes</h3>
+                    <span className="text-[11px] text-white/34">Customize after creating</span>
+                  </div>
+                  <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                    {SCENE_TEMPLATES.map((template) => {
+                      const Icon = template.icon;
+                      return (
+                        <button key={template.name} type="button" onClick={() => { setSelectedTemplate(template); setEditingItem(null); setCreateOpen(true); }} className="w-[156px] shrink-0 rounded-[20px] border border-white/[0.07] bg-white/[0.032] p-3 text-left transition active:scale-[0.99]">
+                          <span className="grid h-9 w-9 place-items-center rounded-full bg-sky-400/10 text-sky-200"><Icon className="h-4 w-4" /></span>
+                          <span className="mt-2 block truncate text-[13px] font-semibold text-white">{template.name}</span>
+                          <span className="mt-1 line-clamp-2 text-[11px] leading-4 text-white/42">{template.description}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
               {loading ? <Empty title="Loading…" body="Syncing your living environment." /> : items.length ? (
                 <div className="mt-3 space-y-2">
                   {items.map((item) => <div key={item.id} className="rounded-[20px] border border-white/[0.065] bg-white/[0.032] p-3 backdrop-blur-xl">
@@ -134,7 +169,7 @@ export default function ScenesPage() {
           </div>
         </div>
         <BottomNav />
-        {createOpen ? <CreateSheet tab={tab} initial={editingItem} initialDeviceId={preselectedDeviceId} devices={devices} onClose={() => { setCreateOpen(false); setEditingItem(null); setPreselectedDeviceId(""); }} onSaved={async () => { setCreateOpen(false); setEditingItem(null); setPreselectedDeviceId(""); await refresh(); }} /> : null}
+        {createOpen ? <CreateSheet tab={tab} initial={editingItem} template={selectedTemplate} initialDeviceId={preselectedDeviceId} devices={devices} onClose={() => { setCreateOpen(false); setEditingItem(null); setSelectedTemplate(null); setPreselectedDeviceId(""); }} onSaved={async () => { setCreateOpen(false); setEditingItem(null); setSelectedTemplate(null); setPreselectedDeviceId(""); await refresh(); }} /> : null}
         {deletingItem ? (
           <div className="fixed inset-0 z-[150] flex items-end justify-center bg-black/55 px-4 pb-[calc(16px+var(--sab))] backdrop-blur-md">
             <button className="absolute inset-0" onClick={() => setDeletingItem(null)} aria-label="Cancel delete" />
@@ -156,13 +191,13 @@ export default function ScenesPage() {
 
 function Empty({ title, body }: { title: string; body: string }) { return <div className="mt-3 rounded-[22px] border border-white/[0.06] bg-white/[0.025] p-5 text-center"><Sparkles className="mx-auto h-5 w-5 text-sky-200/62" /><div className="mt-2 text-sm font-semibold">{title}</div><div className="mt-1 text-xs leading-5 text-white/42">{body}</div></div>; }
 
-function CreateSheet({ tab, initial, initialDeviceId, devices, onClose, onSaved }: { tab: Tab; initial?: ConsumerScene | ConsumerAutomation | null; initialDeviceId?: string; devices: AnyDevice[]; onClose: () => void; onSaved: () => void }) {
+function CreateSheet({ tab, initial, template, initialDeviceId, devices, onClose, onSaved }: { tab: Tab; initial?: ConsumerScene | ConsumerAutomation | null; template?: SceneTemplate | null; initialDeviceId?: string; devices: AnyDevice[]; onClose: () => void; onSaved: () => void }) {
   const initialDeviceIds = Array.isArray(initial?.actions) ? initial!.actions.map((action) => String(action.device_id || "")).filter(Boolean) : initialDeviceId ? [initialDeviceId] : [];
-  const [name, setName] = useState(initial?.name || "");
-  const [description, setDescription] = useState((initial as ConsumerScene | null)?.description || "");
+  const [name, setName] = useState(initial?.name || template?.name || "");
+  const [description, setDescription] = useState((initial as ConsumerScene | null)?.description || template?.description || "");
   const [selectedIds, setSelectedIds] = useState<string[]>(initialDeviceIds);
-  const [power, setPower] = useState<"on" | "off">((initial?.actions?.[0]?.command?.switch ?? initial?.actions?.[0]?.command?.power ?? true) ? "on" : "off");
-  const [trigger, setTrigger] = useState(String((initial as ConsumerAutomation | null)?.trigger?.type || "time"));
+  const [power, setPower] = useState<"on" | "off">(initial?.actions?.length ? ((initial?.actions?.[0]?.command?.switch ?? initial?.actions?.[0]?.command?.power ?? true) ? "on" : "off") : template?.power || "on");
+  const [trigger, setTrigger] = useState(String((initial as ConsumerAutomation | null)?.trigger?.type || template?.trigger || "time"));
   const [saving, setSaving] = useState(false);
   const canSave = useMemo(() => name.trim() && selectedIds.length, [name, selectedIds]);
   function toggleDevice(id: string) {

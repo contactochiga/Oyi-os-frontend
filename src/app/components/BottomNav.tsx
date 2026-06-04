@@ -2,6 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { FiActivity, FiHome, FiLayers, FiUser, FiUsers } from "react-icons/fi";
+import { useNotificationStore } from "@/store/useNotificationStore";
 
 type Item = {
   key: "home" | "spaces" | "activity" | "community" | "profile";
@@ -50,6 +51,15 @@ function isActive(pathname: string, href: string) {
 export default function BottomNav() {
   const pathname = usePathname() || "/";
   const router = useRouter();
+  const unreadByBucket = useNotificationStore((state) => state.unreadByBucket);
+  const markBucketViewed = useNotificationStore((state) => state.markBucketViewed);
+
+  const badgeFor = (key: Item["key"]) => {
+    if (key === "community") return unreadByBucket.community || 0;
+    if (key === "activity") return unreadByBucket.activity || unreadByBucket.messages || 0;
+    if (key === "profile") return unreadByBucket.profile || 0;
+    return 0;
+  };
 
   return (
     <nav
@@ -61,24 +71,38 @@ export default function BottomNav() {
         {ITEMS.map((item) => {
           const active = isActive(pathname, item.href);
           const Icon = item.icon;
+          const badge = badgeFor(item.key);
           return (
             <button
               key={item.key}
               type="button"
-              onClick={() => router.push(item.href)}
+              onClick={() => {
+                if (item.key === "community") markBucketViewed("community");
+                if (item.key === "activity") {
+                  markBucketViewed("activity");
+                  markBucketViewed("messages");
+                }
+                if (item.key === "profile") markBucketViewed("profile");
+                router.push(item.href);
+              }}
               className={`group rounded-[20px] px-1 py-1.5 text-center transition active:scale-[0.98] ${
                 active ? "text-white" : "text-white/46 hover:text-white/78"
               }`}
             >
               <div className="flex justify-center">
                 <span
-                  className={`grid h-7 w-7 place-items-center rounded-[13px] transition ${
+                  className={`relative grid h-7 w-7 place-items-center rounded-[13px] transition ${
                     active
                       ? "bg-sky-300/14 text-sky-100 shadow-[0_0_20px_rgba(56,189,248,0.32)]"
                       : "text-white/52 group-hover:bg-white/[0.05] group-hover:text-white/78"
                   }`}
                 >
                   <Icon className="text-[18px]" />
+                  {badge ? (
+                    <span className={`absolute ${badge > 1 ? "-right-1 -top-1 min-w-[16px] px-1" : "right-0.5 top-0.5 h-2 w-2"} rounded-full bg-sky-300 text-[9px] font-bold leading-4 text-slate-950 shadow-[0_0_12px_rgba(56,189,248,0.8)]`}>
+                      {badge > 1 ? Math.min(badge, 9) : ""}
+                    </span>
+                  ) : null}
                 </span>
               </div>
               <div
