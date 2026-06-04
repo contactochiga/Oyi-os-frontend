@@ -1,12 +1,12 @@
 // src/services/api.ts
 import axios from "axios";
+import { getConsumerApiBaseURL } from "./apiBase";
 
 /**
  * Normalize backend URL
  */
 function getBaseURL() {
-  const raw = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-  return raw.replace(/\/$/, "");
+  return getConsumerApiBaseURL();
 }
 
 /**

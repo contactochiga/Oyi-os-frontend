@@ -6,13 +6,14 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { signUpWithEmail } from "@/services/authService";
+import { getConsumerApiBaseURL } from "@/services/apiBase";
 import { decodeToken, isExpired, setCookie } from "@/lib/auth";
 import { useSessionStore } from "@/store/useSessionStore";
 
 type Step = "form" | "otp";
 
 function getApiBase() {
-  return process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "";
+  return getConsumerApiBaseURL();
 }
 
 function isValidEmail(email: string) {

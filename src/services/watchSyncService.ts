@@ -1,4 +1,5 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
+import { getConsumerApiBaseURL } from "@/services/apiBase";
 import type { SessionUser } from "@/store/useSessionStore";
 
 type WatchSyncPayload = {
@@ -45,7 +46,7 @@ type OyiWatchSyncPlugin = {
 const OyiWatchSync = registerPlugin<OyiWatchSyncPlugin>("OyiWatchSync");
 
 export function getConsumerBackendBaseURL() {
-  return (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000").replace(/\/$/, "");
+  return getConsumerApiBaseURL();
 }
 
 export async function syncOyiWatchSession(token: string | null | undefined, user: SessionUser | null | undefined) {

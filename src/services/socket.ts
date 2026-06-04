@@ -2,12 +2,12 @@
 "use client";
 
 import { io as createIO, Socket } from "socket.io-client";
+import { getConsumerApiBaseURL } from "./apiBase";
 
 let socket: Socket | null = null;
 
 function getBaseURL() {
-  const raw = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-  return raw.replace(/\/$/, "");
+  return getConsumerApiBaseURL();
 }
 
 function getCookie(name: string): string | null {
