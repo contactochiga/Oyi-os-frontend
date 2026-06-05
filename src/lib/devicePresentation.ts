@@ -55,7 +55,12 @@ function textFrom(device: Record<string, any> = {}) {
     device?.device_type,
     device?.category,
     device?.kind,
+    device?.remote_type,
+    device?.remoteType,
+    device?.ir_profile,
+    device?.irProfile,
     device?.product_name,
+    device?.productName,
     device?.model,
     device?.name,
     device?.local_name,
@@ -72,8 +77,9 @@ function textFrom(device: Record<string, any> = {}) {
 
 export function getDeviceFamily(device: Record<string, any> = {}): DeviceFamily {
   const text = textFrom(device);
+  if (/\b(tv|television|smart tv|android tv|google tv|samsung tv|lg tv|hisense tv|tcl|tcl tv|set top|decoder)\b/.test(text)) return "tv";
   if (/\b(ir remote|smart ir|infrared remote|universal remote|remote control)\b/.test(text)) return "remote";
-  if (/\b(tv|television|media|screen|set top|decoder|projector)\b/.test(text)) return "tv";
+  if (/\b(media|screen|projector)\b/.test(text)) return "tv";
   if (/\b(thermostat)\b/.test(text)) return "thermostat";
   if (/\b(ac|a\/c|air conditioner|aircon|hvac|climate|cooling|cooler)\b/.test(text)) return "climate";
   if (/\b(air purifier|purifier|air quality)\b/.test(text)) return "purifier";

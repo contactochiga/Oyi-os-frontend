@@ -1,8 +1,11 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { FiActivity, FiHome, FiLayers, FiUser, FiUsers } from "react-icons/fi";
 import { useNotificationStore } from "@/store/useNotificationStore";
+import useAuth from "@/hooks/useAuth";
+import { getSocket } from "@/services/socket";
 
 type Item = {
   key: "home" | "spaces" | "activity" | "community" | "profile";
@@ -51,13 +54,64 @@ function isActive(pathname: string, href: string) {
 export default function BottomNav() {
   const pathname = usePathname() || "/";
   const router = useRouter();
+  const { user } = useAuth();
   const unreadByBucket = useNotificationStore((state) => state.unreadByBucket);
   const markBucketViewed = useNotificationStore((state) => state.markBucketViewed);
+  const scopeKey = useMemo(() => {
+    const identity = String((user as any)?.id || "guest");
+    const estate = String((user as any)?.estate_id || "estate");
+    const home = String((user as any)?.home_id || "home");
+    return `${identity}:${estate}:${home}`;
+  }, [user]);
+  const [localDots, setLocalDots] = useState<Record<string, boolean>>({});
+
+  function clearLocalDot(bucket: "activity" | "community" | "profile") {
+    setLocalDots((current) => ({ ...current, [bucket]: false }));
+    try {
+      localStorage.setItem(`oyi:last-seen:${scopeKey}:${bucket}`, new Date().toISOString());
+    } catch {}
+  }
+
+  useEffect(() => {
+    if (isActive(pathname, "/activity")) {
+      clearLocalDot("activity");
+      markBucketViewed("activity");
+      markBucketViewed("messages");
+    }
+    if (isActive(pathname, "/community")) {
+      clearLocalDot("community");
+      markBucketViewed("community");
+    }
+    if (isActive(pathname, "/profile")) {
+      clearLocalDot("profile");
+      markBucketViewed("profile");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, scopeKey, markBucketViewed]);
+
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+    const markActivity = () => {
+      if (!isActive(pathname, "/activity")) setLocalDots((current) => ({ ...current, activity: true }));
+    };
+    const markCommunity = () => {
+      if (!isActive(pathname, "/community")) setLocalDots((current) => ({ ...current, community: true }));
+    };
+    const activityEvents = ["notification:new", "device.status.updated", "device.registry.updated", "visitor.updated", "maintenance.updated", "dm:new", "message.created", "wallet.updated", "service.updated", "security.alert", "audit.recorded"];
+    const communityEvents = ["community.updated"];
+    activityEvents.forEach((eventName) => socket.on(eventName, markActivity));
+    communityEvents.forEach((eventName) => socket.on(eventName, markCommunity));
+    return () => {
+      activityEvents.forEach((eventName) => socket.off(eventName, markActivity));
+      communityEvents.forEach((eventName) => socket.off(eventName, markCommunity));
+    };
+  }, [pathname]);
 
   const badgeFor = (key: Item["key"]) => {
-    if (key === "community") return unreadByBucket.community || 0;
-    if (key === "activity") return unreadByBucket.activity || unreadByBucket.messages || 0;
-    if (key === "profile") return unreadByBucket.profile || 0;
+    if (key === "community") return unreadByBucket.community || (localDots.community ? 1 : 0);
+    if (key === "activity") return unreadByBucket.activity || unreadByBucket.messages || (localDots.activity ? 1 : 0);
+    if (key === "profile") return unreadByBucket.profile || (localDots.profile ? 1 : 0);
     return 0;
   };
 
@@ -77,8 +131,19 @@ export default function BottomNav() {
               key={item.key}
               type="button"
               onClick={() => {
-                if (item.key === "community") markBucketViewed("community");
-                if (item.key === "profile") markBucketViewed("profile");
+                if (item.key === "activity") {
+                  clearLocalDot("activity");
+                  markBucketViewed("activity");
+                  markBucketViewed("messages");
+                }
+                if (item.key === "community") {
+                  clearLocalDot("community");
+                  markBucketViewed("community");
+                }
+                if (item.key === "profile") {
+                  clearLocalDot("profile");
+                  markBucketViewed("profile");
+                }
                 router.push(item.href);
               }}
               className={`group rounded-[20px] px-1 py-1.5 text-center transition active:scale-[0.98] ${

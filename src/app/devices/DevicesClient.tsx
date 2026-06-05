@@ -46,6 +46,7 @@ type DiscoveryDevice = Record<string, any>;
 type AddDeviceTab = "nearby" | "provider" | "manual";
 type CategoryKey = "all" | "lights" | "climate" | "security" | "entertainment" | "sensors";
 type DeviceTool = "timer" | "schedule" | "settings";
+type IrProfile = "tv" | "ac" | "fan" | "projector";
 
 const CATEGORIES: Array<{ key: CategoryKey; label: string }> = [
   { key: "all", label: "All" },
@@ -69,7 +70,7 @@ function pickExternalId(d: AnyDevice) {
 }
 
 function pickName(d: AnyDevice) {
-  return d?.name || d?.local_name || d?.localName || d?.alias || "Unnamed Device";
+  return d?.name || d?.product_name || d?.productName || d?.model || d?.local_name || d?.localName || d?.alias || "Unnamed Device";
 }
 
 function pickVendor(d: AnyDevice) {
@@ -339,21 +340,24 @@ function commandCodeFor(device: AnyDevice, patterns: RegExp[]) {
 
 type DeviceRendererKind = "switch" | "socket" | "tv" | "ac" | "ir";
 
-function learnedIrTemplate(device: AnyDevice): "tv" | "ac" | "fan" | "projector" | null {
-  const raw = `${device?.metadata?.ir_template || ""} ${device?.metadata?.remote_template || ""} ${device?.metadata?.profile || ""} ${device?.metadata?.category || ""} ${device?.category || ""} ${device?.type || ""} ${device?.name || ""}`.toLowerCase();
+function learnedIrTemplate(device: AnyDevice): IrProfile | null {
+  const raw = `${device?.remote_type || ""} ${device?.remoteType || ""} ${device?.ir_profile || ""} ${device?.irProfile || ""} ${device?.device_type || ""} ${device?.product_name || ""} ${device?.productName || ""} ${device?.model || ""} ${device?.metadata?.remote_type || ""} ${device?.metadata?.remoteType || ""} ${device?.metadata?.ir_profile || ""} ${device?.metadata?.irProfile || ""} ${device?.metadata?.ir_template || ""} ${device?.metadata?.remote_template || ""} ${device?.metadata?.profile || ""} ${device?.metadata?.category || ""} ${device?.category || ""} ${device?.type || ""} ${device?.name || ""}`.toLowerCase();
   if (/projector/.test(raw)) return "projector";
   if (/(^| )(fan|ceiling fan)( |$)/.test(raw)) return "fan";
   if (/(air|ac|aircon|hvac|climate)/.test(raw)) return "ac";
-  if (/(tv|television|decoder|set.top|android tv|google tv)/.test(raw)) return "tv";
+  if (/(tv|television|decoder|set.top|android tv|google tv|samsung tv|lg tv|hisense tv|tcl tv|smart tv)/.test(raw)) return "tv";
   return null;
 }
 
 function deviceRendererKind(device: AnyDevice): DeviceRendererKind {
   const family = inferFamily(device);
-  const text = `${device?.category || ""} ${device?.type || ""} ${device?.name || ""} ${device?.metadata?.category || ""}`.toLowerCase();
-  if (family === "remote" || /ir|infrared|remote/.test(text)) return "ir";
+  const profile = learnedIrTemplate(device);
+  const text = `${device?.remote_type || ""} ${device?.remoteType || ""} ${device?.ir_profile || ""} ${device?.device_type || ""} ${device?.product_name || ""} ${device?.productName || ""} ${device?.model || ""} ${device?.category || ""} ${device?.type || ""} ${device?.name || ""} ${device?.metadata?.category || ""} ${device?.metadata?.remoteType || ""} ${device?.metadata?.ir_profile || ""}`.toLowerCase();
   if (family === "tv" || /\btv\b|television|decoder|set.top/.test(text)) return "tv";
   if (family === "climate" || family === "thermostat" || /\bac\b|aircon|air.condition|hvac|climate/.test(text)) return "ac";
+  if (profile === "tv") return "tv";
+  if (profile === "ac") return "ac";
+  if (family === "remote" || /ir|infrared|remote/.test(text)) return "ir";
   if (family === "plug" || /socket|plug|outlet/.test(text)) return "socket";
   return "switch";
 }
@@ -1005,7 +1009,12 @@ function DeviceModalRouter({ device, state, busy, onClose, onToggleGang, onPower
   const gangCount = guessGangCount(device, state);
   const values = Object.keys(state || {}).length ? readGangValues(gangCount, state) : Array.from({ length: gangCount }, () => null);
   const caps = uiCapabilities(device);
-  const renderer = deviceRendererKind(device);
+  const [selectedIrProfile, setSelectedIrProfile] = useState<IrProfile | null>(null);
+  const baseRenderer = deviceRendererKind(device);
+  const learnedProfile = learnedIrTemplate(device);
+  const activeIrProfile = learnedProfile || selectedIrProfile;
+  const renderer = baseRenderer === "ir" && activeIrProfile === "tv" ? "tv" : baseRenderer === "ir" && activeIrProfile === "ac" ? "ac" : baseRenderer;
+  const needsIrProfile = baseRenderer === "ir" && !activeIrProfile;
   return (
     <div className="fixed inset-0 z-[120]">
       <div className="absolute inset-0 bg-black/65 backdrop-blur-md" onClick={onClose} />
@@ -1023,13 +1032,36 @@ function DeviceModalRouter({ device, state, busy, onClose, onToggleGang, onPower
             </div>
           </div>
           <div className="max-h-[68vh] overflow-y-auto px-4 pb-4">
+            {needsIrProfile ? <IRProfilePicker onSelect={setSelectedIrProfile} /> : null}
             {renderer === "tv" ? <TVRenderer device={device} busy={busy} onPower={onPower} onCommand={onCommand} /> : null}
             {renderer === "ac" ? <ACRenderer device={device} state={state} busy={busy} onPower={onPower} onCommand={onCommand} onTool={onTool} /> : null}
             {renderer === "socket" ? <SocketRenderer device={device} state={state} caps={caps} gangCount={gangCount} values={values} busy={busy} onToggleGang={onToggleGang} onTool={onTool} /> : null}
-            {renderer === "ir" ? <IRRenderer device={device} state={state} busy={busy} onPower={onPower} onCommand={onCommand} onTool={onTool} /> : null}
+            {renderer === "ir" && !needsIrProfile ? <IRRenderer device={device} state={state} busy={busy} onPower={onPower} onCommand={onCommand} onTool={onTool} /> : null}
             {renderer === "switch" ? <SwitchRenderer device={device} state={state} caps={caps} gangCount={gangCount} values={values} busy={busy} onToggleGang={onToggleGang} onTool={onTool} /> : null}
           </div>
         </section>
+      </div>
+    </div>
+  );
+}
+
+function IRProfilePicker({ onSelect }: { onSelect: (profile: IrProfile) => void }) {
+  const profiles: Array<{ key: IrProfile; label: string }> = [
+    { key: "tv", label: "TV" },
+    { key: "ac", label: "AC" },
+    { key: "fan", label: "Fan" },
+    { key: "projector", label: "Projector" },
+  ];
+  return (
+    <div className="rounded-[24px] border border-white/[0.07] bg-white/[0.035] p-4">
+      <div className="text-sm font-semibold text-white">Choose remote profile</div>
+      <p className="mt-1 text-xs leading-5 text-white/44">Select the device this IR remote controls.</p>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        {profiles.map((profile) => (
+          <button key={profile.key} type="button" onClick={() => onSelect(profile.key)} className="rounded-[16px] border border-sky-300/14 bg-sky-400/10 px-3 py-3 text-sm font-semibold text-sky-100 transition active:scale-[0.98]">
+            {profile.label}
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -1105,57 +1137,60 @@ function TVRenderer({ device, busy, onPower, onCommand }: { device: AnyDevice; b
   const supports = (...keys: string[]) => !exposedKeys.size || keys.some((key) => exposedKeys.has(key));
   const switchPower = canSwitchDevice(device);
   const keyCode = commandCodeFor(device, [/ir_code/, /remote_key/, /key_code/, /control/]);
-  const sendKey = (key: string) => keyCode ? onCommand(device, { [keyCode]: key }) : undefined;
-  const remoteKey = (key: string, ...aliases: string[]) => keyCode && supports(key, ...aliases);
-  const canPower = switchPower || Boolean(remoteKey("power"));
-  const hasNavigation = Boolean(remoteKey("up") || remoteKey("down") || remoteKey("left") || remoteKey("right") || remoteKey("ok", "enter", "select"));
-  const hasSystem = Boolean(remoteKey("home") || remoteKey("back", "return") || remoteKey("menu") || remoteKey("source", "input"));
-  const hasVolume = Boolean(remoteKey("volume_up", "vol_up") || remoteKey("volume_down", "vol_down"));
-  const hasChannel = Boolean(remoteKey("channel_up", "ch_up") || remoteKey("channel_down", "ch_down"));
-  const hasMedia = Boolean(remoteKey("play_pause", "play", "pause"));
+  const canShow = (key: string, ...aliases: string[]) => !keyCode || supports(key, ...aliases);
+  const canSend = (key: string, ...aliases: string[]) => Boolean(keyCode && supports(key, ...aliases));
+  const sendKey = (key: string) => keyCode ? onCommand(device, { type: "tv_remote", key, command_key: key, [keyCode]: key }) : undefined;
+  const canPower = switchPower || canShow("power");
+  const canSendPower = switchPower || canSend("power");
+  const hasNavigation = canShow("up") || canShow("down") || canShow("left") || canShow("right") || canShow("ok", "enter", "select");
+  const hasSystem = canShow("home") || canShow("back", "return") || canShow("menu") || canShow("source", "input");
+  const hasVolume = canShow("volume_up", "vol_up") || canShow("volume_down", "vol_down");
+  const hasChannel = canShow("channel_up", "ch_up") || canShow("channel_down", "ch_down");
+  const hasMedia = canShow("play_pause", "play", "pause");
   const powerClick = () => {
     if (switchPower) onPower(device);
-    else sendKey("power");
+    else sendKey("power_toggle");
   };
   return (
     <div className="space-y-2.5">
       <div className="grid grid-cols-2 gap-2">
-        {canPower ? <RemoteKey icon={Power} label="Power" enabled={isOnline(device) !== false} busy={busy} onClick={powerClick} /> : null}
-        {remoteKey("mute") ? <RemoteKey icon={VolumeX} label="Mute" enabled onClick={() => sendKey("mute")} /> : null}
+        {canPower ? <RemoteKey icon={Power} label="Power" enabled={isOnline(device) !== false && canSendPower} busy={busy} onClick={powerClick} /> : null}
+        {canShow("mute") ? <RemoteKey icon={VolumeX} label="Mute" enabled={canSend("mute")} onClick={() => sendKey("mute")} /> : null}
       </div>
       {hasNavigation ? <div className="rounded-[28px] border border-white/[0.07] bg-white/[0.035] p-4">
         <div className="mb-3 text-center text-xs uppercase tracking-[0.22em] text-white/34">Navigation</div>
         <div className="mx-auto grid max-w-[230px] grid-cols-3 gap-2">
           <span />
-          {remoteKey("up") ? <RemoteKey icon={ChevronUp} label="Up" enabled onClick={() => sendKey("up")} /> : <span />}
+          {canShow("up") ? <RemoteKey icon={ChevronUp} label="Up" enabled={canSend("up")} onClick={() => sendKey("nav_up")} /> : <span />}
           <span />
-          {remoteKey("left") ? <RemoteKey icon={ChevronLeft} label="Left" enabled onClick={() => sendKey("left")} /> : <span />}
-          {remoteKey("ok", "enter", "select") ? <RemoteKey icon={Check} label="OK" enabled onClick={() => sendKey("ok")} /> : <span />}
-          {remoteKey("right") ? <RemoteKey icon={ChevronRight} label="Right" enabled onClick={() => sendKey("right")} /> : <span />}
+          {canShow("left") ? <RemoteKey icon={ChevronLeft} label="Left" enabled={canSend("left")} onClick={() => sendKey("nav_left")} /> : <span />}
+          {canShow("ok", "enter", "select") ? <RemoteKey icon={Check} label="OK" enabled={canSend("ok", "enter", "select")} onClick={() => sendKey("ok")} /> : <span />}
+          {canShow("right") ? <RemoteKey icon={ChevronRight} label="Right" enabled={canSend("right")} onClick={() => sendKey("nav_right")} /> : <span />}
           <span />
-          {remoteKey("down") ? <RemoteKey icon={ChevronDown} label="Down" enabled onClick={() => sendKey("down")} /> : <span />}
+          {canShow("down") ? <RemoteKey icon={ChevronDown} label="Down" enabled={canSend("down")} onClick={() => sendKey("nav_down")} /> : <span />}
           <span />
         </div>
       </div> : null}
       {hasSystem ? <ControlGroup title="System">
-        {remoteKey("home") ? <RemoteKey icon={Home} label="Home" enabled onClick={() => sendKey("home")} /> : null}
-        {remoteKey("back", "return") ? <RemoteKey icon={ChevronLeft} label="Back" enabled onClick={() => sendKey("back")} /> : null}
-        {remoteKey("menu") ? <RemoteKey icon={SlidersHorizontal} label="Menu" enabled onClick={() => sendKey("menu")} /> : null}
-        {remoteKey("source", "input") ? <RemoteKey icon={ChevronRight} label="Source" enabled onClick={() => sendKey("source")} /> : null}
+        {canShow("home") ? <RemoteKey icon={Home} label="Home" enabled={canSend("home")} onClick={() => sendKey("home")} /> : null}
+        {canShow("back", "return") ? <RemoteKey icon={ChevronLeft} label="Back" enabled={canSend("back", "return")} onClick={() => sendKey("back")} /> : null}
+        {canShow("menu") ? <RemoteKey icon={SlidersHorizontal} label="Menu" enabled={canSend("menu")} onClick={() => sendKey("menu")} /> : null}
+        {canShow("source", "input") ? <RemoteKey icon={ChevronRight} label="Source" enabled={canSend("source", "input")} onClick={() => sendKey("input")} /> : null}
       </ControlGroup> : null}
       {hasVolume || hasChannel ? <div className="grid grid-cols-2 gap-2">
         {hasVolume ? <ControlGroup title="Volume">
-          {remoteKey("volume_up", "vol_up") ? <RemoteKey icon={Plus} label="Vol +" enabled onClick={() => sendKey("volume_up")} /> : null}
-          {remoteKey("volume_down", "vol_down") ? <RemoteKey icon={Minus} label="Vol -" enabled onClick={() => sendKey("volume_down")} /> : null}
+          {canShow("volume_up", "vol_up") ? <RemoteKey icon={Plus} label="Vol +" enabled={canSend("volume_up", "vol_up")} onClick={() => sendKey("volume_up")} /> : null}
+          {canShow("volume_down", "vol_down") ? <RemoteKey icon={Minus} label="Vol -" enabled={canSend("volume_down", "vol_down")} onClick={() => sendKey("volume_down")} /> : null}
         </ControlGroup> : null}
         {hasChannel ? <ControlGroup title="Channel">
-          {remoteKey("channel_up", "ch_up") ? <RemoteKey icon={Plus} label="Ch +" enabled onClick={() => sendKey("channel_up")} /> : null}
-          {remoteKey("channel_down", "ch_down") ? <RemoteKey icon={Minus} label="Ch -" enabled onClick={() => sendKey("channel_down")} /> : null}
+          {canShow("channel_up", "ch_up") ? <RemoteKey icon={Plus} label="Ch +" enabled={canSend("channel_up", "ch_up")} onClick={() => sendKey("channel_up")} /> : null}
+          {canShow("channel_down", "ch_down") ? <RemoteKey icon={Minus} label="Ch -" enabled={canSend("channel_down", "ch_down")} onClick={() => sendKey("channel_down")} /> : null}
         </ControlGroup> : null}
       </div> : null}
       {hasMedia ? <ControlGroup title="Media">
-        <RemoteKey icon={Play} label="Play/Pause" enabled onClick={() => sendKey("play_pause")} />
+        <RemoteKey icon={Play} label="Play/Pause" enabled={canSend("play_pause", "play", "pause")} onClick={() => sendKey("play_pause")} />
       </ControlGroup> : null}
+      {!keyCode ? <div className="rounded-[18px] border border-white/[0.06] bg-white/[0.025] px-3 py-2.5 text-center text-xs leading-5 text-white/42">TV command mapping is being prepared for this device.</div> : null}
     </div>
   );
 }

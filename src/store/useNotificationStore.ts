@@ -26,6 +26,13 @@ function bucketFor(n: AppNotification) {
   return "activity";
 }
 
+function shouldKeepAttention(item: AppNotification, bucket: string) {
+  const text = `${item.type || ""} ${item.title || ""} ${item.message || ""}`.toLowerCase();
+  if (bucket === "activity") return /urgent|critical|security|emergency|lockdown|alarm/.test(text);
+  if (bucket === "community") return /urgent|critical|security|emergency|lockdown/.test(text);
+  return false;
+}
+
 function computeBuckets(items: AppNotification[]) {
   return items.reduce<Record<string, number>>((acc, item) => {
     if (item.status === "read") return acc;
@@ -79,7 +86,7 @@ export const useNotificationStore = create<State>((set, get) => ({
   },
 
   markBucketViewed: (bucket) => {
-    const next = get().items.map((item) => (bucketFor(item) === bucket ? { ...item, status: "read" as const } : item));
+    const next = get().items.map((item) => (bucketFor(item) === bucket && !shouldKeepAttention(item, bucket) ? { ...item, status: "read" as const } : item));
     set({ items: next, unreadCount: computeUnread(next), unreadByBucket: computeBuckets(next) });
   },
 }));
