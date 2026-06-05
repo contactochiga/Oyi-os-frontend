@@ -34,10 +34,11 @@ import { communityService, type CommunityComment, type CommunityPost } from "@/s
 import { useNotificationStore } from "@/store/useNotificationStore";
 
 const BODY_META_PREFIX = "__OYI_POST_V1__:";
-type TabKey = "announcements" | "urgent" | "discussions" | "media" | "questions";
+type TabKey = "all" | "announcements" | "urgent" | "discussions" | "media" | "questions";
 type PostAttachment = { id: string; type: "image" | "video"; url: string; name?: string | null };
 
 const TABS: Array<{ key: TabKey; label: string; icon: any }> = [
+  { key: "all", label: "All", icon: Users },
   { key: "announcements", label: "Announcements", icon: Megaphone },
   { key: "urgent", label: "Urgent", icon: AlertTriangle },
   { key: "discussions", label: "Discussions", icon: Users },
@@ -97,7 +98,7 @@ function mediaFromPost(post: any): PostAttachment[] {
     .filter((item: PostAttachment) => Boolean(item.url));
 }
 
-function categoryFor(post: any): TabKey {
+function categoryFor(post: any): Exclude<TabKey, "all"> {
   const raw = String(post?.category || post?.post_type || "").toLowerCase();
   const title = String(post?.title || "").toLowerCase();
   const body = String(post?.body || post?.content || "").toLowerCase();
@@ -138,6 +139,8 @@ function authorName(post: any, me: any) {
 
 function officialIdentity(post: any) {
   const sourceLabel = normalizeText(post?.source_label);
+  const sourceType = String(post?.source_type || post?.author_type || post?.created_by_type || "").toLowerCase();
+  const hasResidentIdentity = Boolean(post?.resident_id || post?.author?.resident_id || post?.author_resident_id) || sourceType === "resident";
   if (post?.is_official === true || String(post?.source_type || "").toLowerCase() === "facility") {
     if (/security/i.test(sourceLabel)) return { label: sourceLabel || "Security Desk", Icon: ShieldCheck };
     if (/maintenance/i.test(sourceLabel)) return { label: sourceLabel || "Maintenance Team", Icon: Wrench };
@@ -145,13 +148,13 @@ function officialIdentity(post: any) {
     if (/moderator/i.test(sourceLabel)) return { label: sourceLabel || "Community Moderator", Icon: ShieldCheck };
     return { label: sourceLabel || "Estate Operations", Icon: Megaphone };
   }
+  if (hasResidentIdentity) return null;
   const roleText = `${post?.author_role || ""} ${post?.created_by_role || ""} ${post?.created_by_type || ""} ${post?.source || ""}`.toLowerCase();
-  const systemText = `${post?.category || ""} ${post?.status || ""} ${post?.post_type || ""}`.toLowerCase();
-  const text = `${roleText} ${systemText}`;
+  const text = roleText;
   if (/security/.test(text)) return { label: "Security Desk", Icon: ShieldCheck };
   if (/maintenance|repair|service/.test(text)) return { label: "Maintenance Team", Icon: Wrench };
   if (/admin|administration/.test(text)) return { label: "Administration", Icon: Building2 };
-  if (/facility|manager|operations|notice|announcement|policy|urgent/.test(text)) return { label: "Estate Operations", Icon: Megaphone };
+  if (/facility|manager|operations|operator/.test(text)) return { label: "Estate Operations", Icon: Megaphone };
   if (/moderator/.test(text)) return { label: "Community Moderator", Icon: ShieldCheck };
   return null;
 }
@@ -174,6 +177,20 @@ function createCategoryForTab(tab: TabKey) {
   if (tab === "media") return "media";
   if (tab === "questions") return "question";
   return "resident";
+}
+
+function isPriorityNotice(data: { post: any; tab: Exclude<TabKey, "all">; official?: { label: string; Icon: any } | null }) {
+  const post = data.post;
+  const text = `${post?.category || ""} ${post?.post_type || ""} ${post?.priority || ""} ${post?.title || ""} ${post?.body || post?.content || ""}`.toLowerCase();
+  if (post?.is_urgent === true || data.tab === "urgent") return true;
+  if (!data.official) return false;
+  return /security|maintenance|service interruption|outage|power|water|administration|broadcast|gate|access/.test(text);
+}
+
+function initialsFor(name: string) {
+  const parts = normalizeText(name).split(" ").filter(Boolean);
+  if (!parts.length) return "R";
+  return parts.slice(0, 2).map((part) => part[0]?.toUpperCase()).join("");
 }
 
 async function toDataUrl(file: File) {
@@ -210,7 +227,7 @@ export default function CommunityPage() {
   const markBucketViewed = useNotificationStore((state) => state.markBucketViewed);
   const estateId = useMemo(() => String((user as any)?.estate_id || estate?.id || (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") || "" : "")), [user, estate?.id]);
 
-  const [tab, setTab] = useState<TabKey>("announcements");
+  const [tab, setTab] = useState<TabKey>("all");
   const [items, setItems] = useState<CommunityPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -263,9 +280,12 @@ export default function CommunityPage() {
     if (bp !== ap) return bp - ap;
     return new Date(b.post?.created_at || 0).getTime() - new Date(a.post?.created_at || 0).getTime();
   }), [items, user]);
-  const filtered = decorated.filter((item) => item.tab === tab);
-  const pinned = decorated.find((item) => Boolean((item.post as any)?.is_pinned) || String((item.post as any)?.status || "").includes("pinned"));
-  const counts = TABS.reduce<Record<TabKey, number>>((acc, item) => { acc[item.key] = decorated.filter((post) => post.tab === item.key).length; return acc; }, { announcements: 0, urgent: 0, discussions: 0, media: 0, questions: 0 });
+  const filtered = tab === "all" ? decorated : decorated.filter((item) => item.tab === tab);
+  const priorityNotices = decorated.filter(isPriorityNotice).slice(0, 4);
+  const counts = TABS.reduce<Record<TabKey, number>>((acc, item) => {
+    acc[item.key] = item.key === "all" ? decorated.length : decorated.filter((post) => post.tab === item.key).length;
+    return acc;
+  }, { all: 0, announcements: 0, urgent: 0, discussions: 0, media: 0, questions: 0 });
 
   useEffect(() => {
     if (typeof window === "undefined" || !decorated.length) return;
@@ -388,9 +408,7 @@ export default function CommunityPage() {
 
             <LiveBroadcastComposer open={liveComposerOpen} estateId={estateId || null} draft={draft} onClose={() => setLiveComposerOpen(false)} onStarted={(post) => { setItems((prev) => [post, ...prev]); setLiveComposerOpen(false); void load(true); }} onStopped={() => void load(true)} />
 
-            {pinned ? (
-              <CommunityCard data={pinned} featured onToggleComments={toggleComments} onLike={likePost} open={openPost === pinned.id} comments={comments[pinned.id] || []} commentDraft={commentDrafts[pinned.id] || ""} onCommentDraft={(value) => setCommentDrafts((prev) => ({ ...prev, [pinned.id]: value }))} onSendComment={() => sendComment(pinned.id)} busy={!!busyPost[pinned.id]} userId={String((user as any)?.id || "")} />
-            ) : null}
+            {priorityNotices.length ? <OfficialNoticeLane notices={priorityNotices} onOpen={(id) => void toggleComments(id)} /> : null}
 
             {canPost ? (
               <section className="rounded-[21px] border border-white/[0.065] bg-white/[0.03] p-2.5 shadow-[0_14px_42px_rgba(0,0,0,0.22)] backdrop-blur-xl">
@@ -437,7 +455,7 @@ export default function CommunityPage() {
 
             <section className="space-y-3">
               <div className="flex items-center justify-between px-1">
-                <div className="text-[10px] uppercase tracking-[0.24em] text-white/42">{TABS.find((item) => item.key === tab)?.label}</div>
+                <div className="text-[10px] uppercase tracking-[0.24em] text-white/42">{tab === "all" ? "Latest posts" : TABS.find((item) => item.key === tab)?.label}</div>
                 <button type="button" onClick={() => void load()} className="text-[11px] font-medium text-sky-300/76">Refresh</button>
               </div>
 
@@ -473,7 +491,33 @@ function EmptyState({ title, body }: { title: string; body: string }) {
   );
 }
 
-function CommunityCard({ data, featured, open, comments, commentDraft, onCommentDraft, onToggleComments, onSendComment, onLike, busy, userId }: { data: { post: any; tab: TabKey; parsed: any; author: string; official?: { label: string; Icon: any } | null; id: string }; featured?: boolean; open: boolean; comments: CommunityComment[]; commentDraft: string; onCommentDraft: (value: string) => void; onToggleComments: (postId: string) => void; onSendComment: () => void; onLike: (postId: string) => void; busy: boolean; userId: string }) {
+function OfficialNoticeLane({ notices, onOpen }: { notices: Array<{ post: any; tab: Exclude<TabKey, "all">; parsed: any; author: string; official?: { label: string; Icon: any } | null; id: string }>; onOpen: (id: string) => void }) {
+  return (
+    <section className="rounded-[24px] border border-sky-300/14 bg-sky-400/[0.045] p-3 shadow-[0_18px_52px_rgba(0,0,0,0.28)] backdrop-blur-xl">
+      <div className="mb-2 flex items-center justify-between">
+        <div className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-sky-100/72"><ShieldCheck className="h-3.5 w-3.5" />Official notices</div>
+        <span className="rounded-full border border-white/[0.08] bg-white/[0.035] px-2 py-0.5 text-[10px] text-white/48">{notices.length}</span>
+      </div>
+      <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {notices.map((notice) => {
+          const label = categoryLabelFor(notice.post, notice.tab);
+          return (
+            <button key={notice.id || notice.post?.title} type="button" onClick={() => onOpen(notice.id)} className="min-w-[235px] rounded-[19px] border border-white/[0.08] bg-black/20 p-3 text-left transition active:scale-[0.99]">
+              <div className="flex items-center gap-2">
+                <span className={cn("h-2 w-2 rounded-full", notice.tab === "urgent" ? "bg-red-300 shadow-[0_0_12px_rgba(248,113,113,0.75)]" : "bg-sky-300 shadow-[0_0_12px_rgba(56,189,248,0.65)]")} />
+                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/42">{label}</span>
+              </div>
+              <div className="mt-2 line-clamp-1 text-[13px] font-semibold text-white">{normalizeText(notice.post?.title || notice.parsed?.text || "Estate notice")}</div>
+              <div className="mt-1 line-clamp-2 text-[11px] leading-5 text-white/50">{normalizeText(notice.parsed?.text || notice.post?.body || notice.post?.content || "Tap to view details.")}</div>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function CommunityCard({ data, featured, open, comments, commentDraft, onCommentDraft, onToggleComments, onSendComment, onLike, busy, userId }: { data: { post: any; tab: Exclude<TabKey, "all">; parsed: any; author: string; official?: { label: string; Icon: any } | null; id: string }; featured?: boolean; open: boolean; comments: CommunityComment[]; commentDraft: string; onCommentDraft: (value: string) => void; onToggleComments: (postId: string) => void; onSendComment: () => void; onLike: (postId: string) => void; busy: boolean; userId: string }) {
   const { post, tab, parsed, author, official, id } = data;
   const tone = toneFor(tab);
   const Icon = official?.Icon || tone.Icon;
@@ -492,7 +536,7 @@ function CommunityCard({ data, featured, open, comments, commentDraft, onComment
     <article className={cn("rounded-[24px] border bg-white/[0.035] p-4 shadow-[0_16px_48px_rgba(0,0,0,0.24)] backdrop-blur-xl", featured || isOfficial ? "border-sky-300/18" : "border-white/[0.075]") }>
       <div className="flex items-start gap-3">
         <div className={cn("grid h-11 w-11 shrink-0 place-items-center overflow-hidden border", isOfficial ? "rounded-[16px] border-sky-300/18 bg-sky-400/12 text-sky-100 shadow-[0_0_22px_rgba(56,189,248,0.16)]" : `rounded-full ${tone.ring}`)}>
-          {!isOfficial && authorAvatar ? <img src={authorAvatar} alt={author} className="h-full w-full object-cover" /> : <Icon className="h-4 w-4" />}
+          {!isOfficial && authorAvatar ? <img src={authorAvatar} alt={author} className="h-full w-full object-cover" /> : isOfficial ? <Icon className="h-4 w-4" /> : <span className="text-[12px] font-semibold">{initialsFor(author)}</span>}
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -513,11 +557,14 @@ function CommunityCard({ data, featured, open, comments, commentDraft, onComment
       {body && body !== title ? <p className="mt-3 whitespace-pre-line text-[13.5px] leading-6 text-white/68">{body}</p> : null}
 
       {attachments.length ? (
-        <div className={cn("mt-3 grid overflow-hidden rounded-[20px] border border-white/[0.08] bg-black/25", attachments.length === 1 ? "grid-cols-1" : "grid-cols-2 gap-px")}>
+        <div className={cn("mx-[-16px] mt-4 grid overflow-hidden border-y border-white/[0.08] bg-black/30", attachments.length === 1 ? "grid-cols-1" : "grid-cols-2 gap-px")}>
           {attachments.slice(0, 4).map((item: PostAttachment, index: number) => item.type === "video" ? (
-            <video key={item.id} src={item.url} controls className={cn("w-full bg-black object-cover", attachments.length === 1 ? "max-h-[360px] min-h-[210px]" : "h-36", index === 0 && attachments.length === 3 && "row-span-2 h-full")} />
+            <div key={item.id} className="relative">
+              <video src={item.url} controls className={cn("w-full bg-black object-cover", attachments.length === 1 ? "max-h-[390px] min-h-[230px]" : "h-40", index === 0 && attachments.length === 3 && "row-span-2 h-full")} />
+              <span className="pointer-events-none absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-black/50 px-2 py-1 text-[10px] font-medium text-white/80 backdrop-blur"><Video className="h-3 w-3" /> Video</span>
+            </div>
           ) : (
-            <img key={item.id} src={item.url} alt={item.name || "community media"} className={cn("w-full object-cover", attachments.length === 1 ? "max-h-[360px] min-h-[210px]" : "h-36", index === 0 && attachments.length === 3 && "row-span-2 h-full")} />
+            <img key={item.id} src={item.url} alt={item.name || "community media"} className={cn("w-full object-cover", attachments.length === 1 ? "max-h-[390px] min-h-[230px]" : "h-40", index === 0 && attachments.length === 3 && "row-span-2 h-full")} />
           ))}
         </div>
       ) : null}

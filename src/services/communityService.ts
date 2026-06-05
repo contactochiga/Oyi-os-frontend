@@ -150,8 +150,7 @@ export const communityService = {
         `/community/posts/estate/${encodeURIComponent(estateId)}`
       );
       return unwrapList(res.data) as CommunityPost[];
-    } catch (err) {
-      console.warn("communityService.listByEstate error:", err);
+    } catch {
       return [];
     }
   },
@@ -183,8 +182,7 @@ export const communityService = {
         `/community/post/${encodeURIComponent(postId)}/comments`
       );
       return unwrapList(res.data) as CommunityComment[];
-    } catch (err) {
-      console.warn("communityService.listComments error:", err);
+    } catch {
       return [];
     }
   },

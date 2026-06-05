@@ -1,24 +1,34 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
   CalendarClock,
+  ChevronDown,
+  ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Clock,
   Fan,
+  FastForward,
+  Flame,
   Home,
   Minus,
   Moon,
+  Pause,
+  Play,
   Power,
   Plus,
+  Rewind,
   Search,
   SlidersHorizontal,
+  Snowflake,
   Star,
   Thermometer,
-  Volume2,
   VolumeX,
+  Wind,
   X,
 } from "lucide-react";
 
@@ -510,14 +520,9 @@ export default function DeviceClient() {
       setAssignRoom(String(suggestedRoom(device) || ""));
       return;
     }
-    const sid = String(pickDbId(device) || "");
-    const cached = sid ? stateMap[sid] : {};
-    if (isSimpleControlDevice(device, cached)) void toggleMasterPower(device);
-    else {
-      setSheetDevice(device);
-      setSheetOpen(true);
-      void warmState(device);
-    }
+    setSheetDevice(device);
+    setSheetOpen(true);
+    void warmState(device);
   }
 
   async function assignListedDevice() {
@@ -888,9 +893,7 @@ function ControlSheet({ device, state, busy, onClose, onDetails, onToggleGang, o
   const values = Object.keys(state || {}).length ? readGangValues(gangCount, state) : Array.from({ length: gangCount }, () => null);
   const caps = uiCapabilities(device);
   const family = inferFamily(device);
-  const tvControls = caps.tv;
-  const acControls = caps.ac;
-  const hasRemotePanel = tvControls.length > 0 || acControls.length > 0 || family === "tv" || family === "remote" || family === "climate" || family === "thermostat";
+  const template = family === "tv" || family === "remote" || caps.tv.length ? "tv" : family === "climate" || family === "thermostat" || caps.ac.length ? "ac" : "switch";
   return (
     <div className="fixed inset-0 z-[120]">
       <div className="absolute inset-0 bg-black/65 backdrop-blur-md" onClick={onClose} />
@@ -898,25 +901,163 @@ function ControlSheet({ device, state, busy, onClose, onDetails, onToggleGang, o
         <section className="mx-auto max-w-[430px] overflow-hidden rounded-[30px] border border-white/[0.08] bg-[#050a12]/96 shadow-[0_24px_80px_rgba(0,0,0,0.62)]">
           <div className="flex justify-center pt-3"><div className="h-1 w-10 rounded-full bg-white/18" /></div>
           <div className="flex items-start justify-between gap-3 px-4 py-4">
-            <div className="min-w-0"><h2 className="truncate text-lg font-semibold tracking-[-0.04em] text-white">{pickName(device)}</h2><p className="mt-1 truncate text-xs text-white/46">{pickRoomName(device) || "Unassigned"} • {displayState(device, state)}</p></div>
-            <button type="button" onClick={onClose} className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white/[0.06] text-white/60"><X className="h-4 w-4" /></button>
+            <div className="min-w-0">
+              <h2 className="truncate text-lg font-semibold tracking-[-0.04em] text-white">{pickName(device)}</h2>
+              <p className="mt-1 truncate text-xs text-white/46">{pickRoomName(device) || "Unassigned"} • {displayState(device, state)}</p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button type="button" onClick={() => onCreateScene(device)} className="grid h-8 w-8 place-items-center rounded-full border border-sky-300/14 bg-sky-400/10 text-sky-100" aria-label="Create scene with this device"><Star className="h-3.5 w-3.5" /></button>
+              <button type="button" onClick={onClose} className="grid h-8 w-8 place-items-center rounded-full bg-white/[0.06] text-white/60" aria-label="Close device controls"><X className="h-4 w-4" /></button>
+            </div>
           </div>
-          <div className="px-4 pb-4">
-            <div className="flex items-center justify-between rounded-[24px] border border-white/[0.07] bg-white/[0.035] p-4">
-              <div><div className="text-sm font-semibold text-white">Controls</div><div className="mt-1 text-xs text-white/42">{gangCount > 1 ? `${gangCount} switches` : "One-tap control"}</div></div>
-              {caps.canSwitch ? <GangRingSwitch gangCount={gangCount} online={isOnline(device)} values={values} busy={busy} onToggleGang={(gangIndex, next) => onToggleGang(device, gangIndex, next)} size={64} /> : <span className="rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-2 text-xs text-white/44">Unavailable</span>}
-            </div>
-            <div className="mt-3 grid grid-cols-3 gap-2">
-              <CapabilityButton icon={Clock} label="Timer" enabled={caps.timer || caps.cycle || caps.inching} detail={caps.timer ? "Countdown available" : caps.cycle || caps.inching ? "Provider timer mode" : "Unavailable"} onClick={() => onDetails(device)} />
-              <CapabilityButton icon={CalendarClock} label="Schedule" enabled={caps.schedule} detail={caps.schedule ? "Device supports schedule" : "Unavailable"} onClick={() => onDetails(device)} />
-              <CapabilityButton icon={SlidersHorizontal} label="Settings" enabled={friendlyCapabilities(device).length > 0} detail={friendlyCapabilities(device).length ? "Capability details" : "Unavailable"} onClick={() => onDetails(device)} />
-            </div>
-            {hasRemotePanel ? <RemoteControls device={device} state={state} caps={caps} busy={busy} onPower={onPower} /> : null}
-            <button type="button" onClick={() => onDetails(device)} className="mt-3 h-11 w-full rounded-full border border-white/[0.08] bg-white/[0.045] text-sm font-medium text-white/76">View simple details</button>
-            <button type="button" onClick={() => onCreateScene(device)} className="mt-2 h-11 w-full rounded-full border border-sky-300/16 bg-sky-400/10 text-sm font-medium text-sky-100">Create scene with this device</button>
+          <div className="max-h-[68vh] overflow-y-auto px-4 pb-4">
+            {template === "tv" ? (
+              <TvControlTemplate device={device} state={state} caps={caps} busy={busy} onPower={onPower} onDetails={onDetails} />
+            ) : template === "ac" ? (
+              <AcControlTemplate device={device} state={state} caps={caps} busy={busy} onPower={onPower} onDetails={onDetails} />
+            ) : (
+              <SwitchControlTemplate device={device} state={state} caps={caps} gangCount={gangCount} values={values} busy={busy} onToggleGang={onToggleGang} onDetails={onDetails} />
+            )}
           </div>
         </section>
       </div>
+    </div>
+  );
+}
+
+function SwitchControlTemplate({ device, state, caps, gangCount, values, busy, onToggleGang, onDetails }: { device: AnyDevice; state: any; caps: ReturnType<typeof uiCapabilities>; gangCount: number; values: Array<boolean | null>; busy: boolean; onToggleGang: (device: AnyDevice, gangIndex: number, next: boolean) => void; onDetails: (device: AnyDevice) => void }) {
+  const safeGangCount = Math.min(3, Math.max(1, gangCount)) as 1 | 2 | 3;
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between rounded-[24px] border border-white/[0.07] bg-white/[0.035] p-4">
+        <div>
+          <div className="text-sm font-semibold text-white">{gangCount > 1 ? `${gangCount} gang switch` : "Switch control"}</div>
+          <div className="mt-1 text-xs text-white/42">{isOnline(device) === false ? "Offline" : caps.canSwitch ? "Ready" : "Power command unavailable"}</div>
+        </div>
+        {caps.canSwitch ? <GangRingSwitch gangCount={safeGangCount} online={isOnline(device)} values={values} busy={busy} onToggleGang={(gangIndex, next) => onToggleGang(device, gangIndex, next)} size={68} /> : <span className="rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-2 text-xs text-white/44">Unavailable</span>}
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <CapabilityButton icon={Clock} label="Timer" enabled={caps.timer || caps.cycle || caps.inching} detail={caps.timer ? "Countdown / one-time" : caps.cycle || caps.inching ? "Provider timer mode" : "Unavailable"} onClick={() => onDetails(device)} />
+        <CapabilityButton icon={CalendarClock} label="Schedule" enabled={caps.schedule} detail={caps.schedule ? "One-time / repeat" : "Unavailable"} onClick={() => onDetails(device)} />
+        <CapabilityButton icon={SlidersHorizontal} label="Settings" enabled detail="Info and capability" onClick={() => onDetails(device)} />
+      </div>
+      <div className="rounded-[20px] border border-white/[0.06] bg-white/[0.025] p-3 text-xs leading-5 text-white/44">
+        {friendlyCapabilities(device).length ? friendlyCapabilities(device).slice(0, 4).join(" • ") : displayState(device, state)}
+      </div>
+    </div>
+  );
+}
+
+function AcControlTemplate({ device, state, caps, busy, onPower, onDetails }: { device: AnyDevice; state: any; caps: ReturnType<typeof uiCapabilities>; busy: boolean; onPower: (device: AnyDevice) => void; onDetails: (device: AnyDevice) => void }) {
+  const temp = readTemperature(state);
+  const canPower = caps.canSwitch || caps.ac.includes("power");
+  const modes = [
+    ["cool", "Cool", Snowflake],
+    ["heat", "Heat", Flame],
+    ["dry", "Dry", Moon],
+    ["fan", "Fan", Fan],
+    ["auto", "Auto", Thermometer],
+  ] as const;
+  const fanSpeeds = ["Low", "Medium", "High", "Auto"];
+  return (
+    <div className="space-y-3">
+      <div className="rounded-[28px] border border-sky-300/12 bg-[radial-gradient(circle_at_top,#0f3550_0%,rgba(6,12,22,0.74)_48%,rgba(255,255,255,0.035)_100%)] p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-xs uppercase tracking-[0.24em] text-sky-100/44">Climate</div>
+            <div className="mt-1 text-4xl font-semibold tracking-[-0.08em] text-white">{temp || "—"}<span className="text-lg text-white/42">°C</span></div>
+            <div className="mt-1 text-xs text-white/42">Supported range 16°C – 30°C</div>
+          </div>
+          <button type="button" disabled={!canPower || busy || isOnline(device) === false} onClick={() => onPower(device)} className={cn("grid h-14 w-14 place-items-center rounded-full border", canPower ? "border-sky-300/22 bg-sky-400/12 text-sky-100 shadow-[0_0_28px_rgba(56,189,248,0.18)]" : "border-white/[0.06] bg-white/[0.025] text-white/28")} aria-label="Power">
+            <Power className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+          <RemoteKey icon={Minus} label="Temp -" enabled={false} />
+          <div className="rounded-full border border-white/[0.06] bg-black/20 px-3 py-2 text-center text-[11px] text-white/46">Temperature commands unavailable</div>
+          <RemoteKey icon={Plus} label="Temp +" enabled={false} />
+        </div>
+      </div>
+      <ControlGroup title="Mode">
+        {modes.map(([key, label, Icon]) => <RemoteKey key={key} icon={Icon} label={label} enabled={caps.ac.includes(key)} />)}
+      </ControlGroup>
+      <ControlGroup title="Fan">
+        {fanSpeeds.map((speed) => <RemoteKey key={speed} icon={Wind} label={speed} enabled={caps.ac.includes("fan")} />)}
+      </ControlGroup>
+      <ControlGroup title="Swing">
+        <RemoteKey icon={ChevronUp} label="Vertical" enabled={caps.ac.includes("swing") || caps.ac.includes("swing_vertical")} />
+        <RemoteKey icon={ChevronRight} label="Horizontal" enabled={caps.ac.includes("swing") || caps.ac.includes("swing_horizontal")} />
+      </ControlGroup>
+      <div className="grid grid-cols-3 gap-2">
+        <CapabilityButton icon={Clock} label="Timer" enabled={caps.timer || caps.ac.includes("timer")} detail={caps.timer || caps.ac.includes("timer") ? "Provider timer" : "Unavailable"} onClick={() => onDetails(device)} />
+        <CapabilityButton icon={CalendarClock} label="Schedule" enabled={caps.schedule} detail={caps.schedule ? "Device schedule" : "Unavailable"} onClick={() => onDetails(device)} />
+        <CapabilityButton icon={SlidersHorizontal} label="Settings" enabled detail="Info and capability" onClick={() => onDetails(device)} />
+      </div>
+    </div>
+  );
+}
+
+function TvControlTemplate({ device, state, caps, busy, onPower, onDetails }: { device: AnyDevice; state: any; caps: ReturnType<typeof uiCapabilities>; busy: boolean; onPower: (device: AnyDevice) => void; onDetails: (device: AnyDevice) => void }) {
+  const tv = caps.tv;
+  const canPower = caps.canSwitch || tv.includes("power");
+  const providerButtons = ["netflix", "youtube", "prime"].filter((key) => tv.includes(key));
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-3 gap-2">
+        <RemoteKey icon={Power} label="Power" enabled={canPower && isOnline(device) !== false} busy={busy} onClick={() => onPower(device)} />
+        <RemoteKey icon={VolumeX} label="Mute" enabled={tv.includes("mute")} />
+        <RemoteKey icon={ChevronRight} label="Input" enabled={tv.includes("input")} />
+      </div>
+      <div className="rounded-[28px] border border-white/[0.07] bg-white/[0.035] p-4">
+        <div className="mb-3 text-center text-xs uppercase tracking-[0.22em] text-white/34">Navigation</div>
+        <div className="mx-auto grid max-w-[230px] grid-cols-3 gap-2">
+          <span />
+          <RemoteKey icon={ChevronUp} label="Up" enabled={tv.includes("dpad") || tv.includes("up")} />
+          <span />
+          <RemoteKey icon={ChevronLeft} label="Left" enabled={tv.includes("dpad") || tv.includes("left")} />
+          <RemoteKey icon={ChevronRight} label="OK" enabled={tv.includes("ok") || tv.includes("select")} />
+          <RemoteKey icon={ChevronRight} label="Right" enabled={tv.includes("dpad") || tv.includes("right")} />
+          <span />
+          <RemoteKey icon={ChevronDown} label="Down" enabled={tv.includes("dpad") || tv.includes("down")} />
+          <span />
+        </div>
+      </div>
+      <ControlGroup title="System">
+        <RemoteKey icon={Home} label="Home" enabled={tv.includes("home")} />
+        <RemoteKey icon={ChevronLeft} label="Back" enabled={tv.includes("back")} />
+        <RemoteKey icon={SlidersHorizontal} label="Menu" enabled={tv.includes("menu")} />
+        <RemoteKey icon={SlidersHorizontal} label="Settings" enabled={tv.includes("settings")} />
+      </ControlGroup>
+      <ControlGroup title="Media">
+        <RemoteKey icon={Play} label="Play" enabled={tv.includes("play")} />
+        <RemoteKey icon={Pause} label="Pause" enabled={tv.includes("pause")} />
+        <RemoteKey icon={Rewind} label="Rewind" enabled={tv.includes("rewind")} />
+        <RemoteKey icon={FastForward} label="Forward" enabled={tv.includes("fast_forward") || tv.includes("forward")} />
+      </ControlGroup>
+      <div className="grid grid-cols-2 gap-2">
+        <ControlGroup title="Volume">
+          <RemoteKey icon={Plus} label="Vol +" enabled={tv.includes("volume")} />
+          <RemoteKey icon={Minus} label="Vol -" enabled={tv.includes("volume")} />
+        </ControlGroup>
+        <ControlGroup title="Channel">
+          <RemoteKey icon={Plus} label="Ch +" enabled={tv.includes("channel")} />
+          <RemoteKey icon={Minus} label="Ch -" enabled={tv.includes("channel")} />
+        </ControlGroup>
+      </div>
+      {providerButtons.length ? <ControlGroup title="Provider">
+        {providerButtons.map((key) => <RemoteKey key={key} icon={Play} label={key === "prime" ? "Prime" : key[0].toUpperCase() + key.slice(1)} enabled />)}
+      </ControlGroup> : null}
+      <CapabilityButton icon={SlidersHorizontal} label="Settings" enabled detail="Info and capability" onClick={() => onDetails(device)} />
+      <div className="rounded-[20px] border border-white/[0.06] bg-white/[0.025] p-3 text-xs leading-5 text-white/42">Remote commands stay unavailable until the provider exposes a safe command mapping for this device.</div>
+    </div>
+  );
+}
+
+function ControlGroup({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="rounded-[22px] border border-white/[0.06] bg-white/[0.025] p-3">
+      <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/34">{title}</div>
+      <div className="grid grid-cols-2 gap-2">{children}</div>
     </div>
   );
 }
@@ -931,55 +1072,9 @@ function CapabilityButton({ icon: Icon, label, detail, enabled, onClick }: { ico
   );
 }
 
-function RemoteControls({ device, state, caps, busy, onPower }: { device: AnyDevice; state: any; caps: ReturnType<typeof uiCapabilities>; busy: boolean; onPower: (device: AnyDevice) => void }) {
-  const power = readPowerState(state);
-  const tv = caps.tv;
-  const ac = caps.ac;
-  const hasTv = tv.length > 0 || ["tv", "remote"].includes(inferFamily(device));
-  const hasAc = ac.length > 0 || ["climate", "thermostat"].includes(inferFamily(device));
-  const canPower = caps.canSwitch || tv.includes("power") || ac.includes("power");
-  const temp = readTemperature(state) || "Temp";
+function RemoteKey({ icon: Icon, label, enabled, busy, onClick }: { icon: any; label: string; enabled: boolean; busy?: boolean; onClick?: () => void }) {
   return (
-    <div className="mt-3 rounded-[24px] border border-white/[0.07] bg-white/[0.03] p-3">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-sm font-semibold text-white">{hasAc ? "Climate remote" : "Remote controls"}</div>
-          <div className="mt-1 text-xs text-white/42">Only supported commands are enabled.</div>
-        </div>
-        <button type="button" disabled={!canPower || busy || isOnline(device) === false} onClick={() => onPower(device)} className={cn("grid h-10 w-10 place-items-center rounded-full border", canPower ? "border-sky-300/18 bg-sky-400/10 text-sky-100" : "border-white/[0.06] bg-white/[0.025] text-white/28")} aria-label="Power">
-          <Power className={cn("h-4 w-4", power ? "fill-current" : "")} />
-        </button>
-      </div>
-      {hasAc ? (
-        <div className="mt-3 grid grid-cols-4 gap-2">
-          <RemoteButton icon={Minus} label="Temp -" enabled={false} />
-          <div className="grid place-items-center rounded-[16px] border border-white/[0.06] bg-black/20 text-xs font-semibold text-white/76">{temp}</div>
-          <RemoteButton icon={Plus} label="Temp +" enabled={false} />
-          <RemoteButton icon={Fan} label="Fan" enabled={ac.includes("fan")} />
-          <RemoteButton icon={Thermometer} label="Mode" enabled={ac.includes("mode")} />
-          <RemoteButton icon={SlidersHorizontal} label="Swing" enabled={ac.includes("swing")} />
-          <RemoteButton icon={Clock} label="Timer" enabled={ac.includes("timer")} />
-          <RemoteButton icon={ChevronRight} label="More" enabled={false} />
-        </div>
-      ) : hasTv ? (
-        <div className="mt-3 grid grid-cols-4 gap-2">
-          <RemoteButton icon={VolumeX} label="Mute" enabled={tv.includes("mute")} />
-          <RemoteButton icon={Minus} label="Vol -" enabled={tv.includes("volume")} />
-          <RemoteButton icon={Volume2} label="Vol +" enabled={tv.includes("volume")} />
-          <RemoteButton icon={ChevronRight} label="Input" enabled={tv.includes("input")} />
-          <RemoteButton icon={ChevronRight} label="Menu" enabled={tv.includes("menu")} />
-          <RemoteButton icon={ChevronRight} label="OK" enabled={tv.includes("ok")} />
-          <RemoteButton icon={ChevronRight} label="Back" enabled={tv.includes("back")} />
-          <RemoteButton icon={ChevronRight} label="D-pad" enabled={tv.includes("dpad")} />
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function RemoteButton({ icon: Icon, label, enabled }: { icon: any; label: string; enabled: boolean }) {
-  return (
-    <button type="button" disabled className={cn("min-h-12 rounded-[16px] border px-2 py-2 text-center", enabled ? "border-white/[0.08] bg-white/[0.04] text-white/56" : "border-white/[0.045] bg-white/[0.018] text-white/24")} title={enabled ? "Provider capability detected. Command UI is pending safe backend mapping." : "Unavailable for this device"}>
+    <button type="button" disabled={!enabled || busy || !onClick} onClick={onClick} className={cn("min-h-12 rounded-[16px] border px-2 py-2 text-center transition", enabled && onClick ? "border-sky-300/18 bg-sky-400/10 text-sky-100 active:scale-[0.98]" : enabled ? "border-white/[0.08] bg-white/[0.04] text-white/56" : "border-white/[0.045] bg-white/[0.018] text-white/24")} title={enabled && !onClick ? "Provider capability detected. Command UI is pending safe backend mapping." : enabled ? label : "Unavailable for this device"}>
       <Icon className="mx-auto h-3.5 w-3.5" />
       <span className="mt-1 block text-[10px]">{enabled ? label : "Unavailable"}</span>
     </button>

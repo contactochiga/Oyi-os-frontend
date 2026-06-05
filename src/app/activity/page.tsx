@@ -275,7 +275,7 @@ function ActivityRow({ item }: { item: ActivityEvent }) {
         ) : (
           <span className="max-w-[58px] truncate text-[11px] text-white/42">{item.label || item.category}</span>
         )}
-        {actionable ? <ChevronRight className="h-4 w-4 text-sky-200/55" /> : item.thumbnail_url || item.severity === "high" ? <ChevronRight className="h-4 w-4 text-white/24" /> : null}
+        {actionable ? <ChevronRight className="h-4 w-4 text-sky-200/55" /> : null}
       </div>
       {actionable ? <div className="mt-2 pl-12 text-[10px] font-medium text-sky-200/62">{item.action?.label || "Open"}</div> : null}
     </>

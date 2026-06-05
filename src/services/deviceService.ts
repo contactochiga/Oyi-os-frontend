@@ -34,7 +34,6 @@ export const deviceService = {
     } catch (err: any) {
       const status = Number(err?.response?.status || 0);
       if (status && status < 500) return [];
-      console.warn("deviceService.discoverDevices error:", err);
       return [];
     }
   },
@@ -48,8 +47,7 @@ export const deviceService = {
     try {
       const res = await API.get(`/devices/estate/${encodeURIComponent(estateId)}`);
       return res.data?.devices ?? res.data ?? [];
-    } catch (err) {
-      console.warn("deviceService.getAssignedDevices error:", err);
+    } catch {
       return [];
     }
   },
@@ -65,8 +63,7 @@ export const deviceService = {
         params: { include_unassigned: true },
       });
       return res.data?.devices ?? res.data ?? [];
-    } catch (err) {
-      console.warn("deviceService.getRegistryDevices error:", err);
+    } catch {
       return [];
     }
   },
