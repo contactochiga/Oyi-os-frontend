@@ -42,19 +42,9 @@ function createId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function commandHint(tool: Record<string, any>) {
-  if (tool.status === "executed") return tool.summary || "Command completed.";
-  if (tool.status === "queued") return tool.summary || "Command queued.";
-  if (tool.status === "pending_confirmation") return "Confirmation needed.";
-  if (tool.status === "denied") return tool.reason === "missing_permission" ? "You do not have permission for that action." : "That action is not available.";
-  if (tool.status === "failed") return tool.summary || "That could not complete right now.";
-  return tool.summary || "Oyi processed that command.";
-}
-
 function replyFromResponse(resp: AiChatResponse) {
-  const details = (resp.tools || []).map(commandHint).filter(Boolean);
   const base = resp.message || resp.reply;
-  return [base, ...details.filter((line) => line !== base)].filter(Boolean).join("\n");
+  return base || "";
 }
 
 function responseState(resp: AiChatResponse): AiMessage["state"] {
