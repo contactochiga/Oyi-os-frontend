@@ -49,5 +49,9 @@ export type ChatMessage = {
   pending?: boolean;
   panel?: AiPanel | string | null;
   deviceId?: string;
+  cards?: Array<Record<string, any>>;
+  sources?: Array<Record<string, any>>;
+  suggested_actions?: Array<Record<string, any>>;
+  confirmations?: Array<Record<string, any>>;
   lastUpdated?: number;
 };

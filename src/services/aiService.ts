@@ -24,6 +24,7 @@ export type AiAction =
     };
 
 export type AiChatResponse = {
+  message?: string;
   reply: string;
 
   intent?: string;
@@ -35,6 +36,9 @@ export type AiChatResponse = {
   actions?: AiAction[];
   tools?: Array<Record<string, any>>;
   confirmations?: Array<Record<string, any>>;
+  cards?: Array<Record<string, any>>;
+  sources?: Array<Record<string, any>>;
+  suggested_actions?: Array<Record<string, any>>;
   safe_mode?: boolean;
 
   requiresConfirmation?: boolean;
@@ -42,7 +46,8 @@ export type AiChatResponse = {
 
 function normalize(resp: any): AiChatResponse {
   return {
-    reply: String(resp?.reply || "").trim() || "Done.",
+    message: String(resp?.message || resp?.reply || "").trim(),
+    reply: String(resp?.reply || resp?.message || "").trim() || "Done.",
 
     intent: resp?.intent || "info",
     confidence:
@@ -57,6 +62,9 @@ function normalize(resp: any): AiChatResponse {
 
     tools: Array.isArray(resp?.tools) ? resp.tools : [],
     confirmations: Array.isArray(resp?.confirmations) ? resp.confirmations : [],
+    cards: Array.isArray(resp?.cards) ? resp.cards : [],
+    sources: Array.isArray(resp?.sources) ? resp.sources : [],
+    suggested_actions: Array.isArray(resp?.suggested_actions) ? resp.suggested_actions : Array.isArray(resp?.suggestedActions) ? resp.suggestedActions : [],
     safe_mode: Boolean(resp?.safe_mode),
 
     requiresConfirmation: Boolean(resp?.requiresConfirmation || (Array.isArray(resp?.confirmations) && resp.confirmations.length)),
@@ -72,7 +80,7 @@ export const aiService = {
       console.warn("aiService.chat error:", err);
 
       return {
-        reply: "I couldn't reach the AI service.",
+        reply: "I couldn't reach Oyi right now.",
         intent: "error",
         confidence: 0,
       };

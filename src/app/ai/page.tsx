@@ -15,6 +15,9 @@ type AiMessage = {
   state?: "idle" | "preparing" | "confirmation_required" | "executing" | "success" | "failed" | "denied";
   pending?: boolean;
   confirmations?: Array<Record<string, any>>;
+  cards?: Array<Record<string, any>>;
+  sources?: Array<Record<string, any>>;
+  suggested_actions?: Array<Record<string, any>>;
 };
 
 type Suggestion = { label: string; prompt?: string; href?: string; tone?: "blue" | "green" | "amber" | "violet" };
@@ -44,13 +47,14 @@ function commandHint(tool: Record<string, any>) {
   if (tool.status === "queued") return tool.summary || "Command queued.";
   if (tool.status === "pending_confirmation") return "Confirmation needed.";
   if (tool.status === "denied") return tool.reason === "missing_permission" ? "You do not have permission for that action." : "That action is not available.";
-  if (tool.status === "failed") return tool.error || "The command could not complete.";
+  if (tool.status === "failed") return tool.summary || "That could not complete right now.";
   return tool.summary || "Oyi processed that command.";
 }
 
 function replyFromResponse(resp: AiChatResponse) {
   const details = (resp.tools || []).map(commandHint).filter(Boolean);
-  return [resp.reply, ...details.filter((line) => line !== resp.reply)].filter(Boolean).join("\n");
+  const base = resp.message || resp.reply;
+  return [base, ...details.filter((line) => line !== base)].filter(Boolean).join("\n");
 }
 
 function responseState(resp: AiChatResponse): AiMessage["state"] {
@@ -110,6 +114,61 @@ function formatTime(timestamp: number) {
 
 function Spinner() {
   return <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border border-white/18 border-t-sky-200 align-[-2px]" />;
+}
+
+function StructuredCards({ cards }: { cards?: Array<Record<string, any>> }) {
+  if (!cards?.length) return null;
+  return (
+    <div className="mt-3 space-y-2">
+      {cards.slice(0, 4).map((card, index) => {
+        const items = Array.isArray(card.items) ? card.items : [];
+        return (
+          <div key={`${card.type || card.title || "card"}-${index}`} className="rounded-[18px] border border-white/[0.07] bg-black/18 p-3">
+            <div className="text-[11px] uppercase tracking-[0.16em] text-sky-100/46">{card.type ? String(card.type).replace(/_/g, " ") : "Summary"}</div>
+            <div className="mt-1 text-[13px] font-semibold text-white/90">{card.title || "Home update"}</div>
+            {card.summary ? <div className="mt-1 text-xs leading-5 text-white/52">{String(card.summary)}</div> : null}
+            {items.length ? (
+              <div className="mt-2 grid gap-1.5">
+                {items.slice(0, 6).map((item: any, itemIndex: number) => (
+                  <div key={itemIndex} className="flex items-center justify-between gap-3 rounded-xl bg-white/[0.035] px-2.5 py-2 text-xs">
+                    <span className="min-w-0 truncate text-white/58">{item.title || item.label || item.subtitle || "Item"}</span>
+                    <span className="shrink-0 text-white/82">{item.value !== undefined ? String(item.value) : item.status || item.subtitle || ""}</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function SourceLabels({ sources }: { sources?: Array<Record<string, any>> }) {
+  if (!sources?.length) return null;
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {sources.slice(0, 5).map((source, index) => (
+        <span key={`${source.label || "source"}-${index}`} className="rounded-full border border-white/[0.06] bg-white/[0.035] px-2 py-1 text-[10px] text-white/38">
+          {source.label || "Source"}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function SuggestedActions({ actions, onOpen }: { actions?: Array<Record<string, any>>; onOpen: (route: string) => void }) {
+  const rows = (actions || []).filter((action) => action?.route && action?.label);
+  if (!rows.length) return null;
+  return (
+    <div className="mt-3 flex flex-wrap gap-2">
+      {rows.slice(0, 4).map((action, index) => (
+        <button key={`${action.route}-${index}`} type="button" onClick={() => onOpen(String(action.route))} className="rounded-full border border-sky-200/15 bg-sky-400/[0.07] px-3 py-1.5 text-[11px] font-medium text-sky-100/84 transition active:scale-95">
+          {action.label}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 function ComposerWaveform({ active, levels }: { active: boolean; levels?: number[] }) {
@@ -273,7 +332,7 @@ export default function OyiAiCommandCenter() {
       const content = replyFromResponse(resp) || "Done.";
       const state = responseState(resp);
       if (state === "success") remember(options?.usageLabel || command);
-      const nextMessages = baseMessages.map((item) => item.id === pendingId ? { ...item, pending: false, content, state, confirmations: resp.confirmations || [] } : item);
+      const nextMessages = baseMessages.map((item) => item.id === pendingId ? { ...item, pending: false, content, state, confirmations: resp.confirmations || [], cards: resp.cards || [], sources: resp.sources || [], suggested_actions: resp.suggested_actions || [] } : item);
       setMessages(nextMessages);
       persistConversation(nextMessages);
       if (options?.fromVoice) {
@@ -281,7 +340,7 @@ export default function OyiAiCommandCenter() {
         if (state !== "failed" && state !== "denied") speakResponse(content, true);
       }
     } catch {
-      const nextMessages = baseMessages.map((item) => item.id === pendingId ? { ...item, pending: false, state: "failed" as const, content: "Oyi could not reach the command layer right now." } : item);
+      const nextMessages = baseMessages.map((item) => item.id === pendingId ? { ...item, pending: false, state: "failed" as const, content: "Oyi could not respond right now." } : item);
       setMessages(nextMessages);
       persistConversation(nextMessages);
       if (options?.fromVoice) setVoiceStatus("Failed");
@@ -506,6 +565,13 @@ export default function OyiAiCommandCenter() {
                   <div key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
                     <div className={`max-w-[84%] rounded-[24px] px-4 py-3 text-sm leading-5 shadow-[0_16px_42px_rgba(0,0,0,0.24)] ${message.role === "user" ? "rounded-br-[8px] bg-white text-black" : "rounded-bl-[8px] border border-white/[0.07] bg-white/[0.045] text-white/82 backdrop-blur-xl"}`}>
                       <div className="whitespace-pre-line">{message.pending ? <span className="inline-flex items-center gap-2"><Spinner /> {message.content}</span> : message.content}</div>
+                      {!message.pending && message.role === "assistant" ? (
+                        <>
+                          <StructuredCards cards={message.cards} />
+                          <SourceLabels sources={message.sources} />
+                          <SuggestedActions actions={message.suggested_actions} onOpen={(route) => router.push(route)} />
+                        </>
+                      ) : null}
                       {message.confirmations?.length ? message.confirmations.map((confirmation, index) => <ConfirmationCard key={String(confirmation?.ledger_id || confirmation?.id || index)} confirmation={confirmation} disabled={busy} onDecision={decideConfirmation} />) : null}
                       {message.role === "assistant" && !message.pending ? (
                         <div className="mt-2.5 flex items-center gap-1.5 border-t border-white/[0.055] pt-2">

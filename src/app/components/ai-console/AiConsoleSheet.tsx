@@ -4,6 +4,7 @@ import TypingIndicator from "./TypingIndicator";
 import React, { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Sparkles, Volume2, VolumeX, X } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 import DynamicSuggestionCard from "@/app/components/DynamicSuggestionCard";
 import ChatFooter from "@/app/components/ChatFooter";
@@ -42,6 +43,61 @@ function devSub(d: any) {
     .join(" • ");
 }
 
+function MiniStructuredCards({ cards }: { cards?: Array<Record<string, any>> }) {
+  if (!cards?.length) return null;
+  return (
+    <div className="mt-2 space-y-2">
+      {cards.slice(0, 3).map((card, index) => {
+        const items = Array.isArray(card.items) ? card.items : [];
+        return (
+          <div key={`${card.type || card.title || "card"}-${index}`} className="rounded-2xl border border-white/10 bg-black/18 p-3">
+            <div className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/45">{card.type ? String(card.type).replace(/_/g, " ") : "Summary"}</div>
+            <div className="mt-1 text-xs font-semibold text-white/88">{card.title || "Home update"}</div>
+            {card.summary ? <div className="mt-1 text-[11px] leading-4 text-white/52">{String(card.summary)}</div> : null}
+            {items.length ? (
+              <div className="mt-2 grid gap-1">
+                {items.slice(0, 4).map((item: any, itemIndex: number) => (
+                  <div key={itemIndex} className="flex items-center justify-between gap-2 rounded-xl bg-white/[0.035] px-2 py-1.5 text-[11px]">
+                    <span className="min-w-0 truncate text-white/56">{item.title || item.label || "Item"}</span>
+                    <span className="shrink-0 text-white/80">{item.value !== undefined ? String(item.value) : item.status || item.subtitle || ""}</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function MiniSources({ sources }: { sources?: Array<Record<string, any>> }) {
+  if (!sources?.length) return null;
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {sources.slice(0, 4).map((source, index) => (
+        <span key={`${source.label || "source"}-${index}`} className="rounded-full border border-white/10 bg-white/[0.035] px-2 py-1 text-[10px] text-white/38">
+          {source.label || "Source"}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function MiniSuggestedActions({ actions, onOpen }: { actions?: Array<Record<string, any>>; onOpen: (route: string) => void }) {
+  const rows = (actions || []).filter((action) => action?.route && action?.label);
+  if (!rows.length) return null;
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {rows.slice(0, 4).map((action, index) => (
+        <button key={`${action.route}-${index}`} type="button" onClick={() => onOpen(String(action.route))} className="rounded-full border border-cyan-200/15 bg-cyan-400/[0.07] px-2.5 py-1.5 text-[10px] font-medium text-cyan-100/84 transition active:scale-95">
+          {action.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function AiConsoleSheet(props: {
   open: boolean;
   onClose: () => void;
@@ -60,6 +116,7 @@ export default function AiConsoleSheet(props: {
   devicesErr: string | null;
   refreshDevicePanelData: () => Promise<void>;
 }) {
+  const router = useRouter();
   const {
     open,
     onClose,
@@ -235,6 +292,13 @@ export default function AiConsoleSheet(props: {
                               }
                             >
                               {m.content}
+                              {m.role === "assistant" ? (
+                                <>
+                                  <MiniStructuredCards cards={m.cards} />
+                                  <MiniSources sources={m.sources} />
+                                  <MiniSuggestedActions actions={m.suggested_actions} onOpen={(route) => router.push(route)} />
+                                </>
+                              ) : null}
                             </motion.div>
                           )}
 
