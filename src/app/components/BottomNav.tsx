@@ -4,20 +4,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   FiActivity,
-  FiBox,
   FiCreditCard,
-  FiDroplet,
   FiGrid,
   FiHome,
   FiLayers,
-  FiCpu,
-  FiShield,
-  FiSliders,
   FiTool,
   FiUser,
   FiUserCheck,
   FiUsers,
-  FiWatch,
 } from "react-icons/fi";
 import { useNotificationStore } from "@/store/useNotificationStore";
 import useAuth from "@/hooks/useAuth";
@@ -30,15 +24,9 @@ type Item = {
     | "activity"
     | "community"
     | "devices"
-    | "scenes"
     | "visitors"
     | "maintenance"
     | "wallet"
-    | "services"
-    | "security"
-    | "utilities"
-    | "watch"
-    | "intelligence"
     | "profile";
   label: string;
   href: string;
@@ -50,25 +38,18 @@ type Item = {
 const ITEMS: Item[] = [
   { key: "home", label: "Home", href: "/home", icon: FiHome },
   { key: "spaces", label: "Spaces", href: "/spaces", icon: FiLayers, activeRoutes: ["/spaces", "/rooms", "/room"], indicatorPattern: /space|room assignment|room/i },
-  { key: "activity", label: "Activity", href: "/activity", icon: FiActivity, activeRoutes: ["/activity", "/notifications"], indicatorPattern: /activity|device|scene|automation|sync|watch|wallet|payment|transaction|visitor|guest|gate|maintenance|repair|service|security|alert|incident/i },
-  { key: "community", label: "Community", href: "/community", icon: FiUsers, indicatorPattern: /community|announcement|notice|post|comment|reply|urgent|official/i },
-  { key: "wallet", label: "Wallet", href: "/wallet", icon: FiCreditCard, activeRoutes: ["/wallet"], indicatorPattern: /wallet|payment|transaction|billing|dues|fund/i },
-  { key: "services", label: "Services", href: "/services", icon: FiBox, activeRoutes: ["/services"], indicatorPattern: /service|subscription|request/i },
-  { key: "utilities", label: "Utilities", href: "/utilities", icon: FiDroplet, activeRoutes: ["/utilities"], indicatorPattern: /utility|water|power|electric|environment|network/i },
-  { key: "profile", label: "Profile", href: "/profile", icon: FiUser, activeRoutes: ["/profile", "/account", "/settings"], indicatorPattern: /profile|verify|verification|account|invite/i },
   { key: "devices", label: "Devices", href: "/devices", icon: FiGrid, activeRoutes: ["/devices"], indicatorPattern: /device|switch|light|socket|plug|climate|ac|tv|provider|tuya|sync/i },
-  { key: "scenes", label: "Scenes", href: "/scenes", icon: FiSliders, activeRoutes: ["/scenes"], indicatorPattern: /scene|automation/i },
+  { key: "community", label: "Community", href: "/community", icon: FiUsers, indicatorPattern: /community|announcement|notice|post|comment|reply|urgent|official/i },
+  { key: "activity", label: "Activity", href: "/activity", icon: FiActivity, activeRoutes: ["/activity", "/notifications"], indicatorPattern: /activity|device|scene|automation|sync|watch|wallet|payment|transaction|visitor|guest|gate|maintenance|repair|service|security|alert|incident/i },
   { key: "visitors", label: "Visitors", href: "/visitors", icon: FiUserCheck, activeRoutes: ["/visitors"], indicatorPattern: /visitor|guest|gate|access/i },
+  { key: "wallet", label: "Wallet", href: "/wallet", icon: FiCreditCard, activeRoutes: ["/wallet"], indicatorPattern: /wallet|payment|transaction|billing|dues|fund/i },
   { key: "maintenance", label: "Maint.", href: "/maintenance", icon: FiTool, activeRoutes: ["/maintenance", "/reports"], indicatorPattern: /maintenance|repair|work order|ticket/i },
-  { key: "security", label: "Security", href: "/security", icon: FiShield, activeRoutes: ["/security"], indicatorPattern: /security|alert|incident|emergency|lockdown|alarm/i },
-  { key: "watch", label: "Watch", href: "/watch", icon: FiWatch, activeRoutes: ["/watch"], indicatorPattern: /watch|sync/i },
-  { key: "intelligence", label: "Oyi", href: "/ai", icon: FiCpu, activeRoutes: ["/ai"], indicatorPattern: /assistant|oyi|intelligence/i },
+  { key: "profile", label: "Profile", href: "/profile", icon: FiUser, activeRoutes: ["/profile", "/account", "/settings"], indicatorPattern: /profile|verify|verification|account|invite/i },
 ];
 
 const NAV_GROUPS: Item[][] = [
-  ITEMS.filter((item) => ["home", "spaces", "activity", "community", "profile"].includes(item.key)),
-  ITEMS.filter((item) => ["devices", "scenes", "visitors", "maintenance", "security"].includes(item.key)),
-  ITEMS.filter((item) => ["wallet", "services", "utilities", "watch", "intelligence"].includes(item.key)),
+  ITEMS.filter((item) => ["home", "spaces", "devices", "community", "activity"].includes(item.key)),
+  ITEMS.filter((item) => ["visitors", "wallet", "maintenance", "profile"].includes(item.key)),
 ];
 
 function pageForKey(key: Item["key"]) {
@@ -193,21 +174,22 @@ export default function BottomNav() {
       ["visitor.created", "visitors"],
       ["maintenance.updated", "maintenance"],
       ["wallet.updated", "wallet"],
-      ["service.updated", "services"],
-      ["security.alert", "security"],
-      ["utility.telemetry.updated", "utilities"],
     ];
+    const activityOnlyEvents = ["service.updated", "security.alert", "utility.telemetry.updated", "watch.sync.updated"];
     const moduleHandlers = moduleEvents.map(([eventName, key]) => {
       const handler = () => markModule(key);
       return { eventName, handler };
     });
+    const activityOnlyHandlers = activityOnlyEvents.map((eventName) => ({ eventName, handler: markActivity }));
     activityEvents.forEach((eventName) => socket.on(eventName, markActivity));
     communityEvents.forEach((eventName) => socket.on(eventName, markCommunity));
     moduleHandlers.forEach(({ eventName, handler }) => socket.on(eventName, handler));
+    activityOnlyHandlers.forEach(({ eventName, handler }) => socket.on(eventName, handler));
     return () => {
       activityEvents.forEach((eventName) => socket.off(eventName, markActivity));
       communityEvents.forEach((eventName) => socket.off(eventName, markCommunity));
       moduleHandlers.forEach(({ eventName, handler }) => socket.off(eventName, handler));
+      activityOnlyHandlers.forEach(({ eventName, handler }) => socket.off(eventName, handler));
     };
   }, [pathname]);
 

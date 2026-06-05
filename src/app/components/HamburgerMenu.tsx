@@ -11,7 +11,7 @@ import { XMarkIcon, Bars3Icon } from "@heroicons/react/24/outline";
 import { decodeToken } from "@/lib/auth";
 
 // ✅ NEW: menu icons
-import { FiBarChart2, FiBriefcase, FiCpu, FiCreditCard, FiGrid, FiKey, FiMessageSquare, FiMoon, FiShield, FiTool, FiDroplet } from "react-icons/fi";
+import { FiBarChart2, FiBriefcase, FiCpu, FiCreditCard, FiGrid, FiKey, FiMessageSquare, FiMoon, FiShield, FiTool, FiDroplet, FiWatch } from "react-icons/fi";
 import { CONSUMER_MODULES, visibleModules, type ModuleDefinition } from "@/lib/moduleRegistry";
 
 const MODULE_ICONS: Record<string, any> = {
@@ -24,6 +24,8 @@ const MODULE_ICONS: Record<string, any> = {
   visitors: FiKey,
   wallet: FiCreditCard,
   services: FiBriefcase,
+  watch: FiWatch,
+  intelligence: FiCpu,
   reports: FiBarChart2,
 };
 
@@ -161,7 +163,7 @@ export default function HamburgerMenu() {
       visibleModules(user as any, CONSUMER_MODULES).map((item) => ({
         ...item,
         icon: MODULE_ICONS[item.key] || FiGrid,
-      })).filter((item) => ["devices", "scenes", "visitors", "messages", "maintenance", "wallet", "services", "security", "utilities", "reports"].includes(item.key)),
+      })).filter((item) => ["devices", "scenes", "visitors", "messages", "maintenance", "wallet", "services", "security", "utilities", "watch", "intelligence", "reports"].includes(item.key)),
     [user],
   );
 
