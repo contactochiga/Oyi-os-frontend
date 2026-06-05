@@ -1018,10 +1018,10 @@ function DeviceModalRouter({ device, state, busy, onClose, onToggleGang, onPower
   return (
     <div className="fixed inset-0 z-[120]">
       <div className="absolute inset-0 bg-black/65 backdrop-blur-md" onClick={onClose} />
-      <div className="absolute inset-x-0 bottom-0 px-4 pb-[calc(14px+var(--sab))]">
-        <section className="mx-auto max-w-[430px] overflow-hidden rounded-[30px] border border-white/[0.08] bg-[#050a12]/96 shadow-[0_24px_80px_rgba(0,0,0,0.62)]">
-          <div className="flex justify-center pt-3"><div className="h-1 w-10 rounded-full bg-white/18" /></div>
-          <div className="flex items-start justify-between gap-3 px-4 py-4">
+      <div className="absolute inset-x-0 bottom-0 px-4 pb-[calc(10px+var(--sab))]">
+        <section className="mx-auto flex max-h-[min(88dvh,720px)] max-w-[430px] flex-col overflow-hidden rounded-[30px] border border-white/[0.08] bg-[#050a12]/96 shadow-[0_24px_80px_rgba(0,0,0,0.62)]">
+          <div className="flex shrink-0 justify-center pt-3"><div className="h-1 w-10 rounded-full bg-white/18" /></div>
+          <div className="flex shrink-0 items-start justify-between gap-3 px-4 py-3">
             <div className="min-w-0">
               <h2 className="truncate text-lg font-semibold tracking-[-0.04em] text-white">{pickName(device)}</h2>
               <p className="mt-1 truncate text-xs text-white/46">{pickRoomName(device) || "Unassigned"} • {displayState(device, state)}</p>
@@ -1031,7 +1031,7 @@ function DeviceModalRouter({ device, state, busy, onClose, onToggleGang, onPower
               <button type="button" onClick={onClose} className="grid h-8 w-8 place-items-center rounded-full bg-white/[0.06] text-white/60" aria-label="Close device controls"><X className="h-4 w-4" /></button>
             </div>
           </div>
-          <div className="max-h-[68vh] overflow-y-auto px-4 pb-4">
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4" style={{ WebkitOverflowScrolling: "touch" }}>
             {needsIrProfile ? <IRProfilePicker onSelect={setSelectedIrProfile} /> : null}
             {renderer === "tv" ? <TVRenderer device={device} busy={busy} onPower={onPower} onCommand={onCommand} /> : null}
             {renderer === "ac" ? <ACRenderer device={device} state={state} busy={busy} onPower={onPower} onCommand={onCommand} onTool={onTool} /> : null}
@@ -1152,46 +1152,64 @@ function TVRenderer({ device, busy, onPower, onCommand }: { device: AnyDevice; b
     else sendKey("power_toggle");
   };
   return (
-    <div className="space-y-2.5">
+    <div className="space-y-2">
       <div className="grid grid-cols-2 gap-2">
-        {canPower ? <RemoteKey icon={Power} label="Power" enabled={isOnline(device) !== false && canSendPower} busy={busy} onClick={powerClick} /> : null}
-        {canShow("mute") ? <RemoteKey icon={VolumeX} label="Mute" enabled={canSend("mute")} onClick={() => sendKey("mute")} /> : null}
+        {canPower ? <TvRemoteKey icon={Power} label="Power" enabled={isOnline(device) !== false && canSendPower} busy={busy} onClick={powerClick} /> : null}
+        {canShow("mute") ? <TvRemoteKey icon={VolumeX} label="Mute" enabled={canSend("mute")} onClick={() => sendKey("mute")} /> : null}
       </div>
-      {hasNavigation ? <div className="rounded-[28px] border border-white/[0.07] bg-white/[0.035] p-4">
-        <div className="mb-3 text-center text-xs uppercase tracking-[0.22em] text-white/34">Navigation</div>
-        <div className="mx-auto grid max-w-[230px] grid-cols-3 gap-2">
+      {hasNavigation ? <div className="rounded-[24px] border border-white/[0.07] bg-white/[0.035] p-3">
+        <div className="mb-2 text-center text-[11px] uppercase tracking-[0.2em] text-white/34">Navigation</div>
+        <div className="mx-auto grid max-w-[210px] grid-cols-3 gap-1.5">
           <span />
-          {canShow("up") ? <RemoteKey icon={ChevronUp} label="Up" enabled={canSend("up")} onClick={() => sendKey("nav_up")} /> : <span />}
+          {canShow("up") ? <TvRemoteKey icon={ChevronUp} label="Up" enabled={canSend("up")} onClick={() => sendKey("nav_up")} /> : <span />}
           <span />
-          {canShow("left") ? <RemoteKey icon={ChevronLeft} label="Left" enabled={canSend("left")} onClick={() => sendKey("nav_left")} /> : <span />}
-          {canShow("ok", "enter", "select") ? <RemoteKey icon={Check} label="OK" enabled={canSend("ok", "enter", "select")} onClick={() => sendKey("ok")} /> : <span />}
-          {canShow("right") ? <RemoteKey icon={ChevronRight} label="Right" enabled={canSend("right")} onClick={() => sendKey("nav_right")} /> : <span />}
+          {canShow("left") ? <TvRemoteKey icon={ChevronLeft} label="Left" enabled={canSend("left")} onClick={() => sendKey("nav_left")} /> : <span />}
+          {canShow("ok", "enter", "select") ? <TvRemoteKey icon={Check} label="OK" enabled={canSend("ok", "enter", "select")} onClick={() => sendKey("ok")} /> : <span />}
+          {canShow("right") ? <TvRemoteKey icon={ChevronRight} label="Right" enabled={canSend("right")} onClick={() => sendKey("nav_right")} /> : <span />}
           <span />
-          {canShow("down") ? <RemoteKey icon={ChevronDown} label="Down" enabled={canSend("down")} onClick={() => sendKey("nav_down")} /> : <span />}
+          {canShow("down") ? <TvRemoteKey icon={ChevronDown} label="Down" enabled={canSend("down")} onClick={() => sendKey("nav_down")} /> : <span />}
           <span />
         </div>
       </div> : null}
-      {hasSystem ? <ControlGroup title="System">
-        {canShow("home") ? <RemoteKey icon={Home} label="Home" enabled={canSend("home")} onClick={() => sendKey("home")} /> : null}
-        {canShow("back", "return") ? <RemoteKey icon={ChevronLeft} label="Back" enabled={canSend("back", "return")} onClick={() => sendKey("back")} /> : null}
-        {canShow("menu") ? <RemoteKey icon={SlidersHorizontal} label="Menu" enabled={canSend("menu")} onClick={() => sendKey("menu")} /> : null}
-        {canShow("source", "input") ? <RemoteKey icon={ChevronRight} label="Source" enabled={canSend("source", "input")} onClick={() => sendKey("input")} /> : null}
-      </ControlGroup> : null}
+      {hasSystem ? <TvControlGroup title="System">
+        {canShow("home") ? <TvRemoteKey icon={Home} label="Home" enabled={canSend("home")} onClick={() => sendKey("home")} /> : null}
+        {canShow("back", "return") ? <TvRemoteKey icon={ChevronLeft} label="Back" enabled={canSend("back", "return")} onClick={() => sendKey("back")} /> : null}
+        {canShow("menu") ? <TvRemoteKey icon={SlidersHorizontal} label="Menu" enabled={canSend("menu")} onClick={() => sendKey("menu")} /> : null}
+        {canShow("source", "input") ? <TvRemoteKey icon={ChevronRight} label="Source" enabled={canSend("source", "input")} onClick={() => sendKey("input")} /> : null}
+      </TvControlGroup> : null}
       {hasVolume || hasChannel ? <div className="grid grid-cols-2 gap-2">
-        {hasVolume ? <ControlGroup title="Volume">
-          {canShow("volume_up", "vol_up") ? <RemoteKey icon={Plus} label="Vol +" enabled={canSend("volume_up", "vol_up")} onClick={() => sendKey("volume_up")} /> : null}
-          {canShow("volume_down", "vol_down") ? <RemoteKey icon={Minus} label="Vol -" enabled={canSend("volume_down", "vol_down")} onClick={() => sendKey("volume_down")} /> : null}
-        </ControlGroup> : null}
-        {hasChannel ? <ControlGroup title="Channel">
-          {canShow("channel_up", "ch_up") ? <RemoteKey icon={Plus} label="Ch +" enabled={canSend("channel_up", "ch_up")} onClick={() => sendKey("channel_up")} /> : null}
-          {canShow("channel_down", "ch_down") ? <RemoteKey icon={Minus} label="Ch -" enabled={canSend("channel_down", "ch_down")} onClick={() => sendKey("channel_down")} /> : null}
-        </ControlGroup> : null}
+        {hasVolume ? <TvControlGroup title="Volume">
+          {canShow("volume_up", "vol_up") ? <TvRemoteKey icon={Plus} label="Vol +" enabled={canSend("volume_up", "vol_up")} onClick={() => sendKey("volume_up")} /> : null}
+          {canShow("volume_down", "vol_down") ? <TvRemoteKey icon={Minus} label="Vol -" enabled={canSend("volume_down", "vol_down")} onClick={() => sendKey("volume_down")} /> : null}
+        </TvControlGroup> : null}
+        {hasChannel ? <TvControlGroup title="Channel">
+          {canShow("channel_up", "ch_up") ? <TvRemoteKey icon={Plus} label="Ch +" enabled={canSend("channel_up", "ch_up")} onClick={() => sendKey("channel_up")} /> : null}
+          {canShow("channel_down", "ch_down") ? <TvRemoteKey icon={Minus} label="Ch -" enabled={canSend("channel_down", "ch_down")} onClick={() => sendKey("channel_down")} /> : null}
+        </TvControlGroup> : null}
       </div> : null}
-      {hasMedia ? <ControlGroup title="Media">
-        <RemoteKey icon={Play} label="Play/Pause" enabled={canSend("play_pause", "play", "pause")} onClick={() => sendKey("play_pause")} />
-      </ControlGroup> : null}
+      {hasMedia ? <TvControlGroup title="Media">
+        <TvRemoteKey icon={Play} label="Play/Pause" enabled={canSend("play_pause", "play", "pause")} onClick={() => sendKey("play_pause")} />
+      </TvControlGroup> : null}
       {!keyCode ? <div className="rounded-[18px] border border-white/[0.06] bg-white/[0.025] px-3 py-2.5 text-center text-xs leading-5 text-white/42">TV command mapping is being prepared for this device.</div> : null}
     </div>
+  );
+}
+
+function TvControlGroup({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="rounded-[20px] border border-white/[0.06] bg-white/[0.025] p-2.5">
+      <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.17em] text-white/34">{title}</div>
+      <div className="grid grid-cols-2 gap-1.5">{children}</div>
+    </div>
+  );
+}
+
+function TvRemoteKey({ icon: Icon, label, enabled, busy, onClick }: { icon: any; label: string; enabled: boolean; busy?: boolean; onClick?: () => void }) {
+  return (
+    <button type="button" disabled={!enabled || busy || !onClick} onClick={onClick} className={cn("min-h-10 rounded-[14px] border px-2 py-1.5 text-center transition", enabled && onClick ? "border-sky-300/18 bg-sky-400/10 text-sky-100 active:scale-[0.98]" : "border-white/[0.08] bg-white/[0.04] text-white/56")} title={label}>
+      <Icon className="mx-auto h-3.5 w-3.5" />
+      <span className="mt-1 block text-[10px]">{label}</span>
+    </button>
   );
 }
 
