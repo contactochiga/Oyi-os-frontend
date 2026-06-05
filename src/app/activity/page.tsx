@@ -6,6 +6,7 @@ import {
   Bell,
   Bolt,
   ChevronRight,
+  CreditCard,
   Grid2X2,
   ShieldCheck,
   UserRound,
@@ -16,6 +17,10 @@ import {
   Home,
   AlertTriangle,
   Activity as ActivityIcon,
+  MessageCircle,
+  Sparkles,
+  UserPlus,
+  Watch,
 } from "lucide-react";
 
 import LayoutWrapper from "@/app/components/LayoutWrapper";
@@ -46,11 +51,17 @@ function formatTime(value?: string | null) {
 }
 
 function eventTone(category: ActivityCategory, severity?: string) {
-  if (severity === "high") return { Icon: AlertTriangle, ring: "border-red-300/16 bg-red-500/10 text-red-200 shadow-[0_0_18px_rgba(248,113,113,0.18)]" };
+  if (severity === "critical" || severity === "high") return { Icon: AlertTriangle, ring: "border-red-300/16 bg-red-500/10 text-red-200 shadow-[0_0_18px_rgba(248,113,113,0.18)]" };
+  if (severity === "warning" || severity === "medium") return { Icon: AlertTriangle, ring: "border-amber-300/16 bg-amber-400/10 text-amber-100 shadow-[0_0_18px_rgba(251,191,36,0.18)]" };
   if (category === "security") return { Icon: ShieldCheck, ring: "border-emerald-300/16 bg-emerald-400/10 text-emerald-200 shadow-[0_0_18px_rgba(52,211,153,0.18)]" };
   if (category === "visitor") return { Icon: UserRound, ring: "border-violet-300/16 bg-violet-400/10 text-violet-200 shadow-[0_0_18px_rgba(167,139,250,0.18)]" };
   if (category === "device") return { Icon: Cpu, ring: "border-sky-300/16 bg-sky-400/10 text-sky-200 shadow-[0_0_18px_rgba(56,189,248,0.18)]" };
   if (category === "maintenance") return { Icon: Wrench, ring: "border-amber-300/16 bg-amber-400/10 text-amber-200 shadow-[0_0_18px_rgba(251,191,36,0.18)]" };
+  if (category === "message") return { Icon: MessageCircle, ring: "border-blue-300/16 bg-blue-400/10 text-blue-200 shadow-[0_0_18px_rgba(96,165,250,0.18)]" };
+  if (category === "service") return { Icon: CreditCard, ring: "border-purple-300/16 bg-purple-400/10 text-purple-200 shadow-[0_0_18px_rgba(192,132,252,0.18)]" };
+  if (category === "invite") return { Icon: UserPlus, ring: "border-cyan-300/16 bg-cyan-400/10 text-cyan-200 shadow-[0_0_18px_rgba(34,211,238,0.18)]" };
+  if (category === "scene" || category === "automation") return { Icon: Sparkles, ring: "border-blue-300/16 bg-blue-400/10 text-blue-200 shadow-[0_0_18px_rgba(59,130,246,0.18)]" };
+  if (category === "watch") return { Icon: Watch, ring: "border-slate-200/16 bg-slate-300/10 text-slate-100 shadow-[0_0_18px_rgba(226,232,240,0.12)]" };
   if (category === "ai") return { Icon: Bolt, ring: "border-blue-300/16 bg-blue-400/10 text-blue-200 shadow-[0_0_18px_rgba(59,130,246,0.18)]" };
   if (category === "wallet") return { Icon: Wallet, ring: "border-purple-300/16 bg-purple-400/10 text-purple-200 shadow-[0_0_18px_rgba(192,132,252,0.18)]" };
   if (category === "community") return { Icon: Users, ring: "border-cyan-300/16 bg-cyan-400/10 text-cyan-200 shadow-[0_0_18px_rgba(34,211,238,0.18)]" };
@@ -59,9 +70,9 @@ function eventTone(category: ActivityCategory, severity?: string) {
 
 function matchesFilter(item: ActivityEvent, filter: FilterKey) {
   if (filter === "all") return true;
-  if (filter === "alerts") return item.category === "security" || item.severity === "high" || item.severity === "medium";
-  if (filter === "devices") return item.category === "device" || item.category === "ai";
-  if (filter === "people") return item.category === "visitor" || item.category === "community";
+  if (filter === "alerts") return item.category === "security" || item.severity === "critical" || item.severity === "warning" || item.severity === "high" || item.severity === "medium";
+  if (filter === "devices") return item.category === "device" || item.category === "scene" || item.category === "automation" || item.category === "watch" || item.category === "ai";
+  if (filter === "people") return item.category === "visitor" || item.category === "community" || item.category === "message" || item.category === "invite";
   return true;
 }
 
@@ -73,7 +84,6 @@ export default function ActivityPage() {
   const [filter, setFilter] = useState<FilterKey>("all");
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const [summary, setSummary] = useState<ActivitySummary>(EMPTY_SUMMARY);
-  const [sources, setSources] = useState<Record<string, { available: boolean; reason?: string | null }>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -93,7 +103,6 @@ export default function ActivityPage() {
     } else {
       setEvents(result.items);
       setSummary(result.summary || EMPTY_SUMMARY);
-      setSources(result.sources || {});
       setLastSync(result.generated_at || new Date().toISOString());
       const unseen = result.items.filter((item) => {
         const notificationId = notificationIdFromActivity(item);
@@ -119,24 +128,32 @@ export default function ActivityPage() {
     const socket = getSocket();
     if (!socket) return;
     const refresh = () => void load(true);
-    socket.on("notification", refresh);
-    socket.on("signal", refresh);
-    socket.on("device:update", refresh);
-    socket.on("visitor.created", refresh);
-    socket.on("maintenance.updated", refresh);
-    socket.on("ai.tool.executed", refresh);
+    const events = [
+      "notification",
+      "notification:new",
+      "signal",
+      "device:update",
+      "device.status.updated",
+      "device.registry.updated",
+      "visitor.created",
+      "visitor.updated",
+      "maintenance.updated",
+      "community.updated",
+      "dm:new",
+      "message.created",
+      "wallet.updated",
+      "service.updated",
+      "security.alert",
+      "audit.recorded",
+      "ai.tool.executed",
+    ];
+    events.forEach((eventName) => socket.on(eventName, refresh));
     return () => {
-      socket.off("notification", refresh);
-      socket.off("signal", refresh);
-      socket.off("device:update", refresh);
-      socket.off("visitor.created", refresh);
-      socket.off("maintenance.updated", refresh);
-      socket.off("ai.tool.executed", refresh);
+      events.forEach((eventName) => socket.off(eventName, refresh));
     };
   }, []);
 
   const visibleEvents = useMemo(() => events.filter((item) => matchesFilter(item, filter)), [events, filter]);
-  const unavailableSources = useMemo(() => Object.entries(sources).filter(([, value]) => value && value.available === false), [sources]);
 
   return (
     <LayoutWrapper>
@@ -197,12 +214,6 @@ export default function ActivityPage() {
               </section>
             ) : null}
 
-            {unavailableSources.length && !loading ? (
-              <section className="mt-3 rounded-[18px] border border-white/[0.06] bg-white/[0.025] px-3 py-2.5 text-xs leading-5 text-white/42">
-                Some activity sources are pending backend schema support: {unavailableSources.map(([key]) => key).join(", ")}.
-              </section>
-            ) : null}
-
             <section className="mt-4">
               <div className="mb-2.5 flex items-center justify-between">
                 <div className="text-xs text-white/38">{lastSync ? `Synced ${formatTime(lastSync)}` : loading ? "Syncing activity" : "Live feed"}</div>
@@ -219,7 +230,7 @@ export default function ActivityPage() {
                     <Home className="h-5 w-5" />
                   </div>
                   <h2 className="mt-3 text-base font-semibold tracking-[-0.04em]">No activity yet.</h2>
-                  <p className="mt-1.5 text-xs leading-5 text-white/48">Oyi will surface important updates here.</p>
+                  <p className="mt-1.5 text-xs leading-5 text-white/48">Your home updates will appear here.</p>
                 </div>
               ) : null}
 
@@ -270,7 +281,7 @@ function ActivityRow({ item }: { item: ActivityEvent }) {
         {item.thumbnail_url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={item.thumbnail_url} alt="" className="h-8 w-8 rounded-[12px] object-cover" />
-        ) : item.severity === "high" ? (
+        ) : item.severity === "critical" || item.severity === "high" ? (
           <span className="rounded-full border border-red-300/18 bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold text-red-200">High</span>
         ) : (
           <span className="max-w-[58px] truncate text-[11px] text-white/42">{item.label || item.category}</span>

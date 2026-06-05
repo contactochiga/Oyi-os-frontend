@@ -1,87 +1,77 @@
 import API from "./api";
-import { acknowledgeNotification, listMyNotifications } from "./notificationsService";
-import { maintenanceService } from "./maintenanceService";
-import { visitorService } from "./visitorService";
+import { acknowledgeNotification } from "./notificationsService";
 
 export type ActivityCategory =
-  | "security"
-  | "visitor"
   | "device"
-  | "maintenance"
-  | "ai"
-  | "wallet"
+  | "visitor"
+  | "message"
   | "community"
-  | "system";
+  | "maintenance"
+  | "wallet"
+  | "service"
+  | "security"
+  | "invite"
+  | "scene"
+  | "automation"
+  | "system"
+  | "profile"
+  | "watch"
+  | "ai";
 
-export type ActivitySeverity = "low" | "medium" | "high" | "info";
+export type ActivitySeverity = "info" | "success" | "attention" | "warning" | "critical" | "low" | "medium" | "high";
+
+export type ActivityAction = {
+  kind?: string;
+  route?: string;
+  href: string;
+  label?: string;
+  entity_id?: string | null;
+};
 
 export type ActivityEvent = {
   id: string;
+  source: string;
+  type?: string;
   category: ActivityCategory;
   severity: ActivitySeverity;
   title: string;
+  summary?: string;
   description: string;
   occurred_at: string;
-  source: string;
+  actor?: Record<string, any> | null;
+  target?: Record<string, any> | null;
+  estate_id?: string | null;
+  home_id?: string | null;
+  user_id?: string | null;
   label?: string;
   thumbnail_url?: string | null;
-  action?: {
-    href: string;
-    label?: string;
-    kind?: string;
-    entity_id?: string | null;
-  } | null;
+  action?: ActivityAction | null;
+  metadata?: Record<string, any>;
 };
 
 export type ActivitySummary = {
+  events?: number;
   total_events: number;
   alerts: number;
   visitors: number;
   actions: number;
+  unread?: number;
+  critical?: number;
+  attention?: number;
 };
 
 export type ActivityResponse = {
   items: ActivityEvent[];
   summary: ActivitySummary;
-  sources?: Record<string, { available: boolean; reason?: string | null }>;
   generated_at?: string;
 };
 
 function emptySummary(): ActivitySummary {
-  return { total_events: 0, alerts: 0, visitors: 0, actions: 0 };
+  return { events: 0, total_events: 0, alerts: 0, visitors: 0, actions: 0, unread: 0, critical: 0, attention: 0 };
 }
 
 function pickError(err: any, fallback: string) {
   return err?.response?.data?.error || err?.response?.data?.message || err?.message || fallback;
-}
-
-function categoryFrom(value: any): ActivityCategory {
-  const text = String(value || "").toLowerCase();
-  if (/visitor|guest|gate|access|people/.test(text)) return "visitor";
-  if (/device|light|switch|climate|ac|sensor|camera|door/.test(text)) return "device";
-  if (/maintenance|support|repair|service/.test(text)) return "maintenance";
-  if (/ai|oyi|command/.test(text)) return "ai";
-  if (/wallet|payment|billing/.test(text)) return "wallet";
-  if (/community|notice|announcement/.test(text)) return "community";
-  if (/security|alert|incident|alarm/.test(text)) return "security";
-  return "system";
-}
-
-function severityFrom(value: any): ActivitySeverity {
-  const text = String(value || "").toLowerCase();
-  if (/high|critical|failed|denied|error|alarm/.test(text)) return "high";
-  if (/medium|warning|pending|attention/.test(text)) return "medium";
-  if (/low|ok|success|executed|resolved|read/.test(text)) return "low";
-  return "info";
-}
-
-function calculateSummary(items: ActivityEvent[]): ActivitySummary {
-  return {
-    total_events: items.length,
-    alerts: items.filter((item) => item.category === "security" || item.severity === "high").length,
-    visitors: items.filter((item) => item.category === "visitor").length,
-    actions: items.filter((item) => item.category === "ai" || item.category === "device").length,
-  };
 }
 
 function firstString(...values: any[]) {
@@ -92,140 +82,124 @@ function firstString(...values: any[]) {
   return "";
 }
 
-function actionForNotification(item: any, category: ActivityCategory) {
+function categoryFrom(value: any): ActivityCategory {
+  const text = String(value || "").toLowerCase();
+  if (/watch/.test(text)) return "watch";
+  if (/invite|invitation|membership|access/.test(text)) return "invite";
+  if (/profile|verification|avatar/.test(text)) return "profile";
+  if (/automation/.test(text)) return "automation";
+  if (/scene/.test(text)) return "scene";
+  if (/message|thread|chat|inbox|dm/.test(text)) return "message";
+  if (/visitor|guest|gate/.test(text)) return "visitor";
+  if (/device|light|switch|climate|ac|sensor|camera|door/.test(text)) return "device";
+  if (/maintenance|support|repair|ticket/.test(text)) return "maintenance";
+  if (/service/.test(text)) return "service";
+  if (/wallet|payment|billing|transaction/.test(text)) return "wallet";
+  if (/community|notice|announcement|post|comment/.test(text)) return "community";
+  if (/security|alert|incident|alarm|emergency/.test(text)) return "security";
+  if (/ai|oyi|command/.test(text)) return "system";
+  return "system";
+}
+
+function severityFrom(value: any): ActivitySeverity {
+  const text = String(value || "").toLowerCase();
+  if (/critical|high|failed|denied|error|alarm|emergency|rejected/.test(text)) return "critical";
+  if (/warning|medium|offline|expired|cancelled/.test(text)) return "warning";
+  if (/pending|attention|waiting|open|new|requested|created|invited/.test(text)) return "attention";
+  if (/low|ok|success|executed|resolved|read|active|approved|accepted|completed|paid|online|synced/.test(text)) return "success";
+  return "info";
+}
+
+function calculateSummary(items: ActivityEvent[]): ActivitySummary {
+  return {
+    events: items.length,
+    total_events: items.length,
+    alerts: items.filter((item) => item.category === "security" || item.severity === "critical" || item.severity === "warning" || item.severity === "high" || item.severity === "medium").length,
+    visitors: items.filter((item) => item.category === "visitor").length,
+    actions: items.filter((item) => Boolean(item.action?.href)).length,
+    unread: 0,
+    critical: items.filter((item) => item.severity === "critical" || item.severity === "high").length,
+    attention: items.filter((item) => item.severity === "attention" || item.severity === "warning" || item.severity === "medium").length,
+  };
+}
+
+function actionForNotification(item: any, category: ActivityCategory): ActivityAction | null {
   const payload = item?.payload || {};
   const typeText = `${item?.type || ""} ${item?.title || ""} ${item?.message || ""}`.toLowerCase();
-  const postId = firstString(payload.post_id, payload.postId, payload.community_post_id, item.post_id);
+  const entityId = firstString(item?.entity_id, payload.entity_id, payload.id);
+  const postId = firstString(payload.post_id, payload.postId, payload.community_post_id, item.post_id, entityId && /community|post|announcement|notice/.test(typeText) ? entityId : "");
   const commentId = firstString(payload.comment_id, payload.commentId);
-  const threadId = firstString(payload.thread_id, payload.threadId, payload.conversation_id, payload.message_thread_id);
-  const inviteId = firstString(payload.invite_id, payload.inviteId, payload.invitation_id);
-  const visitorId = firstString(payload.visitor_id, payload.visitorId);
-  const maintenanceId = firstString(payload.ticket_id, payload.ticketId, payload.maintenance_id, payload.maintenanceId, payload.request_id);
-  const transactionId = firstString(payload.transaction_id, payload.transactionId, payload.wallet_transaction_id);
-  const serviceId = firstString(payload.service_id, payload.serviceId);
-  const deviceId = firstString(payload.device_id, payload.deviceId);
-  const roomId = firstString(payload.room_id, payload.roomId, payload.space_id, payload.spaceId);
-  const automationId = firstString(payload.automation_id, payload.automationId);
+  const threadId = firstString(payload.thread_id, payload.threadId, payload.conversation_id, payload.message_thread_id, entityId && /message|thread|chat|inbox/.test(typeText) ? entityId : "");
+  const inviteId = firstString(payload.invite_id, payload.inviteId, payload.invitation_id, entityId && /invite|invitation/.test(typeText) ? entityId : "");
+  const visitorId = firstString(payload.visitor_id, payload.visitorId, entityId && /visitor|guest|gate/.test(typeText) ? entityId : "");
+  const maintenanceId = firstString(payload.ticket_id, payload.ticketId, payload.maintenance_id, payload.maintenanceId, payload.request_id, entityId && /maintenance|repair|support/.test(typeText) ? entityId : "");
+  const transactionId = firstString(payload.transaction_id, payload.transactionId, payload.wallet_transaction_id, entityId && /wallet|payment|transaction/.test(typeText) ? entityId : "");
+  const serviceId = firstString(payload.service_id, payload.serviceId, entityId && /service/.test(typeText) ? entityId : "");
+  const deviceId = firstString(payload.device_id, payload.deviceId, entityId && /device|light|switch|climate|sensor/.test(typeText) ? entityId : "");
+  const roomId = firstString(payload.room_id, payload.roomId, payload.space_id, payload.spaceId, entityId && /room|space/.test(typeText) ? entityId : "");
+  const sceneId = firstString(payload.scene_id, payload.sceneId, entityId && /scene/.test(typeText) ? entityId : "");
+  const automationId = firstString(payload.automation_id, payload.automationId, entityId && /automation/.test(typeText) ? entityId : "");
+  const incidentId = firstString(payload.incident_id, payload.incidentId, entityId && /security|incident|alert/.test(typeText) ? entityId : "");
 
-  if (inviteId) return { href: `/invites?inviteId=${encodeURIComponent(inviteId)}`, label: "Open invite", kind: "invite" };
-  if (postId) return { href: `/community?postId=${encodeURIComponent(postId)}${commentId ? `&commentId=${encodeURIComponent(commentId)}` : ""}`, label: commentId ? "Open thread" : "Open post", kind: "community" };
-  if (threadId || category === "community" && /message|comment|reply/.test(typeText)) return { href: `/messages${threadId ? `?threadId=${encodeURIComponent(threadId)}` : ""}`, label: "Open thread", kind: "message" };
-  if (visitorId) return { href: `/visitors?visitorId=${encodeURIComponent(visitorId)}`, label: "Open visitor", kind: "visitor" };
-  if (maintenanceId) return { href: `/maintenance?requestId=${encodeURIComponent(maintenanceId)}`, label: "Open request", kind: "maintenance" };
-  if (transactionId) return { href: `/wallet?transactionId=${encodeURIComponent(transactionId)}`, label: "Open transaction", kind: "wallet" };
-  if (serviceId) return { href: `/services?serviceId=${encodeURIComponent(serviceId)}`, label: "Open service", kind: "service" };
-  if (deviceId) return { href: `/devices?deviceId=${encodeURIComponent(deviceId)}`, label: "Open device", kind: "device" };
-  if (roomId) return { href: `/spaces?roomId=${encodeURIComponent(roomId)}`, label: "Open space", kind: "space" };
-  if (automationId) return { href: `/scenes?tab=automations&automationId=${encodeURIComponent(automationId)}`, label: "Open automation", kind: "automation" };
-
-  if (category === "community" && /post|announcement|notice|comment|reply/.test(typeText)) return { href: "/community", label: "Open community", kind: "community" };
-  if (category === "visitor" && !/heartbeat|sync|completed/.test(typeText)) return { href: "/visitors", label: "Open visitors", kind: "visitor" };
-  if (category === "maintenance" && !/sync|completed/.test(typeText)) return { href: "/maintenance", label: "Open maintenance", kind: "maintenance" };
-  if (category === "wallet" && !/sync|completed/.test(typeText)) return { href: "/wallet", label: "Open wallet", kind: "wallet" };
+  if (inviteId) return { href: `/invites?inviteId=${encodeURIComponent(inviteId)}`, route: `/invites?inviteId=${encodeURIComponent(inviteId)}`, label: "Open invite", kind: "invite", entity_id: inviteId };
+  if (postId) return { href: `/community?postId=${encodeURIComponent(postId)}${commentId ? `&commentId=${encodeURIComponent(commentId)}` : ""}`, route: `/community?postId=${encodeURIComponent(postId)}${commentId ? `&commentId=${encodeURIComponent(commentId)}` : ""}`, label: commentId ? "Open thread" : "Open post", kind: commentId ? "community_comment" : "community_post", entity_id: postId };
+  if (threadId) return { href: `/messages?threadId=${encodeURIComponent(threadId)}`, route: `/messages?threadId=${encodeURIComponent(threadId)}`, label: "Open thread", kind: "message", entity_id: threadId };
+  if (visitorId) return { href: `/visitors?visitorId=${encodeURIComponent(visitorId)}`, route: `/visitors?visitorId=${encodeURIComponent(visitorId)}`, label: "Open visitor", kind: "visitor", entity_id: visitorId };
+  if (maintenanceId) return { href: `/maintenance?requestId=${encodeURIComponent(maintenanceId)}`, route: `/maintenance?requestId=${encodeURIComponent(maintenanceId)}`, label: "Open request", kind: "maintenance", entity_id: maintenanceId };
+  if (transactionId) return { href: `/wallet?transactionId=${encodeURIComponent(transactionId)}`, route: `/wallet?transactionId=${encodeURIComponent(transactionId)}`, label: "Open transaction", kind: "wallet", entity_id: transactionId };
+  if (serviceId) return { href: `/services?serviceId=${encodeURIComponent(serviceId)}`, route: `/services?serviceId=${encodeURIComponent(serviceId)}`, label: "Open service", kind: "service", entity_id: serviceId };
+  if (deviceId && !/heartbeat|sync completed|telemetry|turned on|turned off|command.executed/.test(typeText)) return { href: `/devices?deviceId=${encodeURIComponent(deviceId)}`, route: `/devices?deviceId=${encodeURIComponent(deviceId)}`, label: "Open device", kind: "device", entity_id: deviceId };
+  if (roomId) return { href: `/spaces?roomId=${encodeURIComponent(roomId)}`, route: `/spaces?roomId=${encodeURIComponent(roomId)}`, label: "Open space", kind: "space", entity_id: roomId };
+  if (sceneId && !/executed/.test(typeText)) return { href: `/scenes?sceneId=${encodeURIComponent(sceneId)}`, route: `/scenes?sceneId=${encodeURIComponent(sceneId)}`, label: "Open scene", kind: "scene", entity_id: sceneId };
+  if (automationId) return { href: `/scenes?tab=automations&automationId=${encodeURIComponent(automationId)}`, route: `/scenes?tab=automations&automationId=${encodeURIComponent(automationId)}`, label: "Open automation", kind: "automation", entity_id: automationId };
+  if (incidentId || category === "security") return { href: `/security${incidentId ? `?incidentId=${encodeURIComponent(incidentId)}` : ""}`, route: `/security${incidentId ? `?incidentId=${encodeURIComponent(incidentId)}` : ""}`, label: "Open security", kind: "security", entity_id: incidentId || null };
   return null;
 }
 
-async function getLocalFallbackFeed(): Promise<ActivityResponse> {
-  const [notificationRes, visitorRes, maintenanceRes] = await Promise.allSettled([
-    listMyNotifications(),
-    visitorService.listMine(),
-    maintenanceService.listMyTickets(),
-  ]);
-
-  const notifications = notificationRes.status === "fulfilled" && Array.isArray(notificationRes.value) ? notificationRes.value : [];
-  const visitors = visitorRes.status === "fulfilled" && Array.isArray(visitorRes.value) ? visitorRes.value : [];
-  const maintenance = maintenanceRes.status === "fulfilled" && Array.isArray(maintenanceRes.value as any) ? (maintenanceRes.value as any[]) : [];
-
-  const items: ActivityEvent[] = [
-    ...notifications.map((item: any) => {
-      const category = categoryFrom(`${item.type} ${item.title} ${item.message}`);
-      return {
-        id: `notification:${item.id}`,
-        category,
-        severity: severityFrom(`${item.status} ${item.title} ${item.type}`),
-        title: String(item.title || "Home update"),
-        description: String(item.message || "Oyi activity"),
-        occurred_at: String(item.created_at || new Date().toISOString()),
-        source: "notifications",
-        label: String(item.type || "Activity"),
-        thumbnail_url: typeof item?.payload?.thumbnail_url === "string" ? item.payload.thumbnail_url : null,
-        action: actionForNotification(item, category),
-      };
-    }),
-    ...visitors.map((item: any) => ({
-      id: `visitor:${item.id}`,
-      category: "visitor" as ActivityCategory,
-      severity: severityFrom(item.status),
-      title: `${String(item.visitor_name || item.name || "Visitor")} ${String(item.status || "updated").replaceAll("_", " ")}`,
-      description: String(item.purpose || "Visitor access activity"),
-      occurred_at: String(item.updated_at || item.created_at || new Date().toISOString()),
-      source: "visitors",
-      label: "People",
-      action: item.id ? { href: `/visitors?visitorId=${encodeURIComponent(String(item.id))}`, label: "Open visitor", kind: "visitor" } : null,
-    })),
-    ...maintenance.map((item: any) => ({
-      id: `maintenance:${item.id}`,
-      category: "maintenance" as ActivityCategory,
-      severity: severityFrom(`${item.priority} ${item.status}`),
-      title: String(item.title || "Maintenance request"),
-      description: String(item.description || item.status || "Service update"),
-      occurred_at: String(item.updated_at || item.created_at || new Date().toISOString()),
-      source: "maintenance_requests",
-      label: "Service",
-      action: item.id ? { href: `/maintenance?requestId=${encodeURIComponent(String(item.id))}`, label: "Open request", kind: "maintenance" } : null,
-    })),
-  ].sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime());
-
+function normalizeActivityItem(item: any): ActivityEvent {
+  const category = categoryFrom(`${item.category} ${item.source} ${item.type} ${item.title} ${item.summary || item.description}`);
+  const severity = severityFrom(`${item.severity} ${item.type} ${item.title}`);
+  const rawAction = item.action && typeof item.action === "object" ? item.action : item.metadata?.action;
+  const route = firstString(rawAction?.route, rawAction?.href);
+  const action = route
+    ? { ...rawAction, route, href: route, label: rawAction?.label || "Open", entity_id: rawAction?.entity_id || null }
+    : actionForNotification(item, category);
+  const description = String(item.summary || item.description || "Home activity");
   return {
-    items,
-    summary: calculateSummary(items),
-    sources: {
-      activity_endpoint: { available: false, reason: "backend_route_unavailable_fallback_used" },
-      notifications: { available: notificationRes.status === "fulfilled", reason: null },
-      visitors: { available: visitorRes.status === "fulfilled", reason: null },
-      maintenance: { available: maintenanceRes.status === "fulfilled", reason: null },
-    },
-    generated_at: new Date().toISOString(),
+    ...item,
+    category: (item.category || category) as ActivityCategory,
+    severity: (item.severity || severity) as ActivitySeverity,
+    description,
+    summary: item.summary || description,
+    action,
   };
 }
 
 export async function getActivityFeed(): Promise<ActivityResponse | { error: string }> {
   try {
     const res = await API.get("/activity/feed");
-    const items = Array.isArray(res.data?.items) ? res.data.items : [];
+    const items = Array.isArray(res.data?.items) ? res.data.items.map(normalizeActivityItem) : [];
     return {
-      items: items.map(normalizeActivityItem),
-      summary: res.data?.summary || emptySummary(),
-      sources: res.data?.sources || {},
+      items,
+      summary: res.data?.summary || calculateSummary(items),
       generated_at: res.data?.generated_at,
     };
   } catch (err: any) {
-    const status = err?.response?.status;
-    if (status === 404) {
+    if (err?.response?.status === 404) {
       try {
         const prefixed = await API.get("/api/activity/feed");
-        const items = Array.isArray(prefixed.data?.items) ? prefixed.data.items : [];
+        const items = Array.isArray(prefixed.data?.items) ? prefixed.data.items.map(normalizeActivityItem) : [];
         return {
-          items: items.map(normalizeActivityItem),
-          summary: prefixed.data?.summary || emptySummary(),
-          sources: prefixed.data?.sources || {},
+          items,
+          summary: prefixed.data?.summary || calculateSummary(items),
           generated_at: prefixed.data?.generated_at,
         };
       } catch (prefixedErr: any) {
-        if (prefixedErr?.response?.status === 404) return getLocalFallbackFeed();
         return { error: pickError(prefixedErr, "Failed to load activity") };
       }
     }
     return { error: pickError(err, "Failed to load activity") };
   }
-}
-
-function normalizeActivityItem(item: any): ActivityEvent {
-  const category = categoryFrom(`${item.category} ${item.type} ${item.title} ${item.description}`);
-  const action = item.action && typeof item.action?.href === "string"
-    ? item.action
-    : item.metadata?.action || actionForNotification(item, category);
-  return { ...item, category: item.category || category, action };
 }
 
 export function notificationIdFromActivity(item: ActivityEvent) {
@@ -242,11 +216,11 @@ export async function acknowledgeActivityEvent(item: ActivityEvent) {
 export async function acknowledgeSeenActivityEvents(items: ActivityEvent[]) {
   const ids = items
     .filter((item) => item.source === "notifications" || String(item.id || "").startsWith("notification:"))
-    .filter((item) => item.category !== "security" && item.severity !== "high")
+    .filter((item) => item.category !== "security" && item.severity !== "critical" && item.severity !== "high")
     .map(notificationIdFromActivity)
     .filter(Boolean);
 
-  await Promise.allSettled(ids.map((id) => acknowledgeNotification(id)));
+  await Promise.allSettled(Array.from(new Set(ids)).map((id) => acknowledgeNotification(id)));
   return Array.from(new Set(ids));
 }
 
@@ -256,8 +230,12 @@ export async function getActivitySummary(): Promise<ActivitySummary | { error: s
     return res.data?.summary || emptySummary();
   } catch (err: any) {
     if (err?.response?.status === 404) {
-      const fallback = await getLocalFallbackFeed();
-      return fallback.summary;
+      try {
+        const prefixed = await API.get("/api/activity/summary");
+        return prefixed.data?.summary || emptySummary();
+      } catch (prefixedErr: any) {
+        return { error: pickError(prefixedErr, "Failed to load activity summary") };
+      }
     }
     return { error: pickError(err, "Failed to load activity summary") };
   }
