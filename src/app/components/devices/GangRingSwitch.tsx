@@ -83,9 +83,9 @@ export default function GangRingSwitch({
         .ring-ready span.ring-2 {
           --tw-ring-color: rgba(255, 70, 70, 0.75);
         }
-        /* Connected and ON = BLUE */
+        /* Connected and ON = GREEN */
         .ring-on span.ring-2 {
-          --tw-ring-color: rgba(80, 170, 255, 0.85);
+          --tw-ring-color: rgba(52, 211, 153, 0.9);
         }
         .ring-busy {
           animation: ringPulse 0.9s ease-in-out infinite;

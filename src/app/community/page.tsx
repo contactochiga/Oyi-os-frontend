@@ -141,21 +141,20 @@ function officialIdentity(post: any) {
   const sourceLabel = normalizeText(post?.source_label);
   const sourceType = String(post?.source_type || post?.author_type || post?.created_by_type || "").toLowerCase();
   const hasResidentIdentity = Boolean(post?.resident_id || post?.author?.resident_id || post?.author_resident_id) || sourceType === "resident";
-  if (post?.is_official === true || String(post?.source_type || "").toLowerCase() === "facility") {
+  if (hasResidentIdentity) return null;
+  const roleText = `${post?.author_role || ""} ${post?.created_by_role || ""} ${post?.created_by_type || ""} ${post?.source || ""}`.toLowerCase();
+  const operationalSource = Boolean(post?.facility_user_id || post?.operator_id || post?.staff_id) || /facility|operator|admin|administration|security|maintenance|moderator|operations/.test(`${sourceType} ${roleText}`);
+  if (operationalSource || (post?.is_official === true && /facility|operator|admin|administration|security|maintenance|moderator|operations/.test(roleText))) {
     if (/security/i.test(sourceLabel)) return { label: sourceLabel || "Security Desk", Icon: ShieldCheck };
     if (/maintenance/i.test(sourceLabel)) return { label: sourceLabel || "Maintenance Team", Icon: Wrench };
     if (/admin/i.test(sourceLabel)) return { label: sourceLabel || "Administration", Icon: Building2 };
     if (/moderator/i.test(sourceLabel)) return { label: sourceLabel || "Community Moderator", Icon: ShieldCheck };
+    if (/security/.test(roleText)) return { label: sourceLabel || "Security Desk", Icon: ShieldCheck };
+    if (/maintenance|repair|service/.test(roleText)) return { label: sourceLabel || "Maintenance Team", Icon: Wrench };
+    if (/admin|administration/.test(roleText)) return { label: sourceLabel || "Administration", Icon: Building2 };
+    if (/moderator/.test(roleText)) return { label: sourceLabel || "Community Moderator", Icon: ShieldCheck };
     return { label: sourceLabel || "Estate Operations", Icon: Megaphone };
   }
-  if (hasResidentIdentity) return null;
-  const roleText = `${post?.author_role || ""} ${post?.created_by_role || ""} ${post?.created_by_type || ""} ${post?.source || ""}`.toLowerCase();
-  const text = roleText;
-  if (/security/.test(text)) return { label: "Security Desk", Icon: ShieldCheck };
-  if (/maintenance|repair|service/.test(text)) return { label: "Maintenance Team", Icon: Wrench };
-  if (/admin|administration/.test(text)) return { label: "Administration", Icon: Building2 };
-  if (/facility|manager|operations|operator/.test(text)) return { label: "Estate Operations", Icon: Megaphone };
-  if (/moderator/.test(text)) return { label: "Community Moderator", Icon: ShieldCheck };
   return null;
 }
 
