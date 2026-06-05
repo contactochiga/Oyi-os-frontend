@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
   CalendarClock,
+  Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -1099,46 +1100,62 @@ function ACRenderer({ device, state, busy, onPower, onCommand, onTool }: { devic
 }
 
 function TVRenderer({ device, busy, onPower, onCommand }: { device: AnyDevice; busy: boolean; onPower: (device: AnyDevice) => void; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => void }) {
-  const canPower = canSwitchDevice(device) || Boolean(commandCodeFor(device, [/power/, /^switch$/]));
+  const caps = uiCapabilities(device);
+  const exposedKeys = new Set(caps.tv);
+  const supports = (...keys: string[]) => !exposedKeys.size || keys.some((key) => exposedKeys.has(key));
+  const switchPower = canSwitchDevice(device);
   const keyCode = commandCodeFor(device, [/ir_code/, /remote_key/, /key_code/, /control/]);
   const sendKey = (key: string) => keyCode ? onCommand(device, { [keyCode]: key }) : undefined;
+  const remoteKey = (key: string, ...aliases: string[]) => keyCode && supports(key, ...aliases);
+  const canPower = switchPower || Boolean(remoteKey("power"));
+  const hasNavigation = Boolean(remoteKey("up") || remoteKey("down") || remoteKey("left") || remoteKey("right") || remoteKey("ok", "enter", "select"));
+  const hasSystem = Boolean(remoteKey("home") || remoteKey("back", "return") || remoteKey("menu") || remoteKey("source", "input"));
+  const hasVolume = Boolean(remoteKey("volume_up", "vol_up") || remoteKey("volume_down", "vol_down"));
+  const hasChannel = Boolean(remoteKey("channel_up", "ch_up") || remoteKey("channel_down", "ch_down"));
+  const hasMedia = Boolean(remoteKey("play_pause", "play", "pause"));
+  const powerClick = () => {
+    if (switchPower) onPower(device);
+    else sendKey("power");
+  };
   return (
-    <div className="space-y-2">
-      <div className="grid grid-cols-3 gap-2">
-        {canPower ? <RemoteKey icon={Power} label="Power" enabled={isOnline(device) !== false} busy={busy} onClick={() => onPower(device)} /> : null}
-        {keyCode ? <RemoteKey icon={VolumeX} label="Mute" enabled onClick={() => sendKey("mute")} /> : null}
-        {keyCode ? <RemoteKey icon={ChevronRight} label="Source" enabled onClick={() => sendKey("source")} /> : null}
+    <div className="space-y-2.5">
+      <div className="grid grid-cols-2 gap-2">
+        {canPower ? <RemoteKey icon={Power} label="Power" enabled={isOnline(device) !== false} busy={busy} onClick={powerClick} /> : null}
+        {remoteKey("mute") ? <RemoteKey icon={VolumeX} label="Mute" enabled onClick={() => sendKey("mute")} /> : null}
       </div>
-      {keyCode ? <div className="rounded-[28px] border border-white/[0.07] bg-white/[0.035] p-4">
+      {hasNavigation ? <div className="rounded-[28px] border border-white/[0.07] bg-white/[0.035] p-4">
         <div className="mb-3 text-center text-xs uppercase tracking-[0.22em] text-white/34">Navigation</div>
         <div className="mx-auto grid max-w-[230px] grid-cols-3 gap-2">
           <span />
-          <RemoteKey icon={ChevronUp} label="Up" enabled onClick={() => sendKey("up")} />
+          {remoteKey("up") ? <RemoteKey icon={ChevronUp} label="Up" enabled onClick={() => sendKey("up")} /> : <span />}
           <span />
-          <RemoteKey icon={ChevronLeft} label="Left" enabled onClick={() => sendKey("left")} />
-          <RemoteKey icon={ChevronRight} label="OK" enabled onClick={() => sendKey("ok")} />
-          <RemoteKey icon={ChevronRight} label="Right" enabled onClick={() => sendKey("right")} />
+          {remoteKey("left") ? <RemoteKey icon={ChevronLeft} label="Left" enabled onClick={() => sendKey("left")} /> : <span />}
+          {remoteKey("ok", "enter", "select") ? <RemoteKey icon={Check} label="OK" enabled onClick={() => sendKey("ok")} /> : <span />}
+          {remoteKey("right") ? <RemoteKey icon={ChevronRight} label="Right" enabled onClick={() => sendKey("right")} /> : <span />}
           <span />
-          <RemoteKey icon={ChevronDown} label="Down" enabled onClick={() => sendKey("down")} />
+          {remoteKey("down") ? <RemoteKey icon={ChevronDown} label="Down" enabled onClick={() => sendKey("down")} /> : <span />}
           <span />
         </div>
       </div> : null}
-      {keyCode ? <ControlGroup title="System">
-        <RemoteKey icon={Home} label="Home" enabled onClick={() => sendKey("home")} />
-        <RemoteKey icon={ChevronLeft} label="Back" enabled onClick={() => sendKey("back")} />
-        <RemoteKey icon={SlidersHorizontal} label="Menu" enabled onClick={() => sendKey("menu")} />
+      {hasSystem ? <ControlGroup title="System">
+        {remoteKey("home") ? <RemoteKey icon={Home} label="Home" enabled onClick={() => sendKey("home")} /> : null}
+        {remoteKey("back", "return") ? <RemoteKey icon={ChevronLeft} label="Back" enabled onClick={() => sendKey("back")} /> : null}
+        {remoteKey("menu") ? <RemoteKey icon={SlidersHorizontal} label="Menu" enabled onClick={() => sendKey("menu")} /> : null}
+        {remoteKey("source", "input") ? <RemoteKey icon={ChevronRight} label="Source" enabled onClick={() => sendKey("source")} /> : null}
+      </ControlGroup> : null}
+      {hasVolume || hasChannel ? <div className="grid grid-cols-2 gap-2">
+        {hasVolume ? <ControlGroup title="Volume">
+          {remoteKey("volume_up", "vol_up") ? <RemoteKey icon={Plus} label="Vol +" enabled onClick={() => sendKey("volume_up")} /> : null}
+          {remoteKey("volume_down", "vol_down") ? <RemoteKey icon={Minus} label="Vol -" enabled onClick={() => sendKey("volume_down")} /> : null}
+        </ControlGroup> : null}
+        {hasChannel ? <ControlGroup title="Channel">
+          {remoteKey("channel_up", "ch_up") ? <RemoteKey icon={Plus} label="Ch +" enabled onClick={() => sendKey("channel_up")} /> : null}
+          {remoteKey("channel_down", "ch_down") ? <RemoteKey icon={Minus} label="Ch -" enabled onClick={() => sendKey("channel_down")} /> : null}
+        </ControlGroup> : null}
+      </div> : null}
+      {hasMedia ? <ControlGroup title="Media">
         <RemoteKey icon={Play} label="Play/Pause" enabled onClick={() => sendKey("play_pause")} />
       </ControlGroup> : null}
-      {keyCode ? <div className="grid grid-cols-2 gap-2">
-        <ControlGroup title="Volume">
-          <RemoteKey icon={Plus} label="Vol +" enabled onClick={() => sendKey("volume_up")} />
-          <RemoteKey icon={Minus} label="Vol -" enabled onClick={() => sendKey("volume_down")} />
-        </ControlGroup>
-        <ControlGroup title="Channel">
-          <RemoteKey icon={Plus} label="Ch +" enabled onClick={() => sendKey("channel_up")} />
-          <RemoteKey icon={Minus} label="Ch -" enabled onClick={() => sendKey("channel_down")} />
-        </ControlGroup>
-      </div> : null}
     </div>
   );
 }

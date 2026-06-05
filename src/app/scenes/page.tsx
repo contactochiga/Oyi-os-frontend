@@ -116,14 +116,17 @@ export default function ScenesPage() {
     <LayoutWrapper>
       <main className="fixed inset-0 overflow-hidden bg-[#02060b] text-white">
         <div className="oyi-ambient-bg" />
-        <div className="relative z-10 h-full overflow-y-auto px-4 pb-[calc(104px+var(--sab))] pt-[calc(14px+var(--sat))]">
+        <div className="fixed inset-x-0 z-[80] px-5" style={{ top: "calc(8px + var(--sat))" }}>
+          <div className="mx-auto flex max-w-[430px] items-center justify-between">
+            <div className="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/[0.03] shadow-[0_8px_26px_rgba(0,0,0,0.28)] backdrop-blur-2xl"><HamburgerMenu /></div>
+            <div className="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/[0.028] shadow-[0_8px_26px_rgba(0,0,0,0.28)] backdrop-blur-2xl"><MessagesInboxButton /></div>
+          </div>
+        </div>
+        <div className="relative z-10 h-full overflow-y-auto px-5 pb-[calc(104px+var(--sab))]" style={{ paddingTop: "calc(70px + var(--sat))" }}>
           <div className="mx-auto max-w-[430px]">
-            <header className="flex items-start justify-between gap-3">
-              <div className="flex items-start gap-2.5">
-                <HamburgerMenu />
-                <div><h1 className="text-[29px] font-semibold leading-none tracking-[-0.05em]">Scenes</h1><p className="mt-2 text-[13px] leading-5 text-white/52">Set the mood. Let your home respond.</p></div>
-              </div>
-              <MessagesInboxButton />
+            <header>
+              <h1 className="text-[29px] font-semibold leading-none tracking-[-0.05em]">Scenes</h1>
+              <p className="mt-2 max-w-[310px] text-[13px] leading-5 text-white/52">Set the mood. Let your home respond.</p>
             </header>
             <div className="mt-5 flex gap-2">
               {(["scenes", "automations"] as Tab[]).map((key) => <button key={key} type="button" onClick={() => setTab(key)} className={`rounded-full border px-3.5 py-2 text-xs font-medium capitalize ${tab === key ? "border-sky-300/55 bg-sky-400/12 text-sky-100" : "border-white/[0.07] bg-white/[0.025] text-white/52"}`}>{key}</button>)}
