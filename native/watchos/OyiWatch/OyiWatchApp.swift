@@ -96,6 +96,9 @@ struct OyiQuickAction: Identifiable, Decodable {
     let enabled: Bool
     let confirmation_required: Bool?
     let device_id: String?
+    let scene_id: String?
+    let action_type: String?
+    let disabled_reason: String?
     let command: [String: AnyDecodable]?
 }
 
@@ -114,6 +117,36 @@ struct OyiConfirmation: Decodable, Identifiable {
 
 struct GlancePayload: Decodable { let items: [OyiGlance] }
 struct ActionPayload: Decodable { let actions: [OyiQuickAction] }
+
+struct WatchFavoriteDevice: Identifiable, Decodable {
+    let id: String
+    let name: String
+    let room: String?
+    let family: String?
+    let status: String?
+    let online: Bool?
+    let enabled: Bool
+    let disabled_reason: String?
+    let controls: [OyiQuickAction]
+}
+
+struct WatchScene: Identifiable, Decodable {
+    let id: String
+    let label: String
+    let description: String?
+    let enabled: Bool
+    let disabled_reason: String?
+    let action_count: Int?
+}
+
+struct FavoritesPayload: Decodable {
+    let favorite_devices: [WatchFavoriteDevice]
+    let favorite_scenes: [WatchScene]
+    let favorite_actions: [OyiQuickAction]
+}
+
+struct ScenesPayload: Decodable { let scenes: [WatchScene] }
+
 struct HomeStatusPayload: Decodable {
     let state: String?
     let title: String?
@@ -187,7 +220,10 @@ final class OyiWatchSession: ObservableObject {
     @Published var liveDataError: String?
     @Published var glances: [OyiGlance] = []
     @Published var actions: [OyiQuickAction] = []
+    @Published var favoriteDevices: [WatchFavoriteDevice] = []
+    @Published var favoriteScenes: [WatchScene] = []
     @Published var pendingConfirmation: OyiConfirmation?
+    @Published var pendingScene: WatchScene?
     @Published var activePage: Int = 0
     @Published var isMockMode: Bool = false
     @Published var connectionLabel: String = "Waiting for sync"
@@ -199,6 +235,9 @@ final class OyiWatchSession: ObservableObject {
     @Published var heardCommand: String = ""
     @Published var lastSuccessfulSyncAt: String = "never"
     @Published var lastAcknowledgedAt: String = "never"
+    @Published var lastSuccessfulCommand: String = "none"
+    @Published var lastNotification: String = "none"
+    @Published var backendReachable: Bool = false
     @Published var isDeveloperPreview: Bool = false
 
     private let keychain = OyiWatchKeychain()
@@ -230,6 +269,8 @@ final class OyiWatchSession: ObservableObject {
         }
         await fetchStatus()
         await fetchGlances()
+        await fetchFavorites()
+        await fetchScenes()
         await fetchActions()
     }
 
@@ -335,8 +376,8 @@ final class OyiWatchSession: ObservableObject {
         guard action.enabled else {
             await MainActor.run {
                 state = .failed
-                title = "Not allowed"
-                detail = "Permission required"
+                title = "Unavailable"
+                detail = disabledReason(action.disabled_reason)
             }
             return
         }
@@ -357,7 +398,50 @@ final class OyiWatchSession: ObservableObject {
         }
     }
 
+    func run(device: WatchFavoriteDevice, control: OyiQuickAction) async {
+        await run(action: control)
+    }
+
+    func run(scene: WatchScene) async {
+        await MainActor.run {
+            pendingScene = scene
+            pendingConfirmation = nil
+            state = .confirmationRequired
+            title = "Run scene?"
+            detail = scene.label
+            activePage = 3
+        }
+    }
+
+    private func execute(scene: WatchScene) async {
+        let action = OyiQuickAction(
+            id: scene.id,
+            label: scene.label,
+            prompt: "run \(scene.label)",
+            risk: "low",
+            enabled: scene.enabled,
+            confirmation_required: true,
+            device_id: nil,
+            scene_id: scene.id,
+            action_type: "scene",
+            disabled_reason: scene.disabled_reason,
+            command: nil
+        )
+        await run(action: action)
+    }
+
     func confirm() async {
+        if let pendingScene {
+            await MainActor.run {
+                state = .executing
+                title = "Working"
+                detail = "Executing..."
+                activePage = 0
+                self.pendingScene = nil
+            }
+            await execute(scene: pendingScene)
+            return
+        }
         guard let pendingConfirmation else {
             await MainActor.run {
                 state = .awareness
@@ -386,6 +470,16 @@ final class OyiWatchSession: ObservableObject {
     }
 
     func cancel() async {
+        if pendingScene != nil {
+            await MainActor.run {
+                self.pendingScene = nil
+                state = .awareness
+                title = "Cancelled"
+                detail = "No action taken"
+                activePage = 0
+            }
+            return
+        }
         guard let pendingConfirmation else {
             await MainActor.run {
                 state = .awareness
@@ -506,6 +600,7 @@ final class OyiWatchSession: ObservableObject {
             } else if response.state == "success" || response.state == "executed" {
                 state = .success
                 title = "Done"
+                lastSuccessfulCommand = response.reply
                 pendingConfirmation = nil
             } else if response.state == "denied" {
                 state = .failed
@@ -518,6 +613,7 @@ final class OyiWatchSession: ObservableObject {
             } else {
                 state = .executing
                 title = "Queued"
+                lastSuccessfulCommand = "Command queued"
             }
         }
         if shouldRefresh { await refreshAfterCommand() }
@@ -536,6 +632,7 @@ final class OyiWatchSession: ObservableObject {
                 state = payload.state == "attention" ? .alert : .awareness
                 connectionState = .connected
                 connectionLabel = "Connected"
+                backendReachable = true
                 isMockMode = false
                 modeLabel = "Synced"
                 liveDataError = nil
@@ -576,22 +673,57 @@ final class OyiWatchSession: ObservableObject {
         }
     }
 
+    private func fetchFavorites() async {
+        do {
+            let payload: FavoritesPayload = try await request("/watch/favorites")
+            await MainActor.run {
+                favoriteDevices = payload.favorite_devices
+                favoriteScenes = payload.favorite_scenes
+                liveDataError = nil
+            }
+        } catch {
+            await MainActor.run {
+                favoriteDevices = []
+                favoriteScenes = []
+                liveDataError = "Favorites unavailable"
+            }
+        }
+    }
+
+    private func fetchScenes() async {
+        do {
+            let payload: ScenesPayload = try await request("/watch/scenes")
+            await MainActor.run {
+                if favoriteScenes.isEmpty { favoriteScenes = payload.scenes }
+                liveDataError = nil
+            }
+        } catch {
+            await MainActor.run {
+                if favoriteScenes.isEmpty { favoriteScenes = [] }
+                liveDataError = "Scenes unavailable"
+            }
+        }
+    }
+
     private func refreshAfterCommand() async {
         try? await Task.sleep(nanoseconds: 350_000_000)
         await fetchStatus()
         await fetchGlances()
+        await fetchFavorites()
+        await fetchScenes()
         await fetchActions()
     }
 
     private func applyLiveDataFailure(_ error: Error) async {
         await MainActor.run {
             state = .failed
+            backendReachable = false
             if lastSuccessfulSyncAt != "never" {
                 connectionState = .offlineWithLastSync
                 connectionLabel = "Offline"
                 title = title.isEmpty ? "Offline" : title
                 detail = "Offline · Last synced: \(lastSuccessfulSyncAt)"
-                actions = actions.map { OyiQuickAction(id: $0.id, label: $0.label, prompt: $0.prompt, risk: $0.risk, enabled: false, confirmation_required: $0.confirmation_required, device_id: $0.device_id, command: $0.command) }
+                actions = actions.map { OyiQuickAction(id: $0.id, label: $0.label, prompt: $0.prompt, risk: $0.risk, enabled: false, confirmation_required: $0.confirmation_required, device_id: $0.device_id, scene_id: $0.scene_id, action_type: $0.action_type, disabled_reason: "offline", command: $0.command) }
             } else {
                 connectionState = .syncFailed
                 connectionLabel = "Retry"
@@ -599,6 +731,8 @@ final class OyiWatchSession: ObservableObject {
                 detail = "Open iPhone and retry Sync Watch."
                 glances = []
                 actions = []
+                favoriteDevices = []
+                favoriteScenes = []
             }
             liveDataError = error.localizedDescription.isEmpty ? "Backend unavailable" : error.localizedDescription
             lastBackendCallStatus = liveDataError ?? "failed"
@@ -659,6 +793,8 @@ final class OyiWatchSession: ObservableObject {
                 detail = "Demo mode is explicit"
                 glances = Self.previewGlances
                 actions = Self.previewActions
+                favoriteDevices = []
+                favoriteScenes = []
             } else {
                 connectionState = connectionStateForMissingConfig()
                 modeLabel = "Not connected"
@@ -669,6 +805,8 @@ final class OyiWatchSession: ObservableObject {
                 detail = "Open Oyi on your iPhone to sync your home."
                 glances = []
                 actions = []
+                favoriteDevices = []
+                favoriteScenes = []
             }
         }
     }
@@ -693,7 +831,10 @@ final class OyiWatchSession: ObservableObject {
             estateName = ""
             glances = []
             actions = []
+            favoriteDevices = []
+            favoriteScenes = []
             pendingConfirmation = nil
+            pendingScene = nil
             activePage = 0
             liveDataError = nil
             backendURLPresent = false
@@ -705,6 +846,9 @@ final class OyiWatchSession: ObservableObject {
             lastSuccessfulSyncAt = "never"
             lastAcknowledgedAt = "never"
             lastBackendCallStatus = "session cleared"
+            lastSuccessfulCommand = "none"
+            lastNotification = "none"
+            backendReachable = false
         }
         persistState()
         connectivity.sendAcknowledgement(payload: acknowledgementPayload())
@@ -725,6 +869,7 @@ final class OyiWatchSession: ObservableObject {
         self.detail = detail.isEmpty ? "Open Oyi Home for details." : detail
         self.state = .alert
         self.activePage = 0
+        self.lastNotification = self.title
     }
 
     func acknowledgementPayload() -> [String: Any] {
@@ -786,6 +931,17 @@ final class OyiWatchSession: ObservableObject {
         return date.formatted(date: .omitted, time: .shortened)
     }
 
+    private func disabledReason(_ value: String?) -> String {
+        switch String(value ?? "").lowercased() {
+        case "permission_required": return "Permission required"
+        case "device_offline": return "Device unavailable"
+        case "scene_disabled": return "Scene disabled"
+        case "scene_empty": return "Scene has no actions"
+        case "offline": return "Waiting for iPhone or network"
+        default: return "Not available"
+        }
+    }
+
     static let previewGlances: [OyiGlance] = [
         OyiGlance(id: "home", type: "awareness", title: "Home calm", detail: "All systems normal", state: "calm"),
         OyiGlance(id: "visitor", type: "visitor", title: "Visitor at gate", detail: "Front gate", state: "unread"),
@@ -793,10 +949,10 @@ final class OyiWatchSession: ObservableObject {
     ]
 
     static let previewActions: [OyiQuickAction] = [
-        OyiQuickAction(id: "show_status", label: "Home status", prompt: "show home status", risk: "read", enabled: true, confirmation_required: false, device_id: nil, command: nil),
-        OyiQuickAction(id: "all_lights_off", label: "Lights off", prompt: "turn off lights", risk: "low", enabled: true, confirmation_required: false, device_id: nil, command: nil),
-        OyiQuickAction(id: "movie_mode", label: "Movie mode", prompt: "activate movie mode", risk: "low", enabled: true, confirmation_required: false, device_id: nil, command: nil),
-        OyiQuickAction(id: "arm_security", label: "Arm security", prompt: "arm security", risk: "medium", enabled: true, confirmation_required: true, device_id: nil, command: nil)
+        OyiQuickAction(id: "show_status", label: "Home status", prompt: "show home status", risk: "read", enabled: true, confirmation_required: false, device_id: nil, scene_id: nil, action_type: "home", disabled_reason: nil, command: nil),
+        OyiQuickAction(id: "all_lights_off", label: "Lights off", prompt: "turn off lights", risk: "low", enabled: true, confirmation_required: false, device_id: nil, scene_id: nil, action_type: "device", disabled_reason: nil, command: nil),
+        OyiQuickAction(id: "movie_mode", label: "Movie mode", prompt: "activate movie mode", risk: "low", enabled: true, confirmation_required: false, device_id: nil, scene_id: nil, action_type: "scene", disabled_reason: nil, command: nil),
+        OyiQuickAction(id: "arm_security", label: "Arm security", prompt: "arm security", risk: "medium", enabled: true, confirmation_required: true, device_id: nil, scene_id: nil, action_type: "security", disabled_reason: nil, command: nil)
     ]
 }
 
@@ -1123,6 +1279,10 @@ struct DiagnosticsView: View {
                     DiagnosticRow("WCSession", session.watchConnectivityStatus)
                     DiagnosticRow("Mode", session.modeLabel)
                     DiagnosticRow("Last sync", session.lastSyncAt)
+                    DiagnosticRow("Reachable", session.backendReachable ? "Yes" : "No")
+                    DiagnosticRow("Token", session.tokenPresent ? "Present" : "Missing")
+                    DiagnosticRow("Last command", session.lastSuccessfulCommand)
+                    DiagnosticRow("Last notification", session.lastNotification)
                     DiagnosticRow("Backend", session.lastBackendCallStatus)
                     DiagnosticRow("Last fetch", session.lastSuccessfulSyncAt)
                     DiagnosticRow("Last ack", session.lastAcknowledgedAt)
@@ -1159,9 +1319,6 @@ struct DiagnosticRow: View {
 
 struct QuickActionsView: View {
     @EnvironmentObject var session: OyiWatchSession
-    @Environment(\.oyiWatchScale) private var scale
-
-    private let columns = [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)]
 
     var body: some View {
         WatchSurface(alignment: .top) {
@@ -1179,50 +1336,187 @@ struct QuickActionsView: View {
                     WatchPillButton(title: "Retry", tint: .blue) { session.retryConnection() }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if session.actions.isEmpty {
+            } else if session.favoriteDevices.isEmpty && session.favoriteScenes.isEmpty && session.actions.isEmpty {
                 VStack(spacing: 8) {
                     OyiOrb(state: .awareness)
-                    Text("No actions yet")
+                    Text("No quick actions yet")
                         .font(.system(size: 14, weight: .semibold, design: .rounded))
                         .foregroundStyle(.white)
-                    Text(session.liveDataError ?? "No watch-ready actions returned for this home.")
+                    Text(session.liveDataError ?? "Favorite switches and scenes will appear here.")
                         .font(.system(size: 10, weight: .regular, design: .rounded))
                         .foregroundStyle(.white.opacity(0.56))
                         .multilineTextAlignment(.center)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-            LazyVGrid(columns: columns, spacing: 8) {
-                ForEach(session.actions.prefix(4)) { action in
-                    Button {
-                        Task { await session.run(action: action) }
-                    } label: {
-                        VStack(spacing: 5) {
-                            ActionIcon(action: action)
-                            Text(shortLabel(action.label))
-                                .font(.system(size: 10, weight: .medium, design: .rounded))
-                                .foregroundStyle(.white)
-                                .lineLimit(2)
-                                .multilineTextAlignment(.center)
-                            Text(action.confirmation_required == true ? "Confirm" : "Activate")
-                                .font(.system(size: 8, weight: .regular, design: .rounded))
-                                .foregroundStyle(.white.opacity(0.45))
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 8) {
+                        if !session.favoriteDevices.isEmpty {
+                            ActionSectionTitle("Favorites")
+                            ForEach(session.favoriteDevices.prefix(3)) { device in
+                                WatchDeviceControlCard(device: device)
+                            }
                         }
-                        .frame(maxWidth: .infinity, minHeight: 54 * scale)
-                        .padding(max(4, 5 * scale))
-                        .background(.white.opacity(action.enabled ? 0.07 : 0.03), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 18).stroke(.white.opacity(0.1), lineWidth: 1))
+                        if !session.favoriteScenes.isEmpty {
+                            ActionSectionTitle("Scenes")
+                            ForEach(session.favoriteScenes.prefix(3)) { scene in
+                                WatchSceneRow(scene: scene)
+                            }
+                        }
+                        let recent = session.actions.filter { $0.action_type != "scene" && !$0.id.hasPrefix("device:") }.prefix(2)
+                        if !recent.isEmpty {
+                            ActionSectionTitle("Recent")
+                            ForEach(Array(recent), id: \.id) { action in
+                                WatchActionRow(action: action)
+                            }
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .disabled(!action.enabled)
+                    .padding(.bottom, 4)
                 }
-            }
             }
         }
     }
+}
 
-    private func shortLabel(_ label: String) -> String {
-        label.replacingOccurrences(of: "All lights off", with: "Lights Off")
+struct ActionSectionTitle: View {
+    let title: String
+    init(_ title: String) { self.title = title }
+
+    var body: some View {
+        Text(title)
+            .font(.system(size: 8.5, weight: .semibold, design: .rounded))
+            .foregroundStyle(.white.opacity(0.46))
+            .textCase(.uppercase)
+            .tracking(0.6)
+            .padding(.horizontal, 4)
+    }
+}
+
+struct WatchDeviceControlCard: View {
+    @EnvironmentObject var session: OyiWatchSession
+    let device: WatchFavoriteDevice
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                GlanceIcon(type: device.family ?? "device", state: device.status)
+                    .frame(width: 28, height: 28)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(device.name)
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    Text(statusLine)
+                        .font(.system(size: 8.5, weight: .medium, design: .rounded))
+                        .foregroundStyle((device.online ?? false) ? .green.opacity(0.82) : .white.opacity(0.45))
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+            }
+            HStack(spacing: 6) {
+                ForEach(device.controls.prefix(2)) { control in
+                    Button {
+                        Task { await session.run(device: device, control: control) }
+                    } label: {
+                        Text(controlLabel(control))
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 7)
+                            .background(controlTint(control).opacity(0.28), in: Capsule())
+                            .overlay(Capsule().stroke(controlTint(control).opacity(0.5), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!control.enabled)
+                    .opacity(control.enabled ? 1 : 0.45)
+                }
+            }
+        }
+        .padding(8)
+        .background(.white.opacity(device.enabled ? 0.06 : 0.035), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.09), lineWidth: 1))
+    }
+
+    private var statusLine: String {
+        let room = device.room?.isEmpty == false ? " · \(device.room!)" : ""
+        let state = (device.online ?? false) ? "Online" : (device.status ?? "Unknown").capitalized
+        return "\(state)\(room)"
+    }
+
+    private func controlLabel(_ control: OyiQuickAction) -> String {
+        let key = control.id.lowercased() + " " + control.label.lowercased()
+        return key.contains(":off") || key.contains(" off") ? "OFF" : "ON"
+    }
+
+    private func controlTint(_ control: OyiQuickAction) -> Color {
+        controlLabel(control) == "OFF" ? .red : .green
+    }
+}
+
+struct WatchSceneRow: View {
+    @EnvironmentObject var session: OyiWatchSession
+    let scene: WatchScene
+
+    var body: some View {
+        Button {
+            Task { await session.run(scene: scene) }
+        } label: {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(.blue.opacity(0.18))
+                    .frame(width: 30, height: 30)
+                    .overlay(Image(systemName: "sparkles").font(.system(size: 13, weight: .semibold)).foregroundStyle(.blue))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(scene.label)
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    Text(scene.description ?? "Tap to run")
+                        .font(.system(size: 8.5, weight: .regular, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.5))
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "play.fill")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(scene.enabled ? .green : .white.opacity(0.32))
+            }
+            .padding(8)
+            .background(.white.opacity(scene.enabled ? 0.06 : 0.035), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.09), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .disabled(!scene.enabled)
+        .opacity(scene.enabled ? 1 : 0.5)
+    }
+}
+
+struct WatchActionRow: View {
+    @EnvironmentObject var session: OyiWatchSession
+    let action: OyiQuickAction
+
+    var body: some View {
+        Button {
+            Task { await session.run(action: action) }
+        } label: {
+            HStack(spacing: 8) {
+                ActionIcon(action: action)
+                Text(action.label)
+                    .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.38))
+            }
+            .padding(8)
+            .background(.white.opacity(action.enabled ? 0.055 : 0.03), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.08), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .disabled(!action.enabled)
+        .opacity(action.enabled ? 1 : 0.45)
     }
 }
 
@@ -1233,13 +1527,13 @@ struct ConfirmationView: View {
         WatchSurface {
             WatchChrome(label: "Confirm", isMock: session.connectionState != .connected)
             Spacer(minLength: 2)
-            OyiOrb(state: session.pendingConfirmation == nil ? session.state : .confirmationRequired)
-            Text(session.pendingConfirmation == nil ? "No confirmation" : confirmationTitle)
+            OyiOrb(state: hasPendingAction ? .confirmationRequired : session.state)
+            Text(hasPendingAction ? confirmationTitle : "No confirmation")
                 .font(.system(size: 15, weight: .semibold, design: .rounded))
-                .foregroundStyle(session.pendingConfirmation == nil ? .white : .orange)
+                .foregroundStyle(hasPendingAction ? .orange : .white)
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
-            Text(session.pendingConfirmation == nil ? "Nothing is pending" : session.detail)
+            Text(hasPendingAction ? session.detail : "Nothing is pending")
                 .font(.system(size: 10, weight: .regular, design: .rounded))
                 .foregroundStyle(.white.opacity(0.62))
                 .multilineTextAlignment(.center)
@@ -1248,12 +1542,17 @@ struct ConfirmationView: View {
                 WatchPillButton(title: "Cancel", tint: .gray) { Task { await session.cancel() } }
                 WatchPillButton(title: "Confirm", tint: .blue) { Task { await session.confirm() } }
             }
-            .disabled(session.pendingConfirmation == nil)
-            .opacity(session.pendingConfirmation == nil ? 0.45 : 1)
+            .disabled(!hasPendingAction)
+            .opacity(hasPendingAction ? 1 : 0.45)
         }
     }
 
+    private var hasPendingAction: Bool {
+        session.pendingConfirmation != nil || session.pendingScene != nil
+    }
+
     private var confirmationTitle: String {
+        if session.pendingScene != nil { return "Run scene?" }
         if session.detail.lowercased().contains("gate") { return "Open gate?" }
         if session.detail.lowercased().contains("security") { return "Arm security?" }
         return "Run action?"
