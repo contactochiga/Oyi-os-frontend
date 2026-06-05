@@ -182,9 +182,8 @@ function createCategoryForTab(tab: TabKey) {
 function isPriorityNotice(data: { post: any; tab: Exclude<TabKey, "all">; official?: { label: string; Icon: any } | null }) {
   const post = data.post;
   const text = `${post?.category || ""} ${post?.post_type || ""} ${post?.priority || ""} ${post?.title || ""} ${post?.body || post?.content || ""}`.toLowerCase();
-  if (post?.is_urgent === true || data.tab === "urgent") return true;
   if (!data.official) return false;
-  return /security|maintenance|service interruption|outage|power|water|administration|broadcast|gate|access/.test(text);
+  return post?.is_urgent === true || data.tab === "urgent" || /security|maintenance|emergency|service interruption|outage|power|water|administration|broadcast|gate|access/.test(text);
 }
 
 function initialsFor(name: string) {

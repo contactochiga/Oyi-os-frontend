@@ -110,16 +110,18 @@ export default function ScenesPage() {
   }
 
   const items = tab === "scenes" ? scenes : automations;
+  const configuredSceneNames = useMemo(() => new Set(scenes.map((scene) => scene.name.trim().toLowerCase())), [scenes]);
+  const sceneBlueprints = useMemo(() => SCENE_TEMPLATES.filter((template) => !configuredSceneNames.has(template.name.toLowerCase())), [configuredSceneNames]);
   return (
     <LayoutWrapper>
       <main className="fixed inset-0 overflow-hidden bg-[#02060b] text-white">
         <div className="oyi-ambient-bg" />
-        <div className="relative z-10 h-full overflow-y-auto px-5 pb-[calc(104px+var(--sab))] pt-[calc(14px+var(--sat))]">
+        <div className="relative z-10 h-full overflow-y-auto px-4 pb-[calc(104px+var(--sab))] pt-[calc(14px+var(--sat))]">
           <div className="mx-auto max-w-[430px]">
             <header className="flex items-start justify-between gap-3">
-              <div className="flex items-start gap-3">
+              <div className="flex items-start gap-2.5">
                 <HamburgerMenu />
-                <div><h1 className="text-[30px] font-semibold leading-none tracking-[-0.055em]">Scenes</h1><p className="mt-2 max-w-[190px] text-[13px] leading-[18px] text-white/52">Set the mood.<br />Let your home respond.</p></div>
+                <div><h1 className="text-[29px] font-semibold leading-none tracking-[-0.05em]">Scenes</h1><p className="mt-2 text-[13px] leading-5 text-white/52">Set the mood. Let your home respond.</p></div>
               </div>
               <MessagesInboxButton />
             </header>
@@ -127,16 +129,16 @@ export default function ScenesPage() {
               {(["scenes", "automations"] as Tab[]).map((key) => <button key={key} type="button" onClick={() => setTab(key)} className={`rounded-full border px-3.5 py-2 text-xs font-medium capitalize ${tab === key ? "border-sky-300/55 bg-sky-400/12 text-sky-100" : "border-white/[0.07] bg-white/[0.025] text-white/52"}`}>{key}</button>)}
             </div>
             <section className="mt-5">
-              <div className="flex items-center justify-between"><h2 className="text-[17px] font-semibold tracking-[-0.04em]">{tab === "scenes" ? "Your scenes" : "Your automations"}</h2><button type="button" onClick={() => { setSelectedTemplate(null); setCreateOpen(true); }} className="inline-flex items-center gap-1.5 rounded-full border border-sky-300/25 bg-sky-400/10 px-3 py-2 text-xs text-sky-100"><Plus className="h-3.5 w-3.5" /> Create</button></div>
+              <div className="flex items-center justify-between"><h2 className="text-[17px] font-semibold tracking-[-0.04em]">{tab === "scenes" ? "Scenes" : "Automations"}</h2><button type="button" onClick={() => { setSelectedTemplate(null); setCreateOpen(true); }} className="inline-flex items-center gap-1.5 rounded-full border border-sky-300/25 bg-sky-400/10 px-3 py-2 text-xs text-sky-100"><Plus className="h-3.5 w-3.5" /> Create</button></div>
               {error ? <p className="mt-3 rounded-[18px] border border-red-300/14 bg-red-500/[0.06] p-3 text-xs text-red-100">{error}</p> : null}
               {tab === "scenes" ? (
                 <div className="mt-3">
                   <div className="mb-2 flex items-center justify-between">
-                    <h3 className="text-[12px] font-semibold uppercase tracking-[0.18em] text-white/42">Starter scenes</h3>
-                    <span className="text-[11px] text-white/34">Customize after creating</span>
+                    <h3 className="text-[12px] font-semibold uppercase tracking-[0.18em] text-white/42">Scene blueprints</h3>
+                    <span className="text-[11px] text-white/34">Configure once</span>
                   </div>
-                  <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                    {SCENE_TEMPLATES.map((template) => {
+                  {sceneBlueprints.length ? <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                    {sceneBlueprints.map((template) => {
                       const Icon = template.icon;
                       return (
                         <button key={template.name} type="button" onClick={() => { setSelectedTemplate(template); setEditingItem(null); setCreateOpen(true); }} className="w-[156px] shrink-0 rounded-[20px] border border-white/[0.07] bg-white/[0.032] p-3 text-left transition active:scale-[0.99]">
@@ -146,15 +148,15 @@ export default function ScenesPage() {
                         </button>
                       );
                     })}
-                  </div>
+                  </div> : <div className="rounded-[20px] border border-white/[0.06] bg-white/[0.025] p-3 text-xs text-white/42">All blueprints shown here are already configured as scenes.</div>}
                 </div>
               ) : null}
               {loading ? <Empty title="Loading…" body="Syncing your living environment." /> : items.length ? (
-                <div className="mt-3 space-y-2">
-                  {items.map((item) => <div key={item.id} className="rounded-[20px] border border-white/[0.065] bg-white/[0.032] p-3 backdrop-blur-xl">
+                <div className="mt-3 space-y-3">
+                  {items.map((item) => <div key={item.id} className="rounded-[24px] border border-white/[0.075] bg-white/[0.035] p-4 shadow-[0_16px_48px_rgba(0,0,0,0.24)] backdrop-blur-xl">
                     <div className="flex items-center gap-3">
-                      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-sky-400/10 text-sky-200">{tab === "scenes" ? <Moon className="h-5 w-5" /> : <Clock3 className="h-5 w-5" />}</span>
-                      <span className="min-w-0 flex-1"><span className="block truncate text-[14px] font-semibold">{item.name}</span><span className="mt-0.5 block text-xs text-white/42">{item.actions?.length || 0} controlled action{item.actions?.length === 1 ? "" : "s"}</span></span>
+                      <span className="grid h-12 w-12 shrink-0 place-items-center rounded-[18px] border border-sky-300/14 bg-sky-400/10 text-sky-200">{tab === "scenes" ? <Moon className="h-5 w-5" /> : <Clock3 className="h-5 w-5" />}</span>
+                      <span className="min-w-0 flex-1"><span className="block truncate text-[15px] font-semibold tracking-[-0.025em]">{item.name}</span><span className="mt-1 block text-xs text-white/42">{item.actions?.length || 0} controlled action{item.actions?.length === 1 ? "" : "s"}</span></span>
                       <span className="text-[11px] text-sky-200/72">{busyId === item.id ? "Working…" : tab === "scenes" ? "Ready" : item.enabled ? "Enabled" : "Paused"}</span>
                     </div>
                     <div className="mt-3 flex gap-2">

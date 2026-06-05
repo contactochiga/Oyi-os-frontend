@@ -38,6 +38,7 @@ import MessagesInboxButton from "@/app/components/MessagesInboxButton";
 import BottomNav from "@/app/components/BottomNav";
 import useAuth from "@/hooks/useAuth";
 import { deviceService } from "@/services/deviceService";
+import { sceneService } from "@/services/sceneService";
 import GangRingSwitch from "@/app/components/devices/GangRingSwitch";
 import { getDeviceFamily, getDeviceIcon, getDeviceIconTone, isSimplePowerDevice } from "@/lib/devicePresentation";
 
@@ -45,6 +46,7 @@ type AnyDevice = Record<string, any>;
 type DiscoveryDevice = Record<string, any>;
 type AddDeviceTab = "nearby" | "provider" | "manual";
 type CategoryKey = "all" | "lights" | "climate" | "security" | "entertainment" | "sensors";
+type DeviceTool = "timer" | "schedule" | "settings";
 
 const CATEGORIES: Array<{ key: CategoryKey; label: string }> = [
   { key: "all", label: "All" },
@@ -301,6 +303,41 @@ function canSwitchDevice(device: AnyDevice) {
   return caps.canSwitch || isSimplePowerDevice(device);
 }
 
+function collectDeviceCodes(value: any, out = new Set<string>(), depth = 0): Set<string> {
+  if (!value || depth > 4) return out;
+  if (typeof value === "string") {
+    out.add(value.toLowerCase());
+    return out;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectDeviceCodes(item, out, depth + 1));
+    return out;
+  }
+  if (typeof value === "object") {
+    ["code", "name", "label", "id"].forEach((key) => {
+      if (typeof value[key] === "string") out.add(String(value[key]).toLowerCase());
+    });
+    Object.entries(value).forEach(([key, nested]) => {
+      if (/^[a-z0-9_:-]{2,}$/i.test(key)) out.add(key.toLowerCase());
+      collectDeviceCodes(nested, out, depth + 1);
+    });
+  }
+  return out;
+}
+
+function commandCodeFor(device: AnyDevice, patterns: RegExp[]) {
+  const candidates = Array.from(collectDeviceCodes([
+    device?.capabilities,
+    device?.metadata?.raw?.functions,
+    device?.metadata?.raw?.status,
+    device?.metadata?.tuya?.functions,
+    device?.metadata?.tuya?.status,
+    device?.metadata?.functions,
+    device?.metadata?.status,
+  ]));
+  return candidates.find((code) => patterns.some((pattern) => pattern.test(code))) || null;
+}
+
 export default function DeviceClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -331,6 +368,7 @@ export default function DeviceClient() {
   const [assignDevice, setAssignDevice] = useState<AnyDevice | null>(null);
   const [assignRoom, setAssignRoom] = useState("");
   const [editingFavorites, setEditingFavorites] = useState(false);
+  const [tool, setTool] = useState<{ kind: DeviceTool; device: AnyDevice } | null>(null);
 
   async function hydrateStates(list: AnyDevice[]) {
     const jobs = list
@@ -509,6 +547,45 @@ export default function DeviceClient() {
       setStateMap((p) => ({ ...p, [sid]: { ...(p[sid] || {}), ...command, switch: next, power: next, on: next } }));
     } catch (e: any) {
       setErr(e?.response?.data?.error || e?.message || "Command failed");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function sendDeviceCommand(device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) {
+    const dbId = pickDbId(device);
+    if (!dbId) return setErr("This device is not assigned yet.");
+    if (isOnline(device) === false) return setErr(`${pickName(device)} is offline.`);
+    const sid = String(dbId);
+    setBusyId(sid);
+    setErr(null);
+    try {
+      await deviceService.commandDevice(sid, command);
+      if (optimisticPatch) setStateMap((p) => ({ ...p, [sid]: { ...(p[sid] || {}), ...optimisticPatch } }));
+      setTool(null);
+    } catch (e: any) {
+      setErr(e?.response?.data?.error || e?.message || "Command failed");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function saveDeviceSchedule(device: AnyDevice, input: { time: string; days: string[]; repeat: boolean; power: "on" | "off" }) {
+    const dbId = pickDbId(device);
+    if (!dbId) return setErr("This device is not assigned yet.");
+    setBusyId(String(dbId));
+    setErr(null);
+    try {
+      await sceneService.createAutomation({
+        name: `${pickName(device)} ${input.power === "on" ? "on" : "off"} schedule`,
+        trigger: { type: "time", time: input.time, days: input.days, repeat: input.repeat },
+        condition: {},
+        actions: [{ device_id: String(dbId), command: { switch: input.power === "on" } }],
+        enabled: true,
+      });
+      setTool(null);
+    } catch (e: any) {
+      setErr(e?.response?.data?.error || e?.message || "Schedule could not be saved.");
     } finally {
       setBusyId(null);
     }
@@ -750,7 +827,23 @@ export default function DeviceClient() {
 
         {addDeviceOpen ? <AddDeviceSheet tab={addDeviceTab} setTab={setAddDeviceTab} discovering={discovering} binding={binding} discovered={discovered} providerDevices={providerDevices} selectedDiscover={selectedDiscover} selectedCount={selectedDiscoveryIds.length} bindRoom={bindRoom} setBindRoom={setBindRoom} setSelectedDiscover={setSelectedDiscover} onClose={() => setAddDeviceOpen(false)} onScan={refreshDiscovery} onBind={bindSelectedDevices} /> : null}
         {assignDevice ? <UnassignedDeviceSheet device={assignDevice} room={assignRoom} setRoom={setAssignRoom} binding={binding} onClose={() => setAssignDevice(null)} onAssign={assignListedDevice} /> : null}
-        {sheetOpen && sheetDevice ? <ControlSheet device={sheetDevice} state={stateMap[String(pickDbId(sheetDevice))] || {}} busy={busyId === String(pickDbId(sheetDevice))} onClose={() => setSheetOpen(false)} onDetails={viewFriendlyDetails} onToggleGang={toggleGang} onPower={toggleMasterPower} onCreateScene={(device) => router.push(`/scenes?create=scene&deviceId=${encodeURIComponent(String(pickDbId(device) || ""))}`)} /> : null}
+        {sheetOpen && sheetDevice ? <ControlSheet device={sheetDevice} state={stateMap[String(pickDbId(sheetDevice))] || {}} busy={busyId === String(pickDbId(sheetDevice))} onClose={() => setSheetOpen(false)} onToggleGang={toggleGang} onPower={toggleMasterPower} onCommand={sendDeviceCommand} onTool={(kind, device) => setTool({ kind, device })} onCreateScene={(device) => router.push(`/scenes?create=scene&deviceId=${encodeURIComponent(String(pickDbId(device) || ""))}`)} /> : null}
+        {tool ? <DeviceToolSheet kind={tool.kind} device={tool.device} busy={busyId === String(pickDbId(tool.device))} onClose={() => setTool(null)} onTimer={(command, patch) => sendDeviceCommand(tool.device, command, patch)} onSchedule={(input) => saveDeviceSchedule(tool.device, input)} onSettings={async ({ favorite, room }) => {
+          const id = String(pickDbId(tool.device) || "");
+          if (!id) return;
+          setBusyId(id);
+          setErr(null);
+          try {
+            if (typeof favorite === "boolean") await deviceService.setFavorite(id, favorite);
+            if (room.trim()) await deviceService.assignDevices({ deviceIds: [id], room: room.trim() });
+            await load();
+            setTool(null);
+          } catch (e: any) {
+            setErr(e?.response?.data?.error || e?.message || "Settings could not be saved.");
+          } finally {
+            setBusyId(null);
+          }
+        }} /> : null}
         {stateOpen ? <DetailsModal title={stateTitle} meta={stateMeta} loading={stateLoading} onClose={() => setStateOpen(false)} /> : null}
         <BottomNav />
       </main>
@@ -888,7 +981,7 @@ function AddDeviceSheet({ tab, setTab, discovering, binding, discovered, provide
   );
 }
 
-function ControlSheet({ device, state, busy, onClose, onDetails, onToggleGang, onPower, onCreateScene }: { device: AnyDevice; state: any; busy: boolean; onClose: () => void; onDetails: (device: AnyDevice) => void; onToggleGang: (device: AnyDevice, gangIndex: number, next: boolean) => void; onPower: (device: AnyDevice) => void; onCreateScene: (device: AnyDevice) => void }) {
+function ControlSheet({ device, state, busy, onClose, onToggleGang, onPower, onCommand, onTool, onCreateScene }: { device: AnyDevice; state: any; busy: boolean; onClose: () => void; onToggleGang: (device: AnyDevice, gangIndex: number, next: boolean) => void; onPower: (device: AnyDevice) => void; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => void; onTool: (kind: DeviceTool, device: AnyDevice) => void; onCreateScene: (device: AnyDevice) => void }) {
   const gangCount = guessGangCount(device, state);
   const values = Object.keys(state || {}).length ? readGangValues(gangCount, state) : Array.from({ length: gangCount }, () => null);
   const caps = uiCapabilities(device);
@@ -912,11 +1005,11 @@ function ControlSheet({ device, state, busy, onClose, onDetails, onToggleGang, o
           </div>
           <div className="max-h-[68vh] overflow-y-auto px-4 pb-4">
             {template === "tv" ? (
-              <TvControlTemplate device={device} state={state} caps={caps} busy={busy} onPower={onPower} onDetails={onDetails} />
+              <TvControlTemplate device={device} busy={busy} onPower={onPower} onCommand={onCommand} />
             ) : template === "ac" ? (
-              <AcControlTemplate device={device} state={state} caps={caps} busy={busy} onPower={onPower} onDetails={onDetails} />
+              <AcControlTemplate device={device} state={state} busy={busy} onPower={onPower} onCommand={onCommand} onTool={onTool} />
             ) : (
-              <SwitchControlTemplate device={device} state={state} caps={caps} gangCount={gangCount} values={values} busy={busy} onToggleGang={onToggleGang} onDetails={onDetails} />
+              <SwitchControlTemplate device={device} state={state} caps={caps} gangCount={gangCount} values={values} busy={busy} onToggleGang={onToggleGang} onTool={onTool} />
             )}
           </div>
         </section>
@@ -925,40 +1018,53 @@ function ControlSheet({ device, state, busy, onClose, onDetails, onToggleGang, o
   );
 }
 
-function SwitchControlTemplate({ device, state, caps, gangCount, values, busy, onToggleGang, onDetails }: { device: AnyDevice; state: any; caps: ReturnType<typeof uiCapabilities>; gangCount: number; values: Array<boolean | null>; busy: boolean; onToggleGang: (device: AnyDevice, gangIndex: number, next: boolean) => void; onDetails: (device: AnyDevice) => void }) {
+function SwitchControlTemplate({ device, state, caps, gangCount, values, busy, onToggleGang, onTool }: { device: AnyDevice; state: any; caps: ReturnType<typeof uiCapabilities>; gangCount: number; values: Array<boolean | null>; busy: boolean; onToggleGang: (device: AnyDevice, gangIndex: number, next: boolean) => void; onTool: (kind: DeviceTool, device: AnyDevice) => void }) {
   const safeGangCount = Math.min(3, Math.max(1, gangCount)) as 1 | 2 | 3;
+  const timerCode = commandCodeFor(device, [/countdown/, /timer/]);
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between rounded-[24px] border border-white/[0.07] bg-white/[0.035] p-4">
-        <div>
-          <div className="text-sm font-semibold text-white">{gangCount > 1 ? `${gangCount} gang switch` : "Switch control"}</div>
-          <div className="mt-1 text-xs text-white/42">{isOnline(device) === false ? "Offline" : caps.canSwitch ? "Ready" : "Power command unavailable"}</div>
+      <div className="rounded-[24px] border border-white/[0.07] bg-white/[0.035] p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold text-white">{safeGangCount > 1 ? `${safeGangCount} gang switch` : "Switch control"}</div>
+            <div className="mt-1 text-xs text-white/42">{isOnline(device) === false ? "Offline" : caps.canSwitch ? "Ready" : "Power command unavailable"}</div>
+          </div>
+          {caps.canSwitch ? <GangRingSwitch gangCount={safeGangCount} online={isOnline(device)} values={values} busy={busy} onToggleGang={(gangIndex, next) => onToggleGang(device, gangIndex, next)} size={62} /> : null}
         </div>
-        {caps.canSwitch ? <GangRingSwitch gangCount={safeGangCount} online={isOnline(device)} values={values} busy={busy} onToggleGang={(gangIndex, next) => onToggleGang(device, gangIndex, next)} size={68} /> : <span className="rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-2 text-xs text-white/44">Unavailable</span>}
+        {caps.canSwitch ? (
+          <div className={cn("mt-4 grid gap-2", safeGangCount === 1 ? "grid-cols-1" : safeGangCount === 2 ? "grid-cols-2" : "grid-cols-3")}>
+            {Array.from({ length: safeGangCount }).map((_, index) => {
+              const value = values[index];
+              return (
+                <button key={index} type="button" disabled={busy || isOnline(device) === false} onClick={() => onToggleGang(device, index, !(value === true))} className={cn("rounded-[18px] border px-3 py-3 text-left transition active:scale-[0.99]", value === true ? "border-sky-300/35 bg-sky-400/12 text-sky-100" : "border-white/[0.07] bg-black/20 text-white/64", (busy || isOnline(device) === false) && "opacity-50")}>
+                  <span className="block text-[11px] uppercase tracking-[0.14em] text-white/38">{safeGangCount === 1 ? "Switch" : `Switch ${index + 1}`}</span>
+                  <span className="mt-1 block text-sm font-semibold">{value === true ? "On" : "Off"}</span>
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
       </div>
       <div className="grid grid-cols-3 gap-2">
-        <CapabilityButton icon={Clock} label="Timer" enabled={caps.timer || caps.cycle || caps.inching} detail={caps.timer ? "Countdown / one-time" : caps.cycle || caps.inching ? "Provider timer mode" : "Unavailable"} onClick={() => onDetails(device)} />
-        <CapabilityButton icon={CalendarClock} label="Schedule" enabled={caps.schedule} detail={caps.schedule ? "One-time / repeat" : "Unavailable"} onClick={() => onDetails(device)} />
-        <CapabilityButton icon={SlidersHorizontal} label="Settings" enabled detail="Info and capability" onClick={() => onDetails(device)} />
-      </div>
-      <div className="rounded-[20px] border border-white/[0.06] bg-white/[0.025] p-3 text-xs leading-5 text-white/44">
-        {friendlyCapabilities(device).length ? friendlyCapabilities(device).slice(0, 4).join(" • ") : displayState(device, state)}
+        {timerCode ? <ToolCard icon={Clock} label="Timer" onClick={() => onTool("timer", device)} /> : null}
+        <ToolCard icon={CalendarClock} label="Schedule" onClick={() => onTool("schedule", device)} />
+        <ToolCard icon={SlidersHorizontal} label="Settings" onClick={() => onTool("settings", device)} />
       </div>
     </div>
   );
 }
 
-function AcControlTemplate({ device, state, caps, busy, onPower, onDetails }: { device: AnyDevice; state: any; caps: ReturnType<typeof uiCapabilities>; busy: boolean; onPower: (device: AnyDevice) => void; onDetails: (device: AnyDevice) => void }) {
+function AcControlTemplate({ device, state, busy, onPower, onCommand, onTool }: { device: AnyDevice; state: any; busy: boolean; onPower: (device: AnyDevice) => void; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => void; onTool: (kind: DeviceTool, device: AnyDevice) => void }) {
   const temp = readTemperature(state);
-  const canPower = caps.canSwitch || caps.ac.includes("power");
-  const modes = [
-    ["cool", "Cool", Snowflake],
-    ["heat", "Heat", Flame],
-    ["dry", "Dry", Moon],
-    ["fan", "Fan", Fan],
-    ["auto", "Auto", Thermometer],
-  ] as const;
-  const fanSpeeds = ["Low", "Medium", "High", "Auto"];
+  const canPower = canSwitchDevice(device) || Boolean(commandCodeFor(device, [/power/, /^switch$/]));
+  const tempCode = commandCodeFor(device, [/temp_set/, /temperature/, /^temp$/]);
+  const modeCode = commandCodeFor(device, [/^mode$/, /work_mode/]);
+  const fanCode = commandCodeFor(device, [/fan/, /wind_speed/, /windspeed/]);
+  const swingCode = commandCodeFor(device, [/swing/, /shake/, /oscillat/]);
+  const timerCode = commandCodeFor(device, [/countdown/, /timer/]);
+  const modes = [["cool", "Cool", Snowflake], ["heat", "Heat", Flame], ["dry", "Dry", Moon], ["fan", "Fan", Fan], ["auto", "Auto", Thermometer]] as const;
+  const fanSpeeds = ["low", "medium", "high", "auto"] as const;
+  const currentTemp = Number(String(temp || "").replace(/[^\d]/g, "")) || 24;
   return (
     <div className="space-y-3">
       <div className="rounded-[28px] border border-sky-300/12 bg-[radial-gradient(circle_at_top,#0f3550_0%,rgba(6,12,22,0.74)_48%,rgba(255,255,255,0.035)_100%)] p-4">
@@ -972,83 +1078,65 @@ function AcControlTemplate({ device, state, caps, busy, onPower, onDetails }: { 
             <Power className="h-5 w-5" />
           </button>
         </div>
-        <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-          <RemoteKey icon={Minus} label="Temp -" enabled={false} />
-          <div className="rounded-full border border-white/[0.06] bg-black/20 px-3 py-2 text-center text-[11px] text-white/46">Temperature commands unavailable</div>
-          <RemoteKey icon={Plus} label="Temp +" enabled={false} />
-        </div>
+        {tempCode ? <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+          <RemoteKey icon={Minus} label="Temp -" enabled onClick={() => onCommand(device, { [tempCode]: Math.max(16, currentTemp - 1) }, { [tempCode]: Math.max(16, currentTemp - 1), temperature: Math.max(16, currentTemp - 1) })} />
+          <div className="rounded-full border border-white/[0.06] bg-black/20 px-3 py-2 text-center text-[11px] text-white/46">16°C – 30°C</div>
+          <RemoteKey icon={Plus} label="Temp +" enabled onClick={() => onCommand(device, { [tempCode]: Math.min(30, currentTemp + 1) }, { [tempCode]: Math.min(30, currentTemp + 1), temperature: Math.min(30, currentTemp + 1) })} />
+        </div> : null}
       </div>
-      <ControlGroup title="Mode">
-        {modes.map(([key, label, Icon]) => <RemoteKey key={key} icon={Icon} label={label} enabled={caps.ac.includes(key)} />)}
-      </ControlGroup>
-      <ControlGroup title="Fan">
-        {fanSpeeds.map((speed) => <RemoteKey key={speed} icon={Wind} label={speed} enabled={caps.ac.includes("fan")} />)}
-      </ControlGroup>
-      <ControlGroup title="Swing">
-        <RemoteKey icon={ChevronUp} label="Vertical" enabled={caps.ac.includes("swing") || caps.ac.includes("swing_vertical")} />
-        <RemoteKey icon={ChevronRight} label="Horizontal" enabled={caps.ac.includes("swing") || caps.ac.includes("swing_horizontal")} />
-      </ControlGroup>
+      {modeCode ? <ControlGroup title="Mode">{modes.map(([key, label, Icon]) => <RemoteKey key={key} icon={Icon} label={label} enabled onClick={() => onCommand(device, { [modeCode]: key }, { [modeCode]: key })} />)}</ControlGroup> : null}
+      {fanCode ? <ControlGroup title="Fan">{fanSpeeds.map((speed) => <RemoteKey key={speed} icon={Wind} label={speed[0].toUpperCase() + speed.slice(1)} enabled onClick={() => onCommand(device, { [fanCode]: speed }, { [fanCode]: speed })} />)}</ControlGroup> : null}
+      {swingCode ? <ControlGroup title="Swing"><RemoteKey icon={ChevronUp} label="Swing" enabled onClick={() => onCommand(device, { [swingCode]: true }, { [swingCode]: true })} /></ControlGroup> : null}
       <div className="grid grid-cols-3 gap-2">
-        <CapabilityButton icon={Clock} label="Timer" enabled={caps.timer || caps.ac.includes("timer")} detail={caps.timer || caps.ac.includes("timer") ? "Provider timer" : "Unavailable"} onClick={() => onDetails(device)} />
-        <CapabilityButton icon={CalendarClock} label="Schedule" enabled={caps.schedule} detail={caps.schedule ? "Device schedule" : "Unavailable"} onClick={() => onDetails(device)} />
-        <CapabilityButton icon={SlidersHorizontal} label="Settings" enabled detail="Info and capability" onClick={() => onDetails(device)} />
+        {timerCode ? <ToolCard icon={Clock} label="Timer" onClick={() => onTool("timer", device)} /> : null}
+        <ToolCard icon={CalendarClock} label="Schedule" onClick={() => onTool("schedule", device)} />
+        <ToolCard icon={SlidersHorizontal} label="Settings" onClick={() => onTool("settings", device)} />
       </div>
     </div>
   );
 }
 
-function TvControlTemplate({ device, state, caps, busy, onPower, onDetails }: { device: AnyDevice; state: any; caps: ReturnType<typeof uiCapabilities>; busy: boolean; onPower: (device: AnyDevice) => void; onDetails: (device: AnyDevice) => void }) {
-  const tv = caps.tv;
-  const canPower = caps.canSwitch || tv.includes("power");
-  const providerButtons = ["netflix", "youtube", "prime"].filter((key) => tv.includes(key));
+function TvControlTemplate({ device, busy, onPower, onCommand }: { device: AnyDevice; busy: boolean; onPower: (device: AnyDevice) => void; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => void }) {
+  const canPower = canSwitchDevice(device) || Boolean(commandCodeFor(device, [/power/, /^switch$/]));
+  const keyCode = commandCodeFor(device, [/ir_code/, /remote_key/, /key_code/, /control/]);
+  const sendKey = (key: string) => keyCode ? onCommand(device, { [keyCode]: key }) : undefined;
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       <div className="grid grid-cols-3 gap-2">
         <RemoteKey icon={Power} label="Power" enabled={canPower && isOnline(device) !== false} busy={busy} onClick={() => onPower(device)} />
-        <RemoteKey icon={VolumeX} label="Mute" enabled={tv.includes("mute")} />
-        <RemoteKey icon={ChevronRight} label="Input" enabled={tv.includes("input")} />
+        {keyCode ? <RemoteKey icon={VolumeX} label="Mute" enabled onClick={() => sendKey("mute")} /> : null}
+        {keyCode ? <RemoteKey icon={ChevronRight} label="Source" enabled onClick={() => sendKey("source")} /> : null}
       </div>
-      <div className="rounded-[28px] border border-white/[0.07] bg-white/[0.035] p-4">
+      {keyCode ? <div className="rounded-[28px] border border-white/[0.07] bg-white/[0.035] p-4">
         <div className="mb-3 text-center text-xs uppercase tracking-[0.22em] text-white/34">Navigation</div>
         <div className="mx-auto grid max-w-[230px] grid-cols-3 gap-2">
           <span />
-          <RemoteKey icon={ChevronUp} label="Up" enabled={tv.includes("dpad") || tv.includes("up")} />
+          <RemoteKey icon={ChevronUp} label="Up" enabled onClick={() => sendKey("up")} />
           <span />
-          <RemoteKey icon={ChevronLeft} label="Left" enabled={tv.includes("dpad") || tv.includes("left")} />
-          <RemoteKey icon={ChevronRight} label="OK" enabled={tv.includes("ok") || tv.includes("select")} />
-          <RemoteKey icon={ChevronRight} label="Right" enabled={tv.includes("dpad") || tv.includes("right")} />
+          <RemoteKey icon={ChevronLeft} label="Left" enabled onClick={() => sendKey("left")} />
+          <RemoteKey icon={ChevronRight} label="OK" enabled onClick={() => sendKey("ok")} />
+          <RemoteKey icon={ChevronRight} label="Right" enabled onClick={() => sendKey("right")} />
           <span />
-          <RemoteKey icon={ChevronDown} label="Down" enabled={tv.includes("dpad") || tv.includes("down")} />
+          <RemoteKey icon={ChevronDown} label="Down" enabled onClick={() => sendKey("down")} />
           <span />
         </div>
-      </div>
-      <ControlGroup title="System">
-        <RemoteKey icon={Home} label="Home" enabled={tv.includes("home")} />
-        <RemoteKey icon={ChevronLeft} label="Back" enabled={tv.includes("back")} />
-        <RemoteKey icon={SlidersHorizontal} label="Menu" enabled={tv.includes("menu")} />
-        <RemoteKey icon={SlidersHorizontal} label="Settings" enabled={tv.includes("settings")} />
-      </ControlGroup>
-      <ControlGroup title="Media">
-        <RemoteKey icon={Play} label="Play" enabled={tv.includes("play")} />
-        <RemoteKey icon={Pause} label="Pause" enabled={tv.includes("pause")} />
-        <RemoteKey icon={Rewind} label="Rewind" enabled={tv.includes("rewind")} />
-        <RemoteKey icon={FastForward} label="Forward" enabled={tv.includes("fast_forward") || tv.includes("forward")} />
-      </ControlGroup>
-      <div className="grid grid-cols-2 gap-2">
+      </div> : null}
+      {keyCode ? <ControlGroup title="System">
+        <RemoteKey icon={Home} label="Home" enabled onClick={() => sendKey("home")} />
+        <RemoteKey icon={ChevronLeft} label="Back" enabled onClick={() => sendKey("back")} />
+        <RemoteKey icon={SlidersHorizontal} label="Menu" enabled onClick={() => sendKey("menu")} />
+        <RemoteKey icon={Play} label="Play/Pause" enabled onClick={() => sendKey("play_pause")} />
+      </ControlGroup> : null}
+      {keyCode ? <div className="grid grid-cols-2 gap-2">
         <ControlGroup title="Volume">
-          <RemoteKey icon={Plus} label="Vol +" enabled={tv.includes("volume")} />
-          <RemoteKey icon={Minus} label="Vol -" enabled={tv.includes("volume")} />
+          <RemoteKey icon={Plus} label="Vol +" enabled onClick={() => sendKey("volume_up")} />
+          <RemoteKey icon={Minus} label="Vol -" enabled onClick={() => sendKey("volume_down")} />
         </ControlGroup>
         <ControlGroup title="Channel">
-          <RemoteKey icon={Plus} label="Ch +" enabled={tv.includes("channel")} />
-          <RemoteKey icon={Minus} label="Ch -" enabled={tv.includes("channel")} />
+          <RemoteKey icon={Plus} label="Ch +" enabled onClick={() => sendKey("channel_up")} />
+          <RemoteKey icon={Minus} label="Ch -" enabled onClick={() => sendKey("channel_down")} />
         </ControlGroup>
-      </div>
-      {providerButtons.length ? <ControlGroup title="Provider">
-        {providerButtons.map((key) => <RemoteKey key={key} icon={Play} label={key === "prime" ? "Prime" : key[0].toUpperCase() + key.slice(1)} enabled />)}
-      </ControlGroup> : null}
-      <CapabilityButton icon={SlidersHorizontal} label="Settings" enabled detail="Info and capability" onClick={() => onDetails(device)} />
-      <div className="rounded-[20px] border border-white/[0.06] bg-white/[0.025] p-3 text-xs leading-5 text-white/42">Remote commands stay unavailable until the provider exposes a safe command mapping for this device.</div>
+      </div> : null}
     </div>
   );
 }
@@ -1062,12 +1150,11 @@ function ControlGroup({ title, children }: { title: string; children: ReactNode 
   );
 }
 
-function CapabilityButton({ icon: Icon, label, detail, enabled, onClick }: { icon: any; label: string; detail: string; enabled: boolean; onClick?: () => void }) {
+function ToolCard({ icon: Icon, label, onClick }: { icon: any; label: string; onClick: () => void }) {
   return (
-    <button type="button" disabled={!enabled} onClick={onClick} className={cn("rounded-[18px] border px-2.5 py-2.5 text-left transition", enabled ? "border-sky-300/14 bg-sky-400/10 text-sky-100 active:scale-[0.98]" : "border-white/[0.06] bg-white/[0.025] text-white/34")}>
+    <button type="button" onClick={onClick} className="rounded-[18px] border border-sky-300/14 bg-sky-400/10 px-2.5 py-2.5 text-left text-sky-100 transition active:scale-[0.98]">
       <Icon className="h-4 w-4" />
       <span className="mt-1 block text-xs font-semibold">{label}</span>
-      <span className="mt-0.5 block text-[10px] leading-4 opacity-65">{detail}</span>
     </button>
   );
 }
@@ -1078,6 +1165,74 @@ function RemoteKey({ icon: Icon, label, enabled, busy, onClick }: { icon: any; l
       <Icon className="mx-auto h-3.5 w-3.5" />
       <span className="mt-1 block text-[10px]">{enabled ? label : "Unavailable"}</span>
     </button>
+  );
+}
+
+function DeviceToolSheet({ kind, device, busy, onClose, onTimer, onSchedule, onSettings }: { kind: DeviceTool; device: AnyDevice; busy: boolean; onClose: () => void; onTimer: (command: Record<string, any>, patch?: Record<string, any>) => void; onSchedule: (input: { time: string; days: string[]; repeat: boolean; power: "on" | "off" }) => void; onSettings: (input: { favorite?: boolean; room: string }) => void }) {
+  const timerCode = commandCodeFor(device, [/countdown/, /timer/]);
+  const [timerMinutes, setTimerMinutes] = useState(30);
+  const [timerAction, setTimerAction] = useState<"on" | "off">("off");
+  const [time, setTime] = useState("19:00");
+  const [days, setDays] = useState<string[]>(["mon", "tue", "wed", "thu", "fri", "sat", "sun"]);
+  const [schedulePower, setSchedulePower] = useState<"on" | "off">("on");
+  const [favorite, setFavorite] = useState(isFavoriteDevice(device));
+  const [room, setRoom] = useState(pickRoomName(device) || "");
+  const title = kind === "timer" ? "Timer" : kind === "schedule" ? "Schedule" : "Settings";
+  const dayOptions = [["mon", "Mon"], ["tue", "Tue"], ["wed", "Wed"], ["thu", "Thu"], ["fri", "Fri"], ["sat", "Sat"], ["sun", "Sun"]] as const;
+
+  function toggleDay(day: string) {
+    setDays((current) => current.includes(day) ? current.filter((item) => item !== day) : [...current, day]);
+  }
+
+  return (
+    <div className="fixed inset-0 z-[150] flex items-end justify-center bg-black/60 px-4 pb-[calc(16px+var(--sab))] backdrop-blur-md">
+      <button className="absolute inset-0" onClick={onClose} aria-label={`Close ${title}`} />
+      <section className="relative w-full max-w-[410px] rounded-[28px] border border-white/[0.08] bg-[#050a12]/96 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.62)]">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.2em] text-sky-100/48">{title}</div>
+            <h2 className="mt-1 text-lg font-semibold tracking-[-0.04em] text-white">{pickName(device)}</h2>
+          </div>
+          <button type="button" onClick={onClose} className="grid h-9 w-9 place-items-center rounded-full bg-white/[0.06] text-white/60"><X className="h-4 w-4" /></button>
+        </div>
+
+        {kind === "timer" && timerCode ? (
+          <div className="mt-4 space-y-3">
+            <div className="grid grid-cols-3 gap-2">
+              {[5, 30, 60].map((mins) => <button key={mins} type="button" onClick={() => setTimerMinutes(mins)} className={cn("rounded-[16px] border px-3 py-3 text-sm font-semibold", timerMinutes === mins ? "border-sky-300/35 bg-sky-400/12 text-sky-100" : "border-white/[0.07] bg-white/[0.03] text-white/58")}>{mins < 60 ? `${mins}m` : "1h"}</button>)}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {(["off", "on"] as const).map((value) => <button key={value} type="button" onClick={() => setTimerAction(value)} className={cn("rounded-full border px-3 py-2 text-xs font-semibold uppercase", timerAction === value ? "border-sky-300/45 bg-sky-400/12 text-sky-100" : "border-white/[0.07] bg-white/[0.03] text-white/54")}>Auto {value}</button>)}
+            </div>
+            <button type="button" disabled={busy} onClick={() => onTimer({ [timerCode]: timerMinutes * 60, timer_action: timerAction }, { [timerCode]: timerMinutes * 60 })} className="h-11 w-full rounded-full bg-white text-sm font-semibold text-black disabled:opacity-45">{busy ? "Saving..." : `Turn ${timerAction} after ${timerMinutes < 60 ? `${timerMinutes} mins` : "1 hour"}`}</button>
+          </div>
+        ) : null}
+
+        {kind === "schedule" ? (
+          <div className="mt-4 space-y-3">
+            <input type="time" value={time} onChange={(event) => setTime(event.target.value)} className="h-11 w-full rounded-[16px] border border-white/[0.08] bg-white/[0.035] px-3 text-sm text-white outline-none" />
+            <div className="grid grid-cols-7 gap-1.5">
+              {dayOptions.map(([key, label]) => <button key={key} type="button" onClick={() => toggleDay(key)} className={cn("rounded-full border px-2 py-2 text-[11px] font-semibold", days.includes(key) ? "border-sky-300/35 bg-sky-400/12 text-sky-100" : "border-white/[0.07] bg-white/[0.03] text-white/48")}>{label}</button>)}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {(["on", "off"] as const).map((value) => <button key={value} type="button" onClick={() => setSchedulePower(value)} className={cn("rounded-full border px-3 py-2 text-xs font-semibold uppercase", schedulePower === value ? "border-sky-300/45 bg-sky-400/12 text-sky-100" : "border-white/[0.07] bg-white/[0.03] text-white/54")}>{value}</button>)}
+            </div>
+            <button type="button" disabled={busy || !days.length} onClick={() => onSchedule({ time, days, repeat: true, power: schedulePower })} className="h-11 w-full rounded-full bg-white text-sm font-semibold text-black disabled:opacity-45">{busy ? "Saving..." : "Save schedule"}</button>
+          </div>
+        ) : null}
+
+        {kind === "settings" ? (
+          <div className="mt-4 space-y-3">
+            <label className="flex items-center justify-between gap-3 rounded-[18px] border border-white/[0.07] bg-white/[0.03] px-3 py-3">
+              <span><span className="block text-sm font-semibold text-white">Favorite</span><span className="mt-0.5 block text-xs text-white/42">Show in Home quick controls.</span></span>
+              <button type="button" onClick={() => setFavorite((value) => !value)} className={cn("h-7 w-12 rounded-full border p-0.5 transition", favorite ? "border-sky-300/35 bg-sky-400/30" : "border-white/[0.1] bg-white/[0.04]")}><span className={cn("block h-5 w-5 rounded-full bg-white transition", favorite && "translate-x-5")} /></button>
+            </label>
+            <input value={room} onChange={(event) => setRoom(event.target.value)} placeholder="Room name" className="h-11 w-full rounded-[16px] border border-white/[0.08] bg-white/[0.035] px-3 text-sm text-white outline-none placeholder:text-white/34" />
+            <button type="button" disabled={busy} onClick={() => onSettings({ favorite, room })} className="h-11 w-full rounded-full bg-white text-sm font-semibold text-black disabled:opacity-45">{busy ? "Saving..." : "Save settings"}</button>
+          </div>
+        ) : null}
+      </section>
+    </div>
   );
 }
 
