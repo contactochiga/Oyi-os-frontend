@@ -23,7 +23,8 @@ public class OyiWatchSyncPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate 
     public let jsName = "OyiWatchSync"
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "sync", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "status", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "status", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "clear", returnType: CAPPluginReturnPromise)
     ]
 
     private var session: WCSession? {
@@ -69,6 +70,19 @@ public class OyiWatchSyncPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate 
         activateSessionIfNeeded { [weak self] activatedSession in
             guard let self else { return }
             call.resolve(self.statusPayload(session: activatedSession))
+        }
+    }
+
+    @objc func clear(_ call: CAPPluginCall) {
+        guard session != nil else {
+            resetPersistedStatus()
+            call.resolve(["available": false, "synced": false, "reason": "watch_connectivity_unavailable", "deliveryState": deliveryState])
+            return
+        }
+        activateSessionIfNeeded { [weak self] activatedSession in
+            guard let self else { return }
+            let result = self.performClear(session: activatedSession)
+            call.resolve(result)
         }
     }
 
@@ -138,6 +152,44 @@ public class OyiWatchSyncPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate 
         return result
     }
 
+    private func performClear(session: WCSession) -> [String: Any] {
+        resetPersistedStatus()
+        let payload: [String: Any] = [
+            "type": "oyi.watch.session.clear",
+            "clearSession": true,
+            "sentAt": ISO8601DateFormatter().string(from: Date())
+        ]
+        var usedApplicationContext = false
+        var usedTransferUserInfo = false
+        var usedSendMessage = false
+        do {
+            try session.updateApplicationContext(payload)
+            usedApplicationContext = true
+        } catch {
+            lastSyncError = error.localizedDescription
+        }
+        if session.isPaired && session.isWatchAppInstalled {
+            session.transferUserInfo(payload)
+            usedTransferUserInfo = true
+        }
+        if session.isReachable {
+            usedSendMessage = true
+            session.sendMessage(payload, replyHandler: nil) { [weak self] error in
+                DispatchQueue.main.async {
+                    self?.lastSyncError = error.localizedDescription
+                    self?.persistStatus()
+                }
+            }
+        }
+        persistStatus()
+        var result = statusPayload(session: session)
+        result["usedApplicationContext"] = usedApplicationContext
+        result["usedTransferUserInfo"] = usedTransferUserInfo
+        result["usedSendMessage"] = usedSendMessage
+        result["cleared"] = true
+        return result
+    }
+
     private func statusPayload(session: WCSession) -> [String: Any] {
         let connected = hasRecentAcknowledgement && deliveryState == "connected"
         return [
@@ -191,6 +243,24 @@ public class OyiWatchSyncPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate 
         deliveryState = defaults.string(forKey: "oyi.watch.deliveryState") ?? "not_connected"
         lastTokenSent = defaults.bool(forKey: "oyi.watch.tokenSent")
         lastBackendSent = defaults.bool(forKey: "oyi.watch.backendSent")
+    }
+
+    private func resetPersistedStatus() {
+        lastSyncError = nil
+        lastSyncAt = nil
+        lastAcknowledgedAt = nil
+        lastBackendSuccessAt = nil
+        lastWatchError = nil
+        lastTokenSent = false
+        lastBackendSent = false
+        deliveryState = "not_connected"
+        defaults.removeObject(forKey: "oyi.watch.lastSyncAt")
+        defaults.removeObject(forKey: "oyi.watch.lastAcknowledgedAt")
+        defaults.removeObject(forKey: "oyi.watch.lastBackendSuccessAt")
+        defaults.removeObject(forKey: "oyi.watch.lastWatchError")
+        defaults.removeObject(forKey: "oyi.watch.tokenSent")
+        defaults.removeObject(forKey: "oyi.watch.backendSent")
+        defaults.set(deliveryState, forKey: "oyi.watch.deliveryState")
     }
 
     private func persistStatus() {

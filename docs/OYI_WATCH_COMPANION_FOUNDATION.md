@@ -12,6 +12,7 @@ Core behavior:
 - confirmation for sensitive actions
 - calm offline and stale-state handling
 - secure iPhone-to-Watch session handoff
+- explicit session clearing on iPhone logout
 
 The `/watch` Consumer route remains a labeled development/reference preview only.
 
@@ -49,15 +50,12 @@ Parent iOS app:                    com.ochiga.oyios
 Watch app:                         com.ochiga.oyios.watch
 WKCompanionAppBundleIdentifier:    com.ochiga.oyios
 WKRunsIndependentlyOfCompanionApp: false
+Display name:                      Oyi
 ```
 
-The parent App and embedded Watch target use the same Apple Developer Team:
+Build and version details remain available inside Diagnostics only.
 
-```text
-WK3GZ22BSG
-```
-
-## 4. Session Handoff
+## 4. Session Handoff And Clear
 
 The iPhone native bridge lives at:
 
@@ -66,7 +64,7 @@ ios/App/App/OyiWatchSyncPlugin.swift
 src/services/watchSyncService.ts
 ```
 
-After login, session restoration, or manual Profile sync, the iPhone sends safe session context:
+After login, session restoration, or manual sync, the iPhone sends runtime context:
 
 ```json
 {
@@ -84,6 +82,8 @@ The token is never logged. The plugin activates `WCSession` before sync and uses
 - `updateApplicationContext` for durable latest state
 - `transferUserInfo` as queued delivery fallback
 - `sendMessage` for immediate delivery when reachable
+
+On iPhone logout, the plugin sends a clear-session payload. The Watch deletes backend URL and bearer token from Keychain, clears cached home/glance/action state, and shows `Sign in on iPhone`.
 
 ## 5. Truthful Acknowledgement Model
 
@@ -119,10 +119,11 @@ Sync Failed
 
 ## 6. Backend Watch Adapter
 
-All Watch endpoints use the same Oyi bearer-token model, device command path, permissions, ledger, and audit flow as Consumer:
+All Watch endpoints use the same Oyi bearer-token model, permissions, ledger, and audit flow as Consumer:
 
 | Method | Path | Purpose |
 | --- | --- | --- |
+| `GET` | `/watch/status` | Safe minimal Watch context/readiness |
 | `GET` | `/watch/home-status` | Real scoped home state |
 | `GET` | `/watch/glances` | Real watch-ready awareness feed |
 | `GET` | `/watch/quick-actions` | Real permitted action list |
@@ -133,7 +134,7 @@ All Watch endpoints use the same Oyi bearer-token model, device command path, pe
 Safety rules:
 
 - read surfaces require resident context and `devices.read`
-- command execution requires `devices.control`
+- command, confirm, and cancel require `devices.control`
 - explicit device IDs are re-scoped to the active home and estate
 - cross-home commands fail closed
 - low-risk actions may execute immediately
@@ -145,6 +146,7 @@ Safety rules:
 
 Production SwiftUI states:
 
+- signed out
 - disconnected
 - connecting
 - awareness
@@ -159,7 +161,7 @@ Production SwiftUI states:
 - offline with last sync
 - diagnostics
 
-The app uses geometry-based adaptive sizing for modern Apple Watch display sizes and no longer depends on mock `9:41` chrome or fake navigation dots.
+The app uses geometry-based adaptive sizing for modern Apple Watch display sizes and no longer depends on mock chrome or fake navigation dots.
 
 ## 8. Notifications Foundation
 
@@ -172,13 +174,13 @@ OYI_ENVIRONMENT_ALERT
 OYI_DEVICE_ALERT
 ```
 
-Notification taps route into the relevant Watch alert state. Production APNs validation and backend category assignment remain rollout checks.
+Notification taps route into the relevant Watch alert state. Backend APNs delivery now attaches `aps.category` for these Watch categories when notification type/metadata maps safely to a supported Watch alert category. Notification action buttons remain deferred until backend action contracts exist.
 
 ## 9. Icon Catalog
 
-`native/watchos/OyiWatch/Assets.xcassets/AppIcon.appiconset` contains real branded image files for notification, companion settings, launcher, quick-look, and marketing slots.
+`native/watchos/OyiWatch/Assets.xcassets/AppIcon.appiconset` contains branded image files for notification, companion settings, launcher, quick-look, and marketing slots.
 
-The physical-device build packages:
+The physical/iOS build packages:
 
 ```text
 App.app/Watch/OyiWatch.app/Assets.car
@@ -187,38 +189,22 @@ App.app/Watch/OyiWatch.app/_CodeSignature
 App.app/Watch/OyiWatch.app/OyiWatch
 ```
 
-## 10. Current Physical Install Blocker
+## 10. Physical Smoke Checklist
 
-On May 31, 2026, build `50` validated as an embedded physical Watch bundle. The paired Series 9 runs watchOS `26.6`, above the `10.0` deployment target. Developer Mode is enabled.
-
-The unresolved physical installation issue is device transport, not bundle validation:
-
-```text
-CoreDeviceError 4000
-Timed out while attempting to establish tunnel using negotiated network parameters.
-Ensure the device is accessible from this machine over an infrastructure network,
-or ensure WiFi is enabled on both machines.
-```
-
-The Watch CoreDevice record reported:
-
-```text
-pairingState: paired
-transportType: localNetwork
-tunnelState: disconnected
-```
-
-Recovery checklist:
-
-1. Put Mac, iPhone, and Watch on the same normal Wi-Fi network.
-2. Disable VPN, hotspot, and guest-network isolation temporarily.
-3. Keep Watch unlocked, near iPhone, and preferably charging.
-4. Delete Oyi Home from iPhone.
-5. Reboot iPhone and Watch.
-6. Reinstall the parent App scheme from `ios/App/App.xcworkspace`.
-7. Open iPhone Watch app and install Oyi Watch.
-
-The temporary display name `Oyi Watch 50` is intentionally retained until the physical listing proves it is reading the refreshed bundle. Revert it to `Oyi Watch` after confirmation.
+1. Put Mac, iPhone, and Watch on a normal Wi-Fi network.
+2. Keep Watch unlocked, near iPhone, and preferably charging.
+3. Open `ios/App/App.xcworkspace`.
+4. Select the `App` scheme.
+5. Confirm parent bundle ID `com.ochiga.oyios`.
+6. Confirm Watch bundle ID `com.ochiga.oyios.watch`.
+7. Confirm Watch display name `Oyi`.
+8. Build and install to the connected iPhone.
+9. Log in on iPhone.
+10. Tap `Sync Watch` in Connected Systems.
+11. Open Oyi on Watch and verify status/glances/actions.
+12. Run a safe quick action and verify success/failure state.
+13. Log out on iPhone and verify the Watch returns to signed-out state.
+14. Send visitor/security/environment/device notifications and verify Watch alert presentation.
 
 ## 11. Build Commands
 
@@ -256,12 +242,15 @@ It is not production-ready and must not be presented as equivalent to the native
 
 | Area | Status |
 | --- | --- |
-| Native watchOS package | Complete |
+| Native watchOS package | Complete foundation |
 | Embedded iPhone companion relationship | Complete |
 | Icon catalog and packaged assets | Complete |
 | WatchConnectivity session handoff | Complete |
-| Truthful acknowledgement model | Complete |
+| Logout/session clear | Complete foundation |
+| Truthful acknowledgement model | Complete foundation |
 | Watch adapter API | Complete foundation |
+| Quick actions | Real and limited |
+| Notification categories | Registered and backend-category aware |
 | Simulator build | Passing |
-| Physical Apple Watch install | Blocked by CoreDevice network tunnel |
+| Physical Apple Watch install | Requires final physical smoke |
 | Wear OS | Foundation only |

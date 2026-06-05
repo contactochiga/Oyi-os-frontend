@@ -38,7 +38,23 @@ Info.plist companion key:
 WKCompanionAppBundleIdentifier = com.ochiga.oyios
 ```
 
-The watch bundle must stay prefixed by the parent app bundle ID. If the production iPhone bundle ID changes, update both the watch bundle ID and `WKCompanionAppBundleIdentifier` before App Store submission.
+The installed Apple Watch display name is `Oyi`. Build and version numbers remain visible only inside Diagnostics.
+
+## Current capability
+
+Oyi Watch is a truthful companion foundation. It supports:
+
+- secure iPhone-to-Watch session handoff
+- signed-in/signed-out state
+- home status
+- glances
+- backend-provided quick actions
+- confirmation for pending ledger actions
+- notification alert presentation
+- diagnostics
+- calm offline states
+
+It does not yet provide full AC/TV/IR remotes, full device browsing, complications, or Watch-native visitor approval.
 
 ## Run on Apple Watch Simulator
 
@@ -47,15 +63,7 @@ The watch bundle must stay prefixed by the parent app bundle ID. If the producti
 3. Choose an Apple Watch simulator such as `Apple Watch Series 9`.
 4. Press `Cmd + R`.
 
-The app is simulator-safe. If no backend URL/token is configured, it runs in `Mock mode` and all UI states can still be tested:
-
-- `Talk` moves through Listening -> Working -> Success.
-- `Alert` shows the alert state.
-- `More` opens quick actions.
-- Quick actions update state.
-- Medium-risk actions open Confirmation.
-- `Confirm` completes pending commands.
-- `Cancel` cancels pending commands.
+If no backend URL/token is configured, production builds show the signed-out empty state: `Open Oyi on your iPhone to sync your home.` Preview fixtures are available only for explicit debug/development testing and must not be used as production data.
 
 If no Apple Watch simulator appears:
 
@@ -67,6 +75,7 @@ If no Apple Watch simulator appears:
 
 The watch app connects to these authenticated backend endpoints when a backend URL and bearer token are available:
 
+- `GET /watch/status`
 - `GET /watch/home-status`
 - `GET /watch/glances`
 - `GET /watch/quick-actions`
@@ -85,7 +94,7 @@ Do not commit real tokens. The committed source contains no real token.
 
 ## WatchConnectivity session handoff
 
-The Oyi Home iPhone app now includes an iOS native Capacitor plugin:
+The Oyi Home iPhone app includes an iOS native Capacitor plugin:
 
 ```text
 ios/App/App/OyiWatchSyncPlugin.swift
@@ -97,12 +106,13 @@ The web layer calls it through:
 src/services/watchSyncService.ts
 ```
 
-Session handoff happens in two ways:
+Session handoff happens in three ways:
 
 1. Automatic sync after login/session restore when an auth token and user context are available.
 2. Manual sync from Oyi Home Settings -> Connected Systems -> Oyi Watch -> Sync Watch.
+3. Explicit session clear on iPhone logout.
 
-The iPhone sends only safe runtime context:
+The iPhone sends only runtime context needed by the Watch:
 
 ```json
 {
@@ -115,29 +125,34 @@ The iPhone sends only safe runtime context:
 }
 ```
 
-Raw tokens are never logged by the sender. The watch receives application context or direct messages, stores the backend URL/token in Keychain, and uses them for the watch adapter calls.
+Raw tokens are never logged by the sender. The Watch receives application context or direct messages, stores the backend URL/token in Keychain, and uses them for authenticated Watch adapter calls. Logout sends a clear-session payload that deletes the Watch Keychain session and clears cached glances/actions.
 
 ## Manual Sync Watch test
 
 1. Run Oyi Home on an iPhone simulator or real iPhone.
 2. Log in with a valid user.
-3. Open Settings.
+3. Open Settings -> Connected Systems.
 4. Use `Sync Watch` in the Oyi Watch card.
 5. On paired watch hardware, open Oyi Watch and trigger `Talk` or a quick action.
 6. Confirm backend calls reach the watch endpoints with the authenticated bearer token.
+7. Log out from iPhone and confirm the Watch returns to `Sign in on iPhone`.
 
-Simulator-only testing can still use mock mode if the iPhone/watch pair is not available.
+## Physical smoke checklist
 
-## Run on a real Apple Watch Series 9
-
-1. Pair the Apple Watch with your iPhone.
-2. Keep the watch unlocked and near the iPhone/Mac.
-3. Connect the iPhone to the Mac.
-4. In Xcode, sign the parent iOS app and watch target with your Apple Developer Team.
-5. Confirm the parent app bundle is `com.ochiga.oyios`.
-6. Confirm the watch bundle is `com.ochiga.oyios.watch`.
-7. Select the paired Apple Watch destination.
-8. Press `Cmd + R`.
+1. Pair Apple Watch with iPhone.
+2. Keep Watch unlocked and near iPhone.
+3. Connect iPhone to Mac.
+4. Open `ios/App/App.xcworkspace`.
+5. Select the `App` scheme.
+6. Set Signing & Capabilities for `App` and `OyiWatch` targets to the same Apple Developer Team.
+7. Confirm parent app bundle ID is `com.ochiga.oyios`.
+8. Confirm Watch bundle ID is `com.ochiga.oyios.watch`.
+9. Build/install the iPhone app.
+10. Confirm Watch app listing/display name is `Oyi`.
+11. Log in on iPhone and tap `Sync Watch`.
+12. Confirm Watch status, glances, and quick actions load from backend.
+13. Confirm logout clears the Watch session.
+14. Confirm visitor/security/environment/device notification categories enter the Watch alert state.
 
 ## Visual direction
 
@@ -154,20 +169,26 @@ The native SwiftUI UI follows the approved Oyi Watch direction:
 
 Implemented watch states:
 
-- Home Awareness
-- Listening
-- Working / Executing
-- Confirmation
-- Success
-- Alert
-- Quick Actions
+- signed out
+- connecting
+- home awareness
+- glances
+- listening
+- working / executing
+- confirmation
+- success
+- alert
+- failed
+- offline with last sync
+- diagnostics
 
-## Remaining blockers
+## Remaining limitations
 
-- Add final App Store watch icons to `Assets.xcassets/AppIcon.appiconset`.
-- Set Apple Developer Team in Xcode signing settings for real device install.
-- Validate WatchConnectivity handoff on a real paired iPhone + Apple Watch.
-- Configure APNs/watch notification categories for production visitor/security/environment alerts.
+- Real AC/TV/IR remotes are intentionally not implemented yet.
+- Visitor approve/deny from Watch requires a backend action contract.
+- Notification action buttons are not enabled yet.
+- Complications are not implemented yet.
+- Full physical notification smoke still requires production APNs credentials and a paired device.
 
 ## Local iOS dev build flow for Watch sync
 
@@ -182,25 +203,12 @@ npx cap sync ios
 open ios/App/App.xcworkspace
 ```
 
-In Xcode:
-
-1. Select the `App` scheme, not the standalone watch project.
-2. Select your connected iPhone as the run destination.
-3. Open `Signing & Capabilities` for the iPhone app target.
-4. Set your Apple Developer Team.
-5. Confirm the iPhone bundle ID is `com.ochiga.oyios`.
-6. Press `Cmd + R` to install Oyi Home on the connected iPhone.
-7. Log in on the iPhone app.
-8. Open Settings -> Connected Systems -> Oyi Watch.
-9. Tap `Sync Watch`.
-10. Open Oyi Watch on the paired Apple Watch.
-11. Trigger `Talk` or a quick action to verify the watch uses the synced backend session.
-
 Expected behavior:
 
 - On native iPhone, `Sync Watch` sends the backend URL and bearer token through WatchConnectivity.
-- On web or non-iOS environments, Settings shows: `Watch sync requires the iPhone app. Please open Oyi Home on iPhone.`
-- The watch stores received values in Keychain.
+- On web or non-iOS environments, Watch sync reports that it requires the iPhone app.
+- The Watch stores received values in Keychain.
+- Logging out clears the Watch Keychain session where WatchConnectivity delivery reaches the Watch.
 - No raw token is printed to logs.
 
 Useful verification commands:
@@ -214,7 +222,7 @@ xcodebuild -project native/watchos/OyiWatch/OyiWatch.xcodeproj -scheme OyiWatch 
 
 ## Integrated companion target in main iOS workspace
 
-Oyi Watch is now also registered as a watchOS companion target inside the main Capacitor iOS workspace:
+Oyi Watch is registered as a watchOS companion target inside the main Capacitor iOS workspace:
 
 ```text
 /Users/ochigaidoko/Oyi-os-frontend/ios/App/App.xcworkspace
@@ -236,69 +244,13 @@ Watch bundle ID: com.ochiga.oyios.watch
 WKCompanionAppBundleIdentifier: com.ochiga.oyios
 ```
 
-Integrated Xcode run steps:
-
-1. Run the web/native sync first:
-
-```bash
-cd /Users/ochigaidoko/Oyi-os-frontend
-npm run build
-npx cap sync ios
-open ios/App/App.xcworkspace
-```
-
-2. In Xcode, select the `App` scheme.
-3. Select your connected iPhone as the destination.
-4. Set Signing & Capabilities for both `App` and `OyiWatch` targets to the same Apple Developer Team.
-5. Confirm the parent iPhone target uses `com.ochiga.oyios`.
-6. Confirm the watch target uses `com.ochiga.oyios.watch`.
-7. Press `Cmd + R`.
-8. Xcode should install the iPhone app and embed/install the companion Oyi Watch app on the paired watch.
-9. Open Oyi Home on iPhone and log in.
-10. Go to Settings -> Connected Systems -> Oyi Watch -> `Sync Watch`.
-11. Open Oyi Watch on the paired Apple Watch and run `Talk` or a quick action.
-
-Verification commands for the integrated workspace:
-
-```bash
-xcodebuild -workspace ios/App/App.xcworkspace -list
-xcodebuild -workspace ios/App/App.xcworkspace -scheme App -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO
-xcodebuild -workspace ios/App/App.xcworkspace -scheme OyiWatch -sdk watchsimulator -destination 'generic/platform=watchOS Simulator' build CODE_SIGNING_ALLOWED=NO
-```
-
-## Phase 2 sync acknowledgement
-
-`Sync Watch` is a delivery request, not proof that the watch is live. The iPhone now reports `Connected` only after Oyi Watch:
-
-1. Receives the secure session through WatchConnectivity.
-2. Stores the backend URL and bearer token in Keychain.
-3. Fetches `GET /watch/home-status` successfully.
-4. Sends an acknowledgement back to the iPhone.
-
-The acknowledgement and last successful backend timestamp are persisted locally. If the backend becomes unavailable after a successful sync, the watch shows `Offline` with the last sync time and pauses actions.
-
 ## Notification foundation
 
-The native watch app registers watchOS notification categories for:
+The native Watch app registers watchOS notification categories for:
 
 - `OYI_VISITOR_ALERT`
 - `OYI_SECURITY_ALERT`
 - `OYI_ENVIRONMENT_ALERT`
 - `OYI_DEVICE_ALERT`
 
-Opening one routes the watch into its alert state. Push delivery and server-side category assignment still require production APNs configuration.
-
-## App icon assets and physical installation
-
-`Assets.xcassets/AppIcon.appiconset` contains branded Watch artwork for notification, companion settings, launcher, quick-look, and App Store marketing variants. The build-50 physical parent bundle packages the compiled Watch `Assets.car`, provisioning profile, code signature, and executable under `App.app/Watch/OyiWatch.app`.
-
-The remaining real-device installation blocker captured on May 31, 2026 is an Apple CoreDevice remote-pairing tunnel timeout, not a missing icon catalog or invalid embedded bundle:
-
-```text
-CoreDeviceError 4000
-Timed out while attempting to establish tunnel using negotiated network parameters.
-Ensure the device is accessible from this machine over an infrastructure network,
-or ensure WiFi is enabled on both machines.
-```
-
-The temporary physical-install display name has been removed after successful hardware installation. The production watchOS display name is `Oyi`, while build and version remain visible only in Diagnostics.
+Backend APNs payloads now attach those categories when notification type/metadata maps safely to visitor, security, environment, or device alerts. Notification action buttons remain deferred until explicit backend action contracts are available.

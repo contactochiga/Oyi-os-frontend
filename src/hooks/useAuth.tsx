@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { deleteCookie } from "@/lib/auth";
 import { useSessionStore, type SessionUser } from "@/store/useSessionStore";
 import API, { setApiAuthToken } from "@/services/api";
-import { syncOyiWatchSession } from "@/services/watchSyncService";
+import { clearOyiWatchSession, syncOyiWatchSession } from "@/services/watchSyncService";
 import { clearOnboardingTourTemporaryState } from "@/services/onboardingTour";
 
 type AuthContextType = {
@@ -108,6 +108,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [token]);
 
   function logout() {
+    void clearOyiWatchSession().catch(() => {
+      // Watch session clearing is best-effort; local logout must still complete.
+    });
     deleteCookie("oyi_consumer_token");
     setApiAuthToken(null);
     clear();

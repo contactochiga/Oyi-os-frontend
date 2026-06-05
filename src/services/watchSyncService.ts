@@ -41,6 +41,7 @@ export type WatchSyncResult = {
 type OyiWatchSyncPlugin = {
   sync(payload: WatchSyncPayload): Promise<WatchSyncResult>;
   status(): Promise<WatchSyncResult>;
+  clear(): Promise<WatchSyncResult>;
 };
 
 const OyiWatchSync = registerPlugin<OyiWatchSyncPlugin>("OyiWatchSync");
@@ -82,6 +83,16 @@ export async function getOyiWatchSyncStatus() {
     return { available: false, reason: "plugin_unavailable" } satisfies WatchSyncResult;
   }
   return withWatchTimeout(OyiWatchSync.status());
+}
+
+export async function clearOyiWatchSession() {
+  if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "ios") {
+    return { available: false, synced: false, reason: "ios_native_only" } satisfies WatchSyncResult;
+  }
+  if (!Capacitor.isPluginAvailable("OyiWatchSync")) {
+    return { available: false, synced: false, reason: "plugin_unavailable" } satisfies WatchSyncResult;
+  }
+  return withWatchTimeout(OyiWatchSync.clear());
 }
 
 export function isOyiWatchConnected(status: WatchSyncResult | null | undefined) {

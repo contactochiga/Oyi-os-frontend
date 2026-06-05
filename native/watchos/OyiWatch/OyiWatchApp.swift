@@ -409,6 +409,10 @@ final class OyiWatchSession: ObservableObject {
     }
 
     func applyCompanionPayload(_ payload: [String: Any], source: String = "watchconnectivity") async {
+        if payload["clearSession"] as? Bool == true || String(describing: payload["type"] ?? "") == "oyi.watch.session.clear" {
+            await clearWatchSession(source: source)
+            return
+        }
         var didUpdate = false
         if let urlString = payload["baseURL"] as? String ?? payload["backendBaseURL"] as? String,
            let url = URL(string: urlString) {
@@ -456,7 +460,11 @@ final class OyiWatchSession: ObservableObject {
 
     private func loadConfiguration() {
         let environment = ProcessInfo.processInfo.environment
+        #if DEBUG
         isDeveloperPreview = environment["OYI_WATCH_DEMO_MODE"] == "1"
+        #else
+        isDeveloperPreview = false
+        #endif
         let envURL = environment["OYI_WATCH_BACKEND_URL"].flatMap(URL.init(string:))
         let envToken = environment["OYI_WATCH_DEV_TOKEN"]
         let storedURL = keychain.read(account: "backendBaseURL").flatMap(URL.init(string:))
@@ -657,12 +665,49 @@ final class OyiWatchSession: ObservableObject {
                 connectionLabel = "Waiting for sync"
                 homeName = "Oyi"
                 estateName = ""
-                title = connectionState == .tokenMissing ? "Session token missing" : connectionState == .backendMissing ? "Backend missing" : "Companion not connected"
-                detail = "Open Oyi Home on iPhone and tap Sync Watch."
+                title = "Sign in on iPhone"
+                detail = "Open Oyi on your iPhone to sync your home."
                 glances = []
                 actions = []
             }
         }
+    }
+
+    private func clearWatchSession(source: String) async {
+        keychain.delete(account: "backendBaseURL")
+        keychain.delete(account: "bearerToken")
+        baseURL = nil
+        bearerToken = nil
+        lastSuccessfulBackendAtISO = nil
+        lastAcknowledgedAtISO = nil
+        defaults.removeObject(forKey: "oyi.watch.lastSuccessfulBackendAt")
+        defaults.removeObject(forKey: "oyi.watch.lastSyncAt")
+        defaults.removeObject(forKey: "oyi.watch.lastAcknowledgedAt")
+        defaults.removeObject(forKey: "oyi.watch.lastError")
+        await MainActor.run {
+            state = .awareness
+            connectionState = .neverConnected
+            title = "Sign in on iPhone"
+            detail = "Open Oyi on your iPhone to sync your home."
+            homeName = "Oyi"
+            estateName = ""
+            glances = []
+            actions = []
+            pendingConfirmation = nil
+            activePage = 0
+            liveDataError = nil
+            backendURLPresent = false
+            tokenPresent = false
+            isMockMode = false
+            modeLabel = "Signed out"
+            connectionLabel = "Waiting for sync"
+            lastSyncAt = Date().formatted(date: .omitted, time: .shortened)
+            lastSuccessfulSyncAt = "never"
+            lastAcknowledgedAt = "never"
+            lastBackendCallStatus = "session cleared"
+        }
+        persistState()
+        connectivity.sendAcknowledgement(payload: acknowledgementPayload())
     }
 
     private func commandUnavailable() async {
@@ -833,6 +878,15 @@ struct OyiWatchKeychain {
               let data = item as? Data else { return nil }
         return String(data: data, encoding: .utf8)
     }
+
+    func delete(account: String) {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account
+        ]
+        SecItemDelete(query as CFDictionary)
+    }
 }
 
 struct OyiWatchRootView: View {
@@ -916,8 +970,7 @@ struct AwarenessView: View {
         case .connected: return session.homeName
         case .connecting: return "Connecting"
         case .offlineWithLastSync: return "Offline"
-        case .tokenMissing: return "Token missing"
-        case .backendMissing: return "Backend missing"
+        case .tokenMissing, .backendMissing: return "Not connected"
         case .syncFailed: return "Retry"
         case .neverConnected: return "Not connected"
         }
@@ -932,7 +985,7 @@ struct AwarenessView: View {
     private var disconnectedChips: some View {
         HStack(spacing: 4) {
             StatusChip("iPhone required")
-            StatusChip(session.connectionState == .tokenMissing ? "Token missing" : "Waiting for sync")
+            StatusChip("Waiting for sync")
         }
     }
 
@@ -957,7 +1010,7 @@ struct GlancesView: View {
                     OyiOrb(state: session.connectionState == .offlineWithLastSync ? .failed : .awareness)
                     Text(session.connectionState == .offlineWithLastSync ? "Offline" : "No live glances")
                         .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    Text(session.connectionState == .offlineWithLastSync ? "Last synced \(session.lastSuccessfulSyncAt)" : "Sync from iPhone to load home activity.")
+                    Text(session.connectionState == .offlineWithLastSync ? "Last synced \(session.lastSuccessfulSyncAt)" : "Open Oyi on your iPhone to sync your home.")
                         .font(.system(size: 10, design: .rounded))
                         .foregroundStyle(.white.opacity(0.56))
                         .multilineTextAlignment(.center)
@@ -1119,7 +1172,7 @@ struct QuickActionsView: View {
                     Text(session.connectionState == .offlineWithLastSync ? "Actions paused" : "No actions available")
                         .font(.system(size: 14, weight: .semibold, design: .rounded))
                         .foregroundStyle(.white)
-                    Text(session.connectionState == .offlineWithLastSync ? "Reconnect to Oyi Home before running commands." : "Sync from iPhone to load real home actions.")
+                    Text(session.connectionState == .offlineWithLastSync ? "Waiting for iPhone or network." : "Open Oyi on your iPhone to sync quick actions.")
                         .font(.system(size: 10, weight: .regular, design: .rounded))
                         .foregroundStyle(.white.opacity(0.56))
                         .multilineTextAlignment(.center)
