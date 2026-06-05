@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   FiActivity,
@@ -10,12 +10,14 @@ import {
   FiGrid,
   FiHome,
   FiLayers,
+  FiCpu,
   FiShield,
   FiSliders,
   FiTool,
   FiUser,
   FiUserCheck,
   FiUsers,
+  FiWatch,
 } from "react-icons/fi";
 import { useNotificationStore } from "@/store/useNotificationStore";
 import useAuth from "@/hooks/useAuth";
@@ -35,6 +37,8 @@ type Item = {
     | "services"
     | "security"
     | "utilities"
+    | "watch"
+    | "intelligence"
     | "profile";
   label: string;
   href: string;
@@ -48,16 +52,29 @@ const ITEMS: Item[] = [
   { key: "spaces", label: "Spaces", href: "/spaces", icon: FiLayers, activeRoutes: ["/spaces", "/rooms", "/room"], indicatorPattern: /space|room assignment|room/i },
   { key: "activity", label: "Activity", href: "/activity", icon: FiActivity, activeRoutes: ["/activity", "/notifications"], indicatorPattern: /activity|device|scene|automation|sync|watch|wallet|payment|transaction|visitor|guest|gate|maintenance|repair|service|security|alert|incident/i },
   { key: "community", label: "Community", href: "/community", icon: FiUsers, indicatorPattern: /community|announcement|notice|post|comment|reply|urgent|official/i },
+  { key: "wallet", label: "Wallet", href: "/wallet", icon: FiCreditCard, activeRoutes: ["/wallet"], indicatorPattern: /wallet|payment|transaction|billing|dues|fund/i },
+  { key: "services", label: "Services", href: "/services", icon: FiBox, activeRoutes: ["/services"], indicatorPattern: /service|subscription|request/i },
+  { key: "utilities", label: "Utilities", href: "/utilities", icon: FiDroplet, activeRoutes: ["/utilities"], indicatorPattern: /utility|water|power|electric|environment|network/i },
+  { key: "profile", label: "Profile", href: "/profile", icon: FiUser, activeRoutes: ["/profile", "/account", "/settings"], indicatorPattern: /profile|verify|verification|account|invite/i },
   { key: "devices", label: "Devices", href: "/devices", icon: FiGrid, activeRoutes: ["/devices"], indicatorPattern: /device|switch|light|socket|plug|climate|ac|tv|provider|tuya|sync/i },
   { key: "scenes", label: "Scenes", href: "/scenes", icon: FiSliders, activeRoutes: ["/scenes"], indicatorPattern: /scene|automation/i },
   { key: "visitors", label: "Visitors", href: "/visitors", icon: FiUserCheck, activeRoutes: ["/visitors"], indicatorPattern: /visitor|guest|gate|access/i },
   { key: "maintenance", label: "Maint.", href: "/maintenance", icon: FiTool, activeRoutes: ["/maintenance", "/reports"], indicatorPattern: /maintenance|repair|work order|ticket/i },
-  { key: "wallet", label: "Wallet", href: "/wallet", icon: FiCreditCard, activeRoutes: ["/wallet"], indicatorPattern: /wallet|payment|transaction|billing|dues|fund/i },
-  { key: "services", label: "Services", href: "/services", icon: FiBox, activeRoutes: ["/services"], indicatorPattern: /service|subscription|request/i },
   { key: "security", label: "Security", href: "/security", icon: FiShield, activeRoutes: ["/security"], indicatorPattern: /security|alert|incident|emergency|lockdown|alarm/i },
-  { key: "utilities", label: "Utilities", href: "/utilities", icon: FiDroplet, activeRoutes: ["/utilities"], indicatorPattern: /utility|water|power|electric|environment|network/i },
-  { key: "profile", label: "Profile", href: "/profile", icon: FiUser, activeRoutes: ["/profile", "/account", "/settings", "/ai"], indicatorPattern: /profile|verify|verification|account|invite/i },
+  { key: "watch", label: "Watch", href: "/watch", icon: FiWatch, activeRoutes: ["/watch"], indicatorPattern: /watch|sync/i },
+  { key: "intelligence", label: "Oyi", href: "/ai", icon: FiCpu, activeRoutes: ["/ai"], indicatorPattern: /assistant|oyi|intelligence/i },
 ];
+
+const NAV_GROUPS: Item[][] = [
+  ITEMS.filter((item) => ["home", "spaces", "activity", "community", "profile"].includes(item.key)),
+  ITEMS.filter((item) => ["devices", "scenes", "visitors", "maintenance", "security"].includes(item.key)),
+  ITEMS.filter((item) => ["wallet", "services", "utilities", "watch", "intelligence"].includes(item.key)),
+];
+
+function pageForKey(key: Item["key"]) {
+  const index = NAV_GROUPS.findIndex((group) => group.some((item) => item.key === key));
+  return Math.max(0, index);
+}
 
 function routeMatches(pathname: string, route: string) {
   return pathname === route || pathname.startsWith(`${route}/`);
@@ -79,6 +96,8 @@ export default function BottomNav() {
   const pathname = usePathname() || "/";
   const router = useRouter();
   const { user } = useAuth();
+  const railRef = useRef<HTMLDivElement | null>(null);
+  const scrollTimerRef = useRef<number | null>(null);
   const notifications = useNotificationStore((state) => state.items);
   const unreadByBucket = useNotificationStore((state) => state.unreadByBucket);
   const markBucketViewed = useNotificationStore((state) => state.markBucketViewed);
@@ -89,6 +108,29 @@ export default function BottomNav() {
     return `${identity}:${estate}:${home}`;
   }, [user]);
   const [localDots, setLocalDots] = useState<Record<string, boolean>>({});
+  const storageKey = useMemo(() => `oyi:footer-nav-page:${scopeKey}:v1`, [scopeKey]);
+  const initialPage = useMemo(() => {
+    const activeItem = ITEMS.find((item) => isActive(pathname, item));
+    return activeItem ? pageForKey(activeItem.key) : 0;
+  }, [pathname]);
+  const [page, setPage] = useState(initialPage);
+
+  function persistPage(nextPage: number) {
+    const bounded = Math.max(0, Math.min(NAV_GROUPS.length - 1, nextPage));
+    setPage(bounded);
+    try {
+      localStorage.setItem(storageKey, String(bounded));
+    } catch {}
+  }
+
+  function scrollToPage(nextPage: number, behavior: ScrollBehavior = "smooth") {
+    const bounded = Math.max(0, Math.min(NAV_GROUPS.length - 1, nextPage));
+    const rail = railRef.current;
+    if (rail) {
+      rail.scrollTo({ left: bounded * rail.clientWidth, behavior });
+    }
+    persistPage(bounded);
+  }
 
   function clearLocalDot(bucket: Item["key"] | "messages") {
     setLocalDots((current) => ({ ...current, [bucket]: false }));
@@ -96,6 +138,16 @@ export default function BottomNav() {
       localStorage.setItem(`oyi:last-seen:${scopeKey}:${bucket}`, new Date().toISOString());
     } catch {}
   }
+
+  useEffect(() => {
+    let nextPage = initialPage;
+    try {
+      const saved = Number(localStorage.getItem(storageKey));
+      if (Number.isFinite(saved)) nextPage = Math.max(0, Math.min(NAV_GROUPS.length - 1, saved));
+    } catch {}
+    window.setTimeout(() => scrollToPage(nextPage, "auto"), 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageKey]);
 
   useEffect(() => {
     const activeItem = ITEMS.find((item) => isActive(pathname, item));
@@ -159,6 +211,16 @@ export default function BottomNav() {
     };
   }, [pathname]);
 
+  function handlePageScroll() {
+    const rail = railRef.current;
+    if (!rail) return;
+    if (scrollTimerRef.current) window.clearTimeout(scrollTimerRef.current);
+    scrollTimerRef.current = window.setTimeout(() => {
+      const nextPage = Math.round(rail.scrollLeft / Math.max(1, rail.clientWidth));
+      scrollToPage(nextPage, "smooth");
+    }, 90);
+  }
+
   const badgeFor = (key: Item["key"]) => {
     if (key === "activity") return unreadByBucket.activity || unreadByBucket.messages || (localDots.activity ? 1 : 0);
     if (key === "community") return unreadByBucket.community || (localDots.community ? 1 : 0);
@@ -177,60 +239,70 @@ export default function BottomNav() {
       aria-label="Oyi Home navigation"
     >
       <div className="pointer-events-auto mx-auto max-w-[520px] overflow-hidden rounded-[28px] border border-white/[0.07] bg-[#040911]/86 px-2 py-1.5 shadow-[0_16px_54px_rgba(0,0,0,0.45)] backdrop-blur-2xl">
-        <div className="flex snap-x snap-mandatory gap-1 overflow-x-auto overscroll-x-contain scroll-smooth px-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {ITEMS.map((item) => {
-          const active = isActive(pathname, item);
-          const Icon = item.icon;
-          const badge = badgeFor(item.key);
-          return (
-            <button
-              key={item.key}
-              type="button"
-              onClick={() => {
-                clearLocalDot(item.key);
-                if (item.key === "activity") {
-                  markBucketViewed("activity");
-                  markBucketViewed("messages");
-                }
-                if (item.key === "community") {
-                  markBucketViewed("community");
-                }
-                if (item.key === "profile") {
-                  markBucketViewed("profile");
-                }
-                router.push(item.href);
-              }}
-              className={`group min-w-[64px] snap-start rounded-[21px] px-1.5 py-1.5 text-center transition active:scale-[0.98] ${
-                active ? "text-white" : "text-white/46 hover:text-white/78"
-              }`}
-              aria-current={active ? "page" : undefined}
-            >
-              <div className="flex justify-center">
-                <span
-                  className={`relative grid h-7 w-7 place-items-center rounded-[13px] transition ${
-                    active
-                      ? "bg-sky-300/14 text-sky-100 shadow-[0_0_20px_rgba(56,189,248,0.32)]"
-                      : "text-white/52 group-hover:bg-white/[0.05] group-hover:text-white/78"
-                  }`}
-                >
-                  <Icon className="text-[18px]" />
-                  {badge ? (
-                    <span className={`absolute ${badge > 1 ? "-right-1 -top-1 min-w-[16px] px-1" : "right-0.5 top-0.5 h-2 w-2"} rounded-full bg-sky-300 text-[9px] font-bold leading-4 text-slate-950 shadow-[0_0_12px_rgba(56,189,248,0.8)]`}>
-                      {badge > 1 ? Math.min(badge, 9) : ""}
-                    </span>
-                  ) : null}
-                </span>
-              </div>
-              <div
-                className={`mt-0.5 truncate whitespace-nowrap text-[10px] font-medium tracking-[-0.025em] ${
-                  active ? "text-white" : "text-white/48"
-                }`}
-              >
-                {item.label}
-              </div>
-            </button>
-          );
-        })}
+        <div ref={railRef} onScroll={handlePageScroll} className="flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {NAV_GROUPS.map((group, groupIndex) => (
+            <div key={groupIndex} className="grid w-full min-w-full shrink-0 snap-center grid-cols-5 gap-1 px-0.5">
+              {group.map((item) => {
+                const active = isActive(pathname, item);
+                const Icon = item.icon;
+                const badge = badgeFor(item.key);
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => {
+                      scrollToPage(pageForKey(item.key));
+                      clearLocalDot(item.key);
+                      if (item.key === "activity") {
+                        markBucketViewed("activity");
+                        markBucketViewed("messages");
+                      }
+                      if (item.key === "community") {
+                        markBucketViewed("community");
+                      }
+                      if (item.key === "profile") {
+                        markBucketViewed("profile");
+                      }
+                      router.push(item.href);
+                    }}
+                    className={`group rounded-[21px] px-1.5 py-1.5 text-center transition active:scale-[0.98] ${
+                      active ? "text-white" : "text-white/46 hover:text-white/78"
+                    }`}
+                    aria-current={active ? "page" : undefined}
+                  >
+                    <div className="flex justify-center">
+                      <span
+                        className={`relative grid h-7 w-7 place-items-center rounded-[13px] transition ${
+                          active
+                            ? "bg-sky-300/14 text-sky-100 shadow-[0_0_20px_rgba(56,189,248,0.32)]"
+                            : "text-white/52 group-hover:bg-white/[0.05] group-hover:text-white/78"
+                        }`}
+                      >
+                        <Icon className="text-[18px]" />
+                        {badge ? (
+                          <span className={`absolute ${badge > 1 ? "-right-1 -top-1 min-w-[16px] px-1" : "right-0.5 top-0.5 h-2 w-2"} rounded-full bg-sky-300 text-[9px] font-bold leading-4 text-slate-950 shadow-[0_0_12px_rgba(56,189,248,0.8)]`}>
+                            {badge > 1 ? Math.min(badge, 9) : ""}
+                          </span>
+                        ) : null}
+                      </span>
+                    </div>
+                    <div
+                      className={`mt-0.5 truncate whitespace-nowrap text-[10px] font-medium tracking-[-0.025em] ${
+                        active ? "text-white" : "text-white/48"
+                      }`}
+                    >
+                      {item.label}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+        <div className="mt-0.5 flex justify-center gap-1" aria-hidden="true">
+          {NAV_GROUPS.map((_, index) => (
+            <span key={index} className={`h-1 rounded-full transition-all ${page === index ? "w-3 bg-sky-200/70" : "w-1 bg-white/18"}`} />
+          ))}
         </div>
       </div>
     </nav>
