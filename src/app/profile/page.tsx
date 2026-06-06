@@ -97,6 +97,16 @@ function appCommitHash() {
   return raw ? raw.slice(0, 7) : "";
 }
 
+function proximityStatusLabel(state?: string | null) {
+  const value = String(state || "").toLowerCase();
+  if (value === "near_home") return "Near Home";
+  if (value === "leaving_home") return "Away";
+  if (value === "away") return "Away";
+  if (value === "approaching_estate") return "Near Estate";
+  if (value === "inside_estate") return "Inside Estate";
+  return "Not checked yet";
+}
+
 export default function ProfilePage() {
   const router = useRouter();
   const { user, token, logout, ready, setSession } = useAuth() as any;
@@ -486,7 +496,7 @@ export default function ProfilePage() {
                     Oyi can check your home status when you approach or leave. Your location is not shared with Facility, and Oyi does not store a movement trail.
                   </p>
                 </div>
-                <InfoRow label="Status" value={proximitySettings.enabled ? "Enabled" : "Disabled"} detail={proximitySettings.last_state ? `Last state: ${String(proximitySettings.last_state).replaceAll("_", " ")}` : "No proximity state recorded yet"} />
+                <InfoRow label="Current Status" value={proximitySettings.enabled ? "Active" : "Disabled"} detail={proximitySettings.enabled ? `✓ ${proximityStatusLabel(proximitySettings.last_state)}` : "Turn this on when you want Oyi to check your home near your estate."} />
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
@@ -494,7 +504,7 @@ export default function ProfilePage() {
                     disabled={proximityBusy === "save" || proximitySettings.enabled}
                     className="rounded-full bg-white px-4 py-2.5 text-sm font-semibold text-black disabled:opacity-45"
                   >
-                    Enable
+                    {proximitySettings.enabled ? "✓ Active" : "Enable"}
                   </button>
                   <button
                     type="button"
@@ -506,7 +516,7 @@ export default function ProfilePage() {
                   </button>
                 </div>
                 <div className="rounded-[18px] border border-white/[0.06] bg-white/[0.025] px-3.5 py-3">
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-white/34">Awareness radius</div>
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-white/34">Awareness Distance</div>
                   <div className="mt-2 grid grid-cols-4 gap-1.5">
                     {[20, 100, 500, 1000].map((radius) => (
                       <button
