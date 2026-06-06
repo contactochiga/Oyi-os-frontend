@@ -10,6 +10,7 @@ import {
   Home,
   LockKeyhole,
   LogOut,
+  MapPin,
   Plug,
   Settings,
   ShieldCheck,
@@ -30,6 +31,7 @@ import { homeAccessService, type HomeAccessMember } from "@/services/homeAccessS
 import { walletService } from "@/services/walletService";
 import { listMyNotifications, type AppNotification } from "@/services/notificationsService";
 import { replayOnboardingTour } from "@/services/onboardingTour";
+import { DEFAULT_PROXIMITY_SETTINGS, proximityService, type ProximitySettings } from "@/services/proximityService";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import API from "@/services/api";
 import pkg from "../../../package.json";
@@ -39,6 +41,7 @@ type PanelKey =
   | "access"
   | "security"
   | "notifications"
+  | "proximity"
   | "integrations"
   | "preferences"
   | "support"
@@ -108,6 +111,9 @@ export default function ProfilePage() {
   const [accessMessage, setAccessMessage] = useState<string | null>(null);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [proximitySettings, setProximitySettings] = useState<ProximitySettings>(DEFAULT_PROXIMITY_SETTINGS);
+  const [proximityBusy, setProximityBusy] = useState("");
+  const [proximityMessage, setProximityMessage] = useState<string | null>(null);
   const [residentContext, setResidentContext] = useState<ResidentVerificationContext | null>(null);
   const [panel, setPanel] = useState<PanelKey>(null);
   const [logoutOpen, setLogoutOpen] = useState(false);
@@ -171,12 +177,13 @@ export default function ProfilePage() {
     if (!ready || !token) return;
     let cancelled = false;
     async function load() {
-      const [deviceRes, memberRes, walletRes, notificationRes, contextRes] = await Promise.allSettled([
+      const [deviceRes, memberRes, walletRes, notificationRes, contextRes, proximityRes] = await Promise.allSettled([
         deviceService.getAssignedDevices(active.estate_id || (user as any)?.estate_id),
         active.home_id ? homeAccessService.listHomeUsers(active.home_id) : Promise.resolve([]),
         walletService.getWallet(),
         listMyNotifications(),
         API.get("/me/context"),
+        proximityService.getSettings(),
       ]);
       if (cancelled) return;
       if (deviceRes.status === "fulfilled") setDevices(asArray(deviceRes.value));
@@ -189,6 +196,7 @@ export default function ProfilePage() {
         const payload = (contextRes.value as any)?.data?.data ?? (contextRes.value as any)?.data ?? null;
         setResidentContext(payload);
       }
+      if (proximityRes.status === "fulfilled") setProximitySettings(proximityRes.value);
     }
     void load();
     return () => {
@@ -208,6 +216,7 @@ export default function ProfilePage() {
     { key: "access" as const, label: "Homes & Access", body: "Manage your homes and permissions", icon: Home, color: "text-emerald-300" },
     { key: "security" as const, label: "Security", body: "Passwords, 2FA, and session management", icon: ShieldCheck, color: "text-violet-300" },
     { key: "notifications" as const, label: "Notifications", body: "Alert preferences and delivery", icon: Bell, color: "text-amber-300" },
+    { key: "proximity" as const, label: "Proximity Awareness", body: "Opt-in home checks near your estate", icon: MapPin, color: "text-emerald-300" },
     { key: "integrations" as const, label: "Connected Systems", body: "External services and device providers", icon: Plug, color: "text-sky-300" },
     { key: "preferences" as const, label: "Preferences", body: "Units, language, appearance", icon: Settings, color: "text-white/55" },
     { key: "support" as const, label: "Help & Support", body: "FAQs, guides, and contact us", icon: HelpCircle, color: "text-white/55" },
@@ -341,6 +350,44 @@ export default function ProfilePage() {
     }
   }
 
+  async function saveProximitySettings(patch: Partial<ProximitySettings>, successMessage: string) {
+    setProximityBusy("save");
+    setProximityMessage(null);
+    try {
+      const next = await proximityService.updateSettings(patch);
+      setProximitySettings(next);
+      setProximityMessage(successMessage);
+      if (typeof window !== "undefined") window.dispatchEvent(new Event("oyi:proximity-settings-changed"));
+    } catch (error: any) {
+      setProximityMessage(error?.response?.data?.error || error?.message || "Proximity settings could not be updated.");
+    } finally {
+      setProximityBusy("");
+    }
+  }
+
+  async function useCurrentLocationFor(target: "home" | "estate") {
+    setProximityBusy(target);
+    setProximityMessage(null);
+    if (typeof window === "undefined" || !("geolocation" in navigator)) {
+      setProximityBusy("");
+      setProximityMessage("Location is not available on this device.");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const patch = target === "home"
+          ? { home_lat: position.coords.latitude, home_lng: position.coords.longitude }
+          : { estate_lat: position.coords.latitude, estate_lng: position.coords.longitude };
+        void saveProximitySettings(patch, target === "home" ? "Home location saved." : "Estate approach location saved.");
+      },
+      () => {
+        setProximityBusy("");
+        setProximityMessage("Location permission is required to save this point.");
+      },
+      { enableHighAccuracy: false, maximumAge: 60_000, timeout: 20_000 }
+    );
+  }
+
   function renderPanel() {
     if (!panel) return null;
     const title = menu.find((item) => item.key === panel)?.label || "Profile Information";
@@ -429,6 +476,74 @@ export default function ProfilePage() {
                 <InfoRow label="Email" value={String((user as any)?.email_notifications_enabled ? "Enabled" : "Not configured")} />
                 <InfoRow label="SMS" value={String((user as any)?.sms_notifications_enabled ? "Enabled" : "Not configured")} />
                 <InfoRow label="Unread alerts" value={`${notifications.filter((item) => item.status !== "read").length}`} />
+              </>
+            ) : null}
+            {panel === "proximity" ? (
+              <>
+                <div className="rounded-[18px] border border-sky-300/12 bg-sky-400/[0.045] p-3">
+                  <div className="text-sm font-semibold text-sky-100">Opt-in home awareness</div>
+                  <p className="mt-1 text-xs leading-5 text-white/50">
+                    Oyi can check your home status when you approach or leave. Your location is not shared with Facility, and Oyi does not store a movement trail.
+                  </p>
+                </div>
+                <InfoRow label="Status" value={proximitySettings.enabled ? "Enabled" : "Disabled"} detail={proximitySettings.last_state ? `Last state: ${String(proximitySettings.last_state).replaceAll("_", " ")}` : "No proximity state recorded yet"} />
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void saveProximitySettings({ enabled: true }, "Proximity Awareness enabled.")}
+                    disabled={proximityBusy === "save" || proximitySettings.enabled}
+                    className="rounded-full bg-white px-4 py-2.5 text-sm font-semibold text-black disabled:opacity-45"
+                  >
+                    Enable
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void saveProximitySettings({ enabled: false }, "Proximity Awareness disabled.")}
+                    disabled={proximityBusy === "save" || !proximitySettings.enabled}
+                    className="rounded-full border border-white/10 bg-white/[0.05] px-4 py-2.5 text-sm text-white/70 disabled:opacity-45"
+                  >
+                    Disable
+                  </button>
+                </div>
+                <div className="rounded-[18px] border border-white/[0.06] bg-white/[0.025] px-3.5 py-3">
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-white/34">Awareness radius</div>
+                  <div className="mt-2 grid grid-cols-4 gap-1.5">
+                    {[20, 100, 500, 1000].map((radius) => (
+                      <button
+                        key={radius}
+                        type="button"
+                        onClick={() => void saveProximitySettings({ radius_meters: radius as ProximitySettings["radius_meters"] }, `Radius set to ${radius === 1000 ? "1km" : `${radius}m`}.`)}
+                        className={`rounded-full px-2 py-2 text-xs font-semibold ${proximitySettings.radius_meters === radius ? "bg-sky-300 text-black" : "border border-white/[0.08] bg-white/[0.035] text-white/62"}`}
+                      >
+                        {radius === 1000 ? "1km" : `${radius}m`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void useCurrentLocationFor("home")}
+                    disabled={Boolean(proximityBusy)}
+                    className="rounded-[18px] border border-white/[0.07] bg-white/[0.035] px-3.5 py-3 text-left text-sm font-medium text-white/82 disabled:opacity-45"
+                  >
+                    <span className="block text-white">Set Home Point</span>
+                    <span className="mt-1 block text-xs text-white/42">{proximitySettings.home_lat && proximitySettings.home_lng ? "Saved" : "Not set"}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void useCurrentLocationFor("estate")}
+                    disabled={Boolean(proximityBusy)}
+                    className="rounded-[18px] border border-white/[0.07] bg-white/[0.035] px-3.5 py-3 text-left text-sm font-medium text-white/82 disabled:opacity-45"
+                  >
+                    <span className="block text-white">Set Estate Point</span>
+                    <span className="mt-1 block text-xs text-white/42">{proximitySettings.estate_lat && proximitySettings.estate_lng ? "Saved" : "Not set"}</span>
+                  </button>
+                </div>
+                <div className="rounded-[18px] border border-white/[0.06] bg-white/[0.025] px-3.5 py-3 text-xs leading-5 text-white/48">
+                  Location permission is requested only when you save a point or when Proximity Awareness is enabled. Activity entries never include raw coordinates.
+                </div>
+                {proximityMessage ? <div className="rounded-[14px] border border-white/[0.06] bg-white/[0.025] px-3 py-2 text-xs text-white/58">{proximityMessage}</div> : null}
               </>
             ) : null}
             {panel === "preferences" ? (

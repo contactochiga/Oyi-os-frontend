@@ -32,6 +32,8 @@
 	<string>Oyi may save media generated during sharing and live capture.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Oyi uses speech recognition to convert your voice commands into actions.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Oyi uses your location only when you enable Proximity Awareness to check your home status near your estate.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
