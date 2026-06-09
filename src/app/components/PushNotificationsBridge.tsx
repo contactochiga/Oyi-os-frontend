@@ -6,6 +6,14 @@ import useAuth from "@/hooks/useAuth";
 import API from "@/services/api";
 import { useNotificationStore } from "@/store/useNotificationStore";
 
+const PUSH_TOKEN_CACHE_KEY = "oyi:push:native-token:v1";
+const OYI_IOS_BUNDLE_ID = "com.ochiga.oyios";
+
+function pushEnvironment() {
+  const explicit = String(process.env.NEXT_PUBLIC_PUSH_ENVIRONMENT || process.env.NEXT_PUBLIC_APP_ENV || "").toLowerCase();
+  return explicit === "production" ? "production" : "sandbox";
+}
+
 async function optionalImport(specifier: string) {
   try {
     const dynamicImport = new Function("specifier", "return import(specifier)") as (specifier: string) => Promise<any>;
@@ -42,6 +50,23 @@ export default function PushNotificationsBridge() {
       console.log("[push]", next, nextDetail);
     }
 
+    function cacheNativeToken(rawToken: string) {
+      const cleanToken = String(rawToken || "").trim();
+      if (!cleanToken) return;
+      try {
+        localStorage.setItem(PUSH_TOKEN_CACHE_KEY, JSON.stringify({ value: cleanToken, platform: Capacitor.getPlatform(), cached_at: new Date().toISOString() }));
+      } catch {}
+    }
+
+    function readCachedNativeToken() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(PUSH_TOKEN_CACHE_KEY) || "null");
+        return String(parsed?.value || "").trim();
+      } catch {
+        return "";
+      }
+    }
+
     async function init() {
       const [pushMod, deviceMod, localMod, hapticsMod] = await Promise.all([
         optionalImport("@capacitor/push-notifications"),
@@ -63,19 +88,24 @@ export default function PushNotificationsBridge() {
       async function registerToken(rawToken: string) {
         const cleanToken = String(rawToken || "").trim();
         if (!cleanToken) return;
-        updateStatus("registering-token", cleanToken.slice(0, 12));
+        cacheNativeToken(cleanToken);
+        updateStatus("token-sending-to-backend", cleanToken.slice(0, 12));
         let deviceInfo: any = null;
         try {
           deviceInfo = Device ? await Device.getInfo() : null;
         } catch {}
 
+        const platform = Capacitor.getPlatform();
         await API.post("/push/register", {
           token: cleanToken,
-          platform: Capacitor.getPlatform(),
+          platform,
+          provider: platform === "ios" ? "apns" : "fcm",
+          environment: platform === "ios" ? pushEnvironment() : null,
+          app_bundle: platform === "ios" ? OYI_IOS_BUNDLE_ID : null,
           device_id: deviceInfo?.identifier || deviceInfo?.model || null,
           app_version: deviceInfo?.appVersion || null,
         })
-          .then(() => updateStatus("registered", cleanToken.slice(0, 12)))
+          .then(() => updateStatus("backend-token-registration-success", cleanToken.slice(0, 12)))
           .catch((err) => {
             const msg = err?.response?.data?.error || err?.message || "Failed to POST /push/register";
             updateStatus("register-api-failed", String(msg));
@@ -107,12 +137,18 @@ export default function PushNotificationsBridge() {
         if (localPerms && localPerms.display !== "granted") {
           // fail soft: remote push can still work
         }
-        updateStatus("permission-granted");
+        updateStatus("push-permission-granted");
+
+        const cachedToken = readCachedNativeToken();
+        if (cachedToken) {
+          updateStatus("cached-token-resend-started", cachedToken.slice(0, 12));
+          void registerToken(cachedToken);
+        }
 
         listeners.push(await PushNotifications.addListener("registration", (tokenInfo: any) => {
           if (unmounted) return;
           const value = String(tokenInfo?.value || "");
-          updateStatus("native-token-received", value.slice(0, 12));
+          updateStatus("apns-token-received", value.slice(0, 12));
           void registerToken(value);
         }));
 
@@ -133,7 +169,7 @@ export default function PushNotificationsBridge() {
           if (payload?.id) upsert(payload);
         }));
 
-        updateStatus("calling-register");
+        updateStatus("push-registration-started");
         await PushNotifications.register();
       } catch {
         updateStatus("bridge-failed", "Push initialization crashed");

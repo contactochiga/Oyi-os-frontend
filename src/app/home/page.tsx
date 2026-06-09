@@ -83,6 +83,16 @@ function favoritePreference(device: any) {
   return values.find((value) => typeof value === "boolean");
 }
 
+function proximityStateLabel(value: any) {
+  const text = String(value || "").toLowerCase();
+  if (/leaving/.test(text)) return "leaving_home";
+  if (/approach/.test(text)) return "approaching_estate";
+  if (/near.*estate|inside.*estate/.test(text)) return "near_estate";
+  if (/near.*home/.test(text)) return "near_home";
+  if (/away/.test(text)) return "away";
+  return "";
+}
+
 function readFavoritePower(device: any) {
   const raw = device?.switch ?? device?.power ?? device?.on ?? device?.state?.switch ?? device?.state?.power ?? device?.state?.on;
   if (typeof raw === "boolean") return raw;
@@ -425,15 +435,33 @@ export default function HomePage() {
   });
   const availableToAssign = assignableDevices.length;
   const activeDevices = assignedDevices.filter(isOnline).length;
-  const homeState = dashErr ? "Needs attention" : unread || openMaintenance ? "Aware" : "Calm";
+  const offlineDevices = assignedDevices.filter((device) => !isOnline(device)).length;
+  const activeOnDevices = assignedDevices.filter((device) => isOnline(device) && readFavoritePower(device)).length;
+  const securityAlerts = notifications.filter((item) => {
+    const text = String(((item as any)?.type || "") + " " + ((item as any)?.title || "") + " " + ((item as any)?.message || "") + " " + ((item as any)?.payload?.kind || "")).toLowerCase();
+    return item.status !== "read" && /security|urgent|critical|emergency|alert/.test(text);
+  }).length;
+  const proximityNotification = notifications.find((item) => {
+    const text = String(((item as any)?.payload?.kind || "") + " " + ((item as any)?.type || "") + " " + ((item as any)?.title || "")).toLowerCase();
+    return /proximity|near_home|leaving_home|approaching_estate|away/.test(text);
+  });
+  const proximityState = proximityStateLabel((proximityNotification as any)?.payload?.state || (proximityNotification as any)?.payload?.kind || (proximityNotification as any)?.title);
+  const homeAwarenessLine = (() => {
+    if (dashErr) return "Home is aware · Your updates will appear here.";
+    if (proximityState === "leaving_home" && activeOnDevices) return `You left home · ${activeOnDevices} device${activeOnDevices === 1 ? " is" : "s are"} still on.`;
+    if (proximityState === "leaving_home") return "You left home · No urgent issues detected.";
+    if (proximityState === "near_home") return openMaintenance || securityAlerts || offlineDevices ? "You're near home · Oyi has updates for you." : "You're near home · Everything looks normal.";
+    if (proximityState === "approaching_estate") return activeVisitors ? `You're near the estate · ${activeVisitors} visitor pass${activeVisitors === 1 ? " is" : "es are"} active.` : "You're near the estate · No visitor action is waiting.";
+    if (proximityState === "away") return activeOnDevices ? `You're away · ${activeOnDevices} device${activeOnDevices === 1 ? " remains" : "s remain"} active.` : "You're away · Oyi is watching your home.";
+    if (securityAlerts) return `Home needs attention · ${securityAlerts} urgent update${securityAlerts === 1 ? "" : "s"} waiting.`;
+    if (openMaintenance) return `Home needs attention · ${openMaintenance} maintenance request${openMaintenance === 1 ? " is" : "s are"} open.`;
+    if (offlineDevices >= 3) return "Several devices went offline recently.";
+    if (offlineDevices === 1) return `${String(assignedDevices.find((device) => !isOnline(device))?.name || "One device")} is offline.`;
+    if (unread) return `Home is aware · ${unread} update${unread === 1 ? "" : "s"} waiting patiently.`;
+    return "Home is calm · No urgent updates.";
+  })();
+  const homeState = dashErr || securityAlerts || openMaintenance || offlineDevices ? "Needs attention" : unread ? "Aware" : "Calm";
   const securityState = activeVisitors ? `${activeVisitors} visitor${activeVisitors > 1 ? "s" : ""}` : "Protected";
-  const supportLine = dashBusy
-    ? "Syncing your home state."
-    : dashErr
-      ? "Some home signals need a refresh."
-      : unread
-        ? `${unread} update${unread > 1 ? "s" : ""} waiting quietly.`
-        : "Everything is under control.";
   const deviceStateLabel = devicesBusy
     ? "Syncing"
     : devicesErr
@@ -592,8 +620,8 @@ export default function HomePage() {
                 <div className="text-[28px] font-semibold leading-none tracking-[-0.05em] text-white sm:text-[32px]">
                   Home is {homeState.toLowerCase()}.
                 </div>
-                <p className="mt-2.5 text-[15px] leading-5 text-white/54 sm:text-[16px]">
-                  {supportLine}
+                <p className="mx-auto mt-2.5 max-w-[330px] rounded-full border border-white/[0.07] bg-white/[0.035] px-3.5 py-2 text-[13px] leading-5 text-white/62 shadow-[0_14px_34px_rgba(0,0,0,0.22)] backdrop-blur-xl sm:text-[14px]">
+                  {homeAwarenessLine}
                 </p>
               </div>
             </motion.section>

@@ -6,6 +6,7 @@ import {
   FiActivity,
   FiCreditCard,
   FiGrid,
+  FiHelpCircle,
   FiHome,
   FiLayers,
   FiTool,
@@ -26,6 +27,7 @@ type Item = {
     | "devices"
     | "visitors"
     | "maintenance"
+    | "services"
     | "wallet"
     | "profile";
   label: string;
@@ -44,12 +46,13 @@ const ITEMS: Item[] = [
   { key: "visitors", label: "Visitors", href: "/visitors", icon: FiUserCheck, activeRoutes: ["/visitors"], indicatorPattern: /visitor|guest|gate|access/i },
   { key: "wallet", label: "Wallet", href: "/wallet", icon: FiCreditCard, activeRoutes: ["/wallet"], indicatorPattern: /wallet|payment|transaction|billing|dues|fund/i },
   { key: "maintenance", label: "Maint.", href: "/maintenance", icon: FiTool, activeRoutes: ["/maintenance", "/reports"], indicatorPattern: /maintenance|repair|work order|ticket/i },
+  { key: "services", label: "Services", href: "/services", icon: FiHelpCircle, activeRoutes: ["/services"], indicatorPattern: /service|concierge|booking|request/i },
   { key: "profile", label: "Profile", href: "/profile", icon: FiUser, activeRoutes: ["/profile", "/account", "/settings"], indicatorPattern: /profile|verify|verification|account|invite/i },
 ];
 
 const NAV_GROUPS: Item[][] = [
   ITEMS.filter((item) => ["home", "spaces", "devices", "community", "activity"].includes(item.key)),
-  ITEMS.filter((item) => ["visitors", "wallet", "maintenance", "profile"].includes(item.key)),
+  ITEMS.filter((item) => ["visitors", "wallet", "maintenance", "services", "profile"].includes(item.key)),
 ];
 
 function pageForKey(key: Item["key"]) {
