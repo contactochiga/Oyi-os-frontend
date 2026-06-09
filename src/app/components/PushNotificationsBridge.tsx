@@ -2,6 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { Capacitor } from "@capacitor/core";
+import { PushNotifications } from "@capacitor/push-notifications";
+import { Device } from "@capacitor/device";
+import { LocalNotifications } from "@capacitor/local-notifications";
+import { Haptics, ImpactStyle } from "@capacitor/haptics";
 import useAuth from "@/hooks/useAuth";
 import API from "@/services/api";
 import { useNotificationStore } from "@/store/useNotificationStore";
@@ -12,15 +16,6 @@ const OYI_IOS_BUNDLE_ID = "com.ochiga.oyios";
 function pushEnvironment() {
   const explicit = String(process.env.NEXT_PUBLIC_PUSH_ENVIRONMENT || process.env.NEXT_PUBLIC_APP_ENV || "").toLowerCase();
   return explicit === "production" ? "production" : "sandbox";
-}
-
-async function optionalImport(specifier: string) {
-  try {
-    const dynamicImport = new Function("specifier", "return import(specifier)") as (specifier: string) => Promise<any>;
-    return await dynamicImport(specifier);
-  } catch {
-    return null;
-  }
 }
 
 export default function PushNotificationsBridge() {
@@ -68,22 +63,6 @@ export default function PushNotificationsBridge() {
     }
 
     async function init() {
-      const [pushMod, deviceMod, localMod, hapticsMod] = await Promise.all([
-        optionalImport("@capacitor/push-notifications"),
-        optionalImport("@capacitor/device"),
-        optionalImport("@capacitor/local-notifications"),
-        optionalImport("@capacitor/haptics"),
-      ]);
-      const PushNotifications = pushMod?.PushNotifications;
-      const Device = deviceMod?.Device;
-      const LocalNotifications = localMod?.LocalNotifications;
-      const Haptics = hapticsMod?.Haptics;
-      const ImpactStyle = hapticsMod?.ImpactStyle || { Medium: "MEDIUM" };
-
-      if (!PushNotifications) {
-        updateStatus("push-plugin-missing", "Optional Capacitor push plugin is not installed in this build.");
-        return;
-      }
 
       async function registerToken(rawToken: string) {
         const cleanToken = String(rawToken || "").trim();
@@ -92,7 +71,7 @@ export default function PushNotificationsBridge() {
         updateStatus("token-sending-to-backend", cleanToken.slice(0, 12));
         let deviceInfo: any = null;
         try {
-          deviceInfo = Device ? await Device.getInfo() : null;
+          deviceInfo = await Device.getInfo();
         } catch {}
 
         const platform = Capacitor.getPlatform();
@@ -117,18 +96,16 @@ export default function PushNotificationsBridge() {
         const body = String(notification?.body || notification?.data?.body || "");
         if (!title && !body) return;
         try {
-          if (LocalNotifications) {
-            await LocalNotifications.schedule({ notifications: [{ id: Date.now(), title, body, schedule: { at: new Date(Date.now() + 250) }, sound: "default" }] });
-          }
+          await LocalNotifications.schedule({ notifications: [{ id: Date.now(), title, body, schedule: { at: new Date(Date.now() + 250) }, sound: "default" }] });
         } catch {}
         try {
-          await Haptics?.impact?.({ style: ImpactStyle.Medium });
+          await Haptics.impact({ style: ImpactStyle.Medium });
         } catch {}
       }
 
       try {
         updateStatus("requesting-permission");
-        const localPerms = LocalNotifications ? await LocalNotifications.requestPermissions().catch(() => null) : null;
+        const localPerms = await LocalNotifications.requestPermissions().catch(() => null);
         const pushPerms = await PushNotifications.requestPermissions();
         if (pushPerms.receive !== "granted") {
           updateStatus("permission-denied", String(pushPerms.receive || "not-granted"));
