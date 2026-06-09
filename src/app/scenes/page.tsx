@@ -8,6 +8,7 @@ import HamburgerMenu from "@/app/components/HamburgerMenu";
 import LayoutWrapper from "@/app/components/LayoutWrapper";
 import MessagesInboxButton from "@/app/components/MessagesInboxButton";
 import useAuth from "@/hooks/useAuth";
+import useActiveContext from "@/hooks/useActiveContext";
 import { deviceService } from "@/services/deviceService";
 import { sceneService, type ConsumerAutomation, type ConsumerScene } from "@/services/sceneService";
 
@@ -32,8 +33,10 @@ function deviceId(device: AnyDevice) { return String(device?.id || device?.exter
 function deviceName(device: AnyDevice) { return String(device?.name || device?.alias || "Device"); }
 
 export default function ScenesPage() {
-  const { user } = useAuth();
-  const estateId = (user as any)?.estate_id || "";
+  useAuth();
+  const activeContext = useActiveContext();
+  const estateId = activeContext.estate_id || "";
+  const contextReady = activeContext.ready;
   const [tab, setTab] = useState<Tab>("scenes");
   const [scenes, setScenes] = useState<ConsumerScene[]>([]);
   const [automations, setAutomations] = useState<ConsumerAutomation[]>([]);
@@ -48,6 +51,13 @@ export default function ScenesPage() {
   const [busyId, setBusyId] = useState("");
 
   async function refresh() {
+    if (!contextReady || !estateId) {
+      setScenes([]);
+      setAutomations([]);
+      setDevices([]);
+      setLoading(activeContext.loading || activeContext.switching);
+      return;
+    }
     setLoading(true);
     setError("");
     try {
@@ -79,12 +89,12 @@ export default function ScenesPage() {
     }
   }, []);
 
-  useEffect(() => { void refresh(); }, [estateId]);
+  useEffect(() => { void refresh(); }, [contextReady, activeContext.contextKey]);
 
   async function runScene(scene: ConsumerScene) {
     setBusyId(scene.id);
     setError("");
-    try { await sceneService.runScene(scene.id); }
+    try { await sceneService.runScene(scene.id, scene.name); await refresh(); }
     catch (err: any) { setError(err?.response?.data?.error || err?.message || "Scene could not complete."); }
     finally { setBusyId(""); }
   }

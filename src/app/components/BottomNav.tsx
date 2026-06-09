@@ -85,6 +85,7 @@ export default function BottomNav() {
   const notifications = useNotificationStore((state) => state.items);
   const unreadByBucket = useNotificationStore((state) => state.unreadByBucket);
   const markBucketViewed = useNotificationStore((state) => state.markBucketViewed);
+  const markNotificationsRead = useNotificationStore((state) => state.markNotificationsRead);
   const scopeKey = useMemo(() => {
     const identity = String((user as any)?.id || "guest");
     const estate = String((user as any)?.estate_id || "estate");
@@ -116,8 +117,28 @@ export default function BottomNav() {
     persistPage(bounded);
   }
 
+  function clearMatchingNotifications(bucket: Item["key"] | "messages") {
+    if (bucket === "activity") {
+      markBucketViewed("activity");
+      markBucketViewed("messages");
+      return;
+    }
+    if (bucket === "community" || bucket === "profile") {
+      markBucketViewed(bucket);
+      return;
+    }
+    const item = ITEMS.find((entry) => entry.key === bucket);
+    if (!item?.indicatorPattern) return;
+    const ids = notifications
+      .filter((notification) => isUnread(notification) && item.indicatorPattern!.test(notificationText(notification)))
+      .map((notification) => String(notification.id || ""))
+      .filter(Boolean);
+    if (ids.length) markNotificationsRead(ids);
+  }
+
   function clearLocalDot(bucket: Item["key"] | "messages") {
     setLocalDots((current) => ({ ...current, [bucket]: false }));
+    clearMatchingNotifications(bucket);
     try {
       localStorage.setItem(`oyi:last-seen:${scopeKey}:${bucket}`, new Date().toISOString());
     } catch {}
@@ -137,19 +158,6 @@ export default function BottomNav() {
     const activeItem = ITEMS.find((item) => isActive(pathname, item));
     if (!activeItem) return;
     clearLocalDot(activeItem.key);
-    if (activeItem.key === "activity") {
-      clearLocalDot("activity");
-      markBucketViewed("activity");
-      markBucketViewed("messages");
-    }
-    if (activeItem.key === "community") {
-      clearLocalDot("community");
-      markBucketViewed("community");
-    }
-    if (activeItem.key === "profile") {
-      clearLocalDot("profile");
-      markBucketViewed("profile");
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname, scopeKey, markBucketViewed]);
 
@@ -238,16 +246,6 @@ export default function BottomNav() {
                     onClick={() => {
                       scrollToPage(pageForKey(item.key));
                       clearLocalDot(item.key);
-                      if (item.key === "activity") {
-                        markBucketViewed("activity");
-                        markBucketViewed("messages");
-                      }
-                      if (item.key === "community") {
-                        markBucketViewed("community");
-                      }
-                      if (item.key === "profile") {
-                        markBucketViewed("profile");
-                      }
                       router.push(item.href);
                     }}
                     className={`group rounded-[21px] px-1.5 py-1.5 text-center transition active:scale-[0.98] ${

@@ -32,6 +32,12 @@ export default function SecurityPage() {
   const [err, setErr] = useState<string | null>(null);
 
   async function load() {
+    if (!active.ready || !active.estate_id || !active.home_id) {
+      setDevices([]);
+      setVisitors([]);
+      setLoading(active.loading || active.switching);
+      return;
+    }
     setLoading(true);
     setErr(null);
     try {
@@ -50,7 +56,7 @@ export default function SecurityPage() {
 
   useEffect(() => {
     void load();
-  }, [active.estate_id]);
+  }, [active.ready, active.contextKey]);
 
   const securityDevices = useMemo(() => devices.filter(isSecurityDevice), [devices]);
   const cameras = useMemo(() => securityDevices.filter((d) => `${d?.name || ""} ${d?.type || ""} ${d?.category || ""}`.toLowerCase().includes("camera") || `${d?.name || ""}`.toLowerCase().includes("cctv")), [securityDevices]);

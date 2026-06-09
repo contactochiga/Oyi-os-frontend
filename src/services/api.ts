@@ -62,7 +62,7 @@ const API = axios.create({
     "Content-Type": "application/json",
     "X-Ochiga-Surface": "consumer",
   },
-  timeout: 15000,
+  timeout: 45000,
 });
 
 /**
@@ -94,3 +94,18 @@ API.interceptors.request.use((config) => {
 });
 
 export default API;
+
+
+API.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const config: any = error?.config || {};
+    const method = String(config.method || "get").toLowerCase();
+    const timedOut = String(error?.code || "") === "ECONNABORTED" || /timeout/i.test(String(error?.message || ""));
+    if (method === "get" && timedOut && !config.__oyiRetried) {
+      config.__oyiRetried = true;
+      return API.request(config);
+    }
+    return Promise.reject(error);
+  },
+);

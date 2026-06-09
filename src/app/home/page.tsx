@@ -179,6 +179,7 @@ export default function HomePage() {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [scenes, setScenes] = useState<ConsumerScene[]>([]);
+  const [latestSceneLabel, setLatestSceneLabel] = useState<string | null>(null);
   const [messageUnread, setMessageUnread] = useState<number | null>(null);
   const [watchLabel, setWatchLabel] = useState("Unavailable");
   const [contextOpen, setContextOpen] = useState(false);
@@ -190,40 +191,12 @@ export default function HomePage() {
   const [learnMoreOpen, setLearnMoreOpen] = useState(false);
   const quickControlsRef = useRef<HTMLDivElement | null>(null);
 
-  const estateId = useMemo(() => {
-    const fromContext = activeContext.estate_id;
-    const fromUser = (user as any)?.estate_id || (user as any)?.estateId;
-    if (fromContext) return String(fromContext);
-    if (fromUser) return String(fromUser);
-    if (typeof window !== "undefined") {
-      return (
-        window.localStorage.getItem("oyi_estate_id") ||
-        window.localStorage.getItem("estate_id") ||
-        window.localStorage.getItem("ochiga_estate") ||
-        ""
-      );
-    }
-    return "";
-  }, [activeContext.estate_id, user]);
-
-  const homeId = useMemo(() => {
-    const fromContext = activeContext.home_id;
-    const fromUser = (user as any)?.home_id || (user as any)?.homeId;
-    if (fromContext) return String(fromContext);
-    if (fromUser) return String(fromUser);
-    if (typeof window !== "undefined") {
-      return (
-        window.localStorage.getItem("oyi_home_id") ||
-        window.localStorage.getItem("home_id") ||
-        window.localStorage.getItem("ochiga_home") ||
-        ""
-      );
-    }
-    return "";
-  }, [activeContext.home_id, user]);
+  const contextReady = Boolean(ready && token && activeContext.ready);
+  const estateId = useMemo(() => activeContext.estate_id ? String(activeContext.estate_id) : "", [activeContext.estate_id]);
+  const homeId = useMemo(() => activeContext.home_id ? String(activeContext.home_id) : "", [activeContext.home_id]);
 
   async function refreshDevicePanelData() {
-    if (!token) return;
+    if (!contextReady || !estateId || !homeId) return;
     setDevicesBusy(true);
     setDevicesErr(null);
     try {
@@ -241,7 +214,7 @@ export default function HomePage() {
   }
 
   async function refreshDashboardData() {
-    if (!token) return;
+    if (!contextReady || !estateId || !homeId) return;
     setDashBusy(true);
     setDashErr(null);
     try {
@@ -288,17 +261,39 @@ export default function HomePage() {
   }
 
   useEffect(() => {
-    if (!ready || !token) return;
-    refreshDevicePanelData();
-    refreshDashboardData();
-  }, [ready, token, estateId, homeId]);
+    try {
+      const cached = typeof window !== "undefined" ? JSON.parse(window.localStorage.getItem("oyi:last-scene") || "null") : null;
+      if (cached?.name) setLatestSceneLabel(String(cached.name));
+    } catch {}
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent).detail || {};
+      if (detail?.name) setLatestSceneLabel(String(detail.name));
+    };
+    window.addEventListener("oyi:scene-activated", handler as EventListener);
+    return () => window.removeEventListener("oyi:scene-activated", handler as EventListener);
+  }, []);
 
   useEffect(() => {
-    if (!ready || !token) return;
+    if (!contextReady) {
+      setAssignedDevices([]);
+      setRegistryDevices([]);
+      setVisitors([]);
+      setCommunityPosts([]);
+      setMaintenance([]);
+      setNotifications([]);
+      setScenes([]);
+      return;
+    }
+    refreshDevicePanelData();
+    refreshDashboardData();
+  }, [contextReady, activeContext.contextKey]);
+
+  useEffect(() => {
+    if (!contextReady) return;
     const refresh = () => void refreshDevicePanelData();
     window.addEventListener("oyi:device-registry-updated", refresh);
     return () => window.removeEventListener("oyi:device-registry-updated", refresh);
-  }, [ready, token, estateId, homeId]);
+  }, [contextReady, activeContext.contextKey]);
 
   const canMountAuthedBridges = !!ready && !!token;
 
@@ -383,7 +378,13 @@ export default function HomePage() {
       } else {
         setContextOpen(false);
       }
-      await Promise.all([refreshDevicePanelData(), refreshDashboardData()]);
+      setAssignedDevices([]);
+      setRegistryDevices([]);
+      setVisitors([]);
+      setCommunityPosts([]);
+      setMaintenance([]);
+      setNotifications([]);
+      setScenes([]);
     } finally {
       setContextSwitching(false);
     }
@@ -450,15 +451,15 @@ export default function HomePage() {
     if (dashErr) return "Home is aware · Your updates will appear here.";
     if (proximityState === "leaving_home" && activeOnDevices) return `You left home · ${activeOnDevices} device${activeOnDevices === 1 ? " is" : "s are"} still on.`;
     if (proximityState === "leaving_home") return "You left home · No urgent issues detected.";
-    if (proximityState === "near_home") return openMaintenance || securityAlerts || offlineDevices ? "You're near home · Oyi has updates for you." : "You're near home · Everything looks normal.";
+    if (proximityState === "near_home") return openMaintenance || securityAlerts || offlineDevices ? `${openMaintenance + securityAlerts + offlineDevices} update${openMaintenance + securityAlerts + offlineDevices === 1 ? "" : "s"} require your attention.` : "Everything looks normal at home.";
     if (proximityState === "approaching_estate") return activeVisitors ? `You're near the estate · ${activeVisitors} visitor pass${activeVisitors === 1 ? " is" : "es are"} active.` : "You're near the estate · No visitor action is waiting.";
     if (proximityState === "away") return activeOnDevices ? `You're away · ${activeOnDevices} device${activeOnDevices === 1 ? " remains" : "s remain"} active.` : "You're away · Oyi is watching your home.";
-    if (securityAlerts) return `Home needs attention · ${securityAlerts} urgent update${securityAlerts === 1 ? "" : "s"} waiting.`;
-    if (openMaintenance) return `Home needs attention · ${openMaintenance} maintenance request${openMaintenance === 1 ? " is" : "s are"} open.`;
+    if (securityAlerts) return `${securityAlerts} urgent update${securityAlerts === 1 ? "" : "s"} require your attention.`;
+    if (openMaintenance) return `${openMaintenance} maintenance request${openMaintenance === 1 ? " is" : "s are"} open.`;
     if (offlineDevices >= 3) return "Several devices went offline recently.";
     if (offlineDevices === 1) return `${String(assignedDevices.find((device) => !isOnline(device))?.name || "One device")} is offline.`;
     if (unread) return `Home is aware · ${unread} update${unread === 1 ? "" : "s"} waiting patiently.`;
-    return "Home is calm · No urgent updates.";
+    return proximityState === "near_estate" ? "You're near the estate. No visitor action is waiting." : "You're home. No issues require attention.";
   })();
   const homeState = dashErr || securityAlerts || openMaintenance || offlineDevices ? "Needs attention" : unread ? "Aware" : "Calm";
   const securityState = activeVisitors ? `${activeVisitors} visitor${activeVisitors > 1 ? "s" : ""}` : "Protected";
@@ -474,10 +475,10 @@ export default function HomePage() {
   const maintenanceLabel = openMaintenance ? `${openMaintenance} open` : "None open";
   const communityLabel = communityPosts.length ? `${communityPosts.length} update${communityPosts.length > 1 ? "s" : ""}` : "No updates";
   const visitorLabel = activeVisitors ? `${activeVisitors} active` : "0 active";
-  const scenesLabel = scenes.length ? scenes[0].name : "Create your first scene";
+  const scenesLabel = latestSceneLabel ? `${latestSceneLabel} activated` : scenes.length ? scenes[0].name : "Create your first scene";
   const homeStateItems = [
     {
-      label: "Scenes",
+      label: latestSceneLabel ? "Last Scene" : "Scenes",
       value: scenesLabel,
       href: "/scenes?create=scene",
       Icon: Moon,

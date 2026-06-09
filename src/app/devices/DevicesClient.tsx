@@ -36,6 +36,7 @@ import HamburgerMenu from "@/app/components/HamburgerMenu";
 import MessagesInboxButton from "@/app/components/MessagesInboxButton";
 import BottomNav from "@/app/components/BottomNav";
 import useAuth from "@/hooks/useAuth";
+import useActiveContext from "@/hooks/useActiveContext";
 import { deviceService } from "@/services/deviceService";
 import { sceneService } from "@/services/sceneService";
 import GangRingSwitch from "@/app/components/devices/GangRingSwitch";
@@ -365,9 +366,11 @@ function deviceRendererKind(device: AnyDevice): DeviceRendererKind {
 export default function DeviceClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user } = useAuth();
-  const estateId = useMemo(() => (user as any)?.estate_id ?? (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null), [user]);
-  const homeId = useMemo(() => (user as any)?.home_id ?? (typeof window !== "undefined" ? localStorage.getItem("ochiga_home") : null), [user]);
+  useAuth();
+  const activeContext = useActiveContext();
+  const estateId = useMemo(() => activeContext.estate_id || null, [activeContext.estate_id]);
+  const homeId = useMemo(() => activeContext.home_id || null, [activeContext.home_id]);
+  const contextReady = activeContext.ready;
 
   const [items, setItems] = useState<AnyDevice[]>([]);
   const [loading, setLoading] = useState(false);
@@ -415,6 +418,12 @@ export default function DeviceClient() {
   }
 
   async function load() {
+    if (!contextReady || !estateId || !homeId) {
+      setItems([]);
+      setStateMap({});
+      setLoading(activeContext.loading || activeContext.switching);
+      return;
+    }
     setLoading(true);
     setErr(null);
     try {
@@ -433,7 +442,7 @@ export default function DeviceClient() {
   useEffect(() => {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [estateId]);
+  }, [contextReady, activeContext.contextKey]);
 
   useEffect(() => {
     if (["1", "device"].includes(String(searchParams.get("add") || ""))) void openAddDevice();
@@ -450,7 +459,7 @@ export default function DeviceClient() {
     window.addEventListener("oyi:device-registry-updated", refresh);
     return () => window.removeEventListener("oyi:device-registry-updated", refresh);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [estateId]);
+  }, [contextReady, activeContext.contextKey]);
 
   useEffect(() => {
     const targetId = String(searchParams.get("deviceId") || "").trim();

@@ -96,7 +96,9 @@ function mergedServiceItem(item: ServiceItem, configs: Partial<Record<ServiceKey
 }
 
 export default function ServicesPage() {
-  const { estate_id: estateId, home } = useActiveContext();
+  const activeContext = useActiveContext();
+  const { estate_id: estateId, home } = activeContext;
+  const contextReady = activeContext.ready;
   const [walletBusy, setWalletBusy] = useState<Record<string, boolean>>({});
   const [amounts, setAmounts] = useState<Record<string, string>>({});
   const [msg, setMsg] = useState<string | null>(null);
@@ -121,12 +123,12 @@ export default function ServicesPage() {
     const serviceId = String(new URLSearchParams(window.location.search).get("serviceId") || "").trim() as ServiceKey;
     if (!serviceId) return;
     if (SERVICE_ITEMS.some((item) => item.key === serviceId)) setActiveServiceKey(serviceId);
-  }, []);
+  }, [contextReady, activeContext.contextKey]);
 
   useEffect(() => {
     let cancelled = false;
     async function loadConfigs() {
-      if (!estateId) {
+      if (!contextReady || !estateId) {
         setConfigs({});
         setConfigsFallback(false);
         return;
@@ -141,18 +143,19 @@ export default function ServicesPage() {
     return () => {
       cancelled = true;
     };
-  }, [estateId]);
+  }, [contextReady, activeContext.contextKey]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      if (!contextReady) { setHistory([]); return; }
       const rows = await servicesService.history({ limit: 80 });
       if (!cancelled) setHistory(Array.isArray(rows) ? rows : []);
     })();
     return () => {
       cancelled = true;
     };
-  }, [estateId, home?.id]);
+  }, [contextReady, activeContext.contextKey]);
 
   function setAmount(key: string, value: string) {
     setAmounts((prev) => ({ ...prev, [key]: value }));

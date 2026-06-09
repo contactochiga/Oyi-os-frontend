@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import API from "@/services/api";
 import useAuth from "@/hooks/useAuth";
 
@@ -90,6 +90,18 @@ function applyRememberedContext(state: ActiveContextState): ActiveContextState {
   };
 }
 
+function readSwitchingFlag() {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem("oyi_context_switching") === "1";
+}
+
+function setSwitchingFlag(value: boolean) {
+  if (typeof window === "undefined") return;
+  if (value) window.localStorage.setItem("oyi_context_switching", "1");
+  else window.localStorage.removeItem("oyi_context_switching");
+  window.dispatchEvent(new CustomEvent(value ? "oyi:context-switch-start" : "oyi:context-switch-end"));
+}
+
 function emptyState(): ActiveContextState {
   return {
     estate: null,
@@ -104,6 +116,8 @@ export default function useActiveContext() {
   const { token, user } = useAuth();
   const [context, setContext] = useState<ActiveContextState>(emptyState);
   const [loading, setLoading] = useState(false);
+  const [selecting, setSelecting] = useState(false);
+  const [externalSwitching, setExternalSwitching] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!token) {
@@ -137,6 +151,8 @@ export default function useActiveContext() {
   const selectContext = useCallback(
     async (next: AvailableHomeContext) => {
       if (!next?.home_id) return { ok: false, error: "home_id_missing" };
+      setSelecting(true);
+      setSwitchingFlag(true);
       rememberContext(next);
       setContext((previous) => ({
         ...previous,
@@ -163,6 +179,9 @@ export default function useActiveContext() {
       } catch (err: any) {
         if (typeof window !== "undefined") window.dispatchEvent(new Event("oyi:context-changed"));
         return { ok: false, error: err?.response?.data?.error || err?.message || "context_select_failed" };
+      } finally {
+        setSelecting(false);
+        setSwitchingFlag(false);
       }
     },
     [refresh],
@@ -170,25 +189,40 @@ export default function useActiveContext() {
 
   useEffect(() => {
     const handler = () => {
+      setExternalSwitching(readSwitchingFlag());
       void refresh();
     };
+    const switchStart = () => setExternalSwitching(true);
+    const switchEnd = () => setExternalSwitching(false);
 
     if (typeof window !== "undefined") {
       window.addEventListener("oyi:context-changed", handler);
+      window.addEventListener("oyi:context-switch-start", switchStart);
+      window.addEventListener("oyi:context-switch-end", switchEnd);
       window.addEventListener("focus", handler);
     }
 
     return () => {
       if (typeof window !== "undefined") {
         window.removeEventListener("oyi:context-changed", handler);
+        window.removeEventListener("oyi:context-switch-start", switchStart);
+        window.removeEventListener("oyi:context-switch-end", switchEnd);
         window.removeEventListener("focus", handler);
       }
     };
   }, [refresh]);
 
+  const switching = selecting || externalSwitching;
+  const contextKey = useMemo(() => `${context.estate_id || ""}:${context.home_id || ""}`, [context.estate_id, context.home_id]);
+  const ready = Boolean(token && context.estate_id && context.home_id && !loading && !switching);
+
   return {
     ...context,
     loading,
+    selecting,
+    switching,
+    ready,
+    contextKey,
     refresh,
     selectContext,
   };

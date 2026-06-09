@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import useAuth from "@/hooks/useAuth";
+import useActiveContext from "@/hooks/useActiveContext";
 import { proximityService, type ProximitySettings, type ProximityState } from "@/services/proximityService";
 
 function toRad(value: number) {
@@ -46,6 +47,7 @@ function classifyState(settings: ProximitySettings, lat: number, lng: number, pr
 
 export default function GeoFenceBridge() {
   const { token, ready, user } = useAuth();
+  const activeContext = useActiveContext();
   const lastSentAt = useRef(0);
   const [settingsVersion, setSettingsVersion] = useState(0);
 
@@ -61,16 +63,16 @@ export default function GeoFenceBridge() {
   }, []);
 
   useEffect(() => {
-    if (!ready || !token || !user?.home_id) return;
+    if (!ready || !token || !activeContext.ready || !activeContext.home_id) return;
     if (typeof window === "undefined" || !("geolocation" in navigator)) return;
 
     let watchId: number | null = null;
     let cancelled = false;
     let settings: ProximitySettings | null = null;
     const userId = String((user as any)?.id || "");
-    const homeId = String(user.home_id || "");
-    const estateId = String((user as any)?.estate_id || "");
-    const key = stateKey(userId, user.home_id);
+    const homeId = String(activeContext.home_id || "");
+    const estateId = String(activeContext.estate_id || "");
+    const key = stateKey(userId, homeId);
     const savedState = window.localStorage.getItem(key) as ProximityState | null;
     let lastState: ProximityState | null = savedState || null;
 
@@ -115,7 +117,7 @@ export default function GeoFenceBridge() {
       cancelled = true;
       if (watchId !== null) navigator.geolocation.clearWatch(watchId);
     };
-  }, [ready, token, user?.home_id, user?.estate_id, user?.id, settingsVersion]);
+  }, [ready, token, user?.id, activeContext.ready, activeContext.contextKey, settingsVersion]);
 
   return null;
 }

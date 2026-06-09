@@ -178,10 +178,14 @@ function createCategoryForTab(tab: TabKey) {
   return "resident";
 }
 
+function isPostRead(post: any) {
+  return post?.viewed_by_me === true || post?.read_by_me === true || Boolean(post?.read_at) || Boolean(post?.viewed_at);
+}
+
 function isPriorityNotice(data: { post: any; tab: Exclude<TabKey, "all">; official?: { label: string; Icon: any } | null }) {
   const post = data.post;
   const text = `${post?.category || ""} ${post?.post_type || ""} ${post?.priority || ""} ${post?.title || ""} ${post?.body || post?.content || ""}`.toLowerCase();
-  if (!data.official) return false;
+  if (!data.official || isPostRead(post)) return false;
   return post?.is_urgent === true || data.tab === "urgent" || /security|maintenance|emergency|service interruption|outage|power|water|administration|broadcast|gate|access/.test(text);
 }
 
@@ -220,10 +224,13 @@ function CommunityHeader({ unread }: { unread: number }) {
 
 export default function CommunityPage() {
   const { user } = useAuth();
-  const { estate, home } = useActiveContext();
+  const activeContext = useActiveContext();
+  const { estate, home } = activeContext;
   const notificationItems = useNotificationStore((state) => state.items);
   const markBucketViewed = useNotificationStore((state) => state.markBucketViewed);
-  const estateId = useMemo(() => String((user as any)?.estate_id || estate?.id || (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") || "" : "")), [user, estate?.id]);
+  const markNotificationsRead = useNotificationStore((state) => state.markNotificationsRead);
+  const estateId = useMemo(() => String(activeContext.estate_id || ""), [activeContext.estate_id]);
+  const contextReady = activeContext.ready;
 
   const [tab, setTab] = useState<TabKey>("all");
   const [items, setItems] = useState<CommunityPost[]>([]);
@@ -247,8 +254,9 @@ export default function CommunityPage() {
   const unread = useMemo(() => notificationItems.filter((item: any) => String(item?.status || "") !== "read" && /community|announcement|notice/.test(`${item?.type || ""} ${item?.title || ""} ${item?.message || ""}`.toLowerCase())).length, [notificationItems]);
 
   async function load(silent = false) {
-    if (!estateId) {
-      setLoading(false);
+    if (!contextReady || !estateId) {
+      setItems([]);
+      setLoading(activeContext.loading || activeContext.switching);
       return;
     }
     if (!silent) setLoading(true);
@@ -264,13 +272,13 @@ export default function CommunityPage() {
     }
   }
 
-  useEffect(() => { void load(); }, [estateId]);
+  useEffect(() => { void load(); }, [contextReady, activeContext.contextKey]);
   useEffect(() => { markBucketViewed("community"); }, [markBucketViewed]);
   useEffect(() => {
-    if (!estateId) return;
+    if (!contextReady || !estateId) return;
     const timer = window.setInterval(() => void load(true), 20000);
     return () => window.clearInterval(timer);
-  }, [estateId]);
+  }, [contextReady, activeContext.contextKey]);
 
   const decorated = useMemo(() => items.map((post: any) => ({ post, tab: categoryFor(post), parsed: parseBody(post), author: authorName(post, user), official: officialIdentity(post), id: pickPostId(post) })).sort((a, b) => {
     const ap = a.post?.is_pinned ? 4 : a.tab === "urgent" ? 3 : a.tab === "announcements" ? 2 : 1;
@@ -339,15 +347,27 @@ export default function CommunityPage() {
     }
   }
 
+  async function markPostReadLocal(postId: string) {
+    if (!postId) return;
+    setItems((prev) => prev.map((post: any) => pickPostId(post) === postId ? { ...post, viewed_by_me: true, read_by_me: true, read_at: post.read_at || new Date().toISOString() } : post));
+    const matchingNotificationIds = notificationItems
+      .filter((item: any) => String(item?.status || "") !== "read" && String(item?.payload?.post_id || item?.entity_id || item?.post_id || "") === postId)
+      .map((item: any) => String(item.id || ""))
+      .filter(Boolean);
+    if (matchingNotificationIds.length) markNotificationsRead(matchingNotificationIds);
+    markBucketViewed("community");
+    void communityService.markPostRead(postId);
+  }
+
   async function toggleComments(postId: string) {
     const next = openPost === postId ? null : postId;
     setOpenPost(next);
+    if (next) void markPostReadLocal(next);
     if (!next || comments[next]) return;
     setBusyPost((prev) => ({ ...prev, [next]: true }));
     try {
       const rows = await communityService.listComments(next);
       setComments((prev) => ({ ...prev, [next]: Array.isArray(rows) ? rows : [] }));
-      void communityService.markPostRead(next);
     } finally {
       setBusyPost((prev) => ({ ...prev, [next]: false }));
     }
@@ -391,23 +411,6 @@ export default function CommunityPage() {
           <div className="mx-auto w-full max-w-[760px] space-y-4">
             <CommunityHeader unread={unread} />
 
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {TABS.map(({ key, label, icon: Icon }) => {
-                const active = tab === key;
-                return (
-                  <button key={key} type="button" onClick={() => setTab(key)} className={cn("inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[12px] font-medium transition", active ? "border-blue-400/70 bg-blue-500/12 text-sky-200 shadow-[0_0_16px_rgba(0,122,255,0.16)]" : "border-white/[0.075] bg-white/[0.025] text-white/64") }>
-                    <Icon className="h-3.5 w-3.5" />
-                    {label}
-                    {counts[key] ? <span className={cn("rounded-full px-1.5 py-0.5 text-[10px]", key === "urgent" ? "bg-red-300/18 text-red-100" : "bg-white/[0.06] text-white/56")}>{counts[key] > 9 ? "9+" : counts[key]}</span> : null}
-                  </button>
-                );
-              })}
-            </div>
-
-            <LiveBroadcastComposer open={liveComposerOpen} estateId={estateId || null} draft={draft} onClose={() => setLiveComposerOpen(false)} onStarted={(post) => { setItems((prev) => [post, ...prev]); setLiveComposerOpen(false); void load(true); }} onStopped={() => void load(true)} />
-
-            {priorityNotices.length ? <OfficialNoticeLane notices={priorityNotices} onOpen={(id) => void toggleComments(id)} /> : null}
-
             {canPost ? (
               <section className="rounded-[21px] border border-white/[0.065] bg-white/[0.03] p-2.5 shadow-[0_14px_42px_rgba(0,0,0,0.22)] backdrop-blur-xl">
                 {!composerOpen ? (
@@ -448,6 +451,23 @@ export default function CommunityPage() {
                 )}
               </section>
             ) : null}
+
+            {priorityNotices.length ? <OfficialNoticeLane notices={priorityNotices} onOpen={(id) => void toggleComments(id)} /> : null}
+
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {TABS.map(({ key, label, icon: Icon }) => {
+                const active = tab === key;
+                return (
+                  <button key={key} type="button" onClick={() => setTab(key)} className={cn("inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[12px] font-medium transition", active ? "border-blue-400/70 bg-blue-500/12 text-sky-200 shadow-[0_0_16px_rgba(0,122,255,0.16)]" : "border-white/[0.075] bg-white/[0.025] text-white/64") }>
+                    <Icon className="h-3.5 w-3.5" />
+                    {label}
+                    {counts[key] ? <span className={cn("rounded-full px-1.5 py-0.5 text-[10px]", key === "urgent" ? "bg-red-300/18 text-red-100" : "bg-white/[0.06] text-white/56")}>{counts[key] > 9 ? "9+" : counts[key]}</span> : null}
+                  </button>
+                );
+              })}
+            </div>
+
+            <LiveBroadcastComposer open={liveComposerOpen} estateId={estateId || null} draft={draft} onClose={() => setLiveComposerOpen(false)} onStarted={(post) => { setItems((prev) => [post, ...prev]); setLiveComposerOpen(false); void load(true); }} onStopped={() => void load(true)} />
 
             {err ? <div className="rounded-[16px] border border-red-300/15 bg-red-500/10 px-3.5 py-2.5 text-[12px] text-red-100">{err}</div> : null}
 

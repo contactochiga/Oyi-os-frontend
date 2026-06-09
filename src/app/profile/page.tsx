@@ -184,11 +184,11 @@ export default function ProfilePage() {
   }, [name, phone, user]);
 
   useEffect(() => {
-    if (!ready || !token) return;
+    if (!ready || !token || !active.ready) return;
     let cancelled = false;
     async function load() {
       const [deviceRes, memberRes, walletRes, notificationRes, contextRes, proximityRes] = await Promise.allSettled([
-        deviceService.getAssignedDevices(active.estate_id || (user as any)?.estate_id),
+        deviceService.getAssignedDevices(active.estate_id || undefined),
         active.home_id ? homeAccessService.listHomeUsers(active.home_id) : Promise.resolve([]),
         walletService.getWallet(),
         listMyNotifications(),
@@ -212,7 +212,7 @@ export default function ProfilePage() {
     return () => {
       cancelled = true;
     };
-  }, [ready, token, active.estate_id, active.home_id, user]);
+  }, [ready, token, active.ready, active.contextKey, user]);
 
   const overview = [
     { label: "Current Home", value: currentHome, icon: Home, tint: "text-sky-300" },

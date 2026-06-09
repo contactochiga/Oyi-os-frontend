@@ -27,6 +27,11 @@ export default function UtilitiesPage() {
   const [loading, setLoading] = useState(false);
 
   async function load() {
+    if (!active.ready || !active.estate_id || !active.home_id) {
+      setDevices([]);
+      setLoading(active.loading || active.switching);
+      return;
+    }
     setLoading(true);
     try {
       const rows = await deviceService.getAssignedDevices(active.estate_id || undefined);
@@ -35,7 +40,7 @@ export default function UtilitiesPage() {
       setLoading(false);
     }
   }
-  useEffect(() => { void load(); }, [active.estate_id]);
+  useEffect(() => { void load(); }, [active.ready, active.contextKey]);
 
   const groups = useMemo(() => [
     { label: "Power", icon: PlugZap, terms: ["power", "socket", "plug", "meter", "relay", "switch"], href: "/devices?category=power" },
