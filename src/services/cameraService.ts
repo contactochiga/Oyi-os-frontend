@@ -3,9 +3,13 @@ import API from "./api";
 export type CameraItem = {
   id: string;
   estate_id?: string;
+  home_id?: string;
   name?: string;
   ip?: string;
   edge_hls_url?: string | null;
+  privacy_scope?: "facility" | "home" | "office" | string;
+  stream_status?: string | null;
+  edge_status?: string | null;
 };
 
 export type CameraEvent = {
@@ -40,13 +44,32 @@ export const cameraService = {
     }
   },
 
-  async getPlayback(cameraId: string, rewindSeconds = 0): Promise<{ type: "hls"; url: string }> {
+  async listByHome(homeId: string): Promise<CameraItem[]> {
+    if (!homeId) return [];
+    try {
+      const res = await API.get(`/cameras/home/${encodeURIComponent(homeId)}`);
+      return res.data?.items ?? [];
+    } catch (err) {
+      console.warn("cameraService.listByHome error:", err);
+      return [];
+    }
+  },
+
+  async getPlayback(cameraId: string, rewindSeconds = 0): Promise<{ type: "hls"; url: string; hls_url?: string; edge_status?: string; stream_status?: string; message?: string }> {
     try {
       const res = await API.get(`/cameras/${encodeURIComponent(cameraId)}/playback`, {
         params: { rewind: Math.max(0, Math.floor(rewindSeconds || 0)) },
       });
-      if (!res.data?.url) throw new Error("Playback URL not available");
-      return { type: "hls", url: String(res.data.url) };
+      const url = res.data?.hls_url || res.data?.url;
+      if (!url) throw new Error(res.data?.message || "Playback URL not available");
+      return {
+        type: "hls",
+        url: String(url),
+        hls_url: String(url),
+        edge_status: res.data?.edge_status,
+        stream_status: res.data?.stream_status,
+        message: res.data?.message,
+      };
     } catch (err: any) {
       throw new Error(pickError(err, "Failed to load playback"));
     }
@@ -68,4 +91,3 @@ export const cameraService = {
 };
 
 export default cameraService;
-

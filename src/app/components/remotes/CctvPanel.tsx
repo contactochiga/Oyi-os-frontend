@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import RemotePanel from "./RemotePanel";
 import StreamPlayer from "./StreamPlayer";
-import API from "@/services/api";
 import useAuth from "@/hooks/useAuth";
-import { deviceService } from "@/services/deviceService";
+import useActiveContext from "@/hooks/useActiveContext";
+import cameraService from "@/services/cameraService";
 
 type CameraDevice = {
   id: string;
@@ -26,10 +26,12 @@ export default function CctvPanel({
   onInteraction?: () => void;
 }) {
   const { user } = useAuth();
+  const activeContext = useActiveContext();
   const estateId = useMemo(
-    () => user?.estate_id ?? (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null),
-    [user?.estate_id]
+    () => activeContext.estate_id || user?.estate_id || null,
+    [activeContext.estate_id, user?.estate_id]
   );
+  const homeId = useMemo(() => activeContext.home_id || user?.home_id || null, [activeContext.home_id, user?.home_id]);
 
   const [cams, setCams] = useState<CameraDevice[]>([]);
   const [activeId, setActiveId] = useState<string | null>(deviceId ?? null);
@@ -45,17 +47,13 @@ export default function CctvPanel({
     (async () => {
       try {
         setErr(null);
-        const list = await deviceService.getDevices(estateId ?? undefined);
-        const cameras = (list || []).filter((d: any) => {
-          const c = String(d.category || d.type || "").toLowerCase();
-          return c.includes("camera") || c.includes("cctv") || c.includes("onvif");
-        });
+        const list = homeId ? await cameraService.listByHome(homeId) : estateId ? await cameraService.listByEstate(estateId) : [];
 
-        const normalized = cameras.map((d: any) => ({
-          id: String(d.id || d.device_id || d.deviceId),
-          name: d.name || d.local_name || "Camera",
-          category: d.category,
-          type: d.type,
+        const normalized = (list || []).map((d: any) => ({
+          id: String(d.id),
+          name: d.name || "Camera",
+          category: d.privacy_scope || "camera",
+          type: d.stream_status || "hls",
         }));
 
         setCams(normalized);
@@ -65,7 +63,7 @@ export default function CctvPanel({
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [estateId]);
+  }, [estateId, homeId]);
 
   useEffect(() => {
     if (!activeId) return;
@@ -76,11 +74,7 @@ export default function CctvPanel({
       setStream(null);
 
       try {
-        const res = await API.get(`/devices/${encodeURIComponent(activeId)}/stream`);
-        const data = res.data;
-
-        if (!data?.type || !data?.url) throw new Error("Stream not available for this camera yet.");
-
+        const data = await cameraService.getPlayback(activeId);
         setStream({ type: data.type, url: data.url });
         touch();
       } catch (e: any) {
