@@ -138,5 +138,5 @@ export function isClimateDevice(device: Record<string, any> = {}) {
 }
 
 export function isSimplePowerDevice(device: Record<string, any> = {}) {
-  return ["light", "switch", "plug", "device"].includes(getDeviceFamily(device));
+  return ["light", "switch", "plug"].includes(getDeviceFamily(device));
 }

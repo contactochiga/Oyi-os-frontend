@@ -301,7 +301,7 @@ function uiCapabilities(device: AnyDevice) {
 
 function canSwitchDevice(device: AnyDevice) {
   const caps = uiCapabilities(device);
-  return caps.canSwitch || isSimplePowerDevice(device);
+  return caps.canSwitch && isSimplePowerDevice(device);
 }
 
 function collectDeviceCodes(value: any, out = new Set<string>(), depth = 0): Set<string> {
@@ -339,7 +339,7 @@ function commandCodeFor(device: AnyDevice, patterns: RegExp[]) {
   return candidates.find((code) => patterns.some((pattern) => pattern.test(code))) || null;
 }
 
-type DeviceRendererKind = "switch" | "socket" | "tv" | "ac" | "ir";
+type DeviceRendererKind = "switch" | "socket" | "tv" | "ac" | "ir" | "unsupported";
 
 function learnedIrTemplate(device: AnyDevice): IrProfile | null {
   const raw = `${device?.remote_type || ""} ${device?.remoteType || ""} ${device?.ir_profile || ""} ${device?.irProfile || ""} ${device?.device_type || ""} ${device?.product_name || ""} ${device?.productName || ""} ${device?.model || ""} ${device?.metadata?.remote_type || ""} ${device?.metadata?.remoteType || ""} ${device?.metadata?.ir_profile || ""} ${device?.metadata?.irProfile || ""} ${device?.metadata?.ir_template || ""} ${device?.metadata?.remote_template || ""} ${device?.metadata?.profile || ""} ${device?.metadata?.category || ""} ${device?.category || ""} ${device?.type || ""} ${device?.name || ""}`.toLowerCase();
@@ -360,7 +360,8 @@ function deviceRendererKind(device: AnyDevice): DeviceRendererKind {
   if (profile === "ac") return "ac";
   if (family === "remote" || /ir|infrared|remote/.test(text)) return "ir";
   if (family === "plug" || /socket|plug|outlet/.test(text)) return "socket";
-  return "switch";
+  if (family === "light" || family === "switch" || /light|switch|relay|gang/.test(text)) return "switch";
+  return "unsupported";
 }
 
 export default function DeviceClient() {
@@ -1047,9 +1048,23 @@ function DeviceModalRouter({ device, state, busy, onClose, onToggleGang, onPower
             {renderer === "socket" ? <SocketRenderer device={device} state={state} caps={caps} gangCount={gangCount} values={values} busy={busy} onToggleGang={onToggleGang} onTool={onTool} /> : null}
             {renderer === "ir" && !needsIrProfile ? <IRRenderer device={device} state={state} busy={busy} onPower={onPower} onCommand={onCommand} onTool={onTool} /> : null}
             {renderer === "switch" ? <SwitchRenderer device={device} state={state} caps={caps} gangCount={gangCount} values={values} busy={busy} onToggleGang={onToggleGang} onTool={onTool} /> : null}
+            {renderer === "unsupported" ? <UnsupportedDeviceRenderer device={device} /> : null}
           </div>
         </section>
       </div>
+    </div>
+  );
+}
+
+function UnsupportedDeviceRenderer({ device }: { device: AnyDevice }) {
+  const family = inferFamily(device);
+  const isRemoteLike = family === "remote" || /ir|infrared|remote/i.test(`${device?.category || ""} ${device?.type || ""} ${device?.name || ""} ${JSON.stringify(device?.metadata || {})}`);
+  return (
+    <div className="rounded-[24px] border border-white/[0.07] bg-white/[0.035] p-4">
+      <div className="text-sm font-semibold text-white">{isRemoteLike ? "Device profile required" : "Control profile unavailable"}</div>
+      <p className="mt-2 text-xs leading-5 text-white/46">
+        {isRemoteLike ? "Choose or sync the IR profile before Oyi shows remote controls for this device." : "Oyi does not have a safe control profile for this device yet."}
+      </p>
     </div>
   );
 }
@@ -1100,7 +1115,8 @@ function SocketRenderer(props: Parameters<typeof SwitchRenderer>[0]) {
 
 function ACRenderer({ device, state, busy, onPower, onCommand, onTool }: { device: AnyDevice; state: any; busy: boolean; onPower: (device: AnyDevice) => void; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => void; onTool: (kind: DeviceTool, device: AnyDevice) => void }) {
   const temp = readTemperature(state);
-  const canPower = canSwitchDevice(device) || Boolean(commandCodeFor(device, [/power/, /^switch$/]));
+  const powerCode = commandCodeFor(device, [/^power$/, /power_switch/, /power_state/]);
+  const canPower = Boolean(powerCode);
   const tempCode = commandCodeFor(device, [/temp_set/, /temperature/, /^temp$/]);
   const modeCode = commandCodeFor(device, [/^mode$/, /work_mode/]);
   const fanCode = commandCodeFor(device, [/fan/, /wind_speed/, /windspeed/]);
@@ -1118,7 +1134,7 @@ function ACRenderer({ device, state, busy, onPower, onCommand, onTool }: { devic
             <div className="mt-1 text-4xl font-semibold tracking-[-0.08em] text-white">{temp || "—"}<span className="text-lg text-white/42">°C</span></div>
             <div className="mt-1 text-xs text-white/42">Supported range 16°C – 30°C</div>
           </div>
-          {canPower ? <button type="button" disabled={busy || isOnline(device) === false} onClick={() => onPower(device)} className="grid h-14 w-14 place-items-center rounded-full border border-sky-300/22 bg-sky-400/12 text-sky-100 shadow-[0_0_28px_rgba(56,189,248,0.18)]" aria-label="Power">
+          {canPower ? <button type="button" disabled={busy || isOnline(device) === false} onClick={() => powerCode && onCommand(device, { type: "ac_remote", key: "power_toggle", [powerCode]: true }, { [powerCode]: true })} className="grid h-14 w-14 place-items-center rounded-full border border-sky-300/22 bg-sky-400/12 text-sky-100 shadow-[0_0_28px_rgba(56,189,248,0.18)]" aria-label="Power">
             <Power className="h-5 w-5" />
           </button> : null}
         </div>
