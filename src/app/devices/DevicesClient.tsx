@@ -39,8 +39,10 @@ import useAuth from "@/hooks/useAuth";
 import useActiveContext from "@/hooks/useActiveContext";
 import { deviceService } from "@/services/deviceService";
 import { sceneService } from "@/services/sceneService";
+import { getSocket } from "@/services/socket";
 import GangRingSwitch from "@/app/components/devices/GangRingSwitch";
 import { getDeviceFamily, getDeviceIcon, getDeviceIconTone, isSimplePowerDevice } from "@/lib/devicePresentation";
+import { scopeMatches } from "@/lib/footerBadges";
 
 type AnyDevice = Record<string, any>;
 type DiscoveryDevice = Record<string, any>;
@@ -68,6 +70,12 @@ function pickDbId(d: AnyDevice) {
 
 function pickExternalId(d: AnyDevice) {
   return d?.external_id || d?.externalId || d?.device_id || d?.dev_id || d?.devId || d?.uuid || null;
+}
+
+function idsForDevice(d: AnyDevice) {
+  return [pickDbId(d), pickExternalId(d), d?.device_id, d?.dev_id, d?.devId, d?.uuid]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
 }
 
 function pickName(d: AnyDevice) {
@@ -444,6 +452,53 @@ export default function DeviceClient() {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contextReady, activeContext.contextKey]);
+
+  useEffect(() => {
+    if (!contextReady || !estateId || !homeId) return;
+    const socket = getSocket();
+    if (!socket) return;
+
+    const subscribe = () => {
+      socket.emit("subscribe:estate", estateId);
+      socket.emit("subscribe:home", homeId);
+    };
+
+    const onUpdate = (payload: any) => {
+      if ((payload?.estate_id || payload?.estateId || payload?.home_id || payload?.homeId) && !scopeMatches(
+        { estateId: payload?.estate_id || payload?.estateId, homeId: payload?.home_id || payload?.homeId },
+        { estateId, homeId },
+        { allowUnscoped: false },
+      )) return;
+
+      const eventIds = [
+        payload?.deviceId,
+        payload?.device_id,
+        payload?.external_device_id,
+        payload?.externalId,
+      ].map((value) => String(value || "").trim()).filter(Boolean);
+      if (!eventIds.length) return;
+
+      const target = items.find((device) => idsForDevice(device).some((id) => eventIds.includes(id)));
+      if (!target) return;
+      const sid = String(pickDbId(target) || "");
+      if (!sid) return;
+      setStateMap((prev) => ({
+        ...prev,
+        [sid]: { ...(prev[sid] || {}), ...(payload?.state || {}) },
+      }));
+    };
+
+    socket.on("connect", subscribe);
+    socket.on("device:update", onUpdate);
+    socket.on("device.status.updated", onUpdate);
+    if (socket.connected) subscribe();
+
+    return () => {
+      socket.off("connect", subscribe);
+      socket.off("device:update", onUpdate);
+      socket.off("device.status.updated", onUpdate);
+    };
+  }, [contextReady, activeContext.contextKey, estateId, homeId, items]);
 
   useEffect(() => {
     if (["1", "device"].includes(String(searchParams.get("add") || ""))) void openAddDevice();

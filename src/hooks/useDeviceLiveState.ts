@@ -4,6 +4,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { deviceService } from "@/services/deviceService";
 import { getSocket } from "@/services/socket";
+import useActiveContext from "@/hooks/useActiveContext";
+import { scopeMatches } from "@/lib/footerBadges";
 
 type LiveState = {
   state: Record<string, any> | null;
@@ -13,6 +15,7 @@ type LiveState = {
 };
 
 export function useDeviceLiveState(deviceId?: string, estateId?: string | null) {
+  const activeContext = useActiveContext();
   const [data, setData] = useState<LiveState>({
     state: null,
     lastSeen: null,
@@ -68,10 +71,17 @@ export function useDeviceLiveState(deviceId?: string, estateId?: string | null) 
 
     const onConnect = () => {
       joinEstate();
+      if (activeContext.home_id) socket.emit("subscribe:home", activeContext.home_id);
     };
 
     const onUpdate = (payload: any) => {
-      if (!payload?.deviceId || payload.deviceId !== deviceId) return;
+      const eventDeviceId = String(payload?.deviceId || payload?.device_id || "");
+      if (!eventDeviceId || eventDeviceId !== String(deviceId)) return;
+      if ((payload?.estate_id || payload?.estateId || payload?.home_id || payload?.homeId) && !scopeMatches(
+        { estateId: payload?.estate_id || payload?.estateId, homeId: payload?.home_id || payload?.homeId },
+        { estateId: activeContext.estate_id, homeId: activeContext.home_id },
+        { allowUnscoped: false },
+      )) return;
 
       setData((s) => ({
         ...s,
@@ -86,12 +96,13 @@ export function useDeviceLiveState(deviceId?: string, estateId?: string | null) 
 
     // If already connected, join immediately (important when estateId arrives late)
     if (socket.connected) joinEstate();
+    if (socket.connected && activeContext.home_id) socket.emit("subscribe:home", activeContext.home_id);
 
     return () => {
       socket.off("connect", onConnect);
       socket.off("device:update", onUpdate);
     };
-  }, [deviceId, estateId]);
+  }, [deviceId, estateId, activeContext.contextKey]);
 
   // If estateId becomes available AFTER mount, join and refresh once
   useEffect(() => {
@@ -106,10 +117,11 @@ export function useDeviceLiveState(deviceId?: string, estateId?: string | null) 
       socket.emit("subscribe:estate", estateId);
       estateJoinedRef.current = estateId;
     }
+    if (activeContext.home_id) socket.emit("subscribe:home", activeContext.home_id);
 
     // optional: pull fresh state once when estate context becomes known
     refresh();
-  }, [estateId, deviceId, refresh]);
+  }, [estateId, deviceId, activeContext.home_id, refresh]);
 
   return { ...data, refresh };
 }

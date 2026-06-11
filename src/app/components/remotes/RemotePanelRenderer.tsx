@@ -41,6 +41,8 @@ import MaintenancePanel from "./MaintenancePanel";
 ================================================= */
 
 import useAuth from "@/hooks/useAuth";
+import useActiveContext from "@/hooks/useActiveContext";
+import { scopeMatches } from "@/lib/footerBadges";
 import { getSocket } from "@/services/socket";
 
 /* =================================================
@@ -63,14 +65,16 @@ export default function RemotePanelRenderer({
   onInteraction?: () => void;
 }) {
   const { user } = useAuth();
+  const activeContext = useActiveContext();
 
   const estateId = useMemo(
     () =>
+      activeContext.estate_id ??
       user?.estate_id ??
       (typeof window !== "undefined"
         ? localStorage.getItem("ochiga_estate")
         : null),
-    [user?.estate_id]
+    [activeContext.estate_id, user?.estate_id]
   );
 
   const [computedLastUpdated, setComputedLastUpdated] = useState<number>(
@@ -93,12 +97,19 @@ export default function RemotePanelRenderer({
 
     const onConnect = () => {
       if (estateId) socket.emit("subscribe:estate", estateId);
+      if (activeContext.home_id) socket.emit("subscribe:home", activeContext.home_id);
     };
 
     // If backend emits device:update, bump lastUpdated for matching device
     const onUpdate = (payload: any) => {
-      if (!payload?.deviceId) return;
-      if (deviceId && payload.deviceId === deviceId) {
+      const eventDeviceId = String(payload?.deviceId || payload?.device_id || "");
+      if (!eventDeviceId) return;
+      if ((payload?.estate_id || payload?.estateId || payload?.home_id || payload?.homeId) && !scopeMatches(
+        { estateId: payload?.estate_id || payload?.estateId, homeId: payload?.home_id || payload?.homeId },
+        { estateId: activeContext.estate_id, homeId: activeContext.home_id },
+        { allowUnscoped: false },
+      )) return;
+      if (deviceId && eventDeviceId === String(deviceId)) {
         setComputedLastUpdated(Date.now());
       }
     };
@@ -107,12 +118,13 @@ export default function RemotePanelRenderer({
     socket.on("device:update", onUpdate);
 
     if (socket.connected && estateId) socket.emit("subscribe:estate", estateId);
+    if (socket.connected && activeContext.home_id) socket.emit("subscribe:home", activeContext.home_id);
 
     return () => {
       socket.off("connect", onConnect);
       socket.off("device:update", onUpdate);
     };
-  }, [estateId, deviceId]);
+  }, [estateId, deviceId, activeContext.contextKey]);
 
   if (!panel) return null;
 
