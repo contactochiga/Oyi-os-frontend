@@ -22,7 +22,6 @@ import {
 
 import LayoutWrapper from "../components/LayoutWrapper";
 import InviteSuggestionBridge from "../components/InviteSuggestionBridge";
-import NotificationsBridge from "../components/NotificationsBridge";
 import HamburgerMenu from "../components/HamburgerMenu";
 import MessagesInboxButton from "../components/MessagesInboxButton";
 import BottomNav from "../components/BottomNav";
@@ -556,7 +555,6 @@ export default function HomePage() {
           {canMountAuthedBridges ? (
             <>
               <InviteSuggestionBridge />
-              <NotificationsBridge />
             </>
           ) : null}
           <div className="pointer-events-auto mx-auto flex max-w-[430px] items-center justify-between">

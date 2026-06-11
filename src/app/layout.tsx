@@ -7,6 +7,7 @@ import PushNotificationsBridge from "@/app/components/PushNotificationsBridge";
 import NotificationsBridge from "@/app/components/NotificationsBridge";
 import PresenceBridge from "@/app/components/PresenceBridge";
 import GeoFenceBridge from "@/app/components/GeoFenceBridge";
+import ContextIsolationBridge from "@/app/components/ContextIsolationBridge";
 
 export const metadata = {
   title: "Oyi OS",
@@ -29,6 +30,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <AuthProvider>
             <PushNotificationsBridge />
             <NotificationsBridge />
+            <ContextIsolationBridge />
             <PresenceBridge />
             <GeoFenceBridge />
             {children}

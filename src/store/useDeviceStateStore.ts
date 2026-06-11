@@ -4,6 +4,7 @@ type DeviceStateStore = {
   stateByDeviceId: Record<string, Record<string, any>>;
   updatedAtByDeviceId: Record<string, number>;
   upsertState: (deviceId: string, state: Record<string, any>) => void;
+  clear: () => void;
 };
 
 export const useDeviceStateStore = create<DeviceStateStore>((set) => ({
@@ -17,4 +18,5 @@ export const useDeviceStateStore = create<DeviceStateStore>((set) => ({
       },
       updatedAtByDeviceId: { ...s.updatedAtByDeviceId, [deviceId]: Date.now() },
     })),
+  clear: () => set({ stateByDeviceId: {}, updatedAtByDeviceId: {} }),
 }));

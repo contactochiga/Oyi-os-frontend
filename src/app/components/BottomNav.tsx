@@ -16,38 +16,39 @@ import {
 } from "react-icons/fi";
 import { useNotificationStore } from "@/store/useNotificationStore";
 import useAuth from "@/hooks/useAuth";
+import useActiveContext from "@/hooks/useActiveContext";
 import { getSocket } from "@/services/socket";
+import {
+  deriveFooterBadges,
+  eventIndicatesAttention,
+  eventScope,
+  isInActiveScope,
+  markViewedLocal,
+  notificationText,
+  scopeMatches,
+  type BadgeScope,
+  type FooterBadgeKey,
+} from "@/lib/footerBadges";
 
 type Item = {
-  key:
-    | "home"
-    | "spaces"
-    | "activity"
-    | "community"
-    | "devices"
-    | "visitors"
-    | "maintenance"
-    | "services"
-    | "wallet"
-    | "profile";
+  key: "home" | "spaces" | "activity" | "community" | "devices" | "visitors" | "maintenance" | "services" | "wallet" | "profile";
   label: string;
   href: string;
   icon: any;
   activeRoutes?: string[];
-  indicatorPattern?: RegExp;
 };
 
 const ITEMS: Item[] = [
   { key: "home", label: "Home", href: "/home", icon: FiHome },
-  { key: "spaces", label: "Spaces", href: "/spaces", icon: FiLayers, activeRoutes: ["/spaces", "/rooms", "/room"], indicatorPattern: /space|room assignment|room/i },
-  { key: "devices", label: "Devices", href: "/devices", icon: FiGrid, activeRoutes: ["/devices"], indicatorPattern: /device|switch|light|socket|plug|climate|ac|tv|provider|tuya|sync/i },
-  { key: "community", label: "Community", href: "/community", icon: FiUsers, indicatorPattern: /community|announcement|notice|post|comment|reply|urgent|official/i },
-  { key: "activity", label: "Activity", href: "/activity", icon: FiActivity, activeRoutes: ["/activity", "/notifications"], indicatorPattern: /activity|device|scene|automation|sync|watch|wallet|payment|transaction|visitor|guest|gate|maintenance|repair|service|security|alert|incident/i },
-  { key: "visitors", label: "Visitors", href: "/visitors", icon: FiUserCheck, activeRoutes: ["/visitors"], indicatorPattern: /visitor|guest|gate|access/i },
-  { key: "wallet", label: "Wallet", href: "/wallet", icon: FiCreditCard, activeRoutes: ["/wallet"], indicatorPattern: /wallet|payment|transaction|billing|dues|fund/i },
-  { key: "maintenance", label: "Maint.", href: "/maintenance", icon: FiTool, activeRoutes: ["/maintenance", "/reports"], indicatorPattern: /maintenance|repair|work order|ticket/i },
-  { key: "services", label: "Services", href: "/services", icon: FiHelpCircle, activeRoutes: ["/services"], indicatorPattern: /service|concierge|booking|request/i },
-  { key: "profile", label: "Profile", href: "/profile", icon: FiUser, activeRoutes: ["/profile", "/account", "/settings"], indicatorPattern: /profile|verify|verification|account|invite/i },
+  { key: "spaces", label: "Spaces", href: "/spaces", icon: FiLayers, activeRoutes: ["/spaces", "/rooms", "/room"] },
+  { key: "devices", label: "Devices", href: "/devices", icon: FiGrid, activeRoutes: ["/devices"] },
+  { key: "community", label: "Community", href: "/community", icon: FiUsers },
+  { key: "activity", label: "Activity", href: "/activity", icon: FiActivity, activeRoutes: ["/activity", "/notifications"] },
+  { key: "visitors", label: "Visitors", href: "/visitors", icon: FiUserCheck, activeRoutes: ["/visitors"] },
+  { key: "wallet", label: "Wallet", href: "/wallet", icon: FiCreditCard, activeRoutes: ["/wallet"] },
+  { key: "maintenance", label: "Maint.", href: "/maintenance", icon: FiTool, activeRoutes: ["/maintenance", "/reports"] },
+  { key: "services", label: "Services", href: "/services", icon: FiHelpCircle, activeRoutes: ["/services"] },
+  { key: "profile", label: "Profile", href: "/profile", icon: FiUser, activeRoutes: ["/profile", "/account", "/settings"] },
 ];
 
 const NAV_GROUPS: Item[][] = [
@@ -68,83 +69,91 @@ function isActive(pathname: string, item: Item) {
   return (item.activeRoutes || [item.href]).some((route) => routeMatches(pathname, route));
 }
 
-function notificationText(item: any) {
-  return `${item?.type || ""} ${item?.title || ""} ${item?.message || ""} ${item?.payload?.kind || ""}`.toLowerCase();
+function badgeNumber(value: { count: number; dot: boolean }) {
+  if (value.count > 1) return Math.min(value.count, 9);
+  if (value.count === 1 || value.dot) return 1;
+  return 0;
 }
 
-function isUnread(item: any) {
-  return String(item?.status || "").toLowerCase() !== "read";
+function eventBucket(eventName: string, payload: any): FooterBadgeKey {
+  const text = `${eventName} ${notificationText(payload)}`.toLowerCase();
+  if (/community|post|comment|notice|announcement/.test(text)) return "community";
+  if (/visitor|guest|gate|access/.test(text)) return "visitors";
+  if (/maintenance|repair|ticket/.test(text)) return "maintenance";
+  if (/wallet|payment|transaction/.test(text)) return "wallet";
+  if (/service/.test(text)) return "services";
+  if (/space|room/.test(text)) return "spaces";
+  if (/device|switch|light|socket|plug|climate|ac|tv|provider|sync/.test(text)) return "devices";
+  if (/profile|verification|account/.test(text)) return "profile";
+  return "activity";
 }
 
 export default function BottomNav() {
   const pathname = usePathname() || "/";
   const router = useRouter();
   const { user } = useAuth();
+  const activeContext = useActiveContext();
   const railRef = useRef<HTMLDivElement | null>(null);
   const scrollTimerRef = useRef<number | null>(null);
+  const lastScrollY = useRef(0);
   const notifications = useNotificationStore((state) => state.items);
-  const unreadByBucket = useNotificationStore((state) => state.unreadByBucket);
   const markBucketViewed = useNotificationStore((state) => state.markBucketViewed);
   const markNotificationsRead = useNotificationStore((state) => state.markNotificationsRead);
-  const scopeKey = useMemo(() => {
-    const identity = String((user as any)?.id || "guest");
-    const estate = String((user as any)?.estate_id || "estate");
-    const home = String((user as any)?.home_id || "home");
-    return `${identity}:${estate}:${home}`;
-  }, [user]);
-  const [localDots, setLocalDots] = useState<Record<string, boolean>>({});
-  const storageKey = useMemo(() => `oyi:footer-nav-page:${scopeKey}:v1`, [scopeKey]);
-  const initialPage = useMemo(() => {
-    const activeItem = ITEMS.find((item) => isActive(pathname, item));
-    return activeItem ? pageForKey(activeItem.key) : 0;
-  }, [pathname]);
+  const scope = useMemo<BadgeScope>(() => ({ userId: (user as any)?.id || null, estateId: activeContext.estate_id, homeId: activeContext.home_id }), [user, activeContext.estate_id, activeContext.home_id]);
+  const scopeKey = useMemo(() => `${scope.userId || "user"}:${scope.estateId || "estate"}:${scope.homeId || "home"}`, [scope]);
+  const [localDots, setLocalDots] = useState<Partial<Record<FooterBadgeKey, boolean>>>({});
+  const [collapsed, setCollapsed] = useState(false);
+  const storageKey = useMemo(() => `oyi:footer-nav-page:${scopeKey}:v2`, [scopeKey]);
+  const activeItem = useMemo(() => ITEMS.find((item) => isActive(pathname, item)), [pathname]);
+  const initialPage = useMemo(() => (activeItem ? pageForKey(activeItem.key) : 0), [activeItem]);
   const [page, setPage] = useState(initialPage);
+  const avatarUrl = String((user as any)?.profile_image_url || (user as any)?.avatar_url || (user as any)?.photo_url || (user as any)?.profile_image || "").trim();
+
+  const badges = useMemo(() => deriveFooterBadges(notifications, scope, localDots), [notifications, scope, localDots]);
 
   function persistPage(nextPage: number) {
     const bounded = Math.max(0, Math.min(NAV_GROUPS.length - 1, nextPage));
     setPage(bounded);
-    try {
-      localStorage.setItem(storageKey, String(bounded));
-    } catch {}
+    try { localStorage.setItem(storageKey, String(bounded)); } catch {}
   }
 
   function scrollToPage(nextPage: number, behavior: ScrollBehavior = "smooth") {
     const bounded = Math.max(0, Math.min(NAV_GROUPS.length - 1, nextPage));
     const rail = railRef.current;
-    if (rail) {
-      rail.scrollTo({ left: bounded * rail.clientWidth, behavior });
-    }
+    if (rail) rail.scrollTo({ left: bounded * rail.clientWidth, behavior });
     persistPage(bounded);
   }
 
-  function clearMatchingNotifications(bucket: Item["key"] | "messages") {
-    if (bucket === "activity") {
-      markBucketViewed("activity");
-      markBucketViewed("messages");
-      return;
-    }
-    if (bucket === "community" || bucket === "profile") {
-      markBucketViewed(bucket);
-      return;
-    }
-    const item = ITEMS.find((entry) => entry.key === bucket);
-    if (!item?.indicatorPattern) return;
+  function clearMatchingNotifications(bucket: FooterBadgeKey) {
+    markBucketViewed(bucket);
+    if (bucket === "activity") markBucketViewed("messages");
     const ids = notifications
-      .filter((notification) => isUnread(notification) && item.indicatorPattern!.test(notificationText(notification)))
+      .filter((notification) => isInActiveScope(notification, scope, { allowUnscoped: bucket === "profile", profileGlobal: bucket === "profile" }))
+      .filter((notification) => {
+        const text = notificationText(notification);
+        if (bucket === "devices") return /device|switch|light|socket|plug|climate|ac|tv|provider|sync|offline|failed/.test(text);
+        if (bucket === "spaces") return /space|room/.test(text);
+        if (bucket === "community") return /community|announcement|notice|post|comment|reply|official/.test(text);
+        if (bucket === "visitors") return /visitor|guest|gate|access/.test(text);
+        if (bucket === "maintenance") return /maintenance|repair|work order|ticket/.test(text);
+        if (bucket === "wallet") return /wallet|payment|transaction|billing|dues|fund/.test(text);
+        if (bucket === "services") return /service|concierge|booking|request/.test(text);
+        if (bucket === "profile") return /profile|verify|verification|account|setup|invite/.test(text);
+        return bucket === "activity";
+      })
       .map((notification) => String(notification.id || ""))
       .filter(Boolean);
     if (ids.length) markNotificationsRead(ids);
   }
 
-  function clearLocalDot(bucket: Item["key"] | "messages") {
+  function clearLocalDot(bucket: FooterBadgeKey) {
     setLocalDots((current) => ({ ...current, [bucket]: false }));
     clearMatchingNotifications(bucket);
-    try {
-      localStorage.setItem(`oyi:last-seen:${scopeKey}:${bucket}`, new Date().toISOString());
-    } catch {}
+    markViewedLocal(scope, bucket);
   }
 
   useEffect(() => {
+    setLocalDots({});
     let nextPage = initialPage;
     try {
       const saved = Number(localStorage.getItem(storageKey));
@@ -155,54 +164,46 @@ export default function BottomNav() {
   }, [storageKey]);
 
   useEffect(() => {
-    const activeItem = ITEMS.find((item) => isActive(pathname, item));
     if (!activeItem) return;
-    clearLocalDot(activeItem.key);
+    clearLocalDot(activeItem.key as FooterBadgeKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname, scopeKey, markBucketViewed]);
+  }, [pathname, scopeKey]);
 
   useEffect(() => {
     const socket = getSocket();
-    if (!socket) return;
-    const markActivity = () => {
-      const activeItem = ITEMS.find((item) => isActive(pathname, item));
-      if (activeItem?.key !== "activity") setLocalDots((current) => ({ ...current, activity: true }));
+    if (!socket || !activeContext.ready) return;
+    const makeHandler = (eventName: string) => (payload: any) => {
+      const incomingScope = eventScope(payload);
+      if (!scopeMatches(incomingScope, scope, { allowUnscoped: false })) return;
+      const bucket = eventBucket(eventName, payload);
+      if (!eventIndicatesAttention(eventName, payload, bucket)) return;
+      if (activeItem?.key === bucket) return;
+      setLocalDots((current) => ({ ...current, [bucket]: true, activity: bucket === "activity" ? current.activity : true }));
     };
-    const markCommunity = () => {
-      const activeItem = ITEMS.find((item) => isActive(pathname, item));
-      if (activeItem?.key !== "community") setLocalDots((current) => ({ ...current, community: true }));
+    const events = ["notification:new", "audit.recorded", "community.updated", "device.status.updated", "device.registry.updated", "visitor.updated", "visitor.created", "maintenance.updated", "wallet.updated", "service.updated", "security.alert", "utility.telemetry.updated", "watch.sync.updated"];
+    const handlers = events.map((eventName) => ({ eventName, handler: makeHandler(eventName) }));
+    handlers.forEach(({ eventName, handler }) => socket.on(eventName, handler));
+    return () => handlers.forEach(({ eventName, handler }) => socket.off(eventName, handler));
+  }, [activeContext.ready, activeContext.contextKey, scope, activeItem?.key]);
+
+  useEffect(() => {
+    const onScroll = (event: Event) => {
+      const target = event.target as HTMLElement | Document | null;
+      const element = target && "scrollTop" in target ? (target as HTMLElement) : document.scrollingElement || document.documentElement;
+      const y = Number(element?.scrollTop || window.scrollY || 0);
+      const diff = y - lastScrollY.current;
+      if (y < 24) setCollapsed(false);
+      else if (diff > 8) setCollapsed(true);
+      else if (diff < -8) setCollapsed(false);
+      lastScrollY.current = y;
     };
-    const markModule = (key: Item["key"]) => {
-      const activeItem = ITEMS.find((item) => isActive(pathname, item));
-      if (activeItem?.key !== key) setLocalDots((current) => ({ ...current, [key]: true, activity: true }));
-    };
-    const activityEvents = ["notification:new", "audit.recorded"];
-    const communityEvents = ["community.updated"];
-    const moduleEvents: Array<[string, Item["key"]]> = [
-      ["device.status.updated", "devices"],
-      ["device.registry.updated", "devices"],
-      ["visitor.updated", "visitors"],
-      ["visitor.created", "visitors"],
-      ["maintenance.updated", "maintenance"],
-      ["wallet.updated", "wallet"],
-    ];
-    const activityOnlyEvents = ["service.updated", "security.alert", "utility.telemetry.updated", "watch.sync.updated"];
-    const moduleHandlers = moduleEvents.map(([eventName, key]) => {
-      const handler = () => markModule(key);
-      return { eventName, handler };
-    });
-    const activityOnlyHandlers = activityOnlyEvents.map((eventName) => ({ eventName, handler: markActivity }));
-    activityEvents.forEach((eventName) => socket.on(eventName, markActivity));
-    communityEvents.forEach((eventName) => socket.on(eventName, markCommunity));
-    moduleHandlers.forEach(({ eventName, handler }) => socket.on(eventName, handler));
-    activityOnlyHandlers.forEach(({ eventName, handler }) => socket.on(eventName, handler));
+    window.addEventListener("scroll", onScroll, { passive: true, capture: true });
+    document.addEventListener("scroll", onScroll, { passive: true, capture: true });
     return () => {
-      activityEvents.forEach((eventName) => socket.off(eventName, markActivity));
-      communityEvents.forEach((eventName) => socket.off(eventName, markCommunity));
-      moduleHandlers.forEach(({ eventName, handler }) => socket.off(eventName, handler));
-      activityOnlyHandlers.forEach(({ eventName, handler }) => socket.off(eventName, handler));
+      window.removeEventListener("scroll", onScroll, { capture: true } as any);
+      document.removeEventListener("scroll", onScroll, { capture: true } as any);
     };
-  }, [pathname]);
+  }, []);
 
   function handlePageScroll() {
     const rail = railRef.current;
@@ -214,78 +215,48 @@ export default function BottomNav() {
     }, 90);
   }
 
-  const badgeFor = (key: Item["key"]) => {
-    if (key === "activity") return unreadByBucket.activity || unreadByBucket.messages || (localDots.activity ? 1 : 0);
-    if (key === "community") return unreadByBucket.community || (localDots.community ? 1 : 0);
-    if (key === "profile") return unreadByBucket.profile || (localDots.profile ? 1 : 0);
-    const item = ITEMS.find((entry) => entry.key === key);
-    const count = item?.indicatorPattern
-      ? notifications.filter((notification) => isUnread(notification) && item.indicatorPattern!.test(notificationText(notification))).length
-      : 0;
-    return count || (localDots[key] ? 1 : 0);
-  };
-
   return (
-    <nav
-      className="pointer-events-none fixed inset-x-0 bottom-0 z-[95] px-3"
-      style={{ paddingBottom: "calc(8px + var(--sab))" }}
-      aria-label="Oyi Home navigation"
-    >
-      <div className="pointer-events-auto mx-auto max-w-[520px] overflow-hidden rounded-[28px] border border-white/[0.07] bg-[#040911]/86 px-2 py-1.5 shadow-[0_16px_54px_rgba(0,0,0,0.45)] backdrop-blur-2xl">
+    <nav className="pointer-events-none fixed inset-x-0 bottom-0 z-[95] px-3 transition-all duration-300 ease-out" style={{ paddingBottom: "calc(8px + var(--sab))" }} aria-label="Oyi Home navigation">
+      <div className={`pointer-events-auto mx-auto overflow-hidden rounded-[28px] border border-white/[0.07] bg-[#040911]/86 px-2 shadow-[0_16px_54px_rgba(0,0,0,0.45)] backdrop-blur-2xl transition-all duration-300 ease-out ${collapsed ? "max-w-[360px] py-1" : "max-w-[520px] py-1.5"}`}>
         <div ref={railRef} onScroll={handlePageScroll} className="flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {NAV_GROUPS.map((group, groupIndex) => (
-            <div key={groupIndex} className="grid w-full min-w-full shrink-0 snap-center grid-cols-5 gap-1 px-0.5">
-              {group.map((item) => {
-                const active = isActive(pathname, item);
-                const Icon = item.icon;
-                const badge = badgeFor(item.key);
-                return (
-                  <button
-                    key={item.key}
-                    type="button"
-                    onClick={() => {
-                      scrollToPage(pageForKey(item.key));
-                      clearLocalDot(item.key);
-                      router.push(item.href);
-                    }}
-                    className={`group rounded-[21px] px-1.5 py-1.5 text-center transition active:scale-[0.98] ${
-                      active ? "text-white" : "text-white/46 hover:text-white/78"
-                    }`}
-                    aria-current={active ? "page" : undefined}
-                  >
-                    <div className="flex justify-center">
-                      <span
-                        className={`relative grid h-7 w-7 place-items-center rounded-[13px] transition ${
-                          active
-                            ? "bg-sky-300/14 text-sky-100 shadow-[0_0_20px_rgba(56,189,248,0.32)]"
-                            : "text-white/52 group-hover:bg-white/[0.05] group-hover:text-white/78"
-                        }`}
-                      >
-                        <Icon className="text-[18px]" />
-                        {badge ? (
-                          <span className={`absolute ${badge > 1 ? "-right-1 -top-1 min-w-[16px] px-1" : "right-0.5 top-0.5 h-2 w-2"} rounded-full bg-sky-300 text-[9px] font-bold leading-4 text-slate-950 shadow-[0_0_12px_rgba(56,189,248,0.8)]`}>
-                            {badge > 1 ? Math.min(badge, 9) : ""}
-                          </span>
-                        ) : null}
-                      </span>
-                    </div>
-                    <div
-                      className={`mt-0.5 truncate whitespace-nowrap text-[10px] font-medium tracking-[-0.025em] ${
-                        active ? "text-white" : "text-white/48"
-                      }`}
+          {NAV_GROUPS.map((group, groupIndex) => {
+            const activeIndex = group.findIndex((item) => isActive(pathname, item));
+            return (
+              <div key={groupIndex} className="relative grid w-full min-w-full shrink-0 snap-center grid-cols-5 gap-1 px-0.5">
+                {activeIndex >= 0 ? <span className={`absolute bottom-1 top-1 rounded-[21px] border border-sky-300/12 bg-sky-300/[0.10] shadow-[0_0_24px_rgba(56,189,248,0.22)] transition-transform duration-300 ease-out ${collapsed ? "mx-[9px]" : "mx-[3px]"}`} style={{ width: "20%", transform: `translateX(${activeIndex * 100}%)` }} /> : null}
+                {group.map((item) => {
+                  const active = isActive(pathname, item);
+                  const Icon = item.icon;
+                  const badge = badgeNumber(badges[item.key as FooterBadgeKey] || { count: 0, dot: false });
+                  const isProfile = item.key === "profile";
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => {
+                        scrollToPage(pageForKey(item.key));
+                        clearLocalDot(item.key as FooterBadgeKey);
+                        router.push(item.href);
+                      }}
+                      className={`group relative z-10 rounded-[21px] px-1.5 text-center transition-all duration-300 active:scale-[0.98] ${collapsed ? "py-1" : "py-1.5"} ${active ? "text-white" : "text-white/46 hover:text-white/78"}`}
+                      aria-current={active ? "page" : undefined}
                     >
-                      {item.label}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          ))}
+                      <div className="flex justify-center">
+                        <span className={`relative grid place-items-center overflow-visible rounded-[13px] transition-all duration-300 ${collapsed ? "h-9 w-9" : "h-7 w-7"} ${active ? "text-sky-100" : "text-white/52 group-hover:text-white/78"}`}>
+                          {isProfile && avatarUrl ? <img src={avatarUrl} alt="Profile" className="h-6 w-6 rounded-full object-cover ring-1 ring-white/15" /> : <Icon className={collapsed ? "text-[19px]" : "text-[18px]"} />}
+                          {badge ? <span className={`absolute ${badge > 1 ? "-right-1 -top-1 min-w-[16px] px-1" : "right-0.5 top-0.5 h-2 w-2"} rounded-full bg-sky-300 text-[9px] font-bold leading-4 text-slate-950 shadow-[0_0_12px_rgba(56,189,248,0.8)]`}>{badge > 1 ? badge : ""}</span> : null}
+                        </span>
+                      </div>
+                      <div className={`mt-0.5 truncate whitespace-nowrap text-[10px] font-medium tracking-[-0.025em] transition-all duration-300 ${collapsed ? "max-h-0 translate-y-1 opacity-0" : "max-h-4 translate-y-0 opacity-100"} ${active ? "text-white" : "text-white/48"}`}>{item.label}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })}
         </div>
-        <div className="mt-0.5 flex justify-center gap-1" aria-hidden="true">
-          {NAV_GROUPS.map((_, index) => (
-            <span key={index} className={`h-1 rounded-full transition-all ${page === index ? "w-3 bg-sky-200/70" : "w-1 bg-white/18"}`} />
-          ))}
+        <div className={`flex justify-center gap-1 transition-all duration-300 ${collapsed ? "mt-0 max-h-0 opacity-0" : "mt-0.5 max-h-2 opacity-100"}`} aria-hidden="true">
+          {NAV_GROUPS.map((_, index) => <span key={index} className={`h-1 rounded-full transition-all ${page === index ? "w-3 bg-sky-200/70" : "w-1 bg-white/18"}`} />)}
         </div>
       </div>
     </nav>

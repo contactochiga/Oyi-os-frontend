@@ -4,7 +4,6 @@ import { ReactNode } from "react";
 
 import LayoutWrapper from "./LayoutWrapper";
 import InviteSuggestionBridge from "./InviteSuggestionBridge";
-import NotificationsBridge from "./NotificationsBridge";
 import HamburgerMenu from "./HamburgerMenu";
 import MessagesInboxButton from "./MessagesInboxButton";
 import BottomNav from "./BottomNav";
@@ -25,7 +24,6 @@ export default function ConsumerShell({
       <main className="fixed inset-0 flex flex-col overflow-hidden bg-[#03070c] text-white">
         <div className="oyi-ambient-bg" />
         <InviteSuggestionBridge />
-        <NotificationsBridge />
 
         <div
           className={`relative z-10 flex-1 overflow-x-hidden px-4 ${disableContentScroll ? "overflow-hidden" : "overflow-y-auto"}`}

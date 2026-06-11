@@ -1,11 +1,15 @@
 import { create } from "zustand";
 import type { AppNotification } from "@/services/notificationsService";
+import { bucketForNotification, deriveFooterBadges, isUnreadNotification, shouldKeepAttention, type BadgeScope, type FooterBadgeKey } from "@/lib/footerBadges";
 
 type State = {
   items: AppNotification[];
   unreadCount: number;
   unreadByBucket: Record<string, number>;
-  setItems: (items: AppNotification[]) => void;
+  scopeKey: string;
+  setScopeKey: (scopeKey: string) => void;
+  setItems: (items: AppNotification[], scopeKey?: string) => void;
+  clear: () => void;
   upsert: (n: AppNotification) => void;
   upsertMany: (items: AppNotification[]) => void;
   markNotificationsRead: (ids: string[]) => void;
@@ -13,56 +17,45 @@ type State = {
 };
 
 function computeUnread(items: AppNotification[]) {
-  return items.filter((n) => n.status !== "read").length;
-}
-
-function bucketFor(n: AppNotification) {
-  const text = `${n.type || ""} ${n.title || ""} ${n.message || ""}`.toLowerCase();
-  if (/community|announcement|notice|post|comment|reply/.test(text)) return "community";
-  if (/message|inbox|chat|thread/.test(text)) return "messages";
-  if (/visitor|guest|gate|access/.test(text)) return "activity";
-  if (/maintenance|repair|service|wallet|payment|transaction|device|scene|automation|security|alert/.test(text)) return "activity";
-  if (/profile|verify|verification|account|home assignment|invite/.test(text)) return "profile";
-  return "activity";
-}
-
-function shouldKeepAttention(item: AppNotification, bucket: string) {
-  const text = `${item.type || ""} ${item.title || ""} ${item.message || ""}`.toLowerCase();
-  if (bucket === "activity") return /urgent|critical|security|emergency|lockdown|alarm/.test(text);
-  if (bucket === "community") return /urgent|critical|security|emergency|lockdown/.test(text);
-  return false;
+  return items.filter(isUnreadNotification).length;
 }
 
 function computeBuckets(items: AppNotification[]) {
-  return items.reduce<Record<string, number>>((acc, item) => {
-    if (item.status === "read") return acc;
-    const bucket = bucketFor(item);
-    acc[bucket] = (acc[bucket] || 0) + 1;
+  const badges = deriveFooterBadges(items, {}, {});
+  return Object.entries(badges).reduce<Record<string, number>>((acc, [key, value]) => {
+    if (value.count) acc[key] = value.count;
     return acc;
   }, {});
+}
+
+function sortItems(items: AppNotification[]) {
+  return [...items].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 }
 
 export const useNotificationStore = create<State>((set, get) => ({
   items: [],
   unreadCount: 0,
   unreadByBucket: {},
+  scopeKey: "",
 
-  setItems: (items) =>
-    set({
-      items,
-      unreadCount: computeUnread(items),
-      unreadByBucket: computeBuckets(items),
-    }),
+  setScopeKey: (scopeKey) => {
+    if (get().scopeKey === scopeKey) return;
+    set({ scopeKey, items: [], unreadCount: 0, unreadByBucket: {} });
+  },
+
+  clear: () => set({ items: [], unreadCount: 0, unreadByBucket: {} }),
+
+  setItems: (items, scopeKey) => {
+    if (scopeKey && get().scopeKey && scopeKey !== get().scopeKey) return;
+    const sorted = sortItems(items);
+    set({ items: sorted, unreadCount: computeUnread(sorted), unreadByBucket: computeBuckets(sorted) });
+  },
 
   upsert: (n) => {
     const prev = get().items;
     const map = new Map(prev.map((x) => [x.id, x] as const));
     map.set(n.id, n);
-
-    const merged = Array.from(map.values()).sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    );
-
+    const merged = sortItems(Array.from(map.values()));
     set({ items: merged, unreadCount: computeUnread(merged), unreadByBucket: computeBuckets(merged) });
   },
 
@@ -70,11 +63,7 @@ export const useNotificationStore = create<State>((set, get) => ({
     const prev = get().items;
     const map = new Map(prev.map((x) => [x.id, x] as const));
     for (const n of incoming) map.set(n.id, n);
-
-    const merged = Array.from(map.values()).sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    );
-
+    const merged = sortItems(Array.from(map.values()));
     set({ items: merged, unreadCount: computeUnread(merged), unreadByBucket: computeBuckets(merged) });
   },
 
@@ -86,7 +75,16 @@ export const useNotificationStore = create<State>((set, get) => ({
   },
 
   markBucketViewed: (bucket) => {
-    const next = get().items.map((item) => (bucketFor(item) === bucket && !shouldKeepAttention(item, bucket) ? { ...item, status: "read" as const } : item));
+    const key = bucket as FooterBadgeKey;
+    const next = get().items.map((item) => {
+      const itemBucket = bucketForNotification(item);
+      const shouldMark = itemBucket === key || (key === "activity" && itemBucket !== "profile");
+      return shouldMark && !shouldKeepAttention(item, itemBucket) ? { ...item, status: "read" as const } : item;
+    });
     set({ items: next, unreadCount: computeUnread(next), unreadByBucket: computeBuckets(next) });
   },
 }));
+
+export function contextScopeKey(scope: BadgeScope) {
+  return `${scope.userId || "user"}:${scope.estateId || "estate"}:${scope.homeId || "home"}`;
+}

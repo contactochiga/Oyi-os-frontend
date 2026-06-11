@@ -31,6 +31,9 @@ import { getSocket } from "@/services/socket";
 import { getDeviceIconFromText } from "@/lib/devicePresentation";
 import { acknowledgeActivityEvent, acknowledgeSeenActivityEvents, getActivityFeed, notificationIdFromActivity, type ActivityCategory, type ActivityEvent, type ActivitySummary } from "@/services/activityService";
 import { useNotificationStore } from "@/store/useNotificationStore";
+import useActiveContext from "@/hooks/useActiveContext";
+import useAuth from "@/hooks/useAuth";
+import { scopeMatches, type BadgeScope } from "@/lib/footerBadges";
 
 type FilterKey = "all" | "alerts" | "devices" | "people";
 
@@ -81,6 +84,8 @@ function summaryValue(value: number | undefined) {
 }
 
 export default function ActivityPage() {
+  const { user, token, ready } = useAuth();
+  const activeContext = useActiveContext();
   const [filter, setFilter] = useState<FilterKey>("all");
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const [summary, setSummary] = useState<ActivitySummary>(EMPTY_SUMMARY);
@@ -89,22 +94,39 @@ export default function ActivityPage() {
   const [error, setError] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<string | null>(null);
   const acknowledgedRef = useRef<Set<string>>(new Set());
+  const requestRef = useRef(0);
   const markNotificationsRead = useNotificationStore((state) => state.markNotificationsRead);
+  const markBucketViewed = useNotificationStore((state) => state.markBucketViewed);
+  const scope = useMemo<BadgeScope>(() => ({ userId: (user as any)?.id || null, estateId: activeContext.estate_id, homeId: activeContext.home_id }), [user, activeContext.estate_id, activeContext.home_id]);
+  const contextReady = Boolean(ready && token && activeContext.ready);
+
+  function activityInScope(item: ActivityEvent) {
+    return scopeMatches({ userId: item.user_id, estateId: item.estate_id, homeId: item.home_id }, scope, { allowUnscoped: false });
+  }
 
   async function load(silent = false) {
+    if (!contextReady) {
+      setEvents([]);
+      setSummary(EMPTY_SUMMARY);
+      setLoading(activeContext.loading || activeContext.switching);
+      return;
+    }
+    const requestId = ++requestRef.current;
     if (silent) setRefreshing(true);
     else setLoading(true);
     setError(null);
     const result = await getActivityFeed();
+    if (requestId !== requestRef.current) return;
     if ("error" in result) {
       setError(result.error);
       setEvents([]);
       setSummary(EMPTY_SUMMARY);
     } else {
-      setEvents(result.items);
-      setSummary(result.summary || EMPTY_SUMMARY);
+      const scopedItems = result.items.filter(activityInScope);
+      setEvents(scopedItems);
+      setSummary(result.summary ? { ...result.summary, total_events: scopedItems.length, events: scopedItems.length } : EMPTY_SUMMARY);
       setLastSync(result.generated_at || new Date().toISOString());
-      const unseen = result.items.filter((item) => {
+      const unseen = scopedItems.filter((item) => {
         const notificationId = notificationIdFromActivity(item);
         return notificationId && !acknowledgedRef.current.has(notificationId);
       });
@@ -120,14 +142,21 @@ export default function ActivityPage() {
   }
 
   useEffect(() => {
+    markBucketViewed("activity");
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [contextReady, activeContext.contextKey]);
 
   useEffect(() => {
     const socket = getSocket();
-    if (!socket) return;
-    const refresh = () => void load(true);
+    if (!socket || !contextReady) return;
+    const refresh = (payload: any) => {
+      const data = payload?.payload || payload?.data || payload || {};
+      if (data?.estate_id || data?.home_id) {
+        if (!scopeMatches({ userId: data.user_id, estateId: data.estate_id || data.estateId, homeId: data.home_id || data.homeId }, scope, { allowUnscoped: false })) return;
+      }
+      void load(true);
+    };
     const events = [
       "notification",
       "notification:new",
@@ -151,7 +180,7 @@ export default function ActivityPage() {
     return () => {
       events.forEach((eventName) => socket.off(eventName, refresh));
     };
-  }, []);
+  }, [contextReady, activeContext.contextKey]);
 
   const visibleEvents = useMemo(() => events.filter((item) => matchesFilter(item, filter)), [events, filter]);
 
