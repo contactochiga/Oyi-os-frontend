@@ -6,7 +6,7 @@ import ActivityMetricsRail from "@/app/components/ActivityMetricsRail";
 import OyiContextRail from "@/app/components/OyiContextRail";
 import { servicesService, type ServiceConfig, type ServiceKey, type ServicePayment } from "@/services/servicesService";
 import useActiveContext from "@/hooks/useActiveContext";
-import { FiClock, FiCreditCard, FiDroplet, FiHome, FiLayers, FiWifi, FiZap } from "react-icons/fi";
+import { FiChevronRight, FiClock, FiCreditCard, FiDroplet, FiFileText, FiHeadphones, FiHome, FiLayers, FiSliders, FiTool, FiWifi, FiZap } from "react-icons/fi";
 
 type HomeContext = {
   id: string;
@@ -41,11 +41,11 @@ const SERVICE_ITEMS: ServiceItem[] = [
 ];
 
 const SERVICE_GROUPS: Array<{ title: string; keys: ServiceKey[] }> = [
+  { title: "All", keys: ["utility_token", "water_service", "internet_service", "service_charge", "other_facility_fees"] },
   { title: "Utilities", keys: ["utility_token", "water_service"] },
   { title: "Connectivity", keys: ["internet_service", "fiber_internet"] as ServiceKey[] },
   { title: "Estate Fees", keys: ["service_charge"] },
   { title: "Facility Services", keys: ["other_facility_fees"] },
-  { title: "Other Charges", keys: [] },
 ];
 
 const SERVICE_PRESETS: Partial<Record<ServiceKey, ServicePreset[]>> = {
@@ -105,6 +105,82 @@ function mergedServiceItem(item: ServiceItem, configs: Partial<Record<ServiceKey
   };
 }
 
+function serviceStatusFor(serviceKey: ServiceKey, linkedRef: string, active: boolean) {
+  if (!active) return { label: "Unavailable", className: "border-white/8 bg-white/[0.04] text-white/40" };
+  if (serviceKey === "utility_token") return { label: linkedRef ? "Available" : "Link Meter", className: linkedRef ? "border-emerald-300/12 bg-emerald-400/10 text-emerald-200" : "border-amber-300/14 bg-amber-400/10 text-amber-200" };
+  if (serviceKey === "water_service") return { label: linkedRef ? "Connected" : "Setup Needed", className: linkedRef ? "border-sky-300/12 bg-sky-400/10 text-sky-200" : "border-amber-300/14 bg-amber-400/10 text-amber-200" };
+  if (serviceKey === "internet_service" || serviceKey === "fiber_internet") return { label: linkedRef ? "Active" : "Setup Needed", className: linkedRef ? "border-emerald-300/12 bg-emerald-400/10 text-emerald-200" : "border-amber-300/14 bg-amber-400/10 text-amber-200" };
+  if (serviceKey === "service_charge") return { label: "No Due", className: "border-emerald-300/12 bg-emerald-400/10 text-emerald-200" };
+  return { label: "On Demand", className: "border-cyan-300/12 bg-cyan-400/10 text-cyan-200" };
+}
+
+function ServiceActionChip({ label, Icon, onClick }: { label: string; Icon: any; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex h-10 items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.035] px-3.5 text-xs font-medium text-white/74 shadow-[0_10px_30px_rgba(0,0,0,0.22)] backdrop-blur-2xl transition hover:bg-white/[0.06] active:scale-[0.98]"
+    >
+      <Icon className="h-4 w-4 text-sky-300 drop-shadow-[0_0_12px_rgba(56,189,248,0.48)]" />
+      {label}
+    </button>
+  );
+}
+
+function AwarenessRail({ items }: { items: Array<{ icon: any; label: string; tone: string }> }) {
+  return (
+    <section>
+      <div className="mb-2 flex items-center justify-between px-1">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-white/42">Awareness</div>
+      </div>
+      <div className="flex snap-x snap-mandatory gap-1.5 overflow-x-auto scroll-smooth pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {items.map((item) => {
+          const Icon = item.icon;
+          return (
+            <div
+              key={item.label}
+              className="flex h-11 min-w-[150px] snap-start items-center gap-2 rounded-[18px] border border-white/[0.06] bg-[linear-gradient(145deg,rgba(255,255,255,0.044),rgba(255,255,255,0.012))] px-3 shadow-[0_10px_28px_rgba(0,0,0,0.24)] backdrop-blur-2xl"
+            >
+              <Icon className={`h-4 w-4 shrink-0 ${item.tone}`} />
+              <span className="line-clamp-2 text-[12px] font-medium leading-4 text-white/72">{item.label}</span>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function ServiceCatalogCard({ item, configs, home, onOpen }: { item: ServiceItem; configs: Partial<Record<ServiceKey, ServiceConfig>>; home: HomeContext | null; onOpen: () => void }) {
+  const merged = mergedServiceItem(item, configs);
+  const linkedRef = accountRefFor(merged.key, home);
+  const status = serviceStatusFor(merged.key, linkedRef, merged.active);
+  const Icon = merged.icon;
+  const iconTone = !merged.active
+    ? "bg-white/5 text-white/25"
+    : linkedRef
+    ? "bg-cyan-400/12 text-cyan-100 shadow-[0_0_24px_rgba(34,211,238,0.18)]"
+    : "bg-white/[0.065] text-white/55";
+
+  return (
+    <button
+      type="button"
+      onClick={() => merged.active && onOpen()}
+      className={`flex w-full items-center gap-3 rounded-[22px] border px-3 py-3 text-left shadow-[0_14px_44px_rgba(0,0,0,0.26)] backdrop-blur-2xl transition active:scale-[0.992] ${merged.active ? "border-white/[0.075] bg-[linear-gradient(145deg,rgba(255,255,255,0.046),rgba(255,255,255,0.012))] hover:bg-white/[0.055]" : "border-white/5 bg-white/[0.025] opacity-60"}`}
+    >
+      <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] ${iconTone}`}>
+        <Icon className="h-5 w-5" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[15px] font-semibold tracking-[-0.02em] text-white">{merged.title}</div>
+        <div className="mt-0.5 truncate text-[12px] text-white/45">{merged.subtitle}</div>
+      </div>
+      <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10.5px] font-medium sm:px-2.5 sm:py-1 sm:text-[11px] ${status.className}`}>{status.label}</span>
+      <FiChevronRight className="h-5 w-5 shrink-0 text-white/45" />
+    </button>
+  );
+}
+
 export default function ServicesPage() {
   const activeContext = useActiveContext();
   const { estate_id: estateId, home } = activeContext;
@@ -118,6 +194,7 @@ export default function ServicesPage() {
   const [configs, setConfigs] = useState<Partial<Record<ServiceKey, ServiceConfig>>>({});
   const [configsFallback, setConfigsFallback] = useState(false);
   const [lastReceipt, setLastReceipt] = useState<ServicePayment | null>(null);
+  const [activeCategory, setActiveCategory] = useState("All");
 
   const activeService = useMemo(() => SERVICE_ITEMS.find((s) => s.key === activeServiceKey) || null, [activeServiceKey]);
   const activeAccountRef = useMemo(() => (activeService ? accountRefFor(activeService.key, home) : ""), [activeService, home]);
@@ -128,8 +205,44 @@ export default function ServicesPage() {
     return history.filter((h) => h.service_key === activeServiceKey).slice(0, 8);
   }, [activeServiceKey, history]);
   const serviceChargePaid = useMemo(() => history.filter((item) => item.service_key === "service_charge").reduce((sum, item) => sum + Number(item.amount || 0), 0), [history]);
-  const utilityPaid = useMemo(() => history.filter((item) => item.service_key === "utility_token" || item.service_key === "water_service").reduce((sum, item) => sum + Number(item.amount || 0), 0), [history]);
-  const internetPaid = useMemo(() => history.filter((item) => item.service_key === "internet_service" || item.service_key === "fiber_internet").reduce((sum, item) => sum + Number(item.amount || 0), 0), [history]);
+  const selectedGroup = useMemo(() => SERVICE_GROUPS.find((group) => group.title === activeCategory) || SERVICE_GROUPS[0], [activeCategory]);
+  const visibleServiceItems = useMemo(() => SERVICE_ITEMS.filter((item) => selectedGroup.keys.includes(item.key)), [selectedGroup]);
+  const linkedUtilityAccounts = useMemo(() => {
+    return [home?.electricity_meter, home?.water_meter, home?.internet_id].filter(Boolean).length;
+  }, [home]);
+  const activeServices = useMemo(() => SERVICE_ITEMS.filter((item) => (configs[item.key]?.active ?? true)).length, [configs]);
+  const awarenessItems = useMemo(() => {
+    const electricityLinked = Boolean(home?.electricity_meter);
+    const waterLinked = Boolean(home?.water_meter);
+    const internetLinked = Boolean(home?.internet_id);
+    return [
+      {
+        icon: FiZap,
+        label: electricityLinked ? "Electricity meter ready" : "Meter not linked",
+        tone: electricityLinked ? "text-emerald-300" : "text-amber-300",
+      },
+      {
+        icon: FiDroplet,
+        label: waterLinked ? "Water recharge ready" : "Water setup needed",
+        tone: waterLinked ? "text-sky-300" : "text-amber-300",
+      },
+      {
+        icon: FiWifi,
+        label: internetLinked ? "Internet plan active" : "Internet plan not configured",
+        tone: internetLinked ? "text-emerald-300" : "text-amber-300",
+      },
+      {
+        icon: FiCreditCard,
+        label: history.length ? "Payment history available" : "No payment history",
+        tone: history.length ? "text-emerald-300" : "text-white/55",
+      },
+      {
+        icon: FiHeadphones,
+        label: "Support center available",
+        tone: "text-violet-300",
+      },
+    ];
+  }, [home, history.length]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -156,7 +269,7 @@ export default function ServicesPage() {
     return () => {
       cancelled = true;
     };
-  }, [contextReady, activeContext.contextKey]);
+  }, [contextReady, activeContext.contextKey, estateId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -229,60 +342,57 @@ export default function ServicesPage() {
         </div>
       ) : null}
 
+      <section className="flex items-center justify-end gap-2">
+        <ServiceActionChip label="Request Service" Icon={FiTool} onClick={() => setActiveServiceKey("other_facility_fees")} />
+        <ServiceActionChip label="Support Center" Icon={FiHeadphones} onClick={() => { if (typeof window !== "undefined") window.location.href = "/support"; }} />
+      </section>
+
       <ActivityMetricsRail
         items={[
-          { icon: FiHome, label: "Service Charge", value: serviceChargePaid ? toNaira(serviceChargePaid) : "Ready", color: "text-sky-300" },
-          { icon: FiZap, label: "Utilities", value: utilityPaid ? toNaira(utilityPaid) : "Connected", color: "text-amber-200" },
-          { icon: FiWifi, label: "Internet", value: internetPaid ? toNaira(internetPaid) : "Active", color: "text-cyan-200" },
-          { icon: FiCreditCard, label: "Outstanding", value: "₦0", color: "text-emerald-200" },
+          { icon: FiLayers, label: "Active Services", value: activeServices, color: "text-sky-300" },
+          { icon: FiHome, label: "Utility Accounts", value: linkedUtilityAccounts, color: "text-cyan-200" },
+          { icon: FiWifi, label: "Internet Plans", value: home?.internet_id ? 1 : 0, color: "text-violet-200" },
+          { icon: FiHeadphones, label: "Support Tickets", value: "Ready", color: "text-amber-200" },
+          { icon: FiCreditCard, label: "Service Charge", value: serviceChargePaid ? toNaira(serviceChargePaid) : "Ready", color: "text-emerald-200" },
+          { icon: FiFileText, label: "Receipts", value: history.length, color: "text-white/65" },
         ]}
       />
+
+      <AwarenessRail items={awarenessItems} />
 
       <OyiContextRail
         items={[
           { label: "Pay Service Charge", value: "Open", icon: FiHome, onClick: () => setActiveServiceKey("service_charge") },
           { label: "Buy Electricity", value: "Token", icon: FiZap, onClick: () => setActiveServiceKey("utility_token") },
           { label: "Buy Water", value: "Recharge", icon: FiDroplet, onClick: () => setActiveServiceKey("water_service") },
-          { label: "Internet Plan", value: "Renew", icon: FiWifi, onClick: () => setActiveServiceKey("internet_service") },
+          { label: "Support", value: "Center", icon: FiHeadphones, onClick: () => { if (typeof window !== "undefined") window.location.href = "/support"; } },
         ]}
       />
 
-      <div className="space-y-4">
-        {SERVICE_GROUPS.map((group) => {
-          const items = SERVICE_ITEMS.filter((item) => group.keys.includes(item.key));
-          if (!items.length && group.title !== "Other Charges") return null;
-          return (
-            <section key={group.title}>
-              <div className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/38">{group.title}</div>
-              {items.length ? <div className="grid grid-cols-2 gap-2.5">
-                {items.map((item) => {
-                  const merged = mergedServiceItem(item, configs);
-                  const Icon = merged.icon;
-                  const linkedRef = accountRefFor(merged.key, home);
-                  const iconTone = !merged.active
-                    ? "bg-white/5 text-white/25"
-                    : linkedRef
-                    ? "bg-cyan-400/20 text-cyan-100 shadow-[0_0_30px_rgba(34,211,238,0.25)]"
-                    : "bg-white/10 text-white/45";
+      <section className="space-y-2.5">
+        <div className="px-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-white/42">Service Catalog</div>
+        <div className="flex snap-x snap-mandatory gap-2 overflow-x-auto scroll-smooth pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {SERVICE_GROUPS.map((group) => (
+            <button
+              key={group.title}
+              type="button"
+              onClick={() => setActiveCategory(group.title)}
+              className={`h-10 shrink-0 snap-start rounded-full border px-4 text-xs font-medium transition active:scale-[0.98] ${activeCategory === group.title ? "border-sky-300/24 bg-sky-400/12 text-sky-100 shadow-[0_0_22px_rgba(14,165,233,0.18)]" : "border-white/[0.075] bg-white/[0.03] text-white/62 hover:bg-white/[0.055]"}`}
+            >
+              {group.title}
+            </button>
+          ))}
+          <button type="button" aria-label="Service filters" className="flex h-10 w-10 shrink-0 snap-start items-center justify-center rounded-full border border-white/[0.075] bg-white/[0.03] text-white/62">
+            <FiSliders className="h-4 w-4" />
+          </button>
+        </div>
 
-                  return (
-                    <button key={merged.key} type="button" onClick={() => merged.active && setActiveServiceKey(merged.key)} className={`text-left rounded-[22px] border p-3.5 transition ${merged.active ? "border-white/10 bg-white/[0.035] hover:bg-white/[0.065]" : "border-white/5 bg-white/[0.03] opacity-60"}`}>
-                      <div className="flex items-center justify-between gap-2">
-                        <div className={`inline-flex h-9 w-9 items-center justify-center rounded-[16px] transition ${iconTone}`}>
-                          <Icon className="h-4 w-4" />
-                        </div>
-                        {!merged.active ? <span className="rounded-full border border-zinc-500/35 bg-zinc-500/10 px-2 py-0.5 text-[10px] text-zinc-300">Disabled</span> : null}
-                      </div>
-                      <div className="mt-3 text-sm font-semibold text-white">{merged.title}</div>
-                      <div className="mt-1 text-[11px] leading-4 text-white/48">{merged.subtitle}</div>
-                    </button>
-                  );
-                })}
-              </div> : <div className="rounded-[22px] border border-dashed border-white/10 bg-white/[0.025] p-4 text-xs text-white/42">Additional charges will appear when your estate publishes them.</div>}
-            </section>
-          );
-        })}
-      </div>
+        <div className="space-y-2">
+          {visibleServiceItems.map((item) => (
+            <ServiceCatalogCard key={item.key} item={item} configs={configs} home={home} onOpen={() => setActiveServiceKey(item.key)} />
+          ))}
+        </div>
+      </section>
 
       {activeService ? (
         <div className="fixed inset-0 z-[120]">
