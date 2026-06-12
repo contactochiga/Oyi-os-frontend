@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import ConsumerShell from "@/app/components/ConsumerShell";
+import ActivityMetricsRail from "@/app/components/ActivityMetricsRail";
 import {
   visitorService,
   type VisitorAccess,
@@ -132,18 +133,6 @@ function vIsApprovedStatus(status: VisitorStatus) {
   return s === "approved";
 }
 
-// -------------------------------
-// tiny UI primitives (fit your dark theme)
-// -------------------------------
-function Card({ className = "", children }: { className?: string; children: any }) {
-  return <div className={`rounded-[18px] border border-white/[0.07] bg-white/[0.025] ${className}`}>{children}</div>;
-}
-function CardHeader({ className = "", children }: { className?: string; children: any }) {
-  return <div className={`px-3 pb-1.5 pt-2.5 ${className}`}>{children}</div>;
-}
-function CardBody({ className = "", children }: { className?: string; children: any }) {
-  return <div className={`px-3 pb-2.5 pt-0 ${className}`}>{children}</div>;
-}
 function Pill({ className = "", children }: { className?: string; children: any }) {
   return (
     <span className={`inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full border ${className}`}>
@@ -330,67 +319,32 @@ export default function VisitorsPage() {
         </div>
       )}
 
-      <section className="oyi-environment-hero rounded-[22px] p-3.5">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <div className="text-[10px] uppercase tracking-[0.24em] text-sky-100/60">Access Intelligence</div>
-            <h1 className="mt-1 text-[17px] font-semibold tracking-[-0.035em] text-white">Gate flow is protected.</h1>
-            <p className="mt-1 text-[11px] leading-4 text-white/46">Create passes and keep arrivals quietly traceable.</p>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-          <button
-            onClick={loadMine}
-            disabled={loading}
-            className="rounded-full px-3 py-1.5 text-xs text-white/80 bg-white/10 hover:bg-white/15 border border-white/10 disabled:opacity-50 transition"
-            type="button"
-          >
-            {loading ? "Syncing" : "Refresh"}
-          </button>
-
-          <button
-            onClick={() => setShowAddDialog(true)}
-            className="rounded-full px-3 py-1.5 text-xs bg-white text-black font-medium hover:opacity-90 transition inline-flex items-center gap-2"
-            type="button"
-          >
-            <UserPlus className="h-4 w-4" />
-            Add
-          </button>
-          </div>
-        </div>
+      <section className="flex items-center justify-end gap-2">
+        <button
+          onClick={loadMine}
+          disabled={loading}
+          className="rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-2 text-xs font-medium text-white/68 transition active:scale-[0.98] disabled:opacity-50"
+          type="button"
+        >
+          {loading ? "Syncing" : "Refresh"}
+        </button>
+        <button
+          onClick={() => setShowAddDialog(true)}
+          className="inline-flex items-center gap-1.5 rounded-full border border-sky-300/18 bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-100 shadow-[0_0_18px_rgba(0,132,255,0.14)] transition active:scale-[0.98]"
+          type="button"
+        >
+          <UserPlus className="h-3.5 w-3.5" />
+          Add Visitor
+        </button>
       </section>
 
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-2">
-        <Card>
-          <CardHeader className="border-b-0 pb-2">
-            <div className="text-[12px] text-white/60">Active Visitors</div>
-          </CardHeader>
-          <CardBody className="pt-0">
-            <div className="text-xl font-semibold tracking-[-0.04em] text-white">{activeVisitors.length}</div>
-            <div className="text-[10px] text-white/38 mt-0.5">Currently in estate</div>
-          </CardBody>
-        </Card>
-
-        <Card>
-          <CardHeader className="border-b-0 pb-2">
-            <div className="text-[12px] text-white/60">Pending Approval</div>
-          </CardHeader>
-          <CardBody className="pt-0">
-            <div className="text-xl font-semibold tracking-[-0.04em] text-white">{pendingVisitors.length}</div>
-            <div className="text-[10px] text-white/38 mt-0.5">Awaiting processing</div>
-          </CardBody>
-        </Card>
-
-        <Card>
-          <CardHeader className="border-b-0 pb-2">
-            <div className="text-[12px] text-white/60">Pre-Approved</div>
-          </CardHeader>
-          <CardBody className="pt-0">
-            <div className="text-xl font-semibold tracking-[-0.04em] text-white">{approvedVisitors.length}</div>
-            <div className="text-[10px] text-white/38 mt-0.5">Ready to check in</div>
-          </CardBody>
-        </Card>
-      </div>
+      <ActivityMetricsRail
+        items={[
+          { icon: User, label: "Active", value: activeVisitors.length, color: "text-sky-300" },
+          { icon: Clock, label: "Pending", value: pendingVisitors.length, color: "text-amber-200" },
+          { icon: CheckCircle, label: "Approved", value: approvedVisitors.length, color: "text-emerald-200" },
+        ]}
+      />
 
       {/* Created result */}
       {created && (

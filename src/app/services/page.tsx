@@ -6,7 +6,7 @@ import ActivityMetricsRail from "@/app/components/ActivityMetricsRail";
 import OyiContextRail from "@/app/components/OyiContextRail";
 import { servicesService, type ServiceConfig, type ServiceKey, type ServicePayment } from "@/services/servicesService";
 import useActiveContext from "@/hooks/useActiveContext";
-import { FiClock, FiCreditCard, FiDroplet, FiFileText, FiHelpCircle, FiHome, FiLayers, FiWifi, FiZap } from "react-icons/fi";
+import { FiClock, FiCreditCard, FiDroplet, FiHome, FiLayers, FiWifi, FiZap } from "react-icons/fi";
 
 type HomeContext = {
   id: string;
@@ -35,9 +35,9 @@ type ServicePreset = {
 const SERVICE_ITEMS: ServiceItem[] = [
   { key: "utility_token", title: "Utility Token", subtitle: "Electricity token purchase", icon: FiZap },
   { key: "water_service", title: "Water Service", subtitle: "Water meter recharge and usage billing", icon: FiDroplet },
-  { key: "internet_service", title: "Fiber Internet Service", subtitle: "Bundles and monthly fiber plans", icon: FiWifi },
-  { key: "service_charge", title: "Service Charge", subtitle: "Estate operational dues", icon: FiHome },
-  { key: "other_facility_fees", title: "Other Facility Fees", subtitle: "Partner and external estate services", icon: FiLayers },
+  { key: "internet_service", title: "Internet", subtitle: "Bundles and monthly fiber plans", icon: FiWifi },
+  { key: "service_charge", title: "Estate Fees", subtitle: "Estate operational dues", icon: FiHome },
+  { key: "other_facility_fees", title: "Facility Services", subtitle: "Partner and external estate services", icon: FiLayers },
 ];
 
 const SERVICE_GROUPS: Array<{ title: string; keys: ServiceKey[] }> = [
@@ -235,7 +235,6 @@ export default function ServicesPage() {
           { icon: FiZap, label: "Utilities", value: utilityPaid ? toNaira(utilityPaid) : "Connected", color: "text-amber-200" },
           { icon: FiWifi, label: "Internet", value: internetPaid ? toNaira(internetPaid) : "Active", color: "text-cyan-200" },
           { icon: FiCreditCard, label: "Outstanding", value: "₦0", color: "text-emerald-200" },
-          { icon: FiDroplet, label: "Water", value: "Active", color: "text-blue-200" },
         ]}
       />
 
@@ -244,9 +243,7 @@ export default function ServicesPage() {
           { label: "Pay Service Charge", value: "Open", icon: FiHome, onClick: () => setActiveServiceKey("service_charge") },
           { label: "Buy Electricity", value: "Token", icon: FiZap, onClick: () => setActiveServiceKey("utility_token") },
           { label: "Buy Water", value: "Recharge", icon: FiDroplet, onClick: () => setActiveServiceKey("water_service") },
-          { label: "Internet", value: "Renew", icon: FiWifi, onClick: () => setActiveServiceKey("internet_service") },
-          { label: "Support", value: "Help", icon: FiHelpCircle },
-          { label: "Invoices", value: "History", icon: FiFileText },
+          { label: "Internet Plan", value: "Renew", icon: FiWifi, onClick: () => setActiveServiceKey("internet_service") },
         ]}
       />
 
@@ -286,10 +283,6 @@ export default function ServicesPage() {
           );
         })}
       </div>
-
-      {!activeService ? (
-        <div className="rounded-[22px] border border-dashed border-white/15 bg-white/[0.035] p-4 text-sm text-white/52">Select a service card to open payment.</div>
-      ) : null}
 
       {activeService ? (
         <div className="fixed inset-0 z-[120]">

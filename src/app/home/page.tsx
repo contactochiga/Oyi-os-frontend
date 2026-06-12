@@ -456,25 +456,34 @@ export default function HomePage() {
   const predictionCount = Number(intelligenceMetrics?.predictions || 0);
   const workflowCount = Number(intelligenceMetrics?.workflows || 0);
   const importantUpdates = Math.max(securityAlerts + openMaintenance + offlineDevices + activeVisitors, intelligenceAttention, predictionCount + workflowCount);
-  const homeAwarenessLine = (() => {
-    if (dashErr) return "Home is aware · Your updates will appear here.";
-    if (proximityState === "leaving_home" && activeOnDevices) return "Device attention required.";
-    if (proximityState === "leaving_home") return "You left home · No urgent issues detected.";
-    if (proximityState === "near_home" && securityAlerts) return "Security event detected.";
-    if (proximityState === "near_home" && openMaintenance) return "Maintenance update available.";
-    if (proximityState === "near_home" && offlineDevices) return "Device attention required.";
-    if (proximityState === "near_home") return "Everything looks normal.";
-    if (proximityState === "approaching_estate") return activeVisitors ? "Visitor pass active." : "You're near the estate · No visitor action is waiting.";
-    if (proximityState === "away") return activeOnDevices ? "Device attention required." : "You're away · Oyi is watching your home.";
-    if (securityAlerts) return "Security event detected.";
-    if (openMaintenance) return "Maintenance update available.";
-    if (offlineDevices >= 3) return "Several devices went offline recently.";
-    if (offlineDevices === 1) return `${String(assignedDevices.find((device) => !isOnline(device))?.name || "One device")} is offline.`;
-    if (predictionCount) return "Recommendations available.";
-    if (workflowCount) return "Follow-up needed.";
-    if (activeVisitors) return "Visitor activity today.";
-    if (unread) return "Updates available.";
-    return proximityState === "near_estate" ? "You're near the estate. No visitor action is waiting." : "Everything looks normal.";
+  const pendingVisitors = visitors.filter((visitor) => /pending|requested|awaiting/i.test(String((visitor as any).status || ""))).length;
+  const latestActivityAt = [
+    ...notifications.map((item) => String((item as any)?.created_at || (item as any)?.occurred_at || "")),
+    ...maintenance.map((item) => String((item as any)?.updated_at || (item as any)?.created_at || "")),
+    ...visitors.map((item) => String((item as any)?.updated_at || (item as any)?.created_at || "")),
+  ].filter(Boolean).sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] || "";
+  const relativeActivity = (() => {
+    const date = new Date(latestActivityAt);
+    if (!latestActivityAt || Number.isNaN(date.getTime())) return "";
+    const mins = Math.max(0, Math.floor((Date.now() - date.getTime()) / 60000));
+    if (mins < 1) return "Last activity just now";
+    if (mins < 60) return `Last activity detected ${mins} minute${mins === 1 ? "" : "s"} ago`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `Last activity detected ${hours} hour${hours === 1 ? "" : "s"} ago`;
+    return "Review recent activity";
+  })();
+  const homeAwareness = (() => {
+    if (dashErr) return { primary: "Home status is available.", secondary: "Open Activity →", href: "/activity" };
+    if (securityAlerts) return { primary: "Security event detected.", secondary: "Review security update →", href: "/activity?filter=attention" };
+    if (pendingVisitors) return { primary: "Visitor awaiting approval.", secondary: "Review visitor access →", href: "/visitors" };
+    if (openMaintenance) return { primary: "Maintenance requires attention.", secondary: "Open maintenance request →", href: "/maintenance" };
+    if (offlineDevices || activeOnDevices) return { primary: "Device attention required.", secondary: "Open device status →", href: "/devices" };
+    if (proximityState === "away") return { primary: "You are away from home.", secondary: `${relativeActivity || "Oyi is watching your home"} →`, href: "/activity" };
+    if (proximityState === "leaving_home") return { primary: "You left home.", secondary: "Review home status →", href: "/activity" };
+    if (proximityState === "approaching_estate" || proximityState === "near_estate") return { primary: "You are near the estate.", secondary: activeVisitors ? "Review visitor access →" : "No visitor action waiting →", href: activeVisitors ? "/visitors" : "/activity" };
+    if (predictionCount || workflowCount) return { primary: "Recommendations available.", secondary: "See recommendations →", href: "/activity?filter=attention" };
+    if (importantUpdates || unread) return { primary: "Home is secure.", secondary: `Review ${importantUpdates || unread} recent update${(importantUpdates || unread) === 1 ? "" : "s"} →`, href: "/activity?filter=attention" };
+    return { primary: "Home is operating normally.", secondary: "No action required →", href: "/activity" };
   })();
   const securityState = activeVisitors ? `${activeVisitors} visitor${activeVisitors > 1 ? "s" : ""}` : "Protected";
   const deviceStateLabel = devicesBusy
@@ -506,13 +515,6 @@ export default function HomePage() {
       iconClass: "text-emerald-300 drop-shadow-[0_0_12px_rgba(52,211,153,0.66)]",
     },
     {
-      label: "Wallet",
-      value: walletLabel,
-      href: "/wallet",
-      Icon: Wallet,
-      iconClass: "text-violet-300 drop-shadow-[0_0_12px_rgba(168,85,247,0.68)]",
-    },
-    {
       label: "Visitors",
       value: visitorLabel,
       href: "/visitors",
@@ -520,11 +522,11 @@ export default function HomePage() {
       iconClass: "text-cyan-300 drop-shadow-[0_0_12px_rgba(34,211,238,0.55)]",
     },
     {
-      label: "Community",
-      value: communityLabel,
-      href: "/community",
-      Icon: MessageCircle,
-      iconClass: "text-blue-300 drop-shadow-[0_0_12px_rgba(96,165,250,0.58)]",
+      label: "Wallet",
+      value: walletLabel,
+      href: "/wallet",
+      Icon: Wallet,
+      iconClass: "text-violet-300 drop-shadow-[0_0_12px_rgba(168,85,247,0.68)]",
     },
     {
       label: "Devices",
@@ -534,18 +536,25 @@ export default function HomePage() {
       iconClass: "text-amber-300 drop-shadow-[0_0_12px_rgba(251,191,36,0.55)]",
     },
     {
-      label: "Messages",
-      value: messagesLabel,
-      href: "/messages",
-      Icon: MessageCircle,
-      iconClass: "text-sky-300 drop-shadow-[0_0_12px_rgba(56,189,248,0.62)]",
-    },
-    {
       label: "Maintenance",
       value: maintenanceLabel,
       href: "/maintenance",
       Icon: Wrench,
       iconClass: "text-orange-300 drop-shadow-[0_0_12px_rgba(251,146,60,0.55)]",
+    },
+    {
+      label: "Community",
+      value: communityLabel,
+      href: "/community",
+      Icon: MessageCircle,
+      iconClass: "text-blue-300 drop-shadow-[0_0_12px_rgba(96,165,250,0.58)]",
+    },
+    {
+      label: "Messages",
+      value: messagesLabel,
+      href: "/messages",
+      Icon: MessageCircle,
+      iconClass: "text-sky-300 drop-shadow-[0_0_12px_rgba(56,189,248,0.62)]",
     },
     {
       label: "Watch",
@@ -632,14 +641,14 @@ export default function HomePage() {
 
               <div className="mt-10">
                 <div className="text-[28px] font-semibold leading-none tracking-[-0.05em] text-white sm:text-[32px]">
-                  {homeAwarenessLine}
+                  {homeAwareness.primary}
                 </div>
                 <button
                   type="button"
-                  onClick={() => router.push("/activity?filter=attention")}
+                  onClick={() => router.push(homeAwareness.href)}
                   className="mx-auto mt-2.5 block text-[13px] font-medium leading-5 text-sky-200/78 transition hover:text-sky-100 active:scale-[0.99] sm:text-[14px]"
                 >
-                  {importantUpdates ? `${importantUpdates} important update${importantUpdates === 1 ? "" : "s"} →` : "Open Activity →"}
+                  {homeAwareness.secondary}
                 </button>
               </div>
             </motion.section>

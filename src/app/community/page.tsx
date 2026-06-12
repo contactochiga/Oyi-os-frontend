@@ -179,7 +179,7 @@ function createCategoryForTab(tab: TabKey) {
 }
 
 function isPostRead(post: any) {
-  return post?.viewed_by_me === true || post?.read_by_me === true || Boolean(post?.read_at) || Boolean(post?.viewed_at);
+  return post?.viewed_by_me === true || post?.read_by_me === true || post?.locally_viewed === true || Boolean(post?.read_at) || Boolean(post?.viewed_at);
 }
 
 function isPriorityNotice(data: { post: any; tab: Exclude<TabKey, "all">; official?: { label: string; Icon: any } | null }) {
@@ -246,12 +246,21 @@ export default function CommunityPage() {
   const [comments, setComments] = useState<Record<string, CommunityComment[]>>({});
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [busyPost, setBusyPost] = useState<Record<string, boolean>>({});
+  const [localReadIds, setLocalReadIds] = useState<Set<string>>(new Set());
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
 
   const canPost = canUseCommunityWrite(user);
   const canBroadcast = canUseCommunityBroadcast(user);
-  const unread = useMemo(() => notificationItems.filter((item: any) => String(item?.status || "") !== "read" && /community|announcement|notice/.test(`${item?.type || ""} ${item?.title || ""} ${item?.message || ""}`.toLowerCase())).length, [notificationItems]);
+  const readStorageKey = useMemo(() => `oyi:community:read:${String((user as any)?.id || "user")}:${estateId || "estate"}:${String(activeContext.home_id || "home")}`, [user, estateId, activeContext.home_id]);
+  const unread = useMemo(() => notificationItems.filter((item: any) => {
+    const postId = String(item?.payload?.post_id || item?.entity_id || item?.post_id || "");
+    return String(item?.status || "") !== "read" && !localReadIds.has(postId) && /community|announcement|notice/.test(`${item?.type || ""} ${item?.title || ""} ${item?.message || ""}`.toLowerCase());
+  }).length, [notificationItems, localReadIds]);
+
+  function applyLocalReadState(rows: CommunityPost[], readIds = localReadIds) {
+    return rows.map((post: any) => readIds.has(pickPostId(post)) ? { ...post, viewed_by_me: true, read_by_me: true, locally_viewed: true, read_at: post.read_at || new Date().toISOString() } : post);
+  }
 
   async function load(silent = false) {
     if (!contextReady || !estateId) {
@@ -263,7 +272,7 @@ export default function CommunityPage() {
     setErr(null);
     try {
       const rows = await communityService.listByEstate(estateId);
-      setItems(Array.isArray(rows) ? rows : []);
+      setItems(Array.isArray(rows) ? applyLocalReadState(rows) : []);
     } catch (error: any) {
       setErr(error?.message || "Failed to load community updates");
       setItems([]);
@@ -274,6 +283,18 @@ export default function CommunityPage() {
 
   useEffect(() => { void load(); }, [contextReady, activeContext.contextKey]);
   useEffect(() => { markBucketViewed("community"); }, [markBucketViewed]);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const parsed = JSON.parse(localStorage.getItem(readStorageKey) || "[]");
+      const next = new Set(Array.isArray(parsed) ? parsed.map(String) : []);
+      setLocalReadIds(next);
+      setItems((prev) => applyLocalReadState(prev, next));
+    } catch {
+      setLocalReadIds(new Set());
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [readStorageKey]);
   useEffect(() => {
     if (!contextReady || !estateId) return;
     const timer = window.setInterval(() => void load(true), 20000);
@@ -349,7 +370,13 @@ export default function CommunityPage() {
 
   async function markPostReadLocal(postId: string) {
     if (!postId) return;
-    setItems((prev) => prev.map((post: any) => pickPostId(post) === postId ? { ...post, viewed_by_me: true, read_by_me: true, read_at: post.read_at || new Date().toISOString() } : post));
+    setLocalReadIds((current) => {
+      const next = new Set(current);
+      next.add(postId);
+      try { localStorage.setItem(readStorageKey, JSON.stringify([...next].slice(-400))); } catch {}
+      return next;
+    });
+    setItems((prev) => prev.map((post: any) => pickPostId(post) === postId ? { ...post, viewed_by_me: true, read_by_me: true, locally_viewed: true, read_at: post.read_at || new Date().toISOString() } : post));
     const matchingNotificationIds = notificationItems
       .filter((item: any) => String(item?.status || "") !== "read" && String(item?.payload?.post_id || item?.entity_id || item?.post_id || "") === postId)
       .map((item: any) => String(item.id || ""))

@@ -131,6 +131,8 @@ export default function MaintenancePage() {
   const inProgressCount = useMemo(() => tickets.filter((t) => /in_progress|in progress|working/i.test(String(t.status || ""))).length, [tickets]);
   const overdueCount = useMemo(() => tickets.filter(isOverdue).length, [tickets]);
   const slaScore = tickets.length ? Math.max(0, Math.round(((tickets.length - overdueCount) / tickets.length) * 100)) : 100;
+  const ongoingTickets = useMemo(() => tickets.filter((ticket) => !/resolved|completed|closed/i.test(String(ticket.status || ""))), [tickets]);
+  const recentTickets = useMemo(() => tickets.filter((ticket) => /resolved|completed|closed/i.test(String(ticket.status || ""))).slice(0, 5), [tickets]);
 
   async function load() {
     setLoading(true);
@@ -202,48 +204,25 @@ export default function MaintenancePage() {
       subtitle="Service requests and scheduled care."
     >
       <div className="oyi-living-page space-y-3 pb-8">
-      <section className="oyi-environment-hero rounded-[22px] p-3.5">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <div className="text-[10px] uppercase tracking-[0.24em] text-sky-100/60">Maintenance</div>
-            <div className="mt-1 text-[17px] font-semibold tracking-[-0.035em] text-white">Service requests and scheduled care.</div>
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              onClick={load}
-              disabled={loading}
-              className="rounded-full px-3 py-1.5 text-xs text-white/80 bg-white/10 hover:bg-white/15 border border-white/10 disabled:opacity-50 transition"
-              type="button"
-            >
-              {loading ? "Syncing" : "Refresh"}
-            </button>
-
-            <button
-              onClick={() => setShowNew(true)}
-              className="rounded-full px-3 py-1.5 text-xs font-medium bg-white text-black hover:opacity-90 transition"
-              type="button"
-            >
-              New
-            </button>
-          </div>
-        </div>
-
-        {err && (
-          <div className="mt-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-            {err}
-          </div>
-        )}
+      <section className="flex items-center justify-end gap-2">
+        <button
+          onClick={load}
+          disabled={loading}
+          className="rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-2 text-xs font-medium text-white/68 transition active:scale-[0.98] disabled:opacity-50"
+          type="button"
+        >
+          {loading ? "Syncing" : "Refresh"}
+        </button>
+        <button
+          onClick={() => setShowNew(true)}
+          className="rounded-full border border-sky-300/18 bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-100 shadow-[0_0_18px_rgba(0,132,255,0.14)] transition active:scale-[0.98]"
+          type="button"
+        >
+          New Request
+        </button>
       </section>
 
-      <OyiContextRail
-        items={QUICK_CATEGORIES.map(([label, category, Icon]) => ({
-          label,
-          value: "Request",
-          icon: Icon,
-          onClick: () => startQuickRequest(label, category),
-        }))}
-      />
+      {err ? <div className="rounded-[18px] border border-red-300/16 bg-red-500/10 px-3.5 py-3 text-xs text-red-100">{err}</div> : null}
 
       <ActivityMetricsRail
         items={[
@@ -251,18 +230,24 @@ export default function MaintenancePage() {
           { icon: FiTool, label: "In Progress", value: inProgressCount, color: "text-amber-200" },
           { icon: FiUserCheck, label: "Assigned", value: assignedCount, color: "text-blue-200" },
           { icon: FiAlertTriangle, label: "Overdue", value: overdueCount, color: overdueCount ? "text-red-200" : "text-white/55" },
-          { icon: FiCheckCircle, label: "SLA", value: `${slaScore}%`, color: "text-emerald-200" },
+          { icon: FiCheckCircle, label: "Completed SLA", value: `${slaScore}%`, color: "text-emerald-200" },
         ]}
       />
 
-      {/* Tickets list (cards, mobile-first) */}
-      <div>
+      <OyiContextRail
+        items={QUICK_CATEGORIES.slice(0, 6).map(([label, category, Icon]) => ({
+          label,
+          value: "Request",
+          icon: Icon,
+          onClick: () => startQuickRequest(label, category),
+        }))}
+      />
+
+      <section>
         <div className="flex items-end justify-between gap-3">
           <div>
-            <div className="text-sm font-medium text-white">Requests</div>
-            <div className="text-xs text-white/40 mt-1">
-              Latest first • facility updates stay resident-scoped
-            </div>
+            <div className="text-[17px] font-semibold tracking-[-0.04em] text-white">Active Requests</div>
+            <div className="mt-1 text-xs text-white/40">Ongoing requests appear first.</div>
           </div>
         </div>
 
@@ -272,7 +257,7 @@ export default function MaintenancePage() {
           </div>
         ) : (
           <div className="mt-3 space-y-2.5">
-            {tickets.map((t) => (
+            {ongoingTickets.map((t) => (
               <button
                 key={t.id}
                 type="button"
@@ -303,7 +288,32 @@ export default function MaintenancePage() {
             ))}
           </div>
         )}
-      </div>
+      </section>
+
+      {recentTickets.length ? (
+        <section>
+          <div className="px-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/38">Recent requests</div>
+          <div className="mt-3 space-y-2.5">
+            {recentTickets.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setSelectedTicket(t)}
+                className="oyi-presence-row rounded-[20px] p-3.5 transition hover:bg-white/[0.055]"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium text-white">{requestSubject(t)}</div>
+                    <div className="mt-1 text-xs text-white/40">{t.category ? nice(String(t.category)) : "General"} • {when(t.created_at)}</div>
+                  </div>
+                  <span className={pill(t.status)}>{nice(t.status)}</span>
+                </div>
+                <MaintenanceProgress status={t.status} overdue={false} />
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {/* Create modal (composer style) */}
       {showNew && (

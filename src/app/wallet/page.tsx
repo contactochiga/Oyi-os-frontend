@@ -3,9 +3,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import ConsumerShell from "@/app/components/ConsumerShell";
+import ActivityMetricsRail from "@/app/components/ActivityMetricsRail";
 import useAuth from "@/hooks/useAuth";
 import { walletService, type WalletDTO } from "@/services/walletService";
 import { servicesService, type ServicePayment } from "@/services/servicesService";
+import { FiClock, FiCreditCard, FiRefreshCw, FiTrendingUp } from "react-icons/fi";
 
 function formatMoney(amount: number, currency = "NGN") {
   try {
@@ -181,32 +183,28 @@ export default function WalletPage() {
         </div>
       )}
 
-      <section className="oyi-environment-hero rounded-[24px] p-4">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <div className="text-[10px] uppercase tracking-[0.24em] text-sky-100/60">Available Balance</div>
-            <div className="mt-2 text-2xl leading-tight font-semibold text-white tracking-tight">
-              {formatMoney(balance, currency)}
-            </div>
+      <section className="flex items-center justify-end gap-2">
+        <button
+          onClick={load}
+          disabled={loading}
+          className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-2 text-xs font-medium text-white/68 transition active:scale-[0.98] disabled:opacity-50"
+          type="button"
+        >
+          <FiRefreshCw className="h-3.5 w-3.5" />
+          {loading ? "Syncing" : "Refresh"}
+        </button>
+      </section>
 
-            <div className="mt-2 text-xs text-white/45">
-              Estate dues, utility payments and service charges stay tied to this home.
-            </div>
-          </div>
+      <ActivityMetricsRail
+        items={[
+          { icon: FiCreditCard, label: "Balance", value: formatMoney(balance, currency), color: "text-sky-300" },
+          { icon: FiTrendingUp, label: "Payments", value: servicePayments.length, color: "text-emerald-200" },
+          { icon: FiClock, label: "Recent", value: servicePayments[0]?.status || "None", color: "text-amber-200" },
+        ]}
+      />
 
-          <button
-            onClick={load}
-            disabled={loading}
-            className="shrink-0 rounded-full px-3 py-1.5 text-xs text-white/80 bg-white/10 hover:bg-white/15 border border-white/10 disabled:opacity-50 transition"
-            type="button"
-          >
-            {loading ? "Syncing" : "Refresh"}
-          </button>
-        </div>
-
-        <div className="mt-4 border-t border-white/10" />
-
-        <div className="mt-4">
+      <section className="rounded-[24px] border border-white/10 bg-white/[0.035] p-4">
+        <div>
           <div className="text-sm font-medium text-white">Fund wallet</div>
           <div className="mt-1 text-xs text-white/40">
             Payments run securely through Paystack.

@@ -106,7 +106,7 @@ export default function BottomNav() {
   const storageKey = useMemo(() => `oyi:footer-nav-page:${scopeKey}:v2`, [scopeKey]);
   const activeItem = useMemo(() => ITEMS.find((item) => isActive(pathname, item)), [pathname]);
   const initialPage = useMemo(() => (activeItem ? pageForKey(activeItem.key) : 0), [activeItem]);
-  const [page, setPage] = useState(initialPage);
+  const [, setPage] = useState(initialPage);
   const avatarUrl = String((user as any)?.profile_image_url || (user as any)?.avatar_url || (user as any)?.photo_url || (user as any)?.profile_image || "").trim();
 
   const badges = useMemo(() => deriveFooterBadges(notifications, scope, localDots), [notifications, scope, localDots]);
@@ -223,7 +223,12 @@ export default function BottomNav() {
             const activeIndex = group.findIndex((item) => isActive(pathname, item));
             return (
               <div key={groupIndex} className="relative grid w-full min-w-full shrink-0 snap-center grid-cols-5 gap-1 px-0.5">
-                {activeIndex >= 0 ? <span className={`absolute bottom-1 top-1 rounded-[21px] border border-sky-300/12 bg-sky-300/[0.10] shadow-[0_0_24px_rgba(56,189,248,0.22)] transition-transform duration-300 ease-out ${collapsed ? "mx-[9px]" : "mx-[3px]"}`} style={{ width: "20%", transform: `translateX(${activeIndex * 100}%)` }} /> : null}
+                {activeIndex >= 0 ? (
+                  <span
+                    className={`absolute bottom-1 top-1 rounded-[22px] border border-white/[0.105] bg-[radial-gradient(circle_at_35%_20%,rgba(255,255,255,0.18),rgba(56,189,248,0.14)_42%,rgba(255,255,255,0.055)_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.10),0_0_26px_rgba(56,189,248,0.24),0_10px_26px_rgba(0,0,0,0.28)] backdrop-blur-2xl transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${collapsed ? "mx-[8px]" : "mx-[3px]"}`}
+                    style={{ width: "20%", transform: `translateX(${activeIndex * 100}%)` }}
+                  />
+                ) : null}
                 {group.map((item) => {
                   const active = isActive(pathname, item);
                   const Icon = item.icon;
@@ -254,9 +259,6 @@ export default function BottomNav() {
               </div>
             );
           })}
-        </div>
-        <div className={`flex justify-center gap-1 transition-all duration-300 ${collapsed ? "mt-0 max-h-0 opacity-0" : "mt-0.5 max-h-2 opacity-100"}`} aria-hidden="true">
-          {NAV_GROUPS.map((_, index) => <span key={index} className={`h-1 rounded-full transition-all ${page === index ? "w-3 bg-sky-200/70" : "w-1 bg-white/18"}`} />)}
         </div>
       </div>
     </nav>
