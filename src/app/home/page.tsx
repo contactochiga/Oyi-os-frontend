@@ -25,6 +25,7 @@ import InviteSuggestionBridge from "../components/InviteSuggestionBridge";
 import HamburgerMenu from "../components/HamburgerMenu";
 import MessagesInboxButton from "../components/MessagesInboxButton";
 import BottomNav from "../components/BottomNav";
+import OyiContextRail from "../components/OyiContextRail";
 import { getDeviceIcon, getDeviceIconTone } from "@/lib/devicePresentation";
 
 import { deviceService } from "../../services/deviceService";
@@ -457,19 +458,22 @@ export default function HomePage() {
   const importantUpdates = Math.max(securityAlerts + openMaintenance + offlineDevices + activeVisitors, intelligenceAttention, predictionCount + workflowCount);
   const homeAwarenessLine = (() => {
     if (dashErr) return "Home is aware · Your updates will appear here.";
-    if (proximityState === "leaving_home" && activeOnDevices) return `You left home · ${activeOnDevices} device${activeOnDevices === 1 ? " is" : "s are"} still on.`;
+    if (proximityState === "leaving_home" && activeOnDevices) return "Device attention required.";
     if (proximityState === "leaving_home") return "You left home · No urgent issues detected.";
-    if (proximityState === "near_home") return openMaintenance || securityAlerts || offlineDevices ? `${openMaintenance + securityAlerts + offlineDevices} important update${openMaintenance + securityAlerts + offlineDevices === 1 ? "" : "s"}.` : "Everything looks normal.";
-    if (proximityState === "approaching_estate") return activeVisitors ? `You're near the estate · ${activeVisitors} visitor pass${activeVisitors === 1 ? " is" : "es are"} active.` : "You're near the estate · No visitor action is waiting.";
-    if (proximityState === "away") return activeOnDevices ? `You're away · ${activeOnDevices} device${activeOnDevices === 1 ? " remains" : "s remain"} active.` : "You're away · Oyi is watching your home.";
-    if (securityAlerts) return securityAlerts === 1 ? "A security item requires attention." : `${securityAlerts} security items require attention.`;
-    if (openMaintenance) return openMaintenance === 1 ? "A maintenance request awaits review." : `${openMaintenance} maintenance requests await review.`;
+    if (proximityState === "near_home" && securityAlerts) return "Security event detected.";
+    if (proximityState === "near_home" && openMaintenance) return "Maintenance update available.";
+    if (proximityState === "near_home" && offlineDevices) return "Device attention required.";
+    if (proximityState === "near_home") return "Everything looks normal.";
+    if (proximityState === "approaching_estate") return activeVisitors ? "Visitor pass active." : "You're near the estate · No visitor action is waiting.";
+    if (proximityState === "away") return activeOnDevices ? "Device attention required." : "You're away · Oyi is watching your home.";
+    if (securityAlerts) return "Security event detected.";
+    if (openMaintenance) return "Maintenance update available.";
     if (offlineDevices >= 3) return "Several devices went offline recently.";
     if (offlineDevices === 1) return `${String(assignedDevices.find((device) => !isOnline(device))?.name || "One device")} is offline.`;
-    if (predictionCount) return `${predictionCount} prediction${predictionCount === 1 ? " is" : "s are"} ready for review.`;
-    if (workflowCount) return `${workflowCount} workflow${workflowCount === 1 ? " needs" : "s need"} follow-up.`;
-    if (activeVisitors) return `${activeVisitors} visitor${activeVisitors === 1 ? " checked" : "s checked"} in today.`;
-    if (unread) return `${unread} important update${unread === 1 ? "" : "s"} available.`;
+    if (predictionCount) return "Recommendations available.";
+    if (workflowCount) return "Follow-up needed.";
+    if (activeVisitors) return "Visitor activity today.";
+    if (unread) return "Updates available.";
     return proximityState === "near_estate" ? "You're near the estate. No visitor action is waiting." : "Everything looks normal.";
   })();
   const securityState = activeVisitors ? `${activeVisitors} visitor${activeVisitors > 1 ? "s" : ""}` : "Protected";
@@ -640,29 +644,22 @@ export default function HomePage() {
               </div>
             </motion.section>
 
-            <motion.section
+            <motion.div
               initial={reduceMotion ? false : { opacity: 0, y: 12 }}
               animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
               transition={{ duration: 0.48, delay: 0.18, ease: [0.22, 1, 0.36, 1] }}
-              className="mt-5 overflow-hidden rounded-[24px] border border-white/[0.06] bg-[linear-gradient(145deg,rgba(255,255,255,0.043),rgba(255,255,255,0.014))] px-2.5 py-3 shadow-[0_16px_52px_rgba(0,0,0,0.30)] backdrop-blur-2xl"
             >
-              <div className="flex snap-x snap-mandatory gap-2 overflow-x-auto scroll-smooth">
-                {homeStateItems.map((item) => (
-                  <button
-                    key={item.label}
-                    type="button"
-                    onClick={() => router.push(item.href)}
-                    className="flex min-w-[118px] snap-start items-center justify-center gap-2 rounded-[18px] px-2.5 py-1.5 text-left transition hover:bg-white/[0.045] active:scale-[0.99]"
-                  >
-                    <item.Icon className={`h-5 w-5 ${item.iconClass}`} />
-                    <span className="min-w-0">
-                      <span className="block truncate text-[10px] text-white/42">{item.label}</span>
-                      <span className="block truncate text-[12px] font-semibold text-white">{item.value}</span>
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </motion.section>
+              <OyiContextRail
+                className="mt-5"
+                items={homeStateItems.map((item) => ({
+                  label: item.label,
+                  value: item.value,
+                  icon: item.Icon,
+                  iconClassName: item.iconClass,
+                  onClick: () => router.push(item.href),
+                }))}
+              />
+            </motion.div>
 
             {totalVisibleDevices ? <motion.section
               initial={reduceMotion ? false : { opacity: 0, y: 12 }}

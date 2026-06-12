@@ -2,9 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import ConsumerShell from "@/app/components/ConsumerShell";
+import ActivityMetricsRail from "@/app/components/ActivityMetricsRail";
+import OyiContextRail from "@/app/components/OyiContextRail";
 import { servicesService, type ServiceConfig, type ServiceKey, type ServicePayment } from "@/services/servicesService";
 import useActiveContext from "@/hooks/useActiveContext";
-import { FiClock, FiDroplet, FiHome, FiLayers, FiWifi, FiZap } from "react-icons/fi";
+import { FiClock, FiCreditCard, FiDroplet, FiFileText, FiHelpCircle, FiHome, FiLayers, FiWifi, FiZap } from "react-icons/fi";
 
 type HomeContext = {
   id: string;
@@ -125,7 +127,6 @@ export default function ServicesPage() {
     if (!activeServiceKey) return [];
     return history.filter((h) => h.service_key === activeServiceKey).slice(0, 8);
   }, [activeServiceKey, history]);
-  const totalPaid = useMemo(() => history.reduce((sum, item) => sum + Number(item.amount || 0), 0), [history]);
   const serviceChargePaid = useMemo(() => history.filter((item) => item.service_key === "service_charge").reduce((sum, item) => sum + Number(item.amount || 0), 0), [history]);
   const utilityPaid = useMemo(() => history.filter((item) => item.service_key === "utility_token" || item.service_key === "water_service").reduce((sum, item) => sum + Number(item.amount || 0), 0), [history]);
   const internetPaid = useMemo(() => history.filter((item) => item.service_key === "internet_service" || item.service_key === "fiber_internet").reduce((sum, item) => sum + Number(item.amount || 0), 0), [history]);
@@ -218,7 +219,7 @@ export default function ServicesPage() {
   }
 
   return (
-    <ConsumerShell title="Services" subtitle="Managed living • utilities • home support">
+    <ConsumerShell title="Services" subtitle="Managed living, utilities and home support.">
       <div className="oyi-living-page space-y-3 pb-8">
       {err ? <div className="mb-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">{err}</div> : null}
       {msg ? <div className="mb-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">{msg}</div> : null}
@@ -228,45 +229,26 @@ export default function ServicesPage() {
         </div>
       ) : null}
 
-      <section className="oyi-environment-hero rounded-[22px] p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-[10px] uppercase tracking-[0.24em] text-sky-100/60">Concierge Services</div>
-            <h1 className="mt-1.5 text-[17px] font-semibold text-white">Managed living, simplified.</h1>
-            <p className="mt-1.5 text-xs leading-5 text-white/50">Utilities, internet, dues and facility services stay curated for this home.</p>
-          </div>
-          <div className="oyi-orb h-12 w-12 shrink-0" aria-hidden="true" />
-        </div>
-      </section>
+      <ActivityMetricsRail
+        items={[
+          { icon: FiHome, label: "Service Charge", value: serviceChargePaid ? toNaira(serviceChargePaid) : "Ready", color: "text-sky-300" },
+          { icon: FiZap, label: "Utilities", value: utilityPaid ? toNaira(utilityPaid) : "Connected", color: "text-amber-200" },
+          { icon: FiWifi, label: "Internet", value: internetPaid ? toNaira(internetPaid) : "Active", color: "text-cyan-200" },
+          { icon: FiCreditCard, label: "Outstanding", value: "₦0", color: "text-emerald-200" },
+          { icon: FiDroplet, label: "Water", value: "Active", color: "text-blue-200" },
+        ]}
+      />
 
-      <section className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {[
-          ["Service Charge", serviceChargePaid ? toNaira(serviceChargePaid) : "Ready"],
-          ["Utilities", utilityPaid ? toNaira(utilityPaid) : "Linked"],
-          ["Internet", internetPaid ? toNaira(internetPaid) : "Available"],
-          ["Outstanding", "No live balance"],
-          ["Credits", totalPaid ? toNaira(totalPaid) : "No receipts"],
-        ].map(([label, value]) => (
-          <div key={label} className="min-w-[132px] rounded-[20px] border border-white/[0.07] bg-white/[0.035] px-3 py-3">
-            <div className="text-[10px] uppercase tracking-[0.18em] text-white/36">{label}</div>
-            <div className="mt-1.5 truncate text-sm font-semibold text-white">{value}</div>
-          </div>
-        ))}
-      </section>
-
-      <section className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {[
-          ["Pay Service Charge", "service_charge"],
-          ["Buy Electricity", "utility_token"],
-          ["Buy Water", "water_service"],
-          ["Renew Internet", "internet_service"],
-          ["View Statements", ""],
-        ].map(([label, key]) => (
-          <button key={label} type="button" onClick={() => key ? setActiveServiceKey(key as ServiceKey) : undefined} className="shrink-0 rounded-full border border-sky-300/14 bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-100 transition active:scale-[0.98]">
-            {label}
-          </button>
-        ))}
-      </section>
+      <OyiContextRail
+        items={[
+          { label: "Pay Service Charge", value: "Open", icon: FiHome, onClick: () => setActiveServiceKey("service_charge") },
+          { label: "Buy Electricity", value: "Token", icon: FiZap, onClick: () => setActiveServiceKey("utility_token") },
+          { label: "Buy Water", value: "Recharge", icon: FiDroplet, onClick: () => setActiveServiceKey("water_service") },
+          { label: "Internet", value: "Renew", icon: FiWifi, onClick: () => setActiveServiceKey("internet_service") },
+          { label: "Support", value: "Help", icon: FiHelpCircle },
+          { label: "Invoices", value: "History", icon: FiFileText },
+        ]}
+      />
 
       <div className="space-y-4">
         {SERVICE_GROUPS.map((group) => {

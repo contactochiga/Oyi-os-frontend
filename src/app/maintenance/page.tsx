@@ -3,7 +3,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import ConsumerShell from "../components/ConsumerShell";
+import OyiContextRail from "../components/OyiContextRail";
+import ActivityMetricsRail from "../components/ActivityMetricsRail";
 import { maintenanceService, type MaintenanceTicket } from "@/services/maintenanceService";
+import { FiAlertTriangle, FiCheckCircle, FiClock, FiDroplet, FiTool, FiUserCheck, FiWind, FiZap } from "react-icons/fi";
 
 function pill(status?: string) {
   const s = String(status || "open").toLowerCase();
@@ -36,14 +39,14 @@ function pickErr(e: any, fallback: string) {
 }
 
 const QUICK_CATEGORIES = [
-  ["Electrician", "electricity"],
-  ["Plumber", "water"],
-  ["HVAC", "hvac"],
-  ["Carpenter", "carpentry"],
-  ["Cleaner", "cleaning"],
-  ["Gardener", "gardening"],
-  ["Painter", "painting"],
-  ["General", "general"],
+  ["Electrician", "electricity", FiZap],
+  ["Plumber", "water", FiDroplet],
+  ["HVAC", "hvac", FiWind],
+  ["Carpenter", "carpentry", FiTool],
+  ["Cleaning", "cleaning", FiCheckCircle],
+  ["Generator", "generator", FiZap],
+  ["Water", "water", FiDroplet],
+  ["Garden", "gardening", FiCheckCircle],
 ] as const;
 
 function progressIndex(status?: string) {
@@ -54,20 +57,54 @@ function progressIndex(status?: string) {
   return 0;
 }
 
-function MaintenanceProgress({ status }: { status?: string }) {
+function isOverdue(ticket: MaintenanceTicket) {
+  const status = String(ticket.status || "open").toLowerCase();
+  if (/resolved|completed|closed/.test(status)) return false;
+  const priority = String((ticket as any).priority || "").toLowerCase();
+  if (priority !== "high" && priority !== "critical") return false;
+  const created = new Date(String(ticket.created_at || ""));
+  if (Number.isNaN(created.getTime())) return false;
+  return Date.now() - created.getTime() > 24 * 60 * 60 * 1000;
+}
+
+function cleanRequestTitle(ticket: MaintenanceTicket) {
+  const raw = String(ticket.title || ticket.description || "Maintenance request").trim();
+  return raw
+    .replace(/^create\s+(a\s+)?maintenance\s+request\s+(for\s+)?/i, "")
+    .replace(/^maintenance\s+request\s+(for\s+)?/i, "")
+    .replace(/\s+/g, " ")
+    .replace(/^ac\b/i, "AC")
+    .replace(/^hvac\b/i, "HVAC")
+    .trim() || "Maintenance request";
+}
+
+function requestSubject(ticket: MaintenanceTicket) {
+  const title = cleanRequestTitle(ticket);
+  const category = String(ticket.category || "").toLowerCase();
+  if (/\bac\b|hvac|cooling|air conditioning/i.test(`${title} ${category}`)) return "Living Room AC";
+  if (/water|leak|tap|plumb/i.test(`${title} ${category}`)) return "Water Service";
+  if (/electric|power|socket|light/i.test(`${title} ${category}`)) return "Electrical Service";
+  return title.charAt(0).toUpperCase() + title.slice(1);
+}
+
+function MaintenanceProgress({ status, overdue = false }: { status?: string; overdue?: boolean }) {
   const active = progressIndex(status);
   const labels = ["Requested", "Assigned", "In Progress", "Completed"];
+  const done = active >= labels.length - 1;
+  const activeTone = overdue ? "border-red-200 bg-red-300 shadow-[0_0_12px_rgba(248,113,113,0.42)]" : done ? "border-emerald-200 bg-emerald-300 shadow-[0_0_12px_rgba(52,211,153,0.42)]" : "border-sky-200 bg-sky-300 shadow-[0_0_12px_rgba(56,189,248,0.52)]";
+  const lineTone = overdue ? "bg-red-300/52" : done ? "bg-emerald-300/58" : "bg-sky-300/60";
+  const labelTone = overdue ? "text-red-200/78" : done ? "text-emerald-200/72" : active === 0 ? "text-amber-100/68" : "text-white/42";
   return (
     <div className="mt-3">
       <div className="flex items-center">
         {labels.map((label, index) => (
           <div key={label} className="flex flex-1 items-center last:flex-none">
-            <span className={`h-2.5 w-2.5 rounded-full border ${index <= active ? "border-sky-200 bg-sky-300 shadow-[0_0_12px_rgba(56,189,248,0.52)]" : "border-white/18 bg-white/[0.04]"}`} />
-            {index < labels.length - 1 ? <span className={`mx-1 h-px flex-1 ${index < active ? "bg-sky-300/60" : "bg-white/12"}`} /> : null}
+            <span className={`h-2.5 w-2.5 rounded-full border ${index <= active ? activeTone : "border-white/18 bg-white/[0.04]"}`} />
+            {index < labels.length - 1 ? <span className={`mx-1 h-px flex-1 ${index < active ? lineTone : "bg-white/12"}`} /> : null}
           </div>
         ))}
       </div>
-      <div className="mt-1.5 text-[10px] font-medium text-white/42">{labels[active]}</div>
+      <div className={`mt-1.5 text-[10px] font-medium ${labelTone}`}>{overdue ? "Overdue" : labels[active]}</div>
     </div>
   );
 }
@@ -90,6 +127,10 @@ export default function MaintenancePage() {
     () => tickets.filter((t) => String(t.status || "open").toLowerCase() !== "resolved").length,
     [tickets]
   );
+  const assignedCount = useMemo(() => tickets.filter((t) => /assigned|accepted/i.test(String(t.status || ""))).length, [tickets]);
+  const inProgressCount = useMemo(() => tickets.filter((t) => /in_progress|in progress|working/i.test(String(t.status || ""))).length, [tickets]);
+  const overdueCount = useMemo(() => tickets.filter(isOverdue).length, [tickets]);
+  const slaScore = tickets.length ? Math.max(0, Math.round(((tickets.length - overdueCount) / tickets.length) * 100)) : 100;
 
   async function load() {
     setLoading(true);
@@ -164,9 +205,8 @@ export default function MaintenancePage() {
       <section className="oyi-environment-hero rounded-[22px] p-3.5">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-[10px] uppercase tracking-[0.24em] text-sky-100/60">Home Service</div>
-            <div className="mt-1 text-[17px] font-semibold tracking-[-0.035em] text-white">{openCount ? `${openCount} active request${openCount === 1 ? "" : "s"}` : "Home service calm"}</div>
-            <div className="mt-1 text-[11px] leading-4 text-white/46">Requests, technician updates and infrastructure issues stay organized here.</div>
+            <div className="text-[10px] uppercase tracking-[0.24em] text-sky-100/60">Maintenance</div>
+            <div className="mt-1 text-[17px] font-semibold tracking-[-0.035em] text-white">Service requests and scheduled care.</div>
           </div>
 
           <div className="flex gap-2">
@@ -196,13 +236,24 @@ export default function MaintenancePage() {
         )}
       </section>
 
-      <section className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {QUICK_CATEGORIES.map(([label, category]) => (
-          <button key={category} type="button" onClick={() => startQuickRequest(label, category)} className="shrink-0 rounded-full border border-sky-300/14 bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-100 transition active:scale-[0.98]">
-            {label}
-          </button>
-        ))}
-      </section>
+      <OyiContextRail
+        items={QUICK_CATEGORIES.map(([label, category, Icon]) => ({
+          label,
+          value: "Request",
+          icon: Icon,
+          onClick: () => startQuickRequest(label, category),
+        }))}
+      />
+
+      <ActivityMetricsRail
+        items={[
+          { icon: FiClock, label: "Open", value: openCount, color: "text-sky-300" },
+          { icon: FiTool, label: "In Progress", value: inProgressCount, color: "text-amber-200" },
+          { icon: FiUserCheck, label: "Assigned", value: assignedCount, color: "text-blue-200" },
+          { icon: FiAlertTriangle, label: "Overdue", value: overdueCount, color: overdueCount ? "text-red-200" : "text-white/55" },
+          { icon: FiCheckCircle, label: "SLA", value: `${slaScore}%`, color: "text-emerald-200" },
+        ]}
+      />
 
       {/* Tickets list (cards, mobile-first) */}
       <div>
@@ -231,16 +282,15 @@ export default function MaintenancePage() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="text-sm font-medium text-white truncate">
-                      {t.title || "Maintenance request"}
+                      {requestSubject(t)}
                     </div>
                     <div className="text-xs text-white/40 mt-1">
-                      {when(t.created_at)} •{" "}
                       <span className="text-white/60">
-                        {t.category ? String(t.category).toUpperCase() : "—"}
+                        {t.category ? nice(String(t.category)) : "General"}
                       </span>{" "}
                       •{" "}
                       <span className="text-white/60">
-                        {t.priority ? String(t.priority).toUpperCase() : "—"}
+                        {when(t.created_at)}
                       </span>
                     </div>
                   </div>
@@ -248,14 +298,7 @@ export default function MaintenancePage() {
                   <span className={pill(t.status)}>{nice(t.status)}</span>
                 </div>
 
-                {t.description ? (
-                  <div className="mt-3 text-sm text-white/62 line-clamp-2">
-                    {t.description}
-                  </div>
-                ) : (
-                  <div className="mt-3 text-sm text-white/40">—</div>
-                )}
-                <MaintenanceProgress status={t.status} />
+                <MaintenanceProgress status={t.status} overdue={isOverdue(t)} />
               </button>
             ))}
           </div>
@@ -317,6 +360,12 @@ export default function MaintenancePage() {
                       <option value="general">General</option>
                       <option value="electricity">Electricity</option>
                       <option value="water">Water</option>
+                      <option value="hvac">HVAC</option>
+                      <option value="carpentry">Carpentry</option>
+                      <option value="cleaning">Cleaning</option>
+                      <option value="generator">Generator</option>
+                      <option value="gardening">Garden</option>
+                      <option value="painting">Painting</option>
                       <option value="security">Security</option>
                       <option value="device">Device</option>
                     </select>

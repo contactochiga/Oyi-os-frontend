@@ -30,6 +30,7 @@ import LayoutWrapper from "@/app/components/LayoutWrapper";
 import HamburgerMenu from "@/app/components/HamburgerMenu";
 import MessagesInboxButton from "@/app/components/MessagesInboxButton";
 import BottomNav from "@/app/components/BottomNav";
+import ActivityMetricsRail from "@/app/components/ActivityMetricsRail";
 import { getSocket } from "@/services/socket";
 import { getDeviceIconFromText } from "@/lib/devicePresentation";
 import { acknowledgeActivityEvent, acknowledgeSeenActivityEvents, getActivityFeed, notificationIdFromActivity, type ActivityCategory, type ActivityEvent, type ActivitySummary } from "@/services/activityService";
@@ -241,19 +242,21 @@ export default function ActivityPage() {
               })}
             </section>
 
-            <section className="mt-4 rounded-[20px] border border-white/[0.07] bg-[linear-gradient(145deg,rgba(255,255,255,0.046),rgba(255,255,255,0.012))] p-2.5 shadow-[0_12px_38px_rgba(0,0,0,0.30)] backdrop-blur-2xl">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-300">Today</div>
-              <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                <SummaryCell icon={ActivityIcon} label="Events" value={summaryValue(summary.total_events)} color="text-sky-300" />
-                <SummaryCell icon={ShieldCheck} label="Alerts" value={summaryValue(summary.alerts)} color="text-emerald-300" />
-                <SummaryCell icon={Users} label="Visitors" value={summaryValue(summary.visitors)} color="text-violet-300" />
-                <SummaryCell icon={Bolt} label="Actions" value={summaryValue(summary.actions)} color="text-amber-300" />
-                <SummaryCell icon={Brain} label="Predictions" value={summaryValue(intelligenceMetrics?.predictions)} color="text-cyan-300" />
-                <SummaryCell icon={ClipboardCheck} label="Workflows" value={summaryValue(intelligenceMetrics?.workflows)} color="text-blue-300" />
-                <SummaryCell icon={CheckCircle2} label="Approvals" value={summaryValue(intelligenceMetrics?.approvals)} color="text-emerald-200" />
-                <SummaryCell icon={Cpu} label="Devices" value={summaryValue(intelligenceMetrics?.devices)} color="text-amber-200" />
-              </div>
-            </section>
+            <ActivityMetricsRail
+              title="Today"
+              items={[
+                { icon: ActivityIcon, label: "Events", value: summaryValue(summary.total_events), color: "text-sky-300" },
+                { icon: ShieldCheck, label: "Alerts", value: summaryValue(summary.alerts), color: "text-emerald-300" },
+                { icon: Users, label: "Visitors", value: summaryValue(summary.visitors), color: "text-violet-300" },
+                { icon: Bolt, label: "Actions", value: summaryValue(summary.actions), color: "text-amber-300" },
+                { icon: Brain, label: "Predictions", value: summaryValue(intelligenceMetrics?.predictions), color: "text-cyan-300" },
+                { icon: ClipboardCheck, label: "Workflows", value: summaryValue(intelligenceMetrics?.workflows), color: "text-blue-300" },
+                { icon: CheckCircle2, label: "Approvals", value: summaryValue(intelligenceMetrics?.approvals), color: "text-emerald-200" },
+                { icon: Cpu, label: "Devices", value: summaryValue(intelligenceMetrics?.devices), color: "text-amber-200" },
+                { icon: Wrench, label: "Maintenance", value: summaryValue(events.filter((event) => event.category === "maintenance").length), color: "text-orange-200" },
+              ]}
+              className="mt-4"
+            />
 
             {error ? (
               <section className="mt-4 rounded-[20px] border border-amber-300/16 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
@@ -297,18 +300,6 @@ export default function ActivityPage() {
         <BottomNav />
       </main>
     </LayoutWrapper>
-  );
-}
-
-function SummaryCell({ icon: Icon, label, value, color }: { icon: any; label: string; value: string; color: string }) {
-  return (
-    <div className="min-w-[78px] shrink-0 rounded-[16px] border border-white/[0.055] bg-white/[0.026] px-2 py-2 text-center">
-      <div className={`mx-auto flex items-center justify-center gap-1.5 ${color}`}>
-        <Icon className="h-4 w-4" />
-        <span className="text-[20px] font-semibold tracking-[-0.05em]">{value}</span>
-      </div>
-      <div className="mt-1 text-[11px] text-white/48">{label}</div>
-    </div>
   );
 }
 

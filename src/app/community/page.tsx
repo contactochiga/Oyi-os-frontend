@@ -328,7 +328,7 @@ export default function CommunityPage() {
   async function createPost() {
     const content = draft.trim();
     if (!content && !attachments.length) return setErr("Write a short update or attach media.");
-    if (!estateId) return setErr("No estate linked yet.");
+    if (!estateId) return setErr("Join an estate to receive updates, alerts and community notices.");
     setPosting(true);
     setErr(null);
     try {
@@ -478,7 +478,7 @@ export default function CommunityPage() {
               </div>
 
               {!estateId ? (
-                <EmptyState title="Community unavailable" body={"Join an estate to receive:\n• Announcements\n• Security updates\n• Events\n• Visitor alerts"} />
+                <EmptyState title="Community unavailable" body="Join an estate to receive updates, alerts and community notices." />
               ) : loading ? (
                 <div className="rounded-[20px] border border-white/[0.065] bg-white/[0.03] p-4 text-[12px] text-white/54">Loading community updates...</div>
               ) : filtered.length === 0 ? (

@@ -23,6 +23,7 @@ import LayoutWrapper from "@/app/components/LayoutWrapper";
 import HamburgerMenu from "@/app/components/HamburgerMenu";
 import MessagesInboxButton from "@/app/components/MessagesInboxButton";
 import BottomNav from "@/app/components/BottomNav";
+import ActivityMetricsRail from "@/app/components/ActivityMetricsRail";
 import useAuth from "@/hooks/useAuth";
 import useActiveContext from "@/hooks/useActiveContext";
 import { deleteMyAccount, removeMyProfileImage, updateMyProfile, uploadMyProfileImage } from "@/services/authService";
@@ -624,21 +625,15 @@ export default function ProfilePage() {
               </div>
             </section>
 
-            <section className="mt-6 rounded-[24px] border border-white/[0.07] bg-[linear-gradient(145deg,rgba(255,255,255,0.046),rgba(255,255,255,0.012))] p-3 shadow-[0_14px_48px_rgba(0,0,0,0.30)] backdrop-blur-2xl">
-              <h2 className="text-[18px] font-semibold tracking-[-0.04em]">Account Overview</h2>
-              <div className="mt-4 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {overview.map((item) => {
-                  const Icon = item.icon;
-                  return (
-                    <button key={item.label} type="button" onClick={() => item.label === "Current Home" ? setPanel("access") : item.label === "Security" ? setPanel("security") : undefined} className="min-w-[92px] shrink-0 rounded-[18px] border border-white/[0.055] bg-white/[0.026] px-2 py-2 text-center">
-                      <Icon className={`mx-auto h-6 w-6 ${item.tint}`} />
-                      <div className="mt-2.5 truncate text-[13px] font-semibold leading-4 text-white">{item.value}</div>
-                      <div className="mt-0.5 text-[11px] text-white/48">{item.label}</div>
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
+            <ActivityMetricsRail
+              className="mt-6"
+              items={overview.map((item) => ({
+                icon: item.icon,
+                label: item.label === "Current Home" ? "Home" : item.label,
+                value: item.value,
+                color: item.tint,
+              }))}
+            />
 
             <section className="mt-4 overflow-hidden rounded-[24px] border border-white/[0.07] bg-[linear-gradient(145deg,rgba(255,255,255,0.042),rgba(255,255,255,0.012))] p-3 shadow-[0_14px_48px_rgba(0,0,0,0.29)] backdrop-blur-2xl">
               {menu.map((item, index) => {
