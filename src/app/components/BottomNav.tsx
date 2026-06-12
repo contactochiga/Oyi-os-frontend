@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   FiActivity,
@@ -69,10 +69,8 @@ function isActive(pathname: string, item: Item) {
   return (item.activeRoutes || [item.href]).some((route) => routeMatches(pathname, route));
 }
 
-function badgeNumber(value: { count: number; dot: boolean }) {
-  if (value.count > 1) return Math.min(value.count, 9);
-  if (value.count === 1 || value.dot) return 1;
-  return 0;
+function hasBadge(value: { count: number; dot: boolean }) {
+  return value.count > 0 || value.dot;
 }
 
 function eventBucket(eventName: string, payload: any): FooterBadgeKey {
@@ -95,7 +93,10 @@ export default function BottomNav() {
   const activeContext = useActiveContext();
   const railRef = useRef<HTMLDivElement | null>(null);
   const scrollTimerRef = useRef<number | null>(null);
+  const collapseTimerRef = useRef<number | null>(null);
+  const collapsedRef = useRef(false);
   const lastScrollY = useRef(0);
+  const lastCollapseChangeAt = useRef(0);
   const notifications = useNotificationStore((state) => state.items);
   const markBucketViewed = useNotificationStore((state) => state.markBucketViewed);
   const markNotificationsRead = useNotificationStore((state) => state.markNotificationsRead);
@@ -152,6 +153,22 @@ export default function BottomNav() {
     markViewedLocal(scope, bucket);
   }
 
+  const setCollapsedStable = useCallback((next: boolean) => {
+    if (collapsedRef.current === next) return;
+    const now = Date.now();
+    const apply = () => {
+      collapsedRef.current = next;
+      lastCollapseChangeAt.current = Date.now();
+      setCollapsed(next);
+    };
+    if (now - lastCollapseChangeAt.current < 140) {
+      if (collapseTimerRef.current) window.clearTimeout(collapseTimerRef.current);
+      collapseTimerRef.current = window.setTimeout(apply, 140);
+      return;
+    }
+    apply();
+  }, []);
+
   useEffect(() => {
     setLocalDots({});
     let nextPage = initialPage;
@@ -192,18 +209,20 @@ export default function BottomNav() {
       const element = target && "scrollTop" in target ? (target as HTMLElement) : document.scrollingElement || document.documentElement;
       const y = Number(element?.scrollTop || window.scrollY || 0);
       const diff = y - lastScrollY.current;
-      if (y < 24) setCollapsed(false);
-      else if (diff > 8) setCollapsed(true);
-      else if (diff < -8) setCollapsed(false);
+      if (Math.abs(diff) < 14) return;
+      if (y < 28) setCollapsedStable(false);
+      else if (diff > 18) setCollapsedStable(true);
+      else if (diff < -18) setCollapsedStable(false);
       lastScrollY.current = y;
     };
     window.addEventListener("scroll", onScroll, { passive: true, capture: true });
     document.addEventListener("scroll", onScroll, { passive: true, capture: true });
     return () => {
+      if (collapseTimerRef.current) window.clearTimeout(collapseTimerRef.current);
       window.removeEventListener("scroll", onScroll, { capture: true } as any);
       document.removeEventListener("scroll", onScroll, { capture: true } as any);
     };
-  }, []);
+  }, [setCollapsedStable]);
 
   function handlePageScroll() {
     const rail = railRef.current;
@@ -232,7 +251,7 @@ export default function BottomNav() {
                 {group.map((item) => {
                   const active = isActive(pathname, item);
                   const Icon = item.icon;
-                  const badge = badgeNumber(badges[item.key as FooterBadgeKey] || { count: 0, dot: false });
+                  const badge = hasBadge(badges[item.key as FooterBadgeKey] || { count: 0, dot: false });
                   const isProfile = item.key === "profile";
                   return (
                     <button
@@ -249,7 +268,7 @@ export default function BottomNav() {
                       <div className="flex justify-center">
                         <span className={`relative grid place-items-center overflow-visible rounded-[13px] transition-all duration-300 ${collapsed ? "h-9 w-9" : "h-7 w-7"} ${active ? "text-sky-100" : "text-white/52 group-hover:text-white/78"}`}>
                           {isProfile && avatarUrl ? <img src={avatarUrl} alt="Profile" className="h-6 w-6 rounded-full object-cover ring-1 ring-white/15" /> : <Icon className={collapsed ? "text-[19px]" : "text-[18px]"} />}
-                          {badge ? <span className={`absolute ${badge > 1 ? "-right-1 -top-1 min-w-[16px] px-1" : "right-0.5 top-0.5 h-2 w-2"} rounded-full bg-sky-300 text-[9px] font-bold leading-4 text-slate-950 shadow-[0_0_12px_rgba(56,189,248,0.8)]`}>{badge > 1 ? badge : ""}</span> : null}
+                          {badge ? <span className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-sky-300 shadow-[0_0_12px_rgba(56,189,248,0.8)]" /> : null}
                         </span>
                       </div>
                       <div className={`mt-0.5 truncate whitespace-nowrap text-[10px] font-medium tracking-[-0.025em] transition-all duration-300 ${collapsed ? "max-h-0 translate-y-1 opacity-0" : "max-h-4 translate-y-0 opacity-100"} ${active ? "text-white" : "text-white/48"}`}>{item.label}</div>

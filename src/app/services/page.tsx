@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import ConsumerShell from "@/app/components/ConsumerShell";
 import ActivityMetricsRail from "@/app/components/ActivityMetricsRail";
-import OyiContextRail from "@/app/components/OyiContextRail";
 import { servicesService, type ServiceConfig, type ServiceKey, type ServicePayment } from "@/services/servicesService";
 import useActiveContext from "@/hooks/useActiveContext";
 import { FiChevronRight, FiClock, FiCreditCard, FiDroplet, FiFileText, FiHeadphones, FiHome, FiLayers, FiSliders, FiTool, FiWifi, FiZap } from "react-icons/fi";
@@ -129,25 +128,73 @@ function ServiceActionChip({ label, Icon, onClick }: { label: string; Icon: any;
 
 function AwarenessRail({ items }: { items: Array<{ icon: any; label: string; tone: string }> }) {
   return (
-    <section>
-      <div className="mb-2 flex items-center justify-between px-1">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-white/42">Awareness</div>
-      </div>
-      <div className="flex snap-x snap-mandatory gap-1.5 overflow-x-auto scroll-smooth pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <section className="overflow-hidden rounded-[20px] border border-white/[0.055] bg-[linear-gradient(145deg,rgba(255,255,255,0.038),rgba(255,255,255,0.011))] px-2.5 py-2 shadow-[0_10px_32px_rgba(0,0,0,0.24)] backdrop-blur-2xl">
+      <div className="flex snap-x snap-mandatory gap-1.5 overflow-x-auto scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {items.map((item) => {
           const Icon = item.icon;
           return (
             <div
               key={item.label}
-              className="flex h-11 min-w-[150px] snap-start items-center gap-2 rounded-[18px] border border-white/[0.06] bg-[linear-gradient(145deg,rgba(255,255,255,0.044),rgba(255,255,255,0.012))] px-3 shadow-[0_10px_28px_rgba(0,0,0,0.24)] backdrop-blur-2xl"
+              className="flex h-9 min-w-max snap-start items-center gap-2 rounded-full border border-white/[0.055] bg-white/[0.028] px-3"
             >
               <Icon className={`h-4 w-4 shrink-0 ${item.tone}`} />
-              <span className="line-clamp-2 text-[12px] font-medium leading-4 text-white/72">{item.label}</span>
+              <span className="whitespace-nowrap text-[11.5px] font-medium text-white/68">{item.label}</span>
             </div>
           );
         })}
       </div>
     </section>
+  );
+}
+
+function RequestServiceSheet({ open, onClose, onSelect, onSupport }: { open: boolean; onClose: () => void; onSelect: (key: ServiceKey) => void; onSupport: () => void }) {
+  if (!open) return null;
+  const actions: Array<{ label: string; detail: string; icon: any; serviceKey?: ServiceKey; support?: boolean }> = [
+    { label: "Pay Service Charge", detail: "Estate dues and fees", icon: FiHome, serviceKey: "service_charge" },
+    { label: "Buy Electricity", detail: "Meter token purchase", icon: FiZap, serviceKey: "utility_token" },
+    { label: "Buy Water", detail: "Recharge water account", icon: FiDroplet, serviceKey: "water_service" },
+    { label: "Internet / Fiber", detail: "Plans and renewal", icon: FiWifi, serviceKey: "internet_service" },
+    { label: "Estate Fees", detail: "Home-linked estate payments", icon: FiCreditCard, serviceKey: "service_charge" },
+    { label: "Facility Services", detail: "Cleaning, waste and support", icon: FiLayers, serviceKey: "other_facility_fees" },
+    { label: "Support Request", detail: "Open resident support", icon: FiHeadphones, support: true },
+  ];
+  return (
+    <div className="fixed inset-0 z-[125] flex items-end justify-center bg-black/60 px-3 pb-[calc(12px+var(--sab))] backdrop-blur-md">
+      <button type="button" aria-label="Close request services" className="absolute inset-0" onClick={onClose} />
+      <section className="relative w-full max-w-[420px] overflow-hidden rounded-[28px] border border-white/[0.08] bg-[#050a12]/96 p-3 shadow-[0_28px_90px_rgba(0,0,0,0.62)]">
+        <div className="mx-auto mb-3 h-1 w-12 rounded-full bg-white/24" />
+        <div className="px-1 pb-2">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-sky-100/46">Request Service</div>
+          <div className="mt-1 text-sm text-white/58">Choose a service action.</div>
+        </div>
+        <div className="space-y-1.5">
+          {actions.map((action) => {
+            const Icon = action.icon;
+            return (
+              <button
+                key={action.label}
+                type="button"
+                onClick={() => {
+                  onClose();
+                  if (action.support) onSupport();
+                  else if (action.serviceKey) onSelect(action.serviceKey);
+                }}
+                className="flex w-full items-center gap-3 rounded-[18px] border border-white/[0.055] bg-white/[0.03] px-3 py-2.5 text-left transition hover:bg-white/[0.055] active:scale-[0.99]"
+              >
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[14px] bg-sky-400/10 text-sky-200">
+                  <Icon className="h-4 w-4" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px] font-semibold text-white/86">{action.label}</span>
+                  <span className="mt-0.5 block truncate text-[11px] text-white/42">{action.detail}</span>
+                </span>
+                <FiChevronRight className="h-4 w-4 shrink-0 text-white/36" />
+              </button>
+            );
+          })}
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -195,6 +242,7 @@ export default function ServicesPage() {
   const [configsFallback, setConfigsFallback] = useState(false);
   const [lastReceipt, setLastReceipt] = useState<ServicePayment | null>(null);
   const [activeCategory, setActiveCategory] = useState("All");
+  const [requestSheetOpen, setRequestSheetOpen] = useState(false);
 
   const activeService = useMemo(() => SERVICE_ITEMS.find((s) => s.key === activeServiceKey) || null, [activeServiceKey]);
   const activeAccountRef = useMemo(() => (activeService ? accountRefFor(activeService.key, home) : ""), [activeService, home]);
@@ -343,8 +391,7 @@ export default function ServicesPage() {
       ) : null}
 
       <section className="flex items-center justify-end gap-2">
-        <ServiceActionChip label="Request Service" Icon={FiTool} onClick={() => setActiveServiceKey("other_facility_fees")} />
-        <ServiceActionChip label="Support Center" Icon={FiHeadphones} onClick={() => { if (typeof window !== "undefined") window.location.href = "/support"; }} />
+        <ServiceActionChip label="Request Service" Icon={FiTool} onClick={() => setRequestSheetOpen(true)} />
       </section>
 
       <ActivityMetricsRail
@@ -359,15 +406,6 @@ export default function ServicesPage() {
       />
 
       <AwarenessRail items={awarenessItems} />
-
-      <OyiContextRail
-        items={[
-          { label: "Pay Service Charge", value: "Open", icon: FiHome, onClick: () => setActiveServiceKey("service_charge") },
-          { label: "Buy Electricity", value: "Token", icon: FiZap, onClick: () => setActiveServiceKey("utility_token") },
-          { label: "Buy Water", value: "Recharge", icon: FiDroplet, onClick: () => setActiveServiceKey("water_service") },
-          { label: "Support", value: "Center", icon: FiHeadphones, onClick: () => { if (typeof window !== "undefined") window.location.href = "/support"; } },
-        ]}
-      />
 
       <section className="space-y-2.5">
         <div className="px-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-white/42">Service Catalog</div>
@@ -393,6 +431,13 @@ export default function ServicesPage() {
           ))}
         </div>
       </section>
+
+      <RequestServiceSheet
+        open={requestSheetOpen}
+        onClose={() => setRequestSheetOpen(false)}
+        onSelect={(key) => setActiveServiceKey(key)}
+        onSupport={() => { if (typeof window !== "undefined") window.location.href = "/support"; }}
+      />
 
       {activeService ? (
         <div className="fixed inset-0 z-[120]">
