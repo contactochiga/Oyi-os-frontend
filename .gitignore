@@ -14,3 +14,7 @@ yarn-error.log*
 **/*.xcodeproj/project.xcworkspace/
 **/*.xcuserdata/
 **/xcuserdata/
+
+# Supabase CLI local project metadata
+ios/App/supabase/
+ios/App/supabase/.temp/
