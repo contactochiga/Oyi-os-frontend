@@ -3,10 +3,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import ConsumerShell from "../components/ConsumerShell";
-import OyiContextRail from "../components/OyiContextRail";
 import ActivityMetricsRail from "../components/ActivityMetricsRail";
 import { maintenanceService, type MaintenanceTicket } from "@/services/maintenanceService";
-import { FiAlertTriangle, FiCheckCircle, FiClock, FiDroplet, FiTool, FiUserCheck, FiWind, FiZap } from "react-icons/fi";
+import { FiAlertTriangle, FiCheckCircle, FiChevronRight, FiClock, FiDroplet, FiTool, FiUserCheck, FiWind, FiZap } from "react-icons/fi";
 
 function pill(status?: string) {
   const s = String(status || "open").toLowerCase();
@@ -44,9 +43,9 @@ const QUICK_CATEGORIES = [
   ["HVAC", "hvac", FiWind],
   ["Carpenter", "carpentry", FiTool],
   ["Cleaning", "cleaning", FiCheckCircle],
+  ["Gardening", "gardening", FiCheckCircle],
   ["Generator", "generator", FiZap],
-  ["Water", "water", FiDroplet],
-  ["Garden", "gardening", FiCheckCircle],
+  ["Water System", "water", FiDroplet],
 ] as const;
 
 function progressIndex(status?: string) {
@@ -87,25 +86,146 @@ function requestSubject(ticket: MaintenanceTicket) {
   return title.charAt(0).toUpperCase() + title.slice(1);
 }
 
+function statusTone(status?: string, overdue = false) {
+  const active = progressIndex(status);
+  const done = active >= 3;
+  if (overdue) return {
+    key: "overdue",
+    text: "Overdue",
+    accent: "text-red-200",
+    line: "bg-red-300/68",
+    dot: "border-red-200 bg-red-300 shadow-[0_0_15px_rgba(248,113,113,0.56)]",
+    pill: "border-red-300/18 bg-red-500/10 text-red-100 shadow-[0_0_18px_rgba(248,113,113,0.10)]",
+    icon: "border-red-300/12 bg-red-400/10 text-red-100",
+  };
+  if (done) return {
+    key: "completed",
+    text: "Completed",
+    accent: "text-emerald-200",
+    line: "bg-emerald-300/72",
+    dot: "border-emerald-200 bg-emerald-300 shadow-[0_0_15px_rgba(52,211,153,0.54)]",
+    pill: "border-emerald-300/18 bg-emerald-400/10 text-emerald-200 shadow-[0_0_18px_rgba(52,211,153,0.10)]",
+    icon: "border-emerald-300/12 bg-emerald-400/10 text-emerald-200",
+  };
+  if (active === 2) return {
+    key: "in_progress",
+    text: "In Progress",
+    accent: "text-violet-200",
+    line: "bg-violet-300/68",
+    dot: "border-violet-200 bg-violet-300 shadow-[0_0_15px_rgba(167,139,250,0.56)]",
+    pill: "border-violet-300/18 bg-violet-400/10 text-violet-200 shadow-[0_0_18px_rgba(167,139,250,0.10)]",
+    icon: "border-violet-300/12 bg-violet-400/10 text-violet-200",
+  };
+  if (active === 1) return {
+    key: "assigned",
+    text: "Assigned",
+    accent: "text-amber-200",
+    line: "bg-amber-300/68",
+    dot: "border-amber-200 bg-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.50)]",
+    pill: "border-amber-300/18 bg-amber-400/10 text-amber-200 shadow-[0_0_18px_rgba(251,191,36,0.10)]",
+    icon: "border-amber-300/12 bg-amber-400/10 text-amber-200",
+  };
+  return {
+    key: "requested",
+    text: "Open",
+    accent: "text-sky-200",
+    line: "bg-sky-300/70",
+    dot: "border-sky-100 bg-sky-300 shadow-[0_0_15px_rgba(56,189,248,0.60)]",
+    pill: "border-sky-300/20 bg-sky-400/10 text-sky-200 shadow-[0_0_18px_rgba(56,189,248,0.12)]",
+    icon: "border-sky-300/12 bg-sky-400/10 text-sky-200",
+  };
+}
+
+function categoryIcon(category?: string) {
+  const text = String(category || "").toLowerCase();
+  if (/water|plumb|leak/.test(text)) return FiDroplet;
+  if (/hvac|ac|air|cool/.test(text)) return FiWind;
+  if (/electric|power|light|generator/.test(text)) return FiZap;
+  return FiTool;
+}
+
 function MaintenanceProgress({ status, overdue = false }: { status?: string; overdue?: boolean }) {
   const active = progressIndex(status);
   const labels = ["Requested", "Assigned", "In Progress", "Completed"];
-  const done = active >= labels.length - 1;
-  const activeTone = overdue ? "border-red-200 bg-red-300 shadow-[0_0_12px_rgba(248,113,113,0.42)]" : done ? "border-emerald-200 bg-emerald-300 shadow-[0_0_12px_rgba(52,211,153,0.42)]" : "border-sky-200 bg-sky-300 shadow-[0_0_12px_rgba(56,189,248,0.52)]";
-  const lineTone = overdue ? "bg-red-300/52" : done ? "bg-emerald-300/58" : "bg-sky-300/60";
-  const labelTone = overdue ? "text-red-200/78" : done ? "text-emerald-200/72" : active === 0 ? "text-amber-100/68" : "text-white/42";
+  const tone = statusTone(status, overdue);
   return (
-    <div className="mt-3">
+    <div className="mt-5 w-full max-w-[280px]">
       <div className="flex items-center">
         {labels.map((label, index) => (
           <div key={label} className="flex flex-1 items-center last:flex-none">
-            <span className={`h-2.5 w-2.5 rounded-full border ${index <= active ? activeTone : "border-white/18 bg-white/[0.04]"}`} />
-            {index < labels.length - 1 ? <span className={`mx-1 h-px flex-1 ${index < active ? lineTone : "bg-white/12"}`} /> : null}
+            <span className={`relative z-10 h-3.5 w-3.5 rounded-full border-2 transition ${index === active || active >= 3 ? tone.dot : index < active ? "border-white/48 bg-transparent" : "border-white/24 bg-[#07101a]"}`} />
+            {index < labels.length - 1 ? <span className={`-mx-px h-[2px] flex-1 transition ${index < active || active >= 3 ? tone.line : "bg-white/18"}`} /> : null}
           </div>
         ))}
       </div>
-      <div className={`mt-1.5 text-[10px] font-medium ${labelTone}`}>{overdue ? "Overdue" : labels[active]}</div>
+      <div className={`mt-2 text-[13px] font-medium tracking-[-0.025em] ${tone.accent}`}>{overdue ? "Overdue" : labels[active]}</div>
     </div>
+  );
+}
+
+function QuickRequestChip({ label, category, Icon, onClick }: { label: string; category: string; Icon: any; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex h-14 shrink-0 snap-start items-center gap-2 rounded-full border border-white/[0.08] bg-[linear-gradient(145deg,rgba(255,255,255,0.052),rgba(255,255,255,0.018))] px-4 text-[13px] font-semibold text-white/82 shadow-[0_12px_34px_rgba(0,0,0,0.24)] backdrop-blur-2xl transition hover:border-sky-300/20 hover:bg-sky-400/[0.055] active:scale-[0.98]"
+    >
+      <Icon className={`h-4 w-4 ${/water/.test(category) ? "text-cyan-200" : /hvac/.test(category) ? "text-sky-200" : /clean|garden/.test(category) ? "text-violet-200" : "text-amber-200"}`} />
+      {label}
+    </button>
+  );
+}
+
+function StatusPill({ status, overdue = false }: { status?: string; overdue?: boolean }) {
+  const tone = statusTone(status, overdue);
+  return <span className={`shrink-0 rounded-full border px-3 py-1 text-[12px] font-medium ${tone.pill}`}>{overdue ? "Overdue" : tone.text}</span>;
+}
+
+function RequestFeatureCard({ ticket, onOpen }: { ticket: MaintenanceTicket; onOpen: () => void }) {
+  const overdue = isOverdue(ticket);
+  const tone = statusTone(ticket.status, overdue);
+  const Icon = categoryIcon(ticket.category || cleanRequestTitle(ticket));
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="group w-full rounded-[26px] border border-white/[0.075] bg-[linear-gradient(145deg,rgba(255,255,255,0.052),rgba(255,255,255,0.014))] p-4 text-left shadow-[0_16px_52px_rgba(0,0,0,0.32)] backdrop-blur-2xl transition hover:border-sky-300/18 hover:bg-white/[0.058] hover:shadow-[0_0_34px_rgba(56,189,248,0.10),0_18px_56px_rgba(0,0,0,0.34)] active:scale-[0.99]"
+    >
+      <div className="flex items-center gap-3">
+        <span className={`grid h-[58px] w-[58px] shrink-0 place-items-center rounded-[18px] border ${tone.icon} shadow-[0_0_22px_rgba(56,189,248,0.08)]`}>
+          <Icon className="h-7 w-7" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[18px] font-semibold leading-tight tracking-[-0.04em] text-white">{requestSubject(ticket)}</span>
+          <span className="mt-1.5 block truncate text-[13px] text-white/48">{ticket.category ? nice(String(ticket.category)) : "General"} • {when(ticket.created_at)}</span>
+        </span>
+        <span className="flex shrink-0 items-center gap-2">
+          <StatusPill status={ticket.status} overdue={overdue} />
+          <FiChevronRight className="h-5 w-5 text-white/46 transition group-hover:translate-x-0.5 group-hover:text-sky-100/78" />
+        </span>
+      </div>
+      <div className="pl-[70px]">
+        <MaintenanceProgress status={ticket.status} overdue={overdue} />
+      </div>
+    </button>
+  );
+}
+
+function RecentRequestCard({ ticket, onOpen }: { ticket: MaintenanceTicket; onOpen: () => void }) {
+  const Icon = categoryIcon(ticket.category || cleanRequestTitle(ticket));
+  const tone = statusTone(ticket.status, false);
+  return (
+    <button type="button" onClick={onOpen} className="group flex w-full items-center gap-3 rounded-[22px] border border-white/[0.07] bg-[linear-gradient(145deg,rgba(255,255,255,0.045),rgba(255,255,255,0.012))] p-3 text-left shadow-[0_12px_38px_rgba(0,0,0,0.26)] backdrop-blur-2xl transition hover:bg-white/[0.055] active:scale-[0.99]">
+      <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-[16px] border ${tone.icon}`}>
+        <Icon className="h-5 w-5" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[15px] font-semibold tracking-[-0.035em] text-white">{requestSubject(ticket)}</span>
+        <span className="mt-1 block truncate text-[12px] text-white/44">{ticket.category ? nice(String(ticket.category)) : "General"} • {when(ticket.created_at)}</span>
+      </span>
+      <span className={`shrink-0 text-[12px] font-medium ${tone.accent}`}>{tone.text}</span>
+      <FiChevronRight className="h-4 w-4 shrink-0 text-white/42 transition group-hover:translate-x-0.5 group-hover:text-white/70" />
+    </button>
   );
 }
 
@@ -124,13 +244,13 @@ export default function MaintenancePage() {
   });
 
   const openCount = useMemo(
-    () => tickets.filter((t) => String(t.status || "open").toLowerCase() !== "resolved").length,
+    () => tickets.filter((t) => !/resolved|completed|closed/i.test(String(t.status || "open"))).length,
     [tickets]
   );
   const assignedCount = useMemo(() => tickets.filter((t) => /assigned|accepted/i.test(String(t.status || ""))).length, [tickets]);
   const inProgressCount = useMemo(() => tickets.filter((t) => /in_progress|in progress|working/i.test(String(t.status || ""))).length, [tickets]);
   const overdueCount = useMemo(() => tickets.filter(isOverdue).length, [tickets]);
-  const slaScore = tickets.length ? Math.max(0, Math.round(((tickets.length - overdueCount) / tickets.length) * 100)) : 100;
+  const completedCount = useMemo(() => tickets.filter((ticket) => /resolved|completed|closed/i.test(String(ticket.status || ""))).length, [tickets]);
   const ongoingTickets = useMemo(() => tickets.filter((ticket) => !/resolved|completed|closed/i.test(String(ticket.status || ""))), [tickets]);
   const recentTickets = useMemo(() => tickets.filter((ticket) => /resolved|completed|closed/i.test(String(ticket.status || ""))).slice(0, 5), [tickets]);
 
@@ -230,18 +350,17 @@ export default function MaintenancePage() {
           { icon: FiTool, label: "In Progress", value: inProgressCount, color: "text-amber-200" },
           { icon: FiUserCheck, label: "Assigned", value: assignedCount, color: "text-blue-200" },
           { icon: FiAlertTriangle, label: "Overdue", value: overdueCount, color: overdueCount ? "text-red-200" : "text-white/55" },
-          { icon: FiCheckCircle, label: "Completed SLA", value: `${slaScore}%`, color: "text-emerald-200" },
+          { icon: FiCheckCircle, label: "Completed", value: completedCount, color: "text-emerald-200" },
         ]}
       />
 
-      <OyiContextRail
-        items={QUICK_CATEGORIES.slice(0, 6).map(([label, category, Icon]) => ({
-          label,
-          value: "Request",
-          icon: Icon,
-          onClick: () => startQuickRequest(label, category),
-        }))}
-      />
+      <section className="overflow-hidden rounded-[24px] border border-white/[0.065] bg-[linear-gradient(145deg,rgba(255,255,255,0.043),rgba(255,255,255,0.014))] px-3 py-3 shadow-[0_16px_52px_rgba(0,0,0,0.30)] backdrop-blur-2xl">
+        <div className="flex snap-x snap-mandatory gap-2 overflow-x-auto scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {QUICK_CATEGORIES.map(([label, category, Icon]) => (
+            <QuickRequestChip key={label} label={label} category={category} Icon={Icon} onClick={() => startQuickRequest(label, category)} />
+          ))}
+        </div>
+      </section>
 
       <section>
         <div className="flex items-end justify-between gap-3">
@@ -258,33 +377,7 @@ export default function MaintenancePage() {
         ) : (
           <div className="mt-3 space-y-2.5">
             {ongoingTickets.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setSelectedTicket(t)}
-                className="oyi-presence-row rounded-[20px] p-3.5 transition hover:bg-white/[0.055]"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium text-white truncate">
-                      {requestSubject(t)}
-                    </div>
-                    <div className="text-xs text-white/40 mt-1">
-                      <span className="text-white/60">
-                        {t.category ? nice(String(t.category)) : "General"}
-                      </span>{" "}
-                      •{" "}
-                      <span className="text-white/60">
-                        {when(t.created_at)}
-                      </span>
-                    </div>
-                  </div>
-
-                  <span className={pill(t.status)}>{nice(t.status)}</span>
-                </div>
-
-                <MaintenanceProgress status={t.status} overdue={isOverdue(t)} />
-              </button>
+              <RequestFeatureCard key={t.id} ticket={t} onOpen={() => setSelectedTicket(t)} />
             ))}
           </div>
         )}
@@ -295,21 +388,7 @@ export default function MaintenancePage() {
           <div className="px-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/38">Recent requests</div>
           <div className="mt-3 space-y-2.5">
             {recentTickets.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setSelectedTicket(t)}
-                className="oyi-presence-row rounded-[20px] p-3.5 transition hover:bg-white/[0.055]"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-medium text-white">{requestSubject(t)}</div>
-                    <div className="mt-1 text-xs text-white/40">{t.category ? nice(String(t.category)) : "General"} • {when(t.created_at)}</div>
-                  </div>
-                  <span className={pill(t.status)}>{nice(t.status)}</span>
-                </div>
-                <MaintenanceProgress status={t.status} overdue={false} />
-              </button>
+              <RecentRequestCard key={t.id} ticket={t} onOpen={() => setSelectedTicket(t)} />
             ))}
           </div>
         </section>
