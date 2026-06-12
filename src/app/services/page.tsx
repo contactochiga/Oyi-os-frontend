@@ -266,6 +266,7 @@ export default function ServicesPage() {
   const [requestSheetOpen, setRequestSheetOpen] = useState(false);
 
   const activeService = useMemo(() => SERVICE_ITEMS.find((s) => s.key === activeServiceKey) || null, [activeServiceKey]);
+  const selectedHomeName = useMemo(() => home?.name || [home?.block, home?.unit].filter(Boolean).join(" / ") || null, [home?.block, home?.name, home?.unit]);
   const activeAccountRef = useMemo(() => (activeService ? accountRefFor(activeService.key, home, registry) : ""), [activeService, home, registry]);
   const activeServiceView = useMemo(() => (activeService ? mergedServiceItem(activeService, configs) : null), [activeService, configs]);
   const activePresets = useMemo(() => (activeServiceKey ? SERVICE_PRESETS[activeServiceKey] || [] : []), [activeServiceKey]);
@@ -316,6 +317,25 @@ export default function ServicesPage() {
       }
       const result: any = await servicesService.homeRegistry({ estate_id: estateId, home_id: activeContext.home_id });
       if (cancelled || result?.error) return;
+      if (process.env.NODE_ENV !== "production") {
+        console.debug("[services-registry] context proof", {
+          selected: {
+            estate_id: estateId,
+            home_id: activeContext.home_id,
+            home_name: selectedHomeName,
+          },
+          request: { estate_id: estateId, home_id: activeContext.home_id },
+          resolved: result?.debug || {
+            estate_id: result?.estate_id,
+            home_id: result?.home_id,
+          },
+          linked: {
+            electricity: Boolean(result?.electricity?.linked),
+            water: Boolean(result?.water?.linked),
+            internet: Boolean(result?.internet?.linked),
+          },
+        });
+      }
       setRegistry(result as HomeServiceRegistry);
       setConfigsFallback(Boolean(result?.using_fallback));
     }
@@ -323,7 +343,7 @@ export default function ServicesPage() {
     return () => {
       cancelled = true;
     };
-  }, [contextReady, activeContext.contextKey, estateId, activeContext.home_id]);
+  }, [contextReady, activeContext.contextKey, estateId, activeContext.home_id, selectedHomeName]);
 
   useEffect(() => {
     if (!contextReady || !estateId || !activeContext.home_id) return;
@@ -336,6 +356,13 @@ export default function ServicesPage() {
       if (incomingHome && incomingHome !== String(activeContext.home_id)) return;
       void servicesService.homeRegistry({ estate_id: estateId, home_id: activeContext.home_id }).then((result: any) => {
         if (!result?.error) {
+          if (process.env.NODE_ENV !== "production") {
+            console.debug("[services-registry] realtime refresh", {
+              selected: { estate_id: estateId, home_id: activeContext.home_id },
+              event: payload?.event || payload?.event_type || "service.updated",
+              resolved: result?.debug || { estate_id: result?.estate_id, home_id: result?.home_id },
+            });
+          }
           setRegistry(result as HomeServiceRegistry);
           setConfigsFallback(Boolean(result?.using_fallback));
         }
