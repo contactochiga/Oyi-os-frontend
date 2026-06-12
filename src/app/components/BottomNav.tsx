@@ -217,7 +217,7 @@ export default function BottomNav() {
 
   return (
     <nav className="pointer-events-none fixed inset-x-0 bottom-0 z-[95] px-3 transition-all duration-300 ease-out" style={{ paddingBottom: "calc(8px + var(--sab))" }} aria-label="Oyi Home navigation">
-      <div className={`pointer-events-auto mx-auto overflow-hidden rounded-[28px] border border-white/[0.07] bg-[#040911]/86 px-2 shadow-[0_16px_54px_rgba(0,0,0,0.45)] backdrop-blur-2xl transition-all duration-300 ease-out ${collapsed ? "max-w-[360px] py-1" : "max-w-[520px] py-1.5"}`}>
+      <div className={`pointer-events-auto mx-auto overflow-hidden rounded-[28px] border border-white/[0.07] bg-[#040911]/86 px-2 shadow-[0_16px_54px_rgba(0,0,0,0.45)] backdrop-blur-2xl transition-all duration-300 ease-out ${collapsed ? "w-[74vw] max-w-[330px] py-1" : "w-[92vw] max-w-[430px] py-1.5"}`}>
         <div ref={railRef} onScroll={handlePageScroll} className="flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {NAV_GROUPS.map((group, groupIndex) => {
             const activeIndex = group.findIndex((item) => isActive(pathname, item));
@@ -247,7 +247,7 @@ export default function BottomNav() {
                           {badge ? <span className={`absolute ${badge > 1 ? "-right-1 -top-1 min-w-[16px] px-1" : "right-0.5 top-0.5 h-2 w-2"} rounded-full bg-sky-300 text-[9px] font-bold leading-4 text-slate-950 shadow-[0_0_12px_rgba(56,189,248,0.8)]`}>{badge > 1 ? badge : ""}</span> : null}
                         </span>
                       </div>
-                      <div className={`mt-0.5 truncate whitespace-nowrap text-[10px] font-medium tracking-[-0.025em] transition-all duration-300 ${collapsed ? "max-h-0 translate-y-1 opacity-0" : "max-h-4 translate-y-0 opacity-100"} ${active ? "text-white" : "text-white/48"}`}>{item.label}</div>
+                      <div className={`mt-0.5 truncate whitespace-nowrap text-[10px] font-medium tracking-[-0.025em] transition-all duration-300 ${collapsed && !active ? "max-h-0 translate-y-1 opacity-0" : "max-h-4 translate-y-0 opacity-100"} ${active ? "text-white" : "text-white/48"}`}>{item.label}</div>
                     </button>
                   );
                 })}

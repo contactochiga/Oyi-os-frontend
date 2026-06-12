@@ -375,7 +375,7 @@ export default function ProfilePage() {
     }
   }
 
-  async function useCurrentLocationFor(target: "home" | "estate") {
+  async function saveCurrentLocationFor(target: "home" | "estate") {
     setProximityBusy(target);
     setProximityMessage(null);
     if (typeof window === "undefined" || !("geolocation" in navigator)) {
@@ -533,7 +533,7 @@ export default function ProfilePage() {
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    onClick={() => void useCurrentLocationFor("home")}
+                    onClick={() => void saveCurrentLocationFor("home")}
                     disabled={Boolean(proximityBusy)}
                     className="rounded-[18px] border border-white/[0.07] bg-white/[0.035] px-3.5 py-3 text-left text-sm font-medium text-white/82 disabled:opacity-45"
                   >
@@ -542,7 +542,7 @@ export default function ProfilePage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => void useCurrentLocationFor("estate")}
+                    onClick={() => void saveCurrentLocationFor("estate")}
                     disabled={Boolean(proximityBusy)}
                     className="rounded-[18px] border border-white/[0.07] bg-white/[0.035] px-3.5 py-3 text-left text-sm font-medium text-white/82 disabled:opacity-45"
                   >
@@ -626,11 +626,11 @@ export default function ProfilePage() {
 
             <section className="mt-6 rounded-[24px] border border-white/[0.07] bg-[linear-gradient(145deg,rgba(255,255,255,0.046),rgba(255,255,255,0.012))] p-3 shadow-[0_14px_48px_rgba(0,0,0,0.30)] backdrop-blur-2xl">
               <h2 className="text-[18px] font-semibold tracking-[-0.04em]">Account Overview</h2>
-              <div className="mt-4 grid grid-cols-4 divide-x divide-white/[0.065]">
+              <div className="mt-4 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {overview.map((item) => {
                   const Icon = item.icon;
                   return (
-                    <button key={item.label} type="button" onClick={() => item.label === "Current Home" ? setPanel("access") : item.label === "Security" ? setPanel("security") : undefined} className="min-w-0 px-1.5 py-0.5 text-center">
+                    <button key={item.label} type="button" onClick={() => item.label === "Current Home" ? setPanel("access") : item.label === "Security" ? setPanel("security") : undefined} className="min-w-[92px] shrink-0 rounded-[18px] border border-white/[0.055] bg-white/[0.026] px-2 py-2 text-center">
                       <Icon className={`mx-auto h-6 w-6 ${item.tint}`} />
                       <div className="mt-2.5 truncate text-[13px] font-semibold leading-4 text-white">{item.value}</div>
                       <div className="mt-0.5 text-[11px] text-white/48">{item.label}</div>

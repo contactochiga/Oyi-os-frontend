@@ -45,6 +45,7 @@ import {
 import messagesService from "@/services/messagesService";
 import { describeOyiWatchStatus, getOyiWatchSyncStatus } from "@/services/watchSyncService";
 import { sceneService, type ConsumerScene } from "@/services/sceneService";
+import { intelligenceService, type IntelligenceMetricSummary } from "@/services/intelligenceService";
 import useActiveContext, { type AvailableHomeContext } from "@/hooks/useActiveContext";
 import useAuth from "../../hooks/useAuth";
 
@@ -181,6 +182,7 @@ export default function HomePage() {
   const [latestSceneLabel, setLatestSceneLabel] = useState<string | null>(null);
   const [messageUnread, setMessageUnread] = useState<number | null>(null);
   const [watchLabel, setWatchLabel] = useState("Unavailable");
+  const [intelligenceMetrics, setIntelligenceMetrics] = useState<IntelligenceMetricSummary | null>(null);
   const [contextOpen, setContextOpen] = useState(false);
   const [contextSwitching, setContextSwitching] = useState(false);
   const [contextError, setContextError] = useState<string | null>(null);
@@ -217,7 +219,7 @@ export default function HomePage() {
     setDashBusy(true);
     setDashErr(null);
     try {
-      const [visitorRes, communityRes, maintenanceRes, notificationRes, walletRes, messagesRes, watchRes, scenesRes] =
+      const [visitorRes, communityRes, maintenanceRes, notificationRes, walletRes, messagesRes, watchRes, scenesRes, intelligenceRes] =
         await Promise.allSettled([
           visitorService.listMine(),
           estateId ? communityService.listByEstate(estateId) : Promise.resolve([]),
@@ -227,6 +229,7 @@ export default function HomePage() {
           messagesService.listInbox(),
           getOyiWatchSyncStatus().catch(() => null),
           sceneService.listScenes(),
+          intelligenceService.summary("consumer").catch(() => null),
         ]);
 
       if (visitorRes.status === "fulfilled") setVisitors(asArray<VisitorAccess>(visitorRes.value));
@@ -252,6 +255,7 @@ export default function HomePage() {
         setWatchLabel(value ? describeOyiWatchStatus(value) : "Unavailable");
       }
       if (scenesRes.status === "fulfilled") setScenes(scenesRes.value);
+      if (intelligenceRes.status === "fulfilled" && intelligenceRes.value) setIntelligenceMetrics(intelligenceRes.value.metrics);
     } catch (err: any) {
       setDashErr(err?.message || "Home context sync unavailable");
     } finally {
@@ -281,6 +285,7 @@ export default function HomePage() {
       setMaintenance([]);
       setNotifications([]);
       setScenes([]);
+      setIntelligenceMetrics(null);
       return;
     }
     refreshDevicePanelData();
@@ -446,21 +451,27 @@ export default function HomePage() {
     return /proximity|near_home|leaving_home|approaching_estate|away/.test(text);
   });
   const proximityState = proximityStateLabel((proximityNotification as any)?.payload?.state || (proximityNotification as any)?.payload?.kind || (proximityNotification as any)?.title);
+  const intelligenceAttention = Number(intelligenceMetrics?.attention || 0);
+  const predictionCount = Number(intelligenceMetrics?.predictions || 0);
+  const workflowCount = Number(intelligenceMetrics?.workflows || 0);
+  const importantUpdates = Math.max(securityAlerts + openMaintenance + offlineDevices + activeVisitors, intelligenceAttention, predictionCount + workflowCount);
   const homeAwarenessLine = (() => {
     if (dashErr) return "Home is aware · Your updates will appear here.";
     if (proximityState === "leaving_home" && activeOnDevices) return `You left home · ${activeOnDevices} device${activeOnDevices === 1 ? " is" : "s are"} still on.`;
     if (proximityState === "leaving_home") return "You left home · No urgent issues detected.";
-    if (proximityState === "near_home") return openMaintenance || securityAlerts || offlineDevices ? `${openMaintenance + securityAlerts + offlineDevices} update${openMaintenance + securityAlerts + offlineDevices === 1 ? "" : "s"} require your attention.` : "Everything looks normal at home.";
+    if (proximityState === "near_home") return openMaintenance || securityAlerts || offlineDevices ? `${openMaintenance + securityAlerts + offlineDevices} important update${openMaintenance + securityAlerts + offlineDevices === 1 ? "" : "s"}.` : "Everything looks normal.";
     if (proximityState === "approaching_estate") return activeVisitors ? `You're near the estate · ${activeVisitors} visitor pass${activeVisitors === 1 ? " is" : "es are"} active.` : "You're near the estate · No visitor action is waiting.";
     if (proximityState === "away") return activeOnDevices ? `You're away · ${activeOnDevices} device${activeOnDevices === 1 ? " remains" : "s remain"} active.` : "You're away · Oyi is watching your home.";
-    if (securityAlerts) return `${securityAlerts} urgent update${securityAlerts === 1 ? "" : "s"} require your attention.`;
-    if (openMaintenance) return `${openMaintenance} maintenance request${openMaintenance === 1 ? " is" : "s are"} open.`;
+    if (securityAlerts) return securityAlerts === 1 ? "A security item requires attention." : `${securityAlerts} security items require attention.`;
+    if (openMaintenance) return openMaintenance === 1 ? "A maintenance request awaits review." : `${openMaintenance} maintenance requests await review.`;
     if (offlineDevices >= 3) return "Several devices went offline recently.";
     if (offlineDevices === 1) return `${String(assignedDevices.find((device) => !isOnline(device))?.name || "One device")} is offline.`;
-    if (unread) return `Home is aware · ${unread} update${unread === 1 ? "" : "s"} waiting patiently.`;
-    return proximityState === "near_estate" ? "You're near the estate. No visitor action is waiting." : "You're home. No issues require attention.";
+    if (predictionCount) return `${predictionCount} prediction${predictionCount === 1 ? " is" : "s are"} ready for review.`;
+    if (workflowCount) return `${workflowCount} workflow${workflowCount === 1 ? " needs" : "s need"} follow-up.`;
+    if (activeVisitors) return `${activeVisitors} visitor${activeVisitors === 1 ? " checked" : "s checked"} in today.`;
+    if (unread) return `${unread} important update${unread === 1 ? "" : "s"} available.`;
+    return proximityState === "near_estate" ? "You're near the estate. No visitor action is waiting." : "Everything looks normal.";
   })();
-  const homeState = dashErr || securityAlerts || openMaintenance || offlineDevices ? "Needs attention" : unread ? "Aware" : "Calm";
   const securityState = activeVisitors ? `${activeVisitors} visitor${activeVisitors > 1 ? "s" : ""}` : "Protected";
   const deviceStateLabel = devicesBusy
     ? "Syncing"
@@ -617,11 +628,15 @@ export default function HomePage() {
 
               <div className="mt-10">
                 <div className="text-[28px] font-semibold leading-none tracking-[-0.05em] text-white sm:text-[32px]">
-                  Home is {homeState.toLowerCase()}.
-                </div>
-                <p className="mx-auto mt-2.5 max-w-[330px] rounded-full border border-white/[0.07] bg-white/[0.035] px-3.5 py-2 text-[13px] leading-5 text-white/62 shadow-[0_14px_34px_rgba(0,0,0,0.22)] backdrop-blur-xl sm:text-[14px]">
                   {homeAwarenessLine}
-                </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => router.push("/activity?filter=attention")}
+                  className="mx-auto mt-2.5 block text-[13px] font-medium leading-5 text-sky-200/78 transition hover:text-sky-100 active:scale-[0.99] sm:text-[14px]"
+                >
+                  {importantUpdates ? `${importantUpdates} important update${importantUpdates === 1 ? "" : "s"} →` : "Open Activity →"}
+                </button>
               </div>
             </motion.section>
 

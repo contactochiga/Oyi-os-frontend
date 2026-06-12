@@ -35,6 +35,43 @@ function pickErr(e: any, fallback: string) {
   return e?.response?.data?.error || e?.response?.data?.message || e?.message || fallback;
 }
 
+const QUICK_CATEGORIES = [
+  ["Electrician", "electricity"],
+  ["Plumber", "water"],
+  ["HVAC", "hvac"],
+  ["Carpenter", "carpentry"],
+  ["Cleaner", "cleaning"],
+  ["Gardener", "gardening"],
+  ["Painter", "painting"],
+  ["General", "general"],
+] as const;
+
+function progressIndex(status?: string) {
+  const s = String(status || "open").toLowerCase();
+  if (/resolved|completed|closed/.test(s)) return 3;
+  if (/in_progress|in progress|working/.test(s)) return 2;
+  if (/assigned|accepted/.test(s)) return 1;
+  return 0;
+}
+
+function MaintenanceProgress({ status }: { status?: string }) {
+  const active = progressIndex(status);
+  const labels = ["Requested", "Assigned", "In Progress", "Completed"];
+  return (
+    <div className="mt-3">
+      <div className="flex items-center">
+        {labels.map((label, index) => (
+          <div key={label} className="flex flex-1 items-center last:flex-none">
+            <span className={`h-2.5 w-2.5 rounded-full border ${index <= active ? "border-sky-200 bg-sky-300 shadow-[0_0_12px_rgba(56,189,248,0.52)]" : "border-white/18 bg-white/[0.04]"}`} />
+            {index < labels.length - 1 ? <span className={`mx-1 h-px flex-1 ${index < active ? "bg-sky-300/60" : "bg-white/12"}`} /> : null}
+          </div>
+        ))}
+      </div>
+      <div className="mt-1.5 text-[10px] font-medium text-white/42">{labels[active]}</div>
+    </div>
+  );
+}
+
 export default function MaintenancePage() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -96,6 +133,15 @@ export default function MaintenancePage() {
     }
   }
 
+  function startQuickRequest(label: string, category: string) {
+    setForm((current) => ({
+      ...current,
+      category,
+      title: current.title || `${label} request`,
+    }));
+    setShowNew(true);
+  }
+
   useEffect(() => {
     load();
   }, []);
@@ -150,6 +196,14 @@ export default function MaintenancePage() {
         )}
       </section>
 
+      <section className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {QUICK_CATEGORIES.map(([label, category]) => (
+          <button key={category} type="button" onClick={() => startQuickRequest(label, category)} className="shrink-0 rounded-full border border-sky-300/14 bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-100 transition active:scale-[0.98]">
+            {label}
+          </button>
+        ))}
+      </section>
+
       {/* Tickets list (cards, mobile-first) */}
       <div>
         <div className="flex items-end justify-between gap-3">
@@ -201,6 +255,7 @@ export default function MaintenancePage() {
                 ) : (
                   <div className="mt-3 text-sm text-white/40">—</div>
                 )}
+                <MaintenanceProgress status={t.status} />
               </button>
             ))}
           </div>
@@ -316,6 +371,7 @@ export default function MaintenancePage() {
               <span className={pill(selectedTicket.status)}>{nice(selectedTicket.status)}</span>
             </div>
             <p className="mt-4 whitespace-pre-line text-sm leading-6 text-white/62">{selectedTicket.description || "No description provided."}</p>
+            <MaintenanceProgress status={selectedTicket.status} />
             <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
               <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-3"><div className="text-white/38">Priority</div><div className="mt-1 font-medium uppercase text-white/76">{selectedTicket.priority || "—"}</div></div>
               <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-3"><div className="text-white/38">Updated</div><div className="mt-1 font-medium text-white/76">{when((selectedTicket as any).updated_at || selectedTicket.created_at)}</div></div>

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Haptics, ImpactStyle } from "@capacitor/haptics";
 import {
   AlertTriangle,
   CalendarClock,
@@ -1285,9 +1286,23 @@ function TvControlGroup({ title, children }: { title: string; children: ReactNod
 }
 
 function TvRemoteKey({ icon: Icon, label, enabled, busy, onClick }: { icon: any; label: string; enabled: boolean; busy?: boolean; onClick?: () => void }) {
+  const [feedback, setFeedback] = useState<"idle" | "success" | "failure">("idle");
+  async function press() {
+    if (!enabled || busy || !onClick) return;
+    setFeedback("idle");
+    try {
+      void Haptics.impact({ style: ImpactStyle.Light }).catch(() => {});
+      onClick();
+      setFeedback("success");
+    } catch {
+      setFeedback("failure");
+    } finally {
+      window.setTimeout(() => setFeedback("idle"), 520);
+    }
+  }
   return (
-    <button type="button" disabled={!enabled || busy || !onClick} onClick={onClick} className={cn("min-h-10 rounded-[14px] border px-2 py-1.5 text-center transition", enabled && onClick ? "border-sky-300/18 bg-sky-400/10 text-sky-100 active:scale-[0.98]" : "border-white/[0.08] bg-white/[0.04] text-white/56")} title={label}>
-      <Icon className="mx-auto h-3.5 w-3.5" />
+    <button type="button" disabled={!enabled || busy || !onClick} onClick={press} className={cn("min-h-10 rounded-[14px] border px-2 py-1.5 text-center transition duration-200", enabled && onClick ? "border-sky-300/18 bg-sky-400/10 text-sky-100 shadow-[0_0_0_rgba(56,189,248,0)] active:scale-95 active:shadow-[0_0_22px_rgba(56,189,248,0.34)]" : "border-white/[0.08] bg-white/[0.04] text-white/56", busy && "animate-pulse", feedback === "success" && "border-emerald-300/30 bg-emerald-400/12 text-emerald-100 shadow-[0_0_20px_rgba(52,211,153,0.26)]", feedback === "failure" && "border-red-300/30 bg-red-400/12 text-red-100 shadow-[0_0_20px_rgba(248,113,113,0.24)]")} title={label}>
+      <Icon className={cn("mx-auto h-3.5 w-3.5 transition-transform duration-200", feedback === "success" && "scale-110", busy && "animate-pulse")} />
       <span className="mt-1 block text-[10px]">{label}</span>
     </button>
   );
@@ -1318,9 +1333,23 @@ function ToolCard({ icon: Icon, label, onClick }: { icon: any; label: string; on
 }
 
 function RemoteKey({ icon: Icon, label, enabled, busy, onClick }: { icon: any; label: string; enabled: boolean; busy?: boolean; onClick?: () => void }) {
+  const [feedback, setFeedback] = useState<"idle" | "success" | "failure">("idle");
+  async function press() {
+    if (!enabled || busy || !onClick) return;
+    setFeedback("idle");
+    try {
+      void Haptics.impact({ style: ImpactStyle.Light }).catch(() => {});
+      onClick();
+      setFeedback("success");
+    } catch {
+      setFeedback("failure");
+    } finally {
+      window.setTimeout(() => setFeedback("idle"), 520);
+    }
+  }
   return (
-    <button type="button" disabled={!enabled || busy || !onClick} onClick={onClick} className={cn("min-h-12 rounded-[16px] border px-2 py-2 text-center transition", enabled && onClick ? "border-sky-300/18 bg-sky-400/10 text-sky-100 active:scale-[0.98]" : "border-white/[0.08] bg-white/[0.04] text-white/56")} title={label}>
-      <Icon className="mx-auto h-3.5 w-3.5" />
+    <button type="button" disabled={!enabled || busy || !onClick} onClick={press} className={cn("min-h-12 rounded-[16px] border px-2 py-2 text-center transition duration-200", enabled && onClick ? "border-sky-300/18 bg-sky-400/10 text-sky-100 active:scale-95 active:shadow-[0_0_22px_rgba(56,189,248,0.34)]" : "border-white/[0.08] bg-white/[0.04] text-white/56", busy && "animate-pulse", feedback === "success" && "border-emerald-300/30 bg-emerald-400/12 text-emerald-100 shadow-[0_0_20px_rgba(52,211,153,0.26)]", feedback === "failure" && "border-red-300/30 bg-red-400/12 text-red-100 shadow-[0_0_20px_rgba(248,113,113,0.24)]")} title={label}>
+      <Icon className={cn("mx-auto h-3.5 w-3.5 transition-transform duration-200", feedback === "success" && "scale-110", busy && "animate-pulse")} />
       <span className="mt-1 block text-[10px]">{label}</span>
     </button>
   );

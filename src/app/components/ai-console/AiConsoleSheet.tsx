@@ -134,6 +134,7 @@ export default function AiConsoleSheet(props: {
   } = props;
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   const spokenRef = useRef<Set<string>>(new Set());
   const [voiceReplyEnabled, setVoiceReplyEnabled] = useState(true);
 
@@ -146,6 +147,19 @@ export default function AiConsoleSheet(props: {
       })
     );
   }, [messages.length, open]);
+
+  useEffect(() => {
+    if (!open || typeof window === "undefined") return;
+    const keepLatestVisible = () => {
+      requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ block: "end", behavior: "smooth" }));
+    };
+    window.visualViewport?.addEventListener("resize", keepLatestVisible);
+    window.visualViewport?.addEventListener("scroll", keepLatestVisible);
+    return () => {
+      window.visualViewport?.removeEventListener("resize", keepLatestVisible);
+      window.visualViewport?.removeEventListener("scroll", keepLatestVisible);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) {
@@ -237,13 +251,16 @@ export default function AiConsoleSheet(props: {
 
                 {/* MESSAGES */}
                 <div
+                  ref={scrollRef}
                   className="px-4 pt-3 overflow-y-auto flex-1"
                   style={{
                     minHeight: 0,
                     WebkitOverflowScrolling: "touch",
+                    paddingBottom: "calc(18px + var(--sab))",
+                    scrollPaddingBottom: "calc(120px + var(--sab) + var(--kb))",
                   }}
                 >
-                  <div className="space-y-3 pb-4">
+                  <div className="space-y-3 pb-8">
                     {messages.map((m) => (
                       <div
                         key={m.id}
@@ -366,7 +383,7 @@ export default function AiConsoleSheet(props: {
                 </div>
 
                 {/* FOOTER */}
-                <div className="border-t border-white/10 px-4 py-3 bg-[rgba(8,12,20,0.96)] sticky bottom-0">
+                <div className="shrink-0 border-t border-white/10 bg-[rgba(8,12,20,0.96)] px-4 py-3" style={{ paddingBottom: "calc(12px + var(--sab))" }}>
                   <ChatFooter
                     input={input}
                     setInput={setInput}

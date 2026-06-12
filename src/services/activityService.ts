@@ -110,6 +110,19 @@ function severityFrom(value: any): ActivitySeverity {
   return "info";
 }
 
+function humanizeActivityText(value: any, fallback = "Home activity") {
+  const raw = String(value || "").trim();
+  const text = raw.toLowerCase().replace(/[_-]+/g, " ");
+  if (!raw) return fallback;
+  if (text === "permission denied" || text === "denied" || /permission.*denied/.test(text)) return "Permission required";
+  if (/control.*denied|command.*denied|request.*denied/.test(text)) return "Control request denied";
+  if (/access.*denied|blocked/.test(text)) return "Access attempt blocked";
+  if (/device command executed/.test(text)) return "Device control completed";
+  if (/device command requested/.test(text)) return "Device control requested";
+  if (/ai tool requested|ai command received|tool registry|audit|schema|route|database/.test(text)) return "Oyi processed a home request";
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
 function calculateSummary(items: ActivityEvent[]): ActivitySummary {
   return {
     events: items.length,
@@ -164,11 +177,13 @@ function normalizeActivityItem(item: any): ActivityEvent {
   const action = route
     ? { ...rawAction, route, href: route, label: rawAction?.label || "Open", entity_id: rawAction?.entity_id || null }
     : actionForNotification(item, category);
-  const description = String(item.summary || item.description || "Home activity");
+  const title = humanizeActivityText(item.title || item.type || item.source, "Home activity");
+  const description = humanizeActivityText(item.summary || item.description || title, "Home activity");
   return {
     ...item,
     category: (item.category || category) as ActivityCategory,
     severity: (item.severity || severity) as ActivitySeverity,
+    title,
     description,
     summary: item.summary || description,
     action,

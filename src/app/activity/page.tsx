@@ -21,6 +21,9 @@ import {
   Sparkles,
   UserPlus,
   Watch,
+  Brain,
+  ClipboardCheck,
+  CheckCircle2,
 } from "lucide-react";
 
 import LayoutWrapper from "@/app/components/LayoutWrapper";
@@ -34,6 +37,7 @@ import { useNotificationStore } from "@/store/useNotificationStore";
 import useActiveContext from "@/hooks/useActiveContext";
 import useAuth from "@/hooks/useAuth";
 import { scopeMatches, type BadgeScope } from "@/lib/footerBadges";
+import { intelligenceService, type IntelligenceMetricSummary } from "@/services/intelligenceService";
 
 type FilterKey = "all" | "alerts" | "devices" | "people";
 
@@ -93,12 +97,19 @@ export default function ActivityPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<string | null>(null);
+  const [intelligenceMetrics, setIntelligenceMetrics] = useState<IntelligenceMetricSummary | null>(null);
   const acknowledgedRef = useRef<Set<string>>(new Set());
   const requestRef = useRef(0);
   const markNotificationsRead = useNotificationStore((state) => state.markNotificationsRead);
   const markBucketViewed = useNotificationStore((state) => state.markBucketViewed);
   const scope = useMemo<BadgeScope>(() => ({ userId: (user as any)?.id || null, estateId: activeContext.estate_id, homeId: activeContext.home_id }), [user, activeContext.estate_id, activeContext.home_id]);
   const contextReady = Boolean(ready && token && activeContext.ready);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("filter") === "attention") setFilter("alerts");
+  }, []);
 
   function activityInScope(item: ActivityEvent) {
     return scopeMatches({ userId: item.user_id, estateId: item.estate_id, homeId: item.home_id }, scope, { allowUnscoped: false });
@@ -115,7 +126,10 @@ export default function ActivityPage() {
     if (silent) setRefreshing(true);
     else setLoading(true);
     setError(null);
-    const result = await getActivityFeed();
+    const [result, intelligenceResult] = await Promise.all([
+      getActivityFeed(),
+      intelligenceService.summary("consumer").catch(() => null),
+    ]);
     if (requestId !== requestRef.current) return;
     if ("error" in result) {
       setError(result.error);
@@ -136,6 +150,7 @@ export default function ActivityPage() {
           markNotificationsRead(ids);
         });
       }
+      if (intelligenceResult) setIntelligenceMetrics(intelligenceResult.metrics);
     }
     setLoading(false);
     setRefreshing(false);
@@ -228,11 +243,15 @@ export default function ActivityPage() {
 
             <section className="mt-4 rounded-[20px] border border-white/[0.07] bg-[linear-gradient(145deg,rgba(255,255,255,0.046),rgba(255,255,255,0.012))] p-2.5 shadow-[0_12px_38px_rgba(0,0,0,0.30)] backdrop-blur-2xl">
               <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-300">Today</div>
-              <div className="mt-3 grid grid-cols-4 divide-x divide-white/[0.065]">
+              <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 <SummaryCell icon={ActivityIcon} label="Events" value={summaryValue(summary.total_events)} color="text-sky-300" />
                 <SummaryCell icon={ShieldCheck} label="Alerts" value={summaryValue(summary.alerts)} color="text-emerald-300" />
                 <SummaryCell icon={Users} label="Visitors" value={summaryValue(summary.visitors)} color="text-violet-300" />
                 <SummaryCell icon={Bolt} label="Actions" value={summaryValue(summary.actions)} color="text-amber-300" />
+                <SummaryCell icon={Brain} label="Predictions" value={summaryValue(intelligenceMetrics?.predictions)} color="text-cyan-300" />
+                <SummaryCell icon={ClipboardCheck} label="Workflows" value={summaryValue(intelligenceMetrics?.workflows)} color="text-blue-300" />
+                <SummaryCell icon={CheckCircle2} label="Approvals" value={summaryValue(intelligenceMetrics?.approvals)} color="text-emerald-200" />
+                <SummaryCell icon={Cpu} label="Devices" value={summaryValue(intelligenceMetrics?.devices)} color="text-amber-200" />
               </div>
             </section>
 
@@ -283,7 +302,7 @@ export default function ActivityPage() {
 
 function SummaryCell({ icon: Icon, label, value, color }: { icon: any; label: string; value: string; color: string }) {
   return (
-    <div className="min-w-0 px-1.5 py-1 text-center">
+    <div className="min-w-[78px] shrink-0 rounded-[16px] border border-white/[0.055] bg-white/[0.026] px-2 py-2 text-center">
       <div className={`mx-auto flex items-center justify-center gap-1.5 ${color}`}>
         <Icon className="h-4 w-4" />
         <span className="text-[20px] font-semibold tracking-[-0.05em]">{value}</span>

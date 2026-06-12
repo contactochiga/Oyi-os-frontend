@@ -38,6 +38,14 @@ const SERVICE_ITEMS: ServiceItem[] = [
   { key: "other_facility_fees", title: "Other Facility Fees", subtitle: "Partner and external estate services", icon: FiLayers },
 ];
 
+const SERVICE_GROUPS: Array<{ title: string; keys: ServiceKey[] }> = [
+  { title: "Utilities", keys: ["utility_token", "water_service"] },
+  { title: "Connectivity", keys: ["internet_service", "fiber_internet"] as ServiceKey[] },
+  { title: "Estate Fees", keys: ["service_charge"] },
+  { title: "Facility Services", keys: ["other_facility_fees"] },
+  { title: "Other Charges", keys: [] },
+];
+
 const SERVICE_PRESETS: Partial<Record<ServiceKey, ServicePreset[]>> = {
   water_service: [
     { label: "Starter Fill", amount: 5000, meta: { period_label: "Starter Water Fill" } },
@@ -117,6 +125,10 @@ export default function ServicesPage() {
     if (!activeServiceKey) return [];
     return history.filter((h) => h.service_key === activeServiceKey).slice(0, 8);
   }, [activeServiceKey, history]);
+  const totalPaid = useMemo(() => history.reduce((sum, item) => sum + Number(item.amount || 0), 0), [history]);
+  const serviceChargePaid = useMemo(() => history.filter((item) => item.service_key === "service_charge").reduce((sum, item) => sum + Number(item.amount || 0), 0), [history]);
+  const utilityPaid = useMemo(() => history.filter((item) => item.service_key === "utility_token" || item.service_key === "water_service").reduce((sum, item) => sum + Number(item.amount || 0), 0), [history]);
+  const internetPaid = useMemo(() => history.filter((item) => item.service_key === "internet_service" || item.service_key === "fiber_internet").reduce((sum, item) => sum + Number(item.amount || 0), 0), [history]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -227,33 +239,68 @@ export default function ServicesPage() {
         </div>
       </section>
 
-      <div className="grid grid-cols-2 gap-2.5">
-        {SERVICE_ITEMS.map((item) => {
-          const merged = mergedServiceItem(item, configs);
-          const Icon = merged.icon;
-          const linkedRef = accountRefFor(merged.key, home);
-          const iconTone = !merged.active
-            ? "bg-white/5 text-white/25"
-            : linkedRef
-            ? "bg-cyan-400/20 text-cyan-100 shadow-[0_0_30px_rgba(34,211,238,0.25)]"
-            : "bg-white/10 text-white/45";
+      <section className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {[
+          ["Service Charge", serviceChargePaid ? toNaira(serviceChargePaid) : "Ready"],
+          ["Utilities", utilityPaid ? toNaira(utilityPaid) : "Linked"],
+          ["Internet", internetPaid ? toNaira(internetPaid) : "Available"],
+          ["Outstanding", "No live balance"],
+          ["Credits", totalPaid ? toNaira(totalPaid) : "No receipts"],
+        ].map(([label, value]) => (
+          <div key={label} className="min-w-[132px] rounded-[20px] border border-white/[0.07] bg-white/[0.035] px-3 py-3">
+            <div className="text-[10px] uppercase tracking-[0.18em] text-white/36">{label}</div>
+            <div className="mt-1.5 truncate text-sm font-semibold text-white">{value}</div>
+          </div>
+        ))}
+      </section>
 
+      <section className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {[
+          ["Pay Service Charge", "service_charge"],
+          ["Buy Electricity", "utility_token"],
+          ["Buy Water", "water_service"],
+          ["Renew Internet", "internet_service"],
+          ["View Statements", ""],
+        ].map(([label, key]) => (
+          <button key={label} type="button" onClick={() => key ? setActiveServiceKey(key as ServiceKey) : undefined} className="shrink-0 rounded-full border border-sky-300/14 bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-100 transition active:scale-[0.98]">
+            {label}
+          </button>
+        ))}
+      </section>
+
+      <div className="space-y-4">
+        {SERVICE_GROUPS.map((group) => {
+          const items = SERVICE_ITEMS.filter((item) => group.keys.includes(item.key));
+          if (!items.length && group.title !== "Other Charges") return null;
           return (
-            <button
-              key={merged.key}
-              type="button"
-              onClick={() => merged.active && setActiveServiceKey(merged.key)}
-              className={`text-left rounded-[22px] border p-3.5 transition ${merged.active ? "border-white/10 bg-white/[0.035] hover:bg-white/[0.065]" : "border-white/5 bg-white/[0.03] opacity-60"}`}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <div className={`inline-flex h-9 w-9 items-center justify-center rounded-[16px] transition ${iconTone}`}>
-                  <Icon className="h-4 w-4" />
-                </div>
-                {!merged.active ? <span className="rounded-full border border-zinc-500/35 bg-zinc-500/10 px-2 py-0.5 text-[10px] text-zinc-300">Disabled</span> : null}
-              </div>
-              <div className="mt-3 text-sm font-semibold text-white">{merged.title}</div>
-              <div className="mt-1 text-[11px] leading-4 text-white/48">{merged.subtitle}</div>
-            </button>
+            <section key={group.title}>
+              <div className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/38">{group.title}</div>
+              {items.length ? <div className="grid grid-cols-2 gap-2.5">
+                {items.map((item) => {
+                  const merged = mergedServiceItem(item, configs);
+                  const Icon = merged.icon;
+                  const linkedRef = accountRefFor(merged.key, home);
+                  const iconTone = !merged.active
+                    ? "bg-white/5 text-white/25"
+                    : linkedRef
+                    ? "bg-cyan-400/20 text-cyan-100 shadow-[0_0_30px_rgba(34,211,238,0.25)]"
+                    : "bg-white/10 text-white/45";
+
+                  return (
+                    <button key={merged.key} type="button" onClick={() => merged.active && setActiveServiceKey(merged.key)} className={`text-left rounded-[22px] border p-3.5 transition ${merged.active ? "border-white/10 bg-white/[0.035] hover:bg-white/[0.065]" : "border-white/5 bg-white/[0.03] opacity-60"}`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className={`inline-flex h-9 w-9 items-center justify-center rounded-[16px] transition ${iconTone}`}>
+                          <Icon className="h-4 w-4" />
+                        </div>
+                        {!merged.active ? <span className="rounded-full border border-zinc-500/35 bg-zinc-500/10 px-2 py-0.5 text-[10px] text-zinc-300">Disabled</span> : null}
+                      </div>
+                      <div className="mt-3 text-sm font-semibold text-white">{merged.title}</div>
+                      <div className="mt-1 text-[11px] leading-4 text-white/48">{merged.subtitle}</div>
+                    </button>
+                  );
+                })}
+              </div> : <div className="rounded-[22px] border border-dashed border-white/10 bg-white/[0.025] p-4 text-xs text-white/42">Additional charges will appear when your estate publishes them.</div>}
+            </section>
           );
         })}
       </div>

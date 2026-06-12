@@ -478,7 +478,7 @@ export default function CommunityPage() {
               </div>
 
               {!estateId ? (
-                <EmptyState title="No estate linked yet." body="Join or select an estate to view community updates." />
+                <EmptyState title="Community unavailable" body={"Join an estate to receive:\n• Announcements\n• Security updates\n• Events\n• Visitor alerts"} />
               ) : loading ? (
                 <div className="rounded-[20px] border border-white/[0.065] bg-white/[0.03] p-4 text-[12px] text-white/54">Loading community updates...</div>
               ) : filtered.length === 0 ? (
@@ -504,7 +504,7 @@ function EmptyState({ title, body }: { title: string; body: string }) {
     <div className="rounded-[20px] border border-white/[0.065] bg-white/[0.03] px-4 py-5 text-center shadow-[0_18px_60px_rgba(0,0,0,0.25)] backdrop-blur-xl">
       <div className="mx-auto grid h-9 w-9 place-items-center rounded-full border border-sky-300/15 bg-sky-400/10 text-sky-200"><Bell className="h-4 w-4" /></div>
       <div className="mt-2.5 text-[14px] font-semibold text-white">{title}</div>
-      <div className="mt-1 text-[11px] leading-5 text-white/45">{body}</div>
+      <div className="mt-1 whitespace-pre-line text-[11px] leading-5 text-white/45">{body}</div>
     </div>
   );
 }

@@ -11,22 +11,14 @@ import { XMarkIcon, Bars3Icon } from "@heroicons/react/24/outline";
 import { decodeToken } from "@/lib/auth";
 
 // ✅ NEW: menu icons
-import { FiBarChart2, FiBriefcase, FiCpu, FiCreditCard, FiGrid, FiKey, FiMessageSquare, FiMoon, FiShield, FiTool, FiDroplet, FiWatch } from "react-icons/fi";
+import { FiBarChart2, FiGrid, FiHelpCircle, FiShield, FiDroplet } from "react-icons/fi";
 import { CONSUMER_MODULES, visibleModules, type ModuleDefinition } from "@/lib/moduleRegistry";
 
 const MODULE_ICONS: Record<string, any> = {
-  devices: FiCpu,
-  scenes: FiMoon,
-  messages: FiMessageSquare,
   security: FiShield,
   utilities: FiDroplet,
-  maintenance: FiTool,
-  visitors: FiKey,
-  wallet: FiCreditCard,
-  services: FiBriefcase,
-  watch: FiWatch,
-  intelligence: FiCpu,
   reports: FiBarChart2,
+  support: FiHelpCircle,
 };
 
 type MenuItem = ModuleDefinition & { icon: any };
@@ -163,7 +155,9 @@ export default function HamburgerMenu() {
       visibleModules(user as any, CONSUMER_MODULES).map((item) => ({
         ...item,
         icon: MODULE_ICONS[item.key] || FiGrid,
-      })).filter((item) => ["devices", "scenes", "visitors", "messages", "maintenance", "wallet", "services", "security", "utilities", "watch", "intelligence", "reports"].includes(item.key)),
+      }))
+      .filter((item) => ["reports", "utilities", "security"].includes(item.key))
+      .concat([{ key: "support", label: "Help & Support", href: "/support", icon: FiHelpCircle } as MenuItem]),
     [user],
   );
 
@@ -253,7 +247,7 @@ export default function HamburgerMenu() {
                 {/* Menu */}
                 <nav className="flex-1 overflow-y-auto px-2 py-3">
                   <div className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/34">
-                    Your Home
+                    Utilities
                   </div>
 
                   <div className="space-y-1">
