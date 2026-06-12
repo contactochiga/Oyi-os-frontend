@@ -314,7 +314,7 @@ export default function ServicesPage() {
         setConfigsFallback(false);
         return;
       }
-      const result: any = await servicesService.homeRegistry();
+      const result: any = await servicesService.homeRegistry({ estate_id: estateId, home_id: activeContext.home_id });
       if (cancelled || result?.error) return;
       setRegistry(result as HomeServiceRegistry);
       setConfigsFallback(Boolean(result?.using_fallback));
@@ -323,7 +323,7 @@ export default function ServicesPage() {
     return () => {
       cancelled = true;
     };
-  }, [contextReady, activeContext.contextKey, estateId]);
+  }, [contextReady, activeContext.contextKey, estateId, activeContext.home_id]);
 
   useEffect(() => {
     if (!contextReady || !estateId || !activeContext.home_id) return;
@@ -334,7 +334,7 @@ export default function ServicesPage() {
       const incomingHome = String(payload?.home_id || payload?.homeId || "");
       if (incomingEstate && incomingEstate !== String(estateId)) return;
       if (incomingHome && incomingHome !== String(activeContext.home_id)) return;
-      void servicesService.homeRegistry().then((result: any) => {
+      void servicesService.homeRegistry({ estate_id: estateId, home_id: activeContext.home_id }).then((result: any) => {
         if (!result?.error) {
           setRegistry(result as HomeServiceRegistry);
           setConfigsFallback(Boolean(result?.using_fallback));

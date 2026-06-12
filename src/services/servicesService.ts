@@ -70,9 +70,15 @@ function pickError(err: any, fallback: string) {
 
 export const servicesService = {
 
-  async homeRegistry() {
+  async homeRegistry(params?: { estate_id?: string | null; home_id?: string | null; debug?: boolean }) {
     try {
-      const res = await API.get("/services/home-registry");
+      const res = await API.get("/services/home-registry", {
+        params: {
+          estate_id: params?.estate_id || undefined,
+          home_id: params?.home_id || undefined,
+          debug: params?.debug ? "1" : undefined,
+        },
+      });
       return res.data as HomeServiceRegistry;
     } catch (err: any) {
       return { error: pickError(err, "Failed to load home service registry") } as any;

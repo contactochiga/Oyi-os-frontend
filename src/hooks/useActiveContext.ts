@@ -27,6 +27,10 @@ export type AvailableHomeContext = {
   home_name?: string | null;
   block?: string | null;
   unit?: string | null;
+  electricity_meter?: string | null;
+  water_meter?: string | null;
+  internet_id?: string | null;
+  gate_code?: string | null;
   is_active?: boolean;
 };
 
@@ -79,6 +83,10 @@ function applyRememberedContext(state: ActiveContextState): ActiveContextState {
           name: contextHomeName(selected),
           block: selected.block || null,
           unit: selected.unit || null,
+          electricity_meter: selected.electricity_meter || null,
+          water_meter: selected.water_meter || null,
+          internet_id: selected.internet_id || null,
+          gate_code: selected.gate_code || null,
         }
       : state.home,
     estate_id: selected.estate_id || state.estate_id,
@@ -162,6 +170,10 @@ export default function useActiveContext() {
           name: contextHomeName(next),
           block: next.block || null,
           unit: next.unit || null,
+          electricity_meter: next.electricity_meter || null,
+          water_meter: next.water_meter || null,
+          internet_id: next.internet_id || null,
+          gate_code: next.gate_code || null,
         },
         estate_id: next.estate_id || previous.estate_id,
         home_id: next.home_id || previous.home_id,
