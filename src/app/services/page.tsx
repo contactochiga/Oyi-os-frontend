@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import ConsumerShell from "@/app/components/ConsumerShell";
 import ActivityMetricsRail from "@/app/components/ActivityMetricsRail";
-import { servicesService, type ServiceConfig, type ServiceKey, type ServicePayment } from "@/services/servicesService";
+import { servicesService, type HomeServiceRegistry, type ServiceConfig, type ServiceKey, type ServicePayment } from "@/services/servicesService";
+import { getSocket } from "@/services/socket";
 import useActiveContext from "@/hooks/useActiveContext";
 import { FiChevronRight, FiClock, FiCreditCard, FiDroplet, FiFileText, FiHeadphones, FiHome, FiLayers, FiSliders, FiTool, FiWifi, FiZap } from "react-icons/fi";
 
@@ -80,7 +81,24 @@ function parseAmount(raw: string) {
   return Number.isFinite(n) ? n : 0;
 }
 
-function accountRefFor(serviceKey: ServiceKey, home: HomeContext | null) {
+function registryEntryFor(serviceKey: ServiceKey, registry: HomeServiceRegistry | null) {
+  if (!registry) return null;
+  if (serviceKey === "utility_token") return registry.electricity;
+  if (serviceKey === "water_service") return registry.water;
+  if (serviceKey === "internet_service" || serviceKey === "fiber_internet") return registry.internet;
+  if (serviceKey === "service_charge") return registry.estate_fees;
+  if (serviceKey === "other_facility_fees") return registry.facility_services;
+  return null;
+}
+
+function accountRefFor(serviceKey: ServiceKey, home: HomeContext | null, registry?: HomeServiceRegistry | null) {
+  if (registry) {
+    if (serviceKey === "utility_token") return String(registry.electricity?.meter_id || "");
+    if (serviceKey === "water_service") return String(registry.water?.meter_id || "");
+    if (serviceKey === "internet_service" || serviceKey === "fiber_internet") return String(registry.internet?.account_id || "");
+    if (serviceKey === "service_charge") return String(registry.home_id || home?.id || "");
+    if (serviceKey === "other_facility_fees") return String(registry.home_id || home?.id || "");
+  }
   if (!home) return "";
   if (serviceKey === "utility_token") return String(home.electricity_meter || "");
   if (serviceKey === "water_service") return String(home.water_meter || "");
@@ -198,12 +216,14 @@ function RequestServiceSheet({ open, onClose, onSelect, onSupport }: { open: boo
   );
 }
 
-function ServiceCatalogCard({ item, configs, home, onOpen }: { item: ServiceItem; configs: Partial<Record<ServiceKey, ServiceConfig>>; home: HomeContext | null; onOpen: () => void }) {
+function ServiceCatalogCard({ item, configs, home, registry, onOpen }: { item: ServiceItem; configs: Partial<Record<ServiceKey, ServiceConfig>>; home: HomeContext | null; registry: HomeServiceRegistry | null; onOpen: () => void }) {
   const merged = mergedServiceItem(item, configs);
-  const linkedRef = accountRefFor(merged.key, home);
-  const status = serviceStatusFor(merged.key, linkedRef, merged.active);
+  const entry = registryEntryFor(merged.key, registry);
+  const linkedRef = accountRefFor(merged.key, home, registry);
+  const active = entry?.enabled ?? merged.active;
+  const status = serviceStatusFor(merged.key, linkedRef, active);
   const Icon = merged.icon;
-  const iconTone = !merged.active
+  const iconTone = !active
     ? "bg-white/5 text-white/25"
     : linkedRef
     ? "bg-cyan-400/12 text-cyan-100 shadow-[0_0_24px_rgba(34,211,238,0.18)]"
@@ -212,8 +232,8 @@ function ServiceCatalogCard({ item, configs, home, onOpen }: { item: ServiceItem
   return (
     <button
       type="button"
-      onClick={() => merged.active && onOpen()}
-      className={`flex w-full items-center gap-3 rounded-[22px] border px-3 py-3 text-left shadow-[0_14px_44px_rgba(0,0,0,0.26)] backdrop-blur-2xl transition active:scale-[0.992] ${merged.active ? "border-white/[0.075] bg-[linear-gradient(145deg,rgba(255,255,255,0.046),rgba(255,255,255,0.012))] hover:bg-white/[0.055]" : "border-white/5 bg-white/[0.025] opacity-60"}`}
+      onClick={() => active && onOpen()}
+      className={`flex w-full items-center gap-3 rounded-[22px] border px-3 py-3 text-left shadow-[0_14px_44px_rgba(0,0,0,0.26)] backdrop-blur-2xl transition active:scale-[0.992] ${active ? "border-white/[0.075] bg-[linear-gradient(145deg,rgba(255,255,255,0.046),rgba(255,255,255,0.012))] hover:bg-white/[0.055]" : "border-white/5 bg-white/[0.025] opacity-60"}`}
     >
       <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] ${iconTone}`}>
         <Icon className="h-5 w-5" />
@@ -239,13 +259,14 @@ export default function ServicesPage() {
   const [activeServiceKey, setActiveServiceKey] = useState<ServiceKey | null>(null);
   const [history, setHistory] = useState<ServicePayment[]>([]);
   const [configs, setConfigs] = useState<Partial<Record<ServiceKey, ServiceConfig>>>({});
+  const [registry, setRegistry] = useState<HomeServiceRegistry | null>(null);
   const [configsFallback, setConfigsFallback] = useState(false);
   const [lastReceipt, setLastReceipt] = useState<ServicePayment | null>(null);
   const [activeCategory, setActiveCategory] = useState("All");
   const [requestSheetOpen, setRequestSheetOpen] = useState(false);
 
   const activeService = useMemo(() => SERVICE_ITEMS.find((s) => s.key === activeServiceKey) || null, [activeServiceKey]);
-  const activeAccountRef = useMemo(() => (activeService ? accountRefFor(activeService.key, home) : ""), [activeService, home]);
+  const activeAccountRef = useMemo(() => (activeService ? accountRefFor(activeService.key, home, registry) : ""), [activeService, home, registry]);
   const activeServiceView = useMemo(() => (activeService ? mergedServiceItem(activeService, configs) : null), [activeService, configs]);
   const activePresets = useMemo(() => (activeServiceKey ? SERVICE_PRESETS[activeServiceKey] || [] : []), [activeServiceKey]);
   const activeHistory = useMemo(() => {
@@ -256,41 +277,26 @@ export default function ServicesPage() {
   const selectedGroup = useMemo(() => SERVICE_GROUPS.find((group) => group.title === activeCategory) || SERVICE_GROUPS[0], [activeCategory]);
   const visibleServiceItems = useMemo(() => SERVICE_ITEMS.filter((item) => selectedGroup.keys.includes(item.key)), [selectedGroup]);
   const linkedUtilityAccounts = useMemo(() => {
+    if (registry) return [registry.electricity?.linked, registry.water?.linked, registry.internet?.linked].filter(Boolean).length;
     return [home?.electricity_meter, home?.water_meter, home?.internet_id].filter(Boolean).length;
-  }, [home]);
-  const activeServices = useMemo(() => SERVICE_ITEMS.filter((item) => (configs[item.key]?.active ?? true)).length, [configs]);
+  }, [home, registry]);
+  const activeServices = useMemo(() => {
+    if (!registry) return SERVICE_ITEMS.filter((item) => (configs[item.key]?.active ?? true)).length;
+    return [registry.electricity, registry.water, registry.internet, registry.estate_fees, registry.facility_services].filter((item: any) => item?.enabled).length;
+  }, [configs, registry]);
   const awarenessItems = useMemo(() => {
-    const electricityLinked = Boolean(home?.electricity_meter);
-    const waterLinked = Boolean(home?.water_meter);
-    const internetLinked = Boolean(home?.internet_id);
+    const electricityLinked = Boolean(registry?.electricity?.linked ?? home?.electricity_meter);
+    const waterLinked = Boolean(registry?.water?.linked ?? home?.water_meter);
+    const internetLinked = Boolean(registry?.internet?.linked ?? home?.internet_id);
+    const serviceDue = Number(registry?.estate_fees?.outstanding || 0) > 0;
     return [
-      {
-        icon: FiZap,
-        label: electricityLinked ? "Electricity meter ready" : "Meter not linked",
-        tone: electricityLinked ? "text-emerald-300" : "text-amber-300",
-      },
-      {
-        icon: FiDroplet,
-        label: waterLinked ? "Water recharge ready" : "Water setup needed",
-        tone: waterLinked ? "text-sky-300" : "text-amber-300",
-      },
-      {
-        icon: FiWifi,
-        label: internetLinked ? "Internet plan active" : "Internet plan not configured",
-        tone: internetLinked ? "text-emerald-300" : "text-amber-300",
-      },
-      {
-        icon: FiCreditCard,
-        label: history.length ? "Payment history available" : "No payment history",
-        tone: history.length ? "text-emerald-300" : "text-white/55",
-      },
-      {
-        icon: FiHeadphones,
-        label: "Support center available",
-        tone: "text-violet-300",
-      },
+      { icon: FiZap, label: electricityLinked ? "Electricity account active" : "Meter not linked", tone: electricityLinked ? "text-emerald-300" : "text-amber-300" },
+      { icon: FiDroplet, label: waterLinked ? "Water account active" : "Water setup needed", tone: waterLinked ? "text-sky-300" : "text-amber-300" },
+      { icon: FiWifi, label: internetLinked ? "Internet service active" : "Internet plan needed", tone: internetLinked ? "text-emerald-300" : "text-amber-300" },
+      { icon: FiCreditCard, label: serviceDue ? "Service charge due" : history.length ? "Payment history available" : "No payment history", tone: serviceDue ? "text-amber-300" : history.length ? "text-emerald-300" : "text-white/55" },
+      { icon: FiHeadphones, label: registry?.facility_services?.enabled ? "Facility services available" : "Facility services unavailable", tone: registry?.facility_services?.enabled ? "text-violet-300" : "text-white/45" },
     ];
-  }, [home, history.length]);
+  }, [home, history.length, registry]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -301,23 +307,46 @@ export default function ServicesPage() {
 
   useEffect(() => {
     let cancelled = false;
-    async function loadConfigs() {
+    async function loadRegistry() {
       if (!contextReady || !estateId) {
+        setRegistry(null);
         setConfigs({});
         setConfigsFallback(false);
         return;
       }
-      const cfgRes: any = await servicesService.configs({ estate_id: estateId });
-      if (cancelled || cfgRes?.error) return;
-      const mapped = Object.fromEntries((cfgRes.configs || []).map((cfg: ServiceConfig) => [cfg.service_key, cfg])) as Partial<Record<ServiceKey, ServiceConfig>>;
-      setConfigs(mapped);
-      setConfigsFallback(Boolean(cfgRes.using_fallback));
+      const result: any = await servicesService.homeRegistry();
+      if (cancelled || result?.error) return;
+      setRegistry(result as HomeServiceRegistry);
+      setConfigsFallback(Boolean(result?.using_fallback));
     }
-    void loadConfigs();
+    void loadRegistry();
     return () => {
       cancelled = true;
     };
   }, [contextReady, activeContext.contextKey, estateId]);
+
+  useEffect(() => {
+    if (!contextReady || !estateId || !activeContext.home_id) return;
+    const socket = getSocket();
+    if (!socket) return;
+    const refresh = (payload: any) => {
+      const incomingEstate = String(payload?.estate_id || payload?.estateId || "");
+      const incomingHome = String(payload?.home_id || payload?.homeId || "");
+      if (incomingEstate && incomingEstate !== String(estateId)) return;
+      if (incomingHome && incomingHome !== String(activeContext.home_id)) return;
+      void servicesService.homeRegistry().then((result: any) => {
+        if (!result?.error) {
+          setRegistry(result as HomeServiceRegistry);
+          setConfigsFallback(Boolean(result?.using_fallback));
+        }
+      });
+    };
+    socket.emit("subscribe:estate", estateId);
+    socket.emit("subscribe:home", activeContext.home_id);
+    const events = ["service.config.updated", "home.service_registry.updated", "home.utility_account.updated", "wallet.service_payment.updated", "service.updated"];
+    events.forEach((event) => socket.on(event, refresh));
+    return () => events.forEach((event) => socket.off(event, refresh));
+  }, [contextReady, activeContext.contextKey, estateId, activeContext.home_id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -348,7 +377,7 @@ export default function ServicesPage() {
       return;
     }
 
-    const accountRef = accountRefFor(item.key, home);
+    const accountRef = accountRefFor(item.key, home, registry);
     if (!accountRef) {
       setErr(`${item.title} account is not linked to this home yet.`);
       return;
@@ -371,7 +400,7 @@ export default function ServicesPage() {
         setHistory((prev) => [receipt, ...prev]);
         setLastReceipt(receipt);
       }
-      setMsg(`${item.title} paid successfully from wallet.`);
+      setMsg(res?.receipt?.status === "completed" ? `${item.title} paid from wallet.` : `${item.title} payment recorded for provider review.`);
     } catch (e: any) {
       setErr(e?.message || "Payment failed");
     } finally {
@@ -398,9 +427,9 @@ export default function ServicesPage() {
         items={[
           { icon: FiLayers, label: "Active Services", value: activeServices, color: "text-sky-300" },
           { icon: FiHome, label: "Utility Accounts", value: linkedUtilityAccounts, color: "text-cyan-200" },
-          { icon: FiWifi, label: "Internet Plans", value: home?.internet_id ? 1 : 0, color: "text-violet-200" },
+          { icon: FiWifi, label: "Internet Plans", value: registry?.internet?.linked ? 1 : 0, color: "text-violet-200" },
           { icon: FiHeadphones, label: "Support Tickets", value: "Ready", color: "text-amber-200" },
-          { icon: FiCreditCard, label: "Service Charge", value: serviceChargePaid ? toNaira(serviceChargePaid) : "Ready", color: "text-emerald-200" },
+          { icon: FiCreditCard, label: "Outstanding", value: Number(registry?.estate_fees?.outstanding || 0) > 0 ? toNaira(Number(registry?.estate_fees?.outstanding || 0)) : serviceChargePaid ? toNaira(serviceChargePaid) : "Ready", color: "text-emerald-200" },
           { icon: FiFileText, label: "Receipts", value: history.length, color: "text-white/65" },
         ]}
       />
@@ -427,7 +456,7 @@ export default function ServicesPage() {
 
         <div className="space-y-2">
           {visibleServiceItems.map((item) => (
-            <ServiceCatalogCard key={item.key} item={item} configs={configs} home={home} onOpen={() => setActiveServiceKey(item.key)} />
+            <ServiceCatalogCard key={item.key} item={item} configs={configs} home={home} registry={registry} onOpen={() => setActiveServiceKey(item.key)} />
           ))}
         </div>
       </section>

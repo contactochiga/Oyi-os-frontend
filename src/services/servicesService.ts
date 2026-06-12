@@ -26,6 +26,20 @@ export type ServiceConfig = {
   updated_at?: string;
 };
 
+
+export type HomeServiceRegistry = {
+  ok?: boolean;
+  estate_id: string;
+  home_id: string;
+  using_fallback?: boolean;
+  wallet?: { balance?: number; currency?: string };
+  electricity: { enabled: boolean; meter_id?: string | null; provider?: string | null; linked: boolean; status: string; balance?: number | null; last_payment_at?: string | null };
+  water: { enabled: boolean; meter_id?: string | null; linked: boolean; status: string; balance?: number | null; last_payment_at?: string | null };
+  internet: { enabled: boolean; provider?: string | null; plan?: string | null; account_id?: string | null; linked: boolean; status: string; expires_at?: string | null };
+  estate_fees: { enabled: boolean; outstanding?: number | null; status: string; due_date?: string | null; last_payment_at?: string | null };
+  facility_services: { enabled: boolean; available_count?: number; status?: string; last_payment_at?: string | null };
+};
+
 export type ServicePayment = {
   id: string;
   amount: number;
@@ -55,6 +69,15 @@ function pickError(err: any, fallback: string) {
 }
 
 export const servicesService = {
+
+  async homeRegistry() {
+    try {
+      const res = await API.get("/services/home-registry");
+      return res.data as HomeServiceRegistry;
+    } catch (err: any) {
+      return { error: pickError(err, "Failed to load home service registry") } as any;
+    }
+  },
   async pay(payload: { service_key: ServiceKey; amount: number; account_ref: string; bundle_name?: string; period_label?: string }) {
     try {
       const res = await API.post("/services/pay", payload);
