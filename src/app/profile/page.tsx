@@ -31,6 +31,7 @@ import { deviceService } from "@/services/deviceService";
 import { homeAccessService, type HomeAccessMember } from "@/services/homeAccessService";
 import { walletService } from "@/services/walletService";
 import { listMyNotifications, type AppNotification } from "@/services/notificationsService";
+import { notificationPreferencesService, type NotificationPreference } from "@/services/notificationPreferencesService";
 import { replayOnboardingTour } from "@/services/onboardingTour";
 import { DEFAULT_PROXIMITY_SETTINGS, proximityService, type ProximitySettings } from "@/services/proximityService";
 import { useSettingsStore } from "@/store/useSettingsStore";
@@ -122,6 +123,8 @@ export default function ProfilePage() {
   const [accessMessage, setAccessMessage] = useState<string | null>(null);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreference[]>([]);
+  const [notificationPreferenceBusy, setNotificationPreferenceBusy] = useState("");
   const [proximitySettings, setProximitySettings] = useState<ProximitySettings>(DEFAULT_PROXIMITY_SETTINGS);
   const [proximityBusy, setProximityBusy] = useState("");
   const [proximityMessage, setProximityMessage] = useState<string | null>(null);
@@ -188,13 +191,14 @@ export default function ProfilePage() {
     if (!ready || !token || !active.ready) return;
     let cancelled = false;
     async function load() {
-      const [deviceRes, memberRes, walletRes, notificationRes, contextRes, proximityRes] = await Promise.allSettled([
+      const [deviceRes, memberRes, walletRes, notificationRes, contextRes, proximityRes, notificationPreferenceRes] = await Promise.allSettled([
         deviceService.getAssignedDevices(active.estate_id || undefined),
         active.home_id ? homeAccessService.listHomeUsers(active.home_id) : Promise.resolve([]),
         walletService.getWallet(),
         listMyNotifications(),
         API.get("/me/context"),
         proximityService.getSettings(),
+        notificationPreferencesService.list(),
       ]);
       if (cancelled) return;
       if (deviceRes.status === "fulfilled") setDevices(asArray(deviceRes.value));
@@ -208,6 +212,7 @@ export default function ProfilePage() {
         setResidentContext(payload);
       }
       if (proximityRes.status === "fulfilled") setProximitySettings(proximityRes.value);
+      if (notificationPreferenceRes.status === "fulfilled") setNotificationPreferences(notificationPreferenceRes.value);
     }
     void load();
     return () => {
@@ -399,6 +404,20 @@ export default function ProfilePage() {
     );
   }
 
+  async function updateNotificationPreference(category: string, patch: Partial<NotificationPreference>) {
+    setNotificationPreferenceBusy(category);
+    try {
+      const updated = await notificationPreferencesService.update(category, patch);
+      setNotificationPreferences((current) => {
+        const exists = current.some((item) => item.category === category);
+        const next = current.map((item) => item.category === category ? { ...item, ...updated } : item);
+        return exists ? next : [...next, updated as NotificationPreference];
+      });
+    } finally {
+      setNotificationPreferenceBusy("");
+    }
+  }
+
   function renderPanel() {
     if (!panel) return null;
     const title = menu.find((item) => item.key === panel)?.label || "Profile Information";
@@ -487,6 +506,41 @@ export default function ProfilePage() {
                 <InfoRow label="Email" value={String((user as any)?.email_notifications_enabled ? "Enabled" : "Not configured")} />
                 <InfoRow label="SMS" value={String((user as any)?.sms_notifications_enabled ? "Enabled" : "Not configured")} />
                 <InfoRow label="Unread alerts" value={`${notifications.filter((item) => item.status !== "read").length}`} />
+                <div className="rounded-[18px] border border-sky-300/12 bg-sky-400/[0.045] p-3">
+                  <div className="text-sm font-semibold text-sky-100">Attention preferences</div>
+                  <p className="mt-1 text-xs leading-5 text-white/50">Push is reserved for attention. Device and automation events stay in Activity unless critical.</p>
+                </div>
+                <div className="space-y-2">
+                  {notificationPreferences.map((preference) => {
+                    const title = preference.category.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+                    const busy = notificationPreferenceBusy === preference.category;
+                    return (
+                      <div key={preference.category} className="rounded-[18px] border border-white/[0.06] bg-white/[0.025] px-3 py-2.5">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-sm font-semibold text-white/86">{title}</div>
+                            <div className="mt-0.5 text-[11px] text-white/42">
+                              {preference.digest_mode ? "Digest/In-app" : preference.critical_only ? "Critical only" : preference.push_enabled ? "Push enabled" : "Activity/In-app"}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void updateNotificationPreference(preference.category, { push_enabled: !preference.push_enabled })}
+                            className={`rounded-full px-3 py-1.5 text-xs font-semibold transition active:scale-[0.98] disabled:opacity-45 ${preference.push_enabled ? "bg-sky-300 text-black" : "border border-white/[0.08] bg-white/[0.035] text-white/58"}`}
+                          >
+                            {preference.push_enabled ? "Push" : "No push"}
+                          </button>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          <button type="button" disabled={busy} onClick={() => void updateNotificationPreference(preference.category, { in_app_enabled: !preference.in_app_enabled })} className={`rounded-full px-2.5 py-1.5 text-[11px] ${preference.in_app_enabled ? "bg-white/[0.08] text-white/76" : "border border-white/[0.06] text-white/38"}`}>In-app</button>
+                          <button type="button" disabled={busy} onClick={() => void updateNotificationPreference(preference.category, { critical_only: !preference.critical_only })} className={`rounded-full px-2.5 py-1.5 text-[11px] ${preference.critical_only ? "bg-amber-300/14 text-amber-100" : "border border-white/[0.06] text-white/38"}`}>Critical only</button>
+                          <button type="button" disabled={busy} onClick={() => void updateNotificationPreference(preference.category, { digest_mode: !preference.digest_mode })} className={`rounded-full px-2.5 py-1.5 text-[11px] ${preference.digest_mode ? "bg-violet-300/14 text-violet-100" : "border border-white/[0.06] text-white/38"}`}>Digest</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </>
             ) : null}
             {panel === "proximity" ? (
