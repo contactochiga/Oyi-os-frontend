@@ -238,7 +238,10 @@ export default function OyiAiCommandCenter() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const meterRafRef = useRef<number | null>(null);
+  const composerRef = useRef<HTMLFormElement | null>(null);
+  const bottomRef = useRef<HTMLDivElement | null>(null);
   const [audioLevels, setAudioLevels] = useState<number[]>(Array.from({ length: 28 }, () => 0.2));
+  const [composerHeight, setComposerHeight] = useState(132);
 
   const context = useMemo(
     () => ({ surface: "consumer", scope: "home", estateId: (user as any)?.estate_id || null, homeId: (user as any)?.home_id || null }),
@@ -260,6 +263,7 @@ export default function OyiAiCommandCenter() {
   const voiceConversation = voiceMode === "conversation";
   const inputWake = input.toLowerCase().includes("oyi") || transcript.toLowerCase().includes("oyi");
   const orbState = voiceConversation || recording ? "listening" : busy ? "thinking" : voiceStatus === "Failed" ? "failed" : "idle";
+  const composerReserve = `calc(${composerHeight + 24}px + var(--sab) + var(--kb))`;
 
   useEffect(() => {
     setUsage(loadJson<Record<string, number>>(USAGE_KEY, {}));
@@ -275,8 +279,38 @@ export default function OyiAiCommandCenter() {
   }, []);
 
   useEffect(() => {
-    scrollerRef.current?.scrollTo({ top: scrollerRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages]);
+    if (typeof window === "undefined") return;
+    let frame = 0;
+    const measure = () => {
+      const height = Math.ceil(composerRef.current?.getBoundingClientRect().height || 132);
+      setComposerHeight((current) => (Math.abs(current - height) > 2 ? height : current));
+    };
+    measure();
+    const observer = typeof ResizeObserver !== "undefined" && composerRef.current ? new ResizeObserver(measure) : null;
+    if (observer && composerRef.current) observer.observe(composerRef.current);
+    const schedule = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(measure);
+    };
+    window.addEventListener("resize", schedule);
+    window.visualViewport?.addEventListener("resize", schedule);
+    window.visualViewport?.addEventListener("scroll", schedule);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer?.disconnect();
+      window.removeEventListener("resize", schedule);
+      window.visualViewport?.removeEventListener("resize", schedule);
+      window.visualViewport?.removeEventListener("scroll", schedule);
+    };
+  }, [recording, inputWake]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const frame = window.requestAnimationFrame(() => {
+      bottomRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [messages, composerHeight]);
 
   useEffect(() => {
     return () => stopVoiceCapture();
@@ -533,8 +567,16 @@ export default function OyiAiCommandCenter() {
           </div>
         </header>
 
-        <section className="relative z-10 mx-auto flex h-full max-w-[680px] flex-col px-5" style={{ paddingTop: 8, paddingBottom: "calc(112px + var(--sab) + var(--kb))" }}>
-          <div ref={scrollerRef} className="min-h-0 flex-1 overflow-y-auto pb-5 pr-1" style={{ WebkitOverflowScrolling: "touch" }}>
+        <section className="relative z-10 mx-auto flex h-full max-w-[680px] flex-col px-5" style={{ paddingTop: 8, paddingBottom: composerReserve }}>
+          <div
+            ref={scrollerRef}
+            className="min-h-0 flex-1 overflow-y-auto pr-1"
+            style={{
+              WebkitOverflowScrolling: "touch",
+              paddingBottom: composerReserve,
+              scrollPaddingBottom: composerReserve,
+            }}
+          >
             {!chatMode ? (
               <div className="flex min-h-full flex-col items-center justify-center text-center">
                 <OyiOrb state={voiceConversation ? "listening" : "idle"} onClick={() => startVoiceCapture("conversation")} />
@@ -573,12 +615,13 @@ export default function OyiAiCommandCenter() {
                     </div>
                   </div>
                 ))}
+                <div ref={bottomRef} className="h-1" />
               </div>
             )}
           </div>
         </section>
 
-        <form onSubmit={(event) => { event.preventDefault(); void handleSend(); }} className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-[680px] px-4" style={{ paddingBottom: "calc(12px + var(--sab) + var(--kb))" }}>
+        <form ref={composerRef} onSubmit={(event) => { event.preventDefault(); void handleSend(); }} className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-[680px] px-4" style={{ paddingBottom: "calc(12px + var(--sab) + var(--kb))" }}>
           <div className={`rounded-[28px] border bg-[#040911]/92 p-2.5 shadow-[0_18px_70px_rgba(0,0,0,0.62)] backdrop-blur-2xl transition ${inputWake ? "border-sky-300/45 shadow-[0_0_42px_rgba(0,132,255,0.26)]" : "border-white/[0.08]"}`}>
             {recording ? (
               <div className="flex items-center gap-3 px-1.5 py-1">

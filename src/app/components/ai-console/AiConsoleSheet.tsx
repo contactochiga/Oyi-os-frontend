@@ -256,11 +256,11 @@ export default function AiConsoleSheet(props: {
                   style={{
                     minHeight: 0,
                     WebkitOverflowScrolling: "touch",
-                    paddingBottom: "calc(18px + var(--sab))",
-                    scrollPaddingBottom: "calc(120px + var(--sab) + var(--kb))",
+                    paddingBottom: "calc(92px + var(--sab))",
+                    scrollPaddingBottom: "calc(156px + var(--sab) + var(--kb))",
                   }}
                 >
-                  <div className="space-y-3 pb-8">
+                  <div className="space-y-3 pb-12">
                     {messages.map((m) => (
                       <div
                         key={m.id}
