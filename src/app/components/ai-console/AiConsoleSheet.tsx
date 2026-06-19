@@ -71,6 +71,30 @@ function MiniStructuredCards({ cards }: { cards?: Array<Record<string, any>> }) 
   );
 }
 
+function MiniOperatingStatus({ intent, understood, execution }: { intent?: string; understood?: string; execution?: Record<string, any> }) {
+  if (!intent && !execution) return null;
+  const results = Array.isArray(execution?.results) ? execution.results : [];
+  const first = results[0] || {};
+  const status = String(first.status || execution?.status || (intent === "capability_query" ? "available" : "ready")).replace(/_/g, " ");
+  const tone =
+    /denied|failed|error/.test(status)
+      ? "border-rose-300/15 bg-rose-400/[0.055] text-rose-50/78"
+      : /confirmation|pending/.test(status)
+        ? "border-amber-300/15 bg-amber-400/[0.055] text-amber-50/80"
+        : "border-cyan-300/14 bg-cyan-400/[0.055] text-cyan-50/80";
+  return (
+    <div className={`mt-2 rounded-2xl border p-2.5 ${tone}`}>
+      <div className="flex flex-wrap items-center gap-1.5 text-[9px] uppercase tracking-[0.16em] opacity-70">
+        <span>{String(intent || "operation").replace(/_/g, " ")}</span>
+        <span className="h-1 w-1 rounded-full bg-current opacity-50" />
+        <span>{status}</span>
+      </div>
+      {understood ? <div className="mt-1 text-[11px] leading-4 opacity-76">{understood}</div> : null}
+      {first.summary || first.error ? <div className="mt-1 text-[11px] leading-4 opacity-90">{String(first.summary || first.error)}</div> : null}
+    </div>
+  );
+}
+
 function MiniSources({ sources }: { sources?: Array<Record<string, any>> }) {
   if (!sources?.length) return null;
   return (
@@ -312,6 +336,7 @@ export default function AiConsoleSheet(props: {
                               {m.role === "assistant" ? (
                                 <>
                                   <MiniStructuredCards cards={m.cards} />
+                                  <MiniOperatingStatus intent={m.intent} understood={m.understood} execution={m.execution} />
                                   <MiniSources sources={m.sources} />
                                   <MiniSuggestedActions actions={m.suggested_actions} onOpen={(route) => router.push(route)} />
                                 </>

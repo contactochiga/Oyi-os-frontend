@@ -52,6 +52,9 @@ export type ChatMessage = {
   cards?: Array<Record<string, any>>;
   sources?: Array<Record<string, any>>;
   suggested_actions?: Array<Record<string, any>>;
+  intent?: string;
+  understood?: string;
+  execution?: Record<string, any>;
   confirmations?: Array<Record<string, any>>;
   lastUpdated?: number;
 };

@@ -19,6 +19,9 @@ type AiMessage = {
   cards?: Array<Record<string, any>>;
   sources?: Array<Record<string, any>>;
   suggested_actions?: Array<Record<string, any>>;
+  intent?: string;
+  understood?: string;
+  execution?: Record<string, any>;
 };
 
 type Suggestion = { label: string; prompt?: string; href?: string; tone?: "blue" | "green" | "amber" | "violet" };
@@ -27,12 +30,15 @@ type VoiceStatus = "Listening" | "Thinking" | "Speaking" | "Done" | "Failed";
 type Conversation = { id: string; title: string; updatedAt: number; messages: AiMessage[]; backendThreadId?: string | null };
 
 const DEFAULT_SUGGESTIONS: Suggestion[] = [
+  { label: "What can you do?", prompt: "What can you do?", tone: "blue" },
+  { label: "What’s happening?", prompt: "What’s happening?", tone: "green" },
   { label: "Show device status", prompt: "Show device status", tone: "blue" },
+  { label: "Offline devices", prompt: "Show offline devices", tone: "amber" },
+  { label: "Pending visitors", prompt: "Show pending visitors", tone: "green" },
+  { label: "Wallet balance", prompt: "Show wallet balance", tone: "violet" },
+  { label: "Home summary", prompt: "Generate today’s home summary", tone: "blue" },
   { label: "Turn off living room light", prompt: "Turn off living room light", tone: "amber" },
-  { label: "Visitors", prompt: "Show visitors", tone: "green" },
-  { label: "Security", prompt: "Show security", tone: "green" },
   { label: "Scenes", href: "/scenes", tone: "violet" },
-  { label: "Automations", href: "/scenes?tab=automations", tone: "blue" },
 ];
 
 const USAGE_KEY = "oyi_ai_shortcut_usage_v1";
@@ -50,6 +56,10 @@ function replyFromResponse(resp: AiChatResponse) {
 
 function responseState(resp: AiChatResponse): AiMessage["state"] {
   if (resp.confirmations?.length) return "confirmation_required";
+  const results = Array.isArray(resp.execution?.results) ? resp.execution.results : [];
+  if (results.some((result) => result?.status === "pending_confirmation")) return "confirmation_required";
+  if (results.some((result) => result?.status === "denied")) return "denied";
+  if (results.some((result) => result?.status === "failed")) return "failed";
   if ((resp.tools || []).some((tool) => tool.status === "denied")) return "denied";
   if ((resp.tools || []).some((tool) => tool.status === "failed")) return "failed";
   return "success";
@@ -112,6 +122,7 @@ function toTimestamp(value?: string | null) {
 }
 
 function messageFromThread(row: OyiThreadMessage): AiMessage {
+  const metadata = row.metadata || {};
   return {
     id: row.id,
     role: row.role === "user" ? "user" : "assistant",
@@ -120,6 +131,9 @@ function messageFromThread(row: OyiThreadMessage): AiMessage {
     cards: row.cards || [],
     sources: row.sources || [],
     suggested_actions: row.suggested_actions || [],
+    intent: typeof metadata.intent === "string" ? metadata.intent : undefined,
+    understood: typeof metadata.understood === "string" ? metadata.understood : undefined,
+    execution: metadata.execution && typeof metadata.execution === "object" ? metadata.execution as Record<string, any> : undefined,
   };
 }
 
@@ -165,6 +179,38 @@ function StructuredCards({ cards }: { cards?: Array<Record<string, any>> }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function OperatingStatus({ intent, understood, execution }: { intent?: string; understood?: string; execution?: Record<string, any> }) {
+  if (!intent && !execution) return null;
+  const results = Array.isArray(execution?.results) ? execution.results : [];
+  const first = results[0] || {};
+  const status = String(first.status || execution?.status || (intent === "capability_query" ? "available" : "ready")).replace(/_/g, " ");
+  const safeMode = execution?.safe_mode;
+  const provider = execution?.provider ? String(execution.provider).replace(/_/g, " ") : "";
+  const tone =
+    /denied|failed|error/.test(status)
+      ? "border-rose-300/15 bg-rose-400/[0.055] text-rose-50/80"
+      : /confirmation|pending/.test(status)
+        ? "border-amber-300/16 bg-amber-400/[0.06] text-amber-50/82"
+        : "border-sky-300/14 bg-sky-400/[0.055] text-sky-50/82";
+  return (
+    <div className={`mt-3 rounded-[18px] border p-3 ${tone}`}>
+      <div className="flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.16em] opacity-70">
+        <span>{String(intent || "operation").replace(/_/g, " ")}</span>
+        <span className="h-1 w-1 rounded-full bg-current opacity-50" />
+        <span>{status}</span>
+      </div>
+      {understood ? <div className="mt-1.5 text-xs leading-5 opacity-78">{understood}</div> : null}
+      {first.summary || first.error ? <div className="mt-1 text-xs leading-5 opacity-90">{String(first.summary || first.error)}</div> : null}
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {provider ? <span className="rounded-full bg-black/16 px-2 py-1 text-[10px] opacity-75">{provider}</span> : null}
+        {safeMode !== undefined ? <span className="rounded-full bg-black/16 px-2 py-1 text-[10px] opacity-75">safe mode {safeMode ? "on" : "off"}</span> : null}
+        {results.length ? <span className="rounded-full bg-black/16 px-2 py-1 text-[10px] opacity-75">{results.length} result{results.length === 1 ? "" : "s"}</span> : null}
+        {execution?.scope ? <span className="rounded-full bg-black/16 px-2 py-1 text-[10px] opacity-75">{String(execution.scope)} scope</span> : null}
+      </div>
     </div>
   );
 }
@@ -435,7 +481,7 @@ export default function OyiAiCommandCenter() {
       const content = replyFromResponse(resp) || "Done.";
       const state = responseState(resp);
       if (state === "success") remember(options?.usageLabel || command);
-      const nextMessages = baseMessages.map((item) => item.id === pendingId ? { ...item, pending: false, content, state, confirmations: resp.confirmations || [], cards: awarenessCards(resp), sources: resp.sources || [], suggested_actions: resp.suggested_actions || [] } : item);
+      const nextMessages = baseMessages.map((item) => item.id === pendingId ? { ...item, pending: false, content, state, confirmations: resp.confirmations || [], cards: awarenessCards(resp), sources: resp.sources || [], suggested_actions: resp.suggested_actions || [], intent: resp.intent, understood: resp.understood, execution: resp.execution } : item);
       setMessages(nextMessages);
       persistConversation(nextMessages, nextThreadId || undefined);
       if (options?.fromVoice) {
@@ -690,6 +736,7 @@ export default function OyiAiCommandCenter() {
                       {!message.pending && message.role === "assistant" ? (
                         <>
                           <StructuredCards cards={message.cards} />
+                          <OperatingStatus intent={message.intent} understood={message.understood} execution={message.execution} />
                           <SourceLabels sources={message.sources} />
                           <SuggestedActions actions={message.suggested_actions} onOpen={(route) => router.push(route)} />
                         </>

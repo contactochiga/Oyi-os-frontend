@@ -29,6 +29,8 @@ export type AiChatResponse = {
   reply: string;
 
   intent?: string;
+  understood?: string;
+  execution?: Record<string, any>;
   confidence?: number;
 
   panel?: string | null;
@@ -53,6 +55,8 @@ function normalize(resp: any): AiChatResponse {
     reply: String(resp?.reply || resp?.message || "").trim() || "Done.",
 
     intent: resp?.intent || "info",
+    understood: resp?.understood ? String(resp.understood) : undefined,
+    execution: resp?.execution && typeof resp.execution === "object" ? resp.execution : undefined,
     confidence:
       typeof resp?.confidence === "number"
         ? Math.max(0, Math.min(1, resp.confidence))
