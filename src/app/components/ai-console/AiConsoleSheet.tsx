@@ -44,10 +44,11 @@ function devSub(d: any) {
 }
 
 function MiniStructuredCards({ cards }: { cards?: Array<Record<string, any>> }) {
-  if (!cards?.length) return null;
+  const visibleCards = (cards || []).filter((card) => !["capability", "capability_registry"].includes(String(card?.type || "")));
+  if (!visibleCards.length) return null;
   return (
     <div className="mt-2 space-y-2">
-      {cards.slice(0, 3).map((card, index) => {
+      {visibleCards.slice(0, 3).map((card, index) => {
         const items = Array.isArray(card.items) ? card.items : [];
         return (
           <div key={`${card.type || card.title || "card"}-${index}`} className="rounded-2xl border border-white/10 bg-black/18 p-3">
@@ -57,9 +58,9 @@ function MiniStructuredCards({ cards }: { cards?: Array<Record<string, any>> }) 
             {items.length ? (
               <div className="mt-2 grid gap-1">
                 {items.slice(0, 4).map((item: any, itemIndex: number) => (
-                  <div key={itemIndex} className="flex items-center justify-between gap-2 rounded-xl bg-white/[0.035] px-2 py-1.5 text-[11px]">
-                    <span className="min-w-0 truncate text-white/56">{item.title || item.label || "Item"}</span>
-                    <span className="shrink-0 text-white/80">{item.value !== undefined ? String(item.value) : item.status || item.subtitle || ""}</span>
+                  <div key={itemIndex} className="flex items-start justify-between gap-2 rounded-xl bg-white/[0.035] px-2 py-1.5 text-[11px]">
+                    <span className="min-w-0 break-words text-white/56">{item.title || item.label || "Item"}</span>
+                    <span className="max-w-[48%] shrink-0 break-words text-right text-white/80">{item.value !== undefined ? String(item.value) : item.status || item.subtitle || ""}</span>
                   </div>
                 ))}
               </div>
@@ -71,11 +72,12 @@ function MiniStructuredCards({ cards }: { cards?: Array<Record<string, any>> }) 
   );
 }
 
-function MiniOperatingStatus({ intent, understood, execution }: { intent?: string; understood?: string; execution?: Record<string, any> }) {
-  if (!intent && !execution) return null;
+function MiniOperatingStatus({ execution }: { intent?: string; understood?: string; execution?: Record<string, any> }) {
   const results = Array.isArray(execution?.results) ? execution.results : [];
   const first = results[0] || {};
-  const status = String(first.status || execution?.status || (intent === "capability_query" ? "available" : "ready")).replace(/_/g, " ");
+  const rawStatus = String(first.status || "").replace(/_/g, " ");
+  if (!rawStatus) return null;
+  const status = /denied/.test(rawStatus) ? "Action not available" : /failed|error/.test(rawStatus) ? "Action could not be completed" : /confirmation|pending/.test(rawStatus) ? "Confirmation needed" : /executed|success/.test(rawStatus) ? "Action completed" : "Action update";
   const tone =
     /denied|failed|error/.test(status)
       ? "border-rose-300/15 bg-rose-400/[0.055] text-rose-50/78"
@@ -84,22 +86,18 @@ function MiniOperatingStatus({ intent, understood, execution }: { intent?: strin
         : "border-cyan-300/14 bg-cyan-400/[0.055] text-cyan-50/80";
   return (
     <div className={`mt-2 rounded-2xl border p-2.5 ${tone}`}>
-      <div className="flex flex-wrap items-center gap-1.5 text-[9px] uppercase tracking-[0.16em] opacity-70">
-        <span>{String(intent || "operation").replace(/_/g, " ")}</span>
-        <span className="h-1 w-1 rounded-full bg-current opacity-50" />
-        <span>{status}</span>
-      </div>
-      {understood ? <div className="mt-1 text-[11px] leading-4 opacity-76">{understood}</div> : null}
+      <div className="text-[9px] font-medium uppercase tracking-[0.16em] opacity-75">{status}</div>
       {first.summary || first.error ? <div className="mt-1 text-[11px] leading-4 opacity-90">{String(first.summary || first.error)}</div> : null}
     </div>
   );
 }
 
 function MiniSources({ sources }: { sources?: Array<Record<string, any>> }) {
-  if (!sources?.length) return null;
+  const visibleSources = (sources || []).filter((source) => !/ai_tool|execution_ledger|capability registry/i.test(String(source?.label || source?.table || "")));
+  if (!visibleSources.length) return null;
   return (
     <div className="mt-2 flex flex-wrap gap-1.5">
-      {sources.slice(0, 4).map((source, index) => (
+      {visibleSources.slice(0, 3).map((source, index) => (
         <span key={`${source.label || "source"}-${index}`} className="rounded-full border border-white/10 bg-white/[0.035] px-2 py-1 text-[10px] text-white/38">
           {source.label || "Source"}
         </span>
@@ -336,7 +334,7 @@ export default function AiConsoleSheet(props: {
                               {m.role === "assistant" ? (
                                 <>
                                   <MiniStructuredCards cards={m.cards} />
-                                  <MiniOperatingStatus intent={m.intent} understood={m.understood} execution={m.execution} />
+                                  <MiniOperatingStatus execution={m.execution} />
                                   <MiniSources sources={m.sources} />
                                   <MiniSuggestedActions actions={m.suggested_actions} onOpen={(route) => router.push(route)} />
                                 </>
