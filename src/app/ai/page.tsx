@@ -738,10 +738,12 @@ export default function OyiAiCommandCenter() {
                       <div className="whitespace-pre-line">{message.pending ? <span className="inline-flex items-center gap-2"><Spinner /> {message.content}</span> : message.content}</div>
                       {!message.pending && message.role === "assistant" ? (
                         <>
-                          {["list", "detail", "audit", "report", "awareness"].includes(String(message.display_mode || "conversation")) ? <StructuredCards cards={message.cards} /> : null}
-                          <OperatingStatus execution={message.execution} />
-                          <SourceLabels sources={message.sources} />
-                          <SuggestedActions actions={message.suggested_actions} onOpen={(route) => router.push(route)} />
+                          {["list", "detail", "audit", "report", "awareness"].includes(String(message.display_mode || "conversation")) ? <>
+                            <StructuredCards cards={message.cards} />
+                            <OperatingStatus execution={message.execution} />
+                            <SourceLabels sources={message.sources} />
+                            <SuggestedActions actions={message.suggested_actions} onOpen={(route) => router.push(route)} />
+                          </> : null}
                         </>
                       ) : null}
                       {message.confirmations?.length ? message.confirmations.map((confirmation, index) => <ConfirmationCard key={String(confirmation?.ledger_id || confirmation?.id || index)} confirmation={confirmation} disabled={busy} onDecision={decideConfirmation} />) : null}

@@ -334,10 +334,12 @@ export default function AiConsoleSheet(props: {
                               {m.content}
                               {m.role === "assistant" ? (
                                 <>
-                                  <MiniStructuredCards cards={m.cards} displayMode={m.display_mode} />
-                                  <MiniOperatingStatus execution={m.execution} />
-                                  <MiniSources sources={m.sources} />
-                                  <MiniSuggestedActions actions={m.suggested_actions} onOpen={(route) => router.push(route)} />
+                                  {["list", "detail", "audit", "report", "awareness"].includes(String(m.display_mode || "conversation")) ? <>
+                                    <MiniStructuredCards cards={m.cards} displayMode={m.display_mode} />
+                                    <MiniOperatingStatus execution={m.execution} />
+                                    <MiniSources sources={m.sources} />
+                                    <MiniSuggestedActions actions={m.suggested_actions} onOpen={(route) => router.push(route)} />
+                                  </> : null}
                                 </>
                               ) : null}
                             </motion.div>
