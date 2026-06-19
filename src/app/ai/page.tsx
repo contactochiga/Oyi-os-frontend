@@ -55,6 +55,23 @@ function responseState(resp: AiChatResponse): AiMessage["state"] {
   return "success";
 }
 
+function awarenessCards(resp: AiChatResponse) {
+  const cards = Array.isArray(resp.cards) ? resp.cards : [];
+  const awareness = resp.awareness;
+  if (!awareness?.headline) return cards;
+  const primaryCard = {
+    type: awareness.severity === "normal" ? "normal" : "attention",
+    title: awareness.headline,
+    summary: awareness.summary || awareness.body || awareness.recommended_action || "Oyi ranked this as the current home state.",
+    items: awareness.recommended_action
+      ? [{ title: "Recommended action", status: awareness.recommended_action }]
+      : [],
+    score: awareness.awareness_score ?? awareness.score,
+  };
+  const remaining = cards.filter((card) => String(card?.title || "") !== awareness.headline);
+  return [primaryCard, ...remaining];
+}
+
 function thinkingTextFor(command: string) {
   const value = command.toLowerCase();
   if (value.includes("light") || value.includes("ac") || value.includes("device")) return "Searching devices…";
@@ -418,7 +435,7 @@ export default function OyiAiCommandCenter() {
       const content = replyFromResponse(resp) || "Done.";
       const state = responseState(resp);
       if (state === "success") remember(options?.usageLabel || command);
-      const nextMessages = baseMessages.map((item) => item.id === pendingId ? { ...item, pending: false, content, state, confirmations: resp.confirmations || [], cards: resp.cards || [], sources: resp.sources || [], suggested_actions: resp.suggested_actions || [] } : item);
+      const nextMessages = baseMessages.map((item) => item.id === pendingId ? { ...item, pending: false, content, state, confirmations: resp.confirmations || [], cards: awarenessCards(resp), sources: resp.sources || [], suggested_actions: resp.suggested_actions || [] } : item);
       setMessages(nextMessages);
       persistConversation(nextMessages, nextThreadId || undefined);
       if (options?.fromVoice) {

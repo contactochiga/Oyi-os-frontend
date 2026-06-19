@@ -186,6 +186,7 @@ export default function HomePage() {
   const [watchLabel, setWatchLabel] = useState("Unavailable");
   const [intelligenceMetrics, setIntelligenceMetrics] = useState<IntelligenceMetricSummary | null>(null);
   const [backendAwareness, setBackendAwareness] = useState<OyiAwareness | null>(null);
+  const [awarenessStatus, setAwarenessStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [contextOpen, setContextOpen] = useState(false);
   const [contextSwitching, setContextSwitching] = useState(false);
   const [contextError, setContextError] = useState<string | null>(null);
@@ -221,6 +222,8 @@ export default function HomePage() {
     if (!contextReady || !estateId || !homeId) return;
     setDashBusy(true);
     setDashErr(null);
+    setAwarenessStatus("loading");
+    setBackendAwareness(null);
     try {
       const [visitorRes, communityRes, maintenanceRes, notificationRes, walletRes, messagesRes, watchRes, scenesRes, intelligenceRes, awarenessRes] =
         await Promise.allSettled([
@@ -260,9 +263,16 @@ export default function HomePage() {
       }
       if (scenesRes.status === "fulfilled") setScenes(scenesRes.value);
       if (intelligenceRes.status === "fulfilled" && intelligenceRes.value) setIntelligenceMetrics(intelligenceRes.value.metrics);
-      if (awarenessRes.status === "fulfilled" && awarenessRes.value?.headline) setBackendAwareness(awarenessRes.value);
+      if (awarenessRes.status === "fulfilled" && awarenessRes.value?.headline) {
+        setBackendAwareness(awarenessRes.value);
+        setAwarenessStatus("ready");
+      } else {
+        setBackendAwareness(null);
+        setAwarenessStatus("error");
+      }
     } catch (err: any) {
       setDashErr(err?.message || "Home context sync unavailable");
+      setAwarenessStatus("error");
     } finally {
       setDashBusy(false);
     }
@@ -292,6 +302,7 @@ export default function HomePage() {
       setScenes([]);
       setIntelligenceMetrics(null);
       setBackendAwareness(null);
+      setAwarenessStatus("idle");
       return;
     }
     refreshDevicePanelData();
@@ -478,6 +489,9 @@ export default function HomePage() {
     return "Review recent activity";
   })();
   const homeAwareness = (() => {
+    if (awarenessStatus === "loading" && !backendAwareness) {
+      return { primary: "Checking home awareness.", secondary: "Ranking home signals now →", href: "/activity" };
+    }
     if (backendAwareness?.headline) {
       const secondary = backendAwareness.summary || backendAwareness.body || backendAwareness.recommended_action;
       return {
@@ -485,6 +499,9 @@ export default function HomePage() {
         secondary: secondary ? `${secondary} →` : "View details →",
         href: backendAwareness.destination || "/activity",
       };
+    }
+    if (awarenessStatus === "error") {
+      return { primary: "Home status is available.", secondary: "Using local home context →", href: "/activity" };
     }
     if (dashErr) return { primary: "Home status is available.", secondary: "Open Activity →", href: "/activity" };
     if (securityAlerts) return { primary: "Security event detected.", secondary: "Review security update →", href: "/activity?filter=attention" };

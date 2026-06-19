@@ -1,6 +1,6 @@
 // src/services/aiService.ts
 import API from "./api";
-import { oyiService } from "./oyiService";
+import { oyiService, type OyiAwareness } from "./oyiService";
 
 export type AiAction =
   | {
@@ -40,6 +40,7 @@ export type AiChatResponse = {
   cards?: Array<Record<string, any>>;
   sources?: Array<Record<string, any>>;
   suggested_actions?: Array<Record<string, any>>;
+  awareness?: OyiAwareness;
   thread_id?: string;
   safe_mode?: boolean;
 
@@ -67,6 +68,7 @@ function normalize(resp: any): AiChatResponse {
     cards: Array.isArray(resp?.cards) ? resp.cards : [],
     sources: Array.isArray(resp?.sources) ? resp.sources : [],
     suggested_actions: Array.isArray(resp?.suggested_actions) ? resp.suggested_actions : Array.isArray(resp?.suggestedActions) ? resp.suggestedActions : [],
+    awareness: resp?.awareness || undefined,
     thread_id: resp?.thread_id ? String(resp.thread_id) : undefined,
     safe_mode: Boolean(resp?.safe_mode),
 
