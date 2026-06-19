@@ -36,6 +36,30 @@ export type OyiChatResponse = {
   warnings?: string[];
 };
 
+export type OyiThread = {
+  id: string;
+  surface: OyiSurface;
+  estate_id?: string | null;
+  home_id?: string | null;
+  module?: string | null;
+  title?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  metadata?: Record<string, any>;
+};
+
+export type OyiThreadMessage = {
+  id: string;
+  thread_id: string;
+  role: "user" | "assistant" | "system" | "tool";
+  content: string;
+  cards?: Array<Record<string, any>>;
+  sources?: Array<Record<string, any>>;
+  suggested_actions?: Array<Record<string, any>>;
+  metadata?: Record<string, any>;
+  created_at?: string;
+};
+
 export const oyiService = {
   async awareness(input: { surface?: OyiSurface; estate_id?: string | null; home_id?: string | null }) {
     const res = await API.get("/oyi/awareness", { params: input });
@@ -45,5 +69,15 @@ export const oyiService = {
   async chat(input: OyiChatRequest) {
     const res = await API.post("/oyi/chat", input);
     return res.data as OyiChatResponse;
+  },
+
+  async listThreads(input: { surface?: OyiSurface; estate_id?: string | null; home_id?: string | null; limit?: number }) {
+    const res = await API.get("/oyi/threads", { params: input });
+    return res.data as { ok?: boolean; threads?: OyiThread[] };
+  },
+
+  async getThreadMessages(threadId: string) {
+    const res = await API.get(`/oyi/threads/${encodeURIComponent(threadId)}/messages`);
+    return res.data as { ok?: boolean; thread?: OyiThread; messages?: OyiThreadMessage[] };
   },
 };

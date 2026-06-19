@@ -7,6 +7,7 @@ import { ArrowLeft, ArrowUp, Check, Clock3, Copy, Mic, Square, ThumbsUp, Volume2
 import LayoutWrapper from "@/app/components/LayoutWrapper";
 import useAuth from "@/hooks/useAuth";
 import { aiService, type AiChatResponse } from "@/services/aiService";
+import { oyiService, type OyiThreadMessage } from "@/services/oyiService";
 
 type AiMessage = {
   id: string;
@@ -23,7 +24,7 @@ type AiMessage = {
 type Suggestion = { label: string; prompt?: string; href?: string; tone?: "blue" | "green" | "amber" | "violet" };
 type VoiceMode = "idle" | "recording" | "conversation";
 type VoiceStatus = "Listening" | "Thinking" | "Speaking" | "Done" | "Failed";
-type Conversation = { id: string; title: string; updatedAt: number; messages: AiMessage[] };
+type Conversation = { id: string; title: string; updatedAt: number; messages: AiMessage[]; backendThreadId?: string | null };
 
 const DEFAULT_SUGGESTIONS: Suggestion[] = [
   { label: "Show device status", prompt: "Show device status", tone: "blue" },
@@ -86,6 +87,23 @@ function saveJson(key: string, value: unknown) {
   try {
     if (typeof window !== "undefined") window.localStorage.setItem(key, JSON.stringify(value));
   } catch {}
+}
+
+function toTimestamp(value?: string | null) {
+  const time = value ? new Date(value).getTime() : 0;
+  return Number.isFinite(time) && time > 0 ? time : Date.now();
+}
+
+function messageFromThread(row: OyiThreadMessage): AiMessage {
+  return {
+    id: row.id,
+    role: row.role === "user" ? "user" : "assistant",
+    content: row.content || "",
+    state: row.role === "user" ? undefined : "success",
+    cards: row.cards || [],
+    sources: row.sources || [],
+    suggested_actions: row.suggested_actions || [],
+  };
 }
 
 function groupConversationTime(timestamp: number) {
@@ -274,9 +292,44 @@ export default function OyiAiCommandCenter() {
 
   useEffect(() => {
     setUsage(loadJson<Record<string, number>>(USAGE_KEY, {}));
-    setConversations(loadJson<Conversation[]>(CONVERSATIONS_KEY, []));
     setHelpfulResponses(loadJson<Record<string, boolean>>(FEEDBACK_KEY, {}));
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadConversations() {
+      const localFallback = loadJson<Conversation[]>(CONVERSATIONS_KEY, []);
+      if (!(user as any)?.id) {
+        setConversations(localFallback);
+        return;
+      }
+      try {
+        const res = await oyiService.listThreads({
+          surface: "consumer",
+          estate_id: context.estate_id,
+          home_id: context.home_id,
+          limit: 24,
+        });
+        if (cancelled) return;
+        const rows = res.threads || [];
+        if (!rows.length) {
+          setConversations(localFallback);
+          return;
+        }
+        setConversations(rows.map((thread) => ({
+          id: `backend:${thread.id}`,
+          backendThreadId: thread.id,
+          title: thread.title || "Oyi conversation",
+          updatedAt: toTimestamp(thread.updated_at || thread.created_at),
+          messages: [],
+        })));
+      } catch {
+        if (!cancelled) setConversations(localFallback);
+      }
+    }
+    void loadConversations();
+    return () => { cancelled = true; };
+  }, [user, context.estate_id, context.home_id]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -324,9 +377,9 @@ export default function OyiAiCommandCenter() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function persistConversation(nextMessages: AiMessage[]) {
+  function persistConversation(nextMessages: AiMessage[], threadId = backendThreadId) {
     const firstUser = nextMessages.find((item) => item.role === "user")?.content || "Oyi conversation";
-    const item: Conversation = { id: conversationId, title: firstUser.slice(0, 84), updatedAt: Date.now(), messages: nextMessages };
+    const item: Conversation = { id: conversationId, backendThreadId: threadId || undefined, title: firstUser.slice(0, 84), updatedAt: Date.now(), messages: nextMessages };
     setConversations((current) => {
       const next = [item, ...current.filter((entry) => entry.id !== conversationId)].slice(0, 24);
       saveJson(CONVERSATIONS_KEY, next);
@@ -360,13 +413,14 @@ export default function OyiAiCommandCenter() {
 
     try {
       const resp = await aiService.chat(command, { ...context, thread_id: backendThreadId || undefined });
-      if (resp.thread_id) setBackendThreadId(resp.thread_id);
+      const nextThreadId = resp.thread_id || backendThreadId;
+      if (nextThreadId) setBackendThreadId(nextThreadId);
       const content = replyFromResponse(resp) || "Done.";
       const state = responseState(resp);
       if (state === "success") remember(options?.usageLabel || command);
       const nextMessages = baseMessages.map((item) => item.id === pendingId ? { ...item, pending: false, content, state, confirmations: resp.confirmations || [], cards: resp.cards || [], sources: resp.sources || [], suggested_actions: resp.suggested_actions || [] } : item);
       setMessages(nextMessages);
-      persistConversation(nextMessages);
+      persistConversation(nextMessages, nextThreadId || undefined);
       if (options?.fromVoice) {
         setVoiceStatus(state === "failed" || state === "denied" ? "Failed" : "Speaking");
         if (state !== "failed" && state !== "denied") speakResponse(content, true);
@@ -546,9 +600,20 @@ export default function OyiAiCommandCenter() {
     }
   }
 
-  function restoreConversation(conversation: Conversation) {
+  async function restoreConversation(conversation: Conversation) {
     setConversationId(conversation.id);
-    setMessages(conversation.messages || []);
+    setBackendThreadId(conversation.backendThreadId || null);
+    if (conversation.backendThreadId) {
+      try {
+        const res = await oyiService.getThreadMessages(conversation.backendThreadId);
+        const nextMessages = (res.messages || []).map(messageFromThread);
+        setMessages(nextMessages.length ? nextMessages : conversation.messages || []);
+      } catch {
+        setMessages(conversation.messages || []);
+      }
+    } else {
+      setMessages(conversation.messages || []);
+    }
     setHistoryOpen(false);
   }
 
@@ -668,7 +733,7 @@ export default function OyiAiCommandCenter() {
               <div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-3.5">
                 <div>
                   <h2 className="text-lg font-semibold tracking-[-0.04em]">Recent Conversations</h2>
-                  <p className="mt-0.5 text-xs text-white/42">Previous Oyi interactions on this device.</p>
+                  <p className="mt-0.5 text-xs text-white/42">Previous Oyi interactions across your signed-in devices.</p>
                 </div>
                 <button type="button" onClick={() => setHistoryOpen(false)} className="grid h-9 w-9 place-items-center rounded-full bg-white/[0.06] text-white/55"><X className="h-4 w-4" /></button>
               </div>
@@ -678,8 +743,8 @@ export default function OyiAiCommandCenter() {
                     <div className="mb-2 text-[10px] uppercase tracking-[0.2em] text-sky-100/45">{section.group}</div>
                     <div className="space-y-2">
                       {section.items.map((conversation) => (
-                        <button key={conversation.id} type="button" onClick={() => restoreConversation(conversation)} className="flex w-full items-center justify-between gap-3 rounded-[18px] border border-white/[0.06] bg-white/[0.032] px-3.5 py-3 text-left transition active:scale-[0.99]">
-                          <span className="min-w-0"><span className="block truncate text-sm font-semibold text-white/88">{conversation.title}</span><span className="mt-0.5 block text-xs text-white/38">{conversation.messages.length} messages</span></span>
+                        <button key={conversation.id} type="button" onClick={() => void restoreConversation(conversation)} className="flex w-full items-center justify-between gap-3 rounded-[18px] border border-white/[0.06] bg-white/[0.032] px-3.5 py-3 text-left transition active:scale-[0.99]">
+                          <span className="min-w-0"><span className="block truncate text-sm font-semibold text-white/88">{conversation.title}</span><span className="mt-0.5 block text-xs text-white/38">{conversation.messages.length ? `${conversation.messages.length} messages` : "Saved thread"}</span></span>
                           <span className="shrink-0 text-xs text-white/38">{formatTime(conversation.updatedAt)}</span>
                         </button>
                       ))}
