@@ -55,6 +55,7 @@ export type ChatMessage = {
   intent?: string;
   understood?: string;
   execution?: Record<string, any>;
+  display_mode?: "conversation" | "list" | "detail" | "audit" | "report" | "awareness";
   confirmations?: Array<Record<string, any>>;
   lastUpdated?: number;
 };

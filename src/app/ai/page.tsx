@@ -22,6 +22,7 @@ type AiMessage = {
   intent?: string;
   understood?: string;
   execution?: Record<string, any>;
+  display_mode?: "conversation" | "list" | "detail" | "audit" | "report" | "awareness";
 };
 
 type Suggestion = { label: string; prompt?: string; href?: string; tone?: "blue" | "green" | "amber" | "violet" };
@@ -66,6 +67,7 @@ function responseState(resp: AiChatResponse): AiMessage["state"] {
 }
 
 function awarenessCards(resp: AiChatResponse) {
+  if (!["list", "detail", "audit", "report", "awareness"].includes(String(resp.display_mode || "conversation"))) return [];
   const cards = Array.isArray(resp.cards) ? resp.cards : [];
   const awareness = resp.awareness;
   if (!awareness?.headline) return cards;
@@ -134,6 +136,7 @@ function messageFromThread(row: OyiThreadMessage): AiMessage {
     intent: typeof metadata.intent === "string" ? metadata.intent : undefined,
     understood: typeof metadata.understood === "string" ? metadata.understood : undefined,
     execution: metadata.execution && typeof metadata.execution === "object" ? metadata.execution as Record<string, any> : undefined,
+    display_mode: typeof metadata.display_mode === "string" ? metadata.display_mode as AiMessage["display_mode"] : "conversation",
   };
 }
 
@@ -481,7 +484,7 @@ export default function OyiAiCommandCenter() {
       const content = replyFromResponse(resp) || "Done.";
       const state = responseState(resp);
       if (state === "success") remember(options?.usageLabel || command);
-      const nextMessages = baseMessages.map((item) => item.id === pendingId ? { ...item, pending: false, content, state, confirmations: resp.confirmations || [], cards: awarenessCards(resp), sources: resp.sources || [], suggested_actions: resp.suggested_actions || [], intent: resp.intent, understood: resp.understood, execution: resp.execution } : item);
+      const nextMessages = baseMessages.map((item) => item.id === pendingId ? { ...item, pending: false, content, state, confirmations: resp.confirmations || [], cards: awarenessCards(resp), sources: resp.sources || [], suggested_actions: resp.suggested_actions || [], intent: resp.intent, understood: resp.understood, execution: resp.execution, display_mode: resp.display_mode || "conversation" } : item);
       setMessages(nextMessages);
       persistConversation(nextMessages, nextThreadId || undefined);
       if (options?.fromVoice) {
@@ -735,7 +738,7 @@ export default function OyiAiCommandCenter() {
                       <div className="whitespace-pre-line">{message.pending ? <span className="inline-flex items-center gap-2"><Spinner /> {message.content}</span> : message.content}</div>
                       {!message.pending && message.role === "assistant" ? (
                         <>
-                          <StructuredCards cards={message.cards} />
+                          {["list", "detail", "audit", "report", "awareness"].includes(String(message.display_mode || "conversation")) ? <StructuredCards cards={message.cards} /> : null}
                           <OperatingStatus execution={message.execution} />
                           <SourceLabels sources={message.sources} />
                           <SuggestedActions actions={message.suggested_actions} onOpen={(route) => router.push(route)} />

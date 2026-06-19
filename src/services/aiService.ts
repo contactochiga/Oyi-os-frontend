@@ -31,6 +31,7 @@ export type AiChatResponse = {
   intent?: string;
   understood?: string;
   execution?: Record<string, any>;
+  display_mode?: "conversation" | "list" | "detail" | "audit" | "report" | "awareness";
   confidence?: number;
 
   panel?: string | null;
@@ -57,6 +58,7 @@ function normalize(resp: any): AiChatResponse {
     intent: resp?.intent || "info",
     understood: resp?.understood ? String(resp.understood) : undefined,
     execution: resp?.execution && typeof resp.execution === "object" ? resp.execution : undefined,
+    display_mode: resp?.display_mode,
     confidence:
       typeof resp?.confidence === "number"
         ? Math.max(0, Math.min(1, resp.confidence))

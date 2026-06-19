@@ -43,7 +43,8 @@ function devSub(d: any) {
     .join(" • ");
 }
 
-function MiniStructuredCards({ cards }: { cards?: Array<Record<string, any>> }) {
+function MiniStructuredCards({ cards, displayMode }: { cards?: Array<Record<string, any>>; displayMode?: string }) {
+  if (!["list", "detail", "audit", "report", "awareness"].includes(String(displayMode || "conversation"))) return null;
   const visibleCards = (cards || []).filter((card) => !["capability", "capability_registry"].includes(String(card?.type || "")));
   if (!visibleCards.length) return null;
   return (
@@ -333,7 +334,7 @@ export default function AiConsoleSheet(props: {
                               {m.content}
                               {m.role === "assistant" ? (
                                 <>
-                                  <MiniStructuredCards cards={m.cards} />
+                                  <MiniStructuredCards cards={m.cards} displayMode={m.display_mode} />
                                   <MiniOperatingStatus execution={m.execution} />
                                   <MiniSources sources={m.sources} />
                                   <MiniSuggestedActions actions={m.suggested_actions} onOpen={(route) => router.push(route)} />

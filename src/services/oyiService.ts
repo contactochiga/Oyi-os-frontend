@@ -35,6 +35,7 @@ export type OyiChatResponse = {
   intent?: string;
   understood?: string;
   execution?: Record<string, any>;
+  display_mode?: "conversation" | "list" | "detail" | "audit" | "report" | "awareness";
   cards?: Array<Record<string, any>>;
   sources?: Array<Record<string, any>>;
   suggested_actions?: Array<Record<string, any>>;
