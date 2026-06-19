@@ -29,6 +29,11 @@ type Suggestion = { label: string; prompt?: string; href?: string; tone?: "blue"
 type VoiceMode = "idle" | "recording" | "conversation";
 type VoiceStatus = "Listening" | "Thinking" | "Speaking" | "Done" | "Failed";
 type Conversation = { id: string; title: string; updatedAt: number; messages: AiMessage[]; backendThreadId?: string | null };
+const SUPPORT_DISPLAY_MODES = new Set(["list", "detail", "audit", "report", "awareness"]);
+
+function shouldRenderSupport(displayMode?: string) {
+  return SUPPORT_DISPLAY_MODES.has(String(displayMode || "conversation"));
+}
 
 const DEFAULT_SUGGESTIONS: Suggestion[] = [
   { label: "What can you do?", prompt: "What can you do?", tone: "blue" },
@@ -355,6 +360,18 @@ export default function OyiAiCommandCenter() {
   const inputWake = input.toLowerCase().includes("oyi") || transcript.toLowerCase().includes("oyi");
   const orbState = voiceConversation || recording ? "listening" : busy ? "thinking" : voiceStatus === "Failed" ? "failed" : "idle";
   const composerReserve = `calc(${composerHeight + 24}px + var(--sab) + var(--kb))`;
+
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "development") return;
+    messages.filter((message) => message.role === "assistant" && !message.pending).forEach((message) => {
+      const support = shouldRenderSupport(message.display_mode);
+      console.debug("[oyi-chat-render]", {
+        display_mode: message.display_mode || "conversation",
+        cards_rendered: support && Boolean(message.cards?.length),
+        support_panels_rendered: support,
+      });
+    });
+  }, [messages]);
 
   useEffect(() => {
     setUsage(loadJson<Record<string, number>>(USAGE_KEY, {}));
@@ -738,7 +755,7 @@ export default function OyiAiCommandCenter() {
                       <div className="whitespace-pre-line">{message.pending ? <span className="inline-flex items-center gap-2"><Spinner /> {message.content}</span> : message.content}</div>
                       {!message.pending && message.role === "assistant" ? (
                         <>
-                          {["list", "detail", "audit", "report", "awareness"].includes(String(message.display_mode || "conversation")) ? <>
+                          {shouldRenderSupport(message.display_mode) ? <>
                             <StructuredCards cards={message.cards} />
                             <OperatingStatus execution={message.execution} />
                             <SourceLabels sources={message.sources} />
@@ -746,8 +763,8 @@ export default function OyiAiCommandCenter() {
                           </> : null}
                         </>
                       ) : null}
-                      {message.confirmations?.length ? message.confirmations.map((confirmation, index) => <ConfirmationCard key={String(confirmation?.ledger_id || confirmation?.id || index)} confirmation={confirmation} disabled={busy} onDecision={decideConfirmation} />) : null}
-                      {message.role === "assistant" && !message.pending ? (
+                      {shouldRenderSupport(message.display_mode) && message.confirmations?.length ? message.confirmations.map((confirmation, index) => <ConfirmationCard key={String(confirmation?.ledger_id || confirmation?.id || index)} confirmation={confirmation} disabled={busy} onDecision={decideConfirmation} />) : null}
+                      {message.role === "assistant" && !message.pending && shouldRenderSupport(message.display_mode) ? (
                         <div className="mt-2.5 flex items-center gap-1.5 border-t border-white/[0.055] pt-2">
                           <button type="button" onClick={() => void copyResponse(message.content)} className="grid h-7 w-7 place-items-center rounded-full text-white/30 transition hover:bg-white/[0.055] hover:text-white/72 active:scale-95" aria-label="Copy Oyi response"><Copy className="h-3.5 w-3.5" /></button>
                           <button type="button" onClick={() => speakResponse(message.content)} className="grid h-7 w-7 place-items-center rounded-full text-white/30 transition hover:bg-white/[0.055] hover:text-white/72 active:scale-95" aria-label="Listen to Oyi response"><Volume2 className="h-3.5 w-3.5" /></button>

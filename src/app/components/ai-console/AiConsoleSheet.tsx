@@ -13,6 +13,11 @@ import DeviceDiscoveryPanel from "@/app/components/remotes/DeviceDiscoveryPanel"
 
 import type { ChatMessage } from "./types";
 
+const SUPPORT_DISPLAY_MODES = new Set(["list", "detail", "audit", "report", "awareness"]);
+function shouldRenderSupport(displayMode?: string) {
+  return SUPPORT_DISPLAY_MODES.has(String(displayMode || "conversation"));
+}
+
 function devKey(d: any) {
   return String(
     d?.id ||
@@ -185,6 +190,14 @@ export default function AiConsoleSheet(props: {
   }, [open]);
 
   useEffect(() => {
+    if (process.env.NODE_ENV !== "development") return;
+    messages.filter((message) => message.role === "assistant" && !message.pending).forEach((message) => {
+      const support = shouldRenderSupport(message.display_mode);
+      console.debug("[oyi-chat-render]", { display_mode: message.display_mode || "conversation", cards_rendered: support && Boolean(message.cards?.length), support_panels_rendered: support });
+    });
+  }, [messages]);
+
+  useEffect(() => {
     if (!open) {
       if (typeof window !== "undefined") window.speechSynthesis?.cancel();
       return;
@@ -267,10 +280,7 @@ export default function AiConsoleSheet(props: {
                   </div>
                 </div>
 
-                {/* SUGGESTIONS */}
-                <div className="px-4 pt-3">
-                  <DynamicSuggestionCard onSend={(t) => onSend(t)} />
-                </div>
+                {!messages.length ? <div className="px-4 pt-3"><DynamicSuggestionCard onSend={(t) => onSend(t)} /></div> : null}
 
                 {/* MESSAGES */}
                 <div
@@ -334,7 +344,7 @@ export default function AiConsoleSheet(props: {
                               {m.content}
                               {m.role === "assistant" ? (
                                 <>
-                                  {["list", "detail", "audit", "report", "awareness"].includes(String(m.display_mode || "conversation")) ? <>
+                                  {shouldRenderSupport(m.display_mode) ? <>
                                     <MiniStructuredCards cards={m.cards} displayMode={m.display_mode} />
                                     <MiniOperatingStatus execution={m.execution} />
                                     <MiniSources sources={m.sources} />
@@ -346,7 +356,7 @@ export default function AiConsoleSheet(props: {
                           )}
 
                           {/* PANEL SLOT */}
-                          {!m.pending && m.panel && (
+                          {!m.pending && m.panel && shouldRenderSupport(m.display_mode) && (
                             <div className="mt-3">
                               {m.panel === "devices" ? (
                                 <div className="space-y-3">
