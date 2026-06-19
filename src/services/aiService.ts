@@ -1,5 +1,6 @@
 // src/services/aiService.ts
 import API from "./api";
+import { oyiService } from "./oyiService";
 
 export type AiAction =
   | {
@@ -39,6 +40,7 @@ export type AiChatResponse = {
   cards?: Array<Record<string, any>>;
   sources?: Array<Record<string, any>>;
   suggested_actions?: Array<Record<string, any>>;
+  thread_id?: string;
   safe_mode?: boolean;
 
   requiresConfirmation?: boolean;
@@ -65,6 +67,7 @@ function normalize(resp: any): AiChatResponse {
     cards: Array.isArray(resp?.cards) ? resp.cards : [],
     sources: Array.isArray(resp?.sources) ? resp.sources : [],
     suggested_actions: Array.isArray(resp?.suggested_actions) ? resp.suggested_actions : Array.isArray(resp?.suggestedActions) ? resp.suggestedActions : [],
+    thread_id: resp?.thread_id ? String(resp.thread_id) : undefined,
     safe_mode: Boolean(resp?.safe_mode),
 
     requiresConfirmation: Boolean(resp?.requiresConfirmation || (Array.isArray(resp?.confirmations) && resp.confirmations.length)),
@@ -73,6 +76,21 @@ function normalize(resp: any): AiChatResponse {
 
 export const aiService = {
   async chat(message: string, context?: Record<string, any>): Promise<AiChatResponse> {
+    try {
+      const unified = await oyiService.chat({
+        surface: (context?.surface as any) || "consumer",
+        estate_id: context?.estate_id || context?.estateId || null,
+        home_id: context?.home_id || context?.homeId || null,
+        module: context?.module || null,
+        role: context?.role || null,
+        thread_id: context?.thread_id || context?.threadId || null,
+        message,
+      });
+      return normalize({ ...unified, reply: unified.reply || unified.message });
+    } catch {
+      // Keep the legacy action-capable route alive as a compatibility fallback.
+    }
+
     try {
       const res = await API.post("/ai/chat", { message, context });
       return normalize(res.data);

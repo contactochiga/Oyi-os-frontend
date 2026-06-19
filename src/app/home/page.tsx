@@ -47,6 +47,7 @@ import messagesService from "@/services/messagesService";
 import { describeOyiWatchStatus, getOyiWatchSyncStatus } from "@/services/watchSyncService";
 import { sceneService, type ConsumerScene } from "@/services/sceneService";
 import { intelligenceService, type IntelligenceMetricSummary } from "@/services/intelligenceService";
+import { oyiService, type OyiAwareness } from "@/services/oyiService";
 import useActiveContext, { type AvailableHomeContext } from "@/hooks/useActiveContext";
 import useAuth from "../../hooks/useAuth";
 
@@ -184,6 +185,7 @@ export default function HomePage() {
   const [messageUnread, setMessageUnread] = useState<number | null>(null);
   const [watchLabel, setWatchLabel] = useState("Unavailable");
   const [intelligenceMetrics, setIntelligenceMetrics] = useState<IntelligenceMetricSummary | null>(null);
+  const [backendAwareness, setBackendAwareness] = useState<OyiAwareness | null>(null);
   const [contextOpen, setContextOpen] = useState(false);
   const [contextSwitching, setContextSwitching] = useState(false);
   const [contextError, setContextError] = useState<string | null>(null);
@@ -220,7 +222,7 @@ export default function HomePage() {
     setDashBusy(true);
     setDashErr(null);
     try {
-      const [visitorRes, communityRes, maintenanceRes, notificationRes, walletRes, messagesRes, watchRes, scenesRes, intelligenceRes] =
+      const [visitorRes, communityRes, maintenanceRes, notificationRes, walletRes, messagesRes, watchRes, scenesRes, intelligenceRes, awarenessRes] =
         await Promise.allSettled([
           visitorService.listMine(),
           estateId ? communityService.listByEstate(estateId) : Promise.resolve([]),
@@ -231,6 +233,7 @@ export default function HomePage() {
           getOyiWatchSyncStatus().catch(() => null),
           sceneService.listScenes(),
           intelligenceService.summary("consumer").catch(() => null),
+          oyiService.awareness({ surface: "consumer", estate_id: estateId, home_id: homeId }).catch(() => null),
         ]);
 
       if (visitorRes.status === "fulfilled") setVisitors(asArray<VisitorAccess>(visitorRes.value));
@@ -257,6 +260,7 @@ export default function HomePage() {
       }
       if (scenesRes.status === "fulfilled") setScenes(scenesRes.value);
       if (intelligenceRes.status === "fulfilled" && intelligenceRes.value) setIntelligenceMetrics(intelligenceRes.value.metrics);
+      if (awarenessRes.status === "fulfilled" && awarenessRes.value?.headline) setBackendAwareness(awarenessRes.value);
     } catch (err: any) {
       setDashErr(err?.message || "Home context sync unavailable");
     } finally {
@@ -287,6 +291,7 @@ export default function HomePage() {
       setNotifications([]);
       setScenes([]);
       setIntelligenceMetrics(null);
+      setBackendAwareness(null);
       return;
     }
     refreshDevicePanelData();
@@ -473,6 +478,13 @@ export default function HomePage() {
     return "Review recent activity";
   })();
   const homeAwareness = (() => {
+    if (backendAwareness?.headline) {
+      return {
+        primary: backendAwareness.headline,
+        secondary: backendAwareness.body ? `${backendAwareness.body} →` : "View details →",
+        href: backendAwareness.destination || "/activity",
+      };
+    }
     if (dashErr) return { primary: "Home status is available.", secondary: "Open Activity →", href: "/activity" };
     if (securityAlerts) return { primary: "Security event detected.", secondary: "Review security update →", href: "/activity?filter=attention" };
     if (pendingVisitors) return { primary: "Visitor awaiting approval.", secondary: "Review visitor access →", href: "/visitors" };

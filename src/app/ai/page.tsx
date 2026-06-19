@@ -225,6 +225,7 @@ export default function OyiAiCommandCenter() {
   const [usage, setUsage] = useState<Record<string, number>>({});
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [conversationId, setConversationId] = useState(createId);
+  const [backendThreadId, setBackendThreadId] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [voiceMode, setVoiceMode] = useState<VoiceMode>("idle");
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>("Listening");
@@ -244,7 +245,13 @@ export default function OyiAiCommandCenter() {
   const [composerHeight, setComposerHeight] = useState(132);
 
   const context = useMemo(
-    () => ({ surface: "consumer", scope: "home", estateId: (user as any)?.estate_id || null, homeId: (user as any)?.home_id || null }),
+    () => ({
+      surface: "consumer",
+      scope: "home",
+      module: "ai",
+      estate_id: (user as any)?.estate_id || null,
+      home_id: (user as any)?.home_id || null,
+    }),
     [user],
   );
 
@@ -352,7 +359,8 @@ export default function OyiAiCommandCenter() {
     setMessages(baseMessages);
 
     try {
-      const resp = await aiService.chat(command, context);
+      const resp = await aiService.chat(command, { ...context, thread_id: backendThreadId || undefined });
+      if (resp.thread_id) setBackendThreadId(resp.thread_id);
       const content = replyFromResponse(resp) || "Done.";
       const state = responseState(resp);
       if (state === "success") remember(options?.usageLabel || command);
