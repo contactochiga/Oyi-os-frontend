@@ -479,9 +479,10 @@ export default function HomePage() {
   })();
   const homeAwareness = (() => {
     if (backendAwareness?.headline) {
+      const secondary = backendAwareness.summary || backendAwareness.body || backendAwareness.recommended_action;
       return {
         primary: backendAwareness.headline,
-        secondary: backendAwareness.body ? `${backendAwareness.body} →` : "View details →",
+        secondary: secondary ? `${secondary} →` : "View details →",
         href: backendAwareness.destination || "/activity",
       };
     }
