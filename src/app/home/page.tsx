@@ -651,7 +651,7 @@ export default function HomePage() {
 
               <button
                 type="button"
-                onClick={() => router.push("/ai")}
+                onClick={() => router.push("/ai?module=home")}
                 aria-label="Open Oyi intelligence"
                 className="group relative mx-auto mt-6 grid h-[166px] w-[166px] place-items-center rounded-full transition active:scale-[0.985] sm:h-[182px] sm:w-[182px]"
               >

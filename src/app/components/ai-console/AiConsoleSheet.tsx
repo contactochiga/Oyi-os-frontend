@@ -303,7 +303,7 @@ export default function AiConsoleSheet(props: {
                             : "justify-start"
                         }`}
                       >
-                        <div className="max-w-[86%]">
+                        <div className="max-w-[94%] overflow-hidden sm:max-w-[86%]">
                           {/* TYPING STATE */}
                           {m.pending ? (
                             <motion.div
@@ -317,7 +317,7 @@ export default function AiConsoleSheet(props: {
                               initial={{ opacity: 0, y: 8 }}
                               animate={{ opacity: 1, y: 0 }}
                               transition={{ duration: 0.25 }}
-                              className="px-4 py-2 rounded-2xl border border-white/10"
+                              className="rounded-2xl border border-white/10 px-4 py-2 leading-6"
                               style={
                                 m.role === "user"
                                   ? {
@@ -341,7 +341,7 @@ export default function AiConsoleSheet(props: {
                                     }
                               }
                             >
-                              {m.content}
+                              <div className="whitespace-pre-wrap break-words">{m.content}</div>
                               {m.role === "assistant" ? (
                                 <>
                                   {shouldRenderSupport(m.display_mode) ? <>

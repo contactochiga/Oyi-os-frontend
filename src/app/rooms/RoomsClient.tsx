@@ -304,7 +304,7 @@ export default function RoomsClient() {
               </div>
               <div className="flex items-center gap-2">
                 <MessagesInboxButton />
-                <button type="button" onClick={() => router.push("/ai")} className="hidden h-11 w-11 place-items-center rounded-full border border-sky-300/25 bg-sky-400/10 text-sky-200 shadow-[0_0_22px_rgba(56,189,248,0.16)] sm:grid" aria-label="Open Oyi AI">
+                <button type="button" onClick={() => router.push("/ai?module=rooms")} className="hidden h-11 w-11 place-items-center rounded-full border border-sky-300/25 bg-sky-400/10 text-sky-200 shadow-[0_0_22px_rgba(56,189,248,0.16)] sm:grid" aria-label="Open Oyi AI">
                   <Waves className="h-5 w-5" />
                 </button>
               </div>

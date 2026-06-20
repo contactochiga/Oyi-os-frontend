@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, ArrowUp, Check, Clock3, Copy, History, Mic, Plus, Square, ThumbsUp, Volume2, X } from "lucide-react";
 
 import LayoutWrapper from "@/app/components/LayoutWrapper";
@@ -147,7 +147,6 @@ function messageFromThread(row: OyiThreadMessage): AiMessage {
 
 function groupConversationTime(timestamp: number) {
   const now = new Date();
-  const date = new Date(timestamp);
   const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const startYesterday = startToday - 24 * 60 * 60 * 1000;
   if (timestamp >= startToday) return "Today";
@@ -305,8 +304,10 @@ function ConfirmationCard({ confirmation, onDecision, disabled }: { confirmation
   );
 }
 
-export default function OyiAiCommandCenter() {
+function OyiAiCommandCenterContent() {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { user } = useAuth() as any;
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -332,16 +333,18 @@ export default function OyiAiCommandCenter() {
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const [audioLevels, setAudioLevels] = useState<number[]>(Array.from({ length: 28 }, () => 0.2));
   const [composerHeight, setComposerHeight] = useState(132);
+  const moduleContext = searchParams.get("module") || "ai";
 
   const context = useMemo(
     () => ({
       surface: "consumer",
       scope: "home",
-      module: "ai",
+      module: moduleContext,
+      route: pathname || "/ai",
       estate_id: (user as any)?.estate_id || null,
       home_id: (user as any)?.home_id || null,
     }),
-    [user],
+    [user, moduleContext, pathname],
   );
 
   const suggestions = useMemo(() => {
@@ -759,8 +762,8 @@ export default function OyiAiCommandCenter() {
               <div className="space-y-4 pt-4">
                 {messages.map((message) => (
                   <div key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-                    <div className={`max-w-[84%] rounded-[24px] px-4 py-3 text-sm leading-5 shadow-[0_16px_42px_rgba(0,0,0,0.24)] ${message.role === "user" ? "rounded-br-[8px] bg-white text-black" : "rounded-bl-[8px] border border-white/[0.07] bg-white/[0.045] text-white/82 backdrop-blur-xl"}`}>
-                      <div className="whitespace-pre-line">{message.pending ? <span className="inline-flex items-center gap-2"><Spinner /> {message.content}</span> : message.content}</div>
+                    <div className={`max-w-[94%] overflow-hidden rounded-[24px] px-4 py-3 text-sm leading-6 shadow-[0_16px_42px_rgba(0,0,0,0.24)] sm:max-w-[86%] ${message.role === "user" ? "rounded-br-[8px] bg-white text-black" : "rounded-bl-[8px] border border-white/[0.07] bg-white/[0.045] text-white/82 backdrop-blur-xl"}`}>
+                      <div className="whitespace-pre-wrap break-words">{message.pending ? <span className="inline-flex items-center gap-2"><Spinner /> {message.content}</span> : message.content}</div>
                       {!message.pending && message.role === "assistant" ? (
                         <>
                           {shouldRenderSupport(message.display_mode) ? <>
@@ -804,7 +807,19 @@ export default function OyiAiCommandCenter() {
             ) : (
               <div className="flex items-center gap-2">
                 <OyiOrb size="small" state={orbState} onClick={() => startVoiceCapture("conversation")} />
-                <input value={input} onChange={(event) => setInput(event.target.value)} placeholder="Message Oyi…" className="h-11 min-w-0 flex-1 bg-transparent px-2 text-[15px] text-white outline-none placeholder:text-white/32" />
+                <textarea
+                  value={input}
+                  onChange={(event) => setInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      void handleSend();
+                    }
+                  }}
+                  rows={1}
+                  placeholder="Message Oyi…"
+                  className="max-h-28 min-h-11 min-w-0 flex-1 resize-none bg-transparent px-2 py-3 text-[15px] leading-5 text-white outline-none placeholder:text-white/32"
+                />
                 {input ? <button type="button" onClick={() => setInput("")} className="grid h-9 w-9 place-items-center rounded-full bg-white/[0.05] text-white/45" aria-label="Clear"><X className="h-4 w-4" /></button> : null}
                 {input.trim() ? (
                   <button type="submit" disabled={busy} className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white text-black transition active:scale-95 disabled:bg-white/20 disabled:text-white/35" aria-label="Send">
@@ -851,5 +866,13 @@ export default function OyiAiCommandCenter() {
         ) : null}
       </main>
     </LayoutWrapper>
+  );
+}
+
+export default function OyiAiCommandCenter() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#02060b]" />}>
+      <OyiAiCommandCenterContent />
+    </Suspense>
   );
 }
