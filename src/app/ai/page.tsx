@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowUp, Check, Clock3, Copy, Mic, Square, ThumbsUp, Volume2, X } from "lucide-react";
+import { ArrowLeft, ArrowUp, Check, Clock3, Copy, History, Mic, Plus, Square, ThumbsUp, Volume2, X } from "lucide-react";
 
 import LayoutWrapper from "@/app/components/LayoutWrapper";
 import useAuth from "@/hooks/useAuth";
@@ -700,6 +700,13 @@ export default function OyiAiCommandCenter() {
     setHistoryOpen(false);
   }
 
+  function startNewConversation() {
+    setConversationId(createId());
+    setBackendThreadId(null);
+    setMessages([]);
+    setHistoryOpen(false);
+  }
+
   const groupedConversations = ["Today", "Yesterday", "Earlier"].map((group) => ({ group, items: conversations.filter((item) => groupConversationTime(item.updatedAt) === group) })).filter((section) => section.items.length);
 
   return (
@@ -713,9 +720,10 @@ export default function OyiAiCommandCenter() {
             <button type="button" onClick={() => (window.history.length > 1 ? router.back() : router.push("/home"))} className="inline-flex h-10 items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.035] px-3.5 text-sm text-white/72 backdrop-blur-2xl transition active:scale-95" aria-label="Back">
               <ArrowLeft className="h-[18px] w-[18px]" /> Back
             </button>
-            <button type="button" onClick={() => setHistoryOpen(true)} className="inline-flex h-10 items-center gap-2 rounded-full border border-sky-300/14 bg-sky-300/[0.055] px-3.5 text-xs font-medium text-sky-50/82 shadow-[0_0_24px_rgba(56,189,248,0.14)]">
-              <Clock3 className="h-3.5 w-3.5" /> Recent Conversations
-            </button>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => setHistoryOpen(true)} className="grid h-10 w-10 place-items-center rounded-full border border-sky-300/14 bg-sky-300/[0.055] text-sky-50/82 shadow-[0_0_24px_rgba(56,189,248,0.14)] transition active:scale-95" aria-label="Conversation history"><History className="h-4 w-4" /></button>
+              <button type="button" onClick={startNewConversation} className="grid h-10 w-10 place-items-center rounded-full border border-white/[0.09] bg-white/[0.045] text-white/78 transition active:scale-95" aria-label="New chat"><Plus className="h-4 w-4" /></button>
+            </div>
           </div>
           <div className="mt-4 text-center">
             <div className="text-[18px] font-semibold tracking-[-0.04em]">Oyi</div>
@@ -764,7 +772,7 @@ export default function OyiAiCommandCenter() {
                         </>
                       ) : null}
                       {shouldRenderSupport(message.display_mode) && message.confirmations?.length ? message.confirmations.map((confirmation, index) => <ConfirmationCard key={String(confirmation?.ledger_id || confirmation?.id || index)} confirmation={confirmation} disabled={busy} onDecision={decideConfirmation} />) : null}
-                      {message.role === "assistant" && !message.pending && shouldRenderSupport(message.display_mode) ? (
+                      {message.role === "assistant" && !message.pending ? (
                         <div className="mt-2.5 flex items-center gap-1.5 border-t border-white/[0.055] pt-2">
                           <button type="button" onClick={() => void copyResponse(message.content)} className="grid h-7 w-7 place-items-center rounded-full text-white/30 transition hover:bg-white/[0.055] hover:text-white/72 active:scale-95" aria-label="Copy Oyi response"><Copy className="h-3.5 w-3.5" /></button>
                           <button type="button" onClick={() => speakResponse(message.content)} className="grid h-7 w-7 place-items-center rounded-full text-white/30 transition hover:bg-white/[0.055] hover:text-white/72 active:scale-95" aria-label="Listen to Oyi response"><Volume2 className="h-3.5 w-3.5" /></button>
