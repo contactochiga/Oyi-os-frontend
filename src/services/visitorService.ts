@@ -48,12 +48,13 @@ export type CreateVisitorResponse = {
 };
 
 function pickError(err: any, fallback: string) {
-  return (
-    err?.response?.data?.error ||
-    err?.response?.data?.message ||
-    err?.message ||
-    fallback
-  );
+  const status = Number(err?.response?.status || 0);
+  const message = String(err?.response?.data?.error || err?.response?.data?.message || err?.message || "").trim();
+  if (status === 401) return "Your session has expired. Please sign in again.";
+  if (status === 403) return "You do not have access to this visitor operation.";
+  if (status === 404) return "That visitor record is no longer available.";
+  if (/supabase|postgres|database|relation|column|schema|jwt|sql/i.test(message)) return fallback;
+  return message && message.length < 180 ? message : fallback;
 }
 
 export const visitorService = {
