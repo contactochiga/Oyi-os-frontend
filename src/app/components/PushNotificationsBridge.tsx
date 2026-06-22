@@ -136,14 +136,14 @@ export default function PushNotificationsBridge() {
         listeners.push(await PushNotifications.addListener("pushNotificationReceived", (notification: any) => {
           if (unmounted) return;
           const payload = notification?.data || {};
-          if (payload?.id) upsert(payload);
+          if (payload?.id) upsert({ ...payload, routing: payload.routing || undefined });
           void presentForegroundNotification(notification);
         }));
 
         listeners.push(await PushNotifications.addListener("pushNotificationActionPerformed", (action: any) => {
           if (unmounted) return;
           const payload = action?.notification?.data || {};
-          if (payload?.id) upsert(payload);
+          if (payload?.id) upsert({ ...payload, routing: payload.routing || undefined });
         }));
 
         updateStatus("push-registration-started");

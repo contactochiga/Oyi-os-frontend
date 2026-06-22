@@ -2,6 +2,17 @@ import API from "./api";
 
 export type NotificationStatus = "unread" | "read";
 
+export type NotificationRouting = {
+  source_type: string;
+  source_id: string | null;
+  destination: "page" | "drawer" | "queue" | "attention" | "external" | "none";
+  target: { target_type: string; target_id?: string | null; infrastructure_source?: string; open_as: string; action?: string } | null;
+  actionability: string;
+  attention_eligible: boolean;
+  queue_eligible: boolean;
+  acknowledgement_required: boolean;
+};
+
 export type AppNotification = {
   id: string;
   user_id: string;
@@ -12,6 +23,7 @@ export type AppNotification = {
   status: NotificationStatus;
   created_at: string;
   updated_at?: string;
+  routing?: NotificationRouting;
 };
 
 function pickError(err: any, fallback: string) {
