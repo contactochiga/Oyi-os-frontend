@@ -1,5 +1,6 @@
 /* src/app/globals.css */
 @import "tailwindcss";
+@import "./styles/ois-tokens.css";
 
 /* -------------------------------------------------
    Base reset & mobile-safe defaults
@@ -35,12 +36,12 @@ body {
 -------------------------------------------------- */
 
 :root {
-  --sat: env(safe-area-inset-top, constant(safe-area-inset-top, 0px));
+  --sat: var(--ois-safe-top, env(safe-area-inset-top, constant(safe-area-inset-top, 0px)));
   --sar: env(safe-area-inset-right, constant(safe-area-inset-right, 0px));
-  --sab: env(safe-area-inset-bottom, constant(safe-area-inset-bottom, 0px));
+  --sab: var(--ois-safe-bottom, env(safe-area-inset-bottom, constant(safe-area-inset-bottom, 0px)));
   --sal: env(safe-area-inset-left, constant(safe-area-inset-left, 0px));
 
-  --kb: 0px;
+  --kb: var(--ois-keyboard-offset, 0px);
 
   /* Brand */
   --brand: #2563eb;

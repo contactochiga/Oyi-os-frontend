@@ -1,0 +1,129 @@
+/* OIS v1 token foundation. Existing page styles remain the active visual system. */
+:root {
+  --ois-canvas: #02060b;
+  --ois-canvas-raised: #06101a;
+  --ois-canvas-overlay: rgba(2, 6, 11, 0.88);
+
+  --ois-surface: rgba(255, 255, 255, 0.035);
+  --ois-surface-raised: rgba(255, 255, 255, 0.052);
+  --ois-surface-pressed: rgba(255, 255, 255, 0.075);
+  --ois-surface-evidence: rgba(0, 0, 0, 0.20);
+
+  --ois-border-subtle: rgba(255, 255, 255, 0.08);
+  --ois-border-default: rgba(255, 255, 255, 0.10);
+  --ois-border-strong: rgba(255, 255, 255, 0.14);
+
+  --ois-text-primary: rgba(255, 255, 255, 0.92);
+  --ois-text-secondary: rgba(255, 255, 255, 0.70);
+  --ois-text-muted: rgba(255, 255, 255, 0.46);
+  --ois-text-faint: rgba(255, 255, 255, 0.32);
+
+  --ois-primary: #38bdf8;
+  --ois-primary-strong: #2563eb;
+  --ois-primary-soft: rgba(56, 189, 248, 0.12);
+  --ois-oyi-glow: rgba(74, 168, 255, 0.18);
+
+  --ois-status-stable: #34d399;
+  --ois-status-stable-surface: rgba(52, 211, 153, 0.10);
+  --ois-status-stable-border: rgba(52, 211, 153, 0.20);
+  --ois-status-attention: #7dd3fc;
+  --ois-status-attention-surface: rgba(125, 211, 252, 0.10);
+  --ois-status-attention-border: rgba(125, 211, 252, 0.20);
+  --ois-status-warning: #fbbf24;
+  --ois-status-warning-surface: rgba(251, 191, 36, 0.10);
+  --ois-status-warning-border: rgba(251, 191, 36, 0.20);
+  --ois-status-critical: #f87171;
+  --ois-status-critical-surface: rgba(248, 113, 113, 0.10);
+  --ois-status-critical-border: rgba(248, 113, 113, 0.20);
+  --ois-status-unavailable: #a1a1aa;
+  --ois-status-unavailable-surface: rgba(161, 161, 170, 0.10);
+  --ois-status-unavailable-border: rgba(161, 161, 170, 0.20);
+  --ois-status-verified: #34d399;
+  --ois-status-verified-surface: rgba(52, 211, 153, 0.10);
+  --ois-status-verified-border: rgba(52, 211, 153, 0.20);
+  --ois-status-failed: #f87171;
+  --ois-status-failed-surface: rgba(248, 113, 113, 0.10);
+  --ois-status-failed-border: rgba(248, 113, 113, 0.20);
+  --ois-status-escalated: #fb7185;
+  --ois-status-escalated-surface: rgba(251, 113, 133, 0.10);
+  --ois-status-escalated-border: rgba(251, 113, 133, 0.20);
+  --ois-status-blocked: #fbbf24;
+  --ois-status-blocked-surface: rgba(251, 191, 36, 0.10);
+  --ois-status-blocked-border: rgba(251, 191, 36, 0.20);
+  --ois-status-overdue: #fb923c;
+  --ois-status-overdue-surface: rgba(251, 146, 60, 0.10);
+  --ois-status-overdue-border: rgba(251, 146, 60, 0.20);
+  --ois-status-completed: #7dd3fc;
+  --ois-status-completed-surface: rgba(125, 211, 252, 0.10);
+  --ois-status-completed-border: rgba(125, 211, 252, 0.20);
+
+  --ois-space-1: 4px;
+  --ois-space-2: 8px;
+  --ois-space-3: 12px;
+  --ois-space-4: 16px;
+  --ois-space-5: 20px;
+  --ois-space-6: 24px;
+  --ois-space-8: 32px;
+  --ois-space-10: 40px;
+
+  --ois-radius-control: 12px;
+  --ois-radius-row: 16px;
+  --ois-radius-card: 20px;
+  --ois-radius-hero: 24px;
+  --ois-radius-nav: 28px;
+  --ois-radius-pill: 999px;
+
+  --ois-elevation-card: 0 12px 38px rgba(0, 0, 0, 0.28);
+  --ois-elevation-raised: 0 16px 54px rgba(0, 0, 0, 0.36);
+  --ois-elevation-overlay: 0 24px 80px rgba(0, 0, 0, 0.55);
+  --ois-elevation-oyi: 0 16px 58px rgba(0, 0, 0, 0.42), 0 0 38px var(--ois-oyi-glow);
+
+  --ois-font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --ois-type-display: 2rem;
+  --ois-type-page-title: 1.75rem;
+  --ois-type-section-title: 1.125rem;
+  --ois-type-card-title: 0.875rem;
+  --ois-type-body: 0.875rem;
+  --ois-type-body-small: 0.8125rem;
+  --ois-type-meta: 0.75rem;
+  --ois-type-label: 0.6875rem;
+  --ois-type-eyebrow: 0.625rem;
+  --ois-line-display: 2.25rem;
+  --ois-line-page-title: 2rem;
+  --ois-line-section-title: 1.5rem;
+  --ois-line-card-title: 1.25rem;
+  --ois-line-body: 1.25rem;
+  --ois-line-body-small: 1.125rem;
+  --ois-line-meta: 1rem;
+  --ois-line-label: 0.875rem;
+  --ois-line-eyebrow: 0.875rem;
+
+  --ois-motion-fast: 140ms;
+  --ois-motion-standard: 200ms;
+  --ois-motion-drawer: 260ms;
+  --ois-motion-page: 320ms;
+  --ois-ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ois-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --ois-safe-top: env(safe-area-inset-top, 0px);
+  --ois-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --ois-keyboard-offset: 0px;
+}
+
+.ois-surface { border: 1px solid var(--ois-border-default); background: var(--ois-surface); }
+.ois-surface-raised { border: 1px solid var(--ois-border-default); background: var(--ois-surface-raised); box-shadow: var(--ois-elevation-card); }
+.ois-evidence-surface { border: 1px solid var(--ois-border-subtle); background: var(--ois-surface-evidence); }
+.ois-border { border-color: var(--ois-border-default); }
+.ois-text-primary { color: var(--ois-text-primary); }
+.ois-text-secondary { color: var(--ois-text-secondary); }
+.ois-text-muted { color: var(--ois-text-muted); }
+.ois-status-stable, .ois-status-attention, .ois-status-warning, .ois-status-critical, .ois-status-unavailable { border: 1px solid; border-radius: var(--ois-radius-pill); }
+.ois-status-stable { color: var(--ois-status-stable); background: var(--ois-status-stable-surface); border-color: var(--ois-status-stable-border); }
+.ois-status-attention { color: var(--ois-status-attention); background: var(--ois-status-attention-surface); border-color: var(--ois-status-attention-border); }
+.ois-status-warning { color: var(--ois-status-warning); background: var(--ois-status-warning-surface); border-color: var(--ois-status-warning-border); }
+.ois-status-critical { color: var(--ois-status-critical); background: var(--ois-status-critical-surface); border-color: var(--ois-status-critical-border); }
+.ois-status-unavailable { color: var(--ois-status-unavailable); background: var(--ois-status-unavailable-surface); border-color: var(--ois-status-unavailable-border); }
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --ois-motion-fast: 0ms; --ois-motion-standard: 0ms; --ois-motion-drawer: 0ms; --ois-motion-page: 0ms; }
+}
