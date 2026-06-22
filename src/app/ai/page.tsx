@@ -6,6 +6,7 @@ import { ArrowLeft, ArrowUp, Check, Clock3, Copy, History, Mic, Plus, Square, Th
 
 import LayoutWrapper from "@/app/components/LayoutWrapper";
 import useAuth from "@/hooks/useAuth";
+import useActiveContext from "@/hooks/useActiveContext";
 import { aiService, type AiChatResponse } from "@/services/aiService";
 import { oyiService, type OyiThreadMessage } from "@/services/oyiService";
 
@@ -309,6 +310,7 @@ function OyiAiCommandCenterContent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { user } = useAuth() as any;
+  const activeContext = useActiveContext();
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [messages, setMessages] = useState<AiMessage[]>([]);
@@ -341,10 +343,10 @@ function OyiAiCommandCenterContent() {
       scope: "home",
       module: moduleContext,
       route: pathname || "/ai",
-      estate_id: (user as any)?.estate_id || null,
-      home_id: (user as any)?.home_id || null,
+      estate_id: activeContext.estate_id || (user as any)?.estate_id || null,
+      home_id: activeContext.home_id || (user as any)?.home_id || null,
     }),
-    [user, moduleContext, pathname],
+    [activeContext.estate_id, activeContext.home_id, moduleContext, pathname, user],
   );
 
   const suggestions = useMemo(() => {

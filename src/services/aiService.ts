@@ -92,6 +92,7 @@ export const aiService = {
         module: context?.module || null,
         role: context?.role || null,
         thread_id: context?.thread_id || context?.threadId || null,
+        context: context?.ois_context || context || null,
         message,
       });
       return normalize({ ...unified, reply: unified.reply || unified.message });

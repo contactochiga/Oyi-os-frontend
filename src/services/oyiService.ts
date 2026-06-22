@@ -2,6 +2,16 @@ import API from "./api";
 
 export type OyiSurface = "consumer" | "facility" | "office" | "watch" | "edge";
 export type OyiSeverity = "normal" | "info" | "attention" | "warning" | "critical";
+export type OisContext = {
+  actor_id: string;
+  surface: OyiSurface;
+  estate_id: string | null;
+  home_id: string | null;
+  module: string | null;
+  role: string;
+  permissions: string[];
+  resolved_at: string;
+};
 
 export type OyiAwareness = {
   headline: string;
@@ -26,6 +36,7 @@ export type OyiChatRequest = {
   role?: string | null;
   message: string;
   thread_id?: string | null;
+  context?: Partial<OisContext> | null;
 };
 
 export type OyiChatResponse = {
@@ -69,8 +80,8 @@ export type OyiThreadMessage = {
 };
 
 export const oyiService = {
-  async awareness(input: { surface?: OyiSurface; estate_id?: string | null; home_id?: string | null }) {
-    const res = await API.get("/oyi/awareness", { params: input });
+  async awareness(input: { surface?: OyiSurface; estate_id?: string | null; home_id?: string | null; context?: OisContext | null }) {
+    const res = await API.get("/oyi/awareness", { params: { surface: input.surface, estate_id: input.context?.estate_id || input.estate_id, home_id: input.context?.home_id || input.home_id } });
     return res.data as OyiAwareness & { ok?: boolean };
   },
 
@@ -79,8 +90,8 @@ export const oyiService = {
     return res.data as OyiChatResponse;
   },
 
-  async listThreads(input: { surface?: OyiSurface; estate_id?: string | null; home_id?: string | null; limit?: number }) {
-    const res = await API.get("/oyi/threads", { params: input });
+  async listThreads(input: { surface?: OyiSurface; estate_id?: string | null; home_id?: string | null; limit?: number; context?: OisContext | null }) {
+    const res = await API.get("/oyi/threads", { params: { surface: input.surface, estate_id: input.context?.estate_id || input.estate_id, home_id: input.context?.home_id || input.home_id, limit: input.limit } });
     return res.data as { ok?: boolean; threads?: OyiThread[] };
   },
 

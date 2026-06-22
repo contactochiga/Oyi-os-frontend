@@ -42,6 +42,15 @@ export type ActiveContextState = {
   available_contexts: AvailableHomeContext[];
 };
 
+type ResolvedContext = {
+  estate_id?: string | null;
+  home_id?: string | null;
+  estate?: EstateContext | null;
+  home?: HomeContext | null;
+  available_estates?: EstateContext[];
+  available_homes?: Array<{ id: string; name?: string | null; block?: string | null; unit?: string | null; estate_id: string; electricity_meter?: string | null; water_meter?: string | null; internet_id?: string | null; gate_code?: string | null }>;
+};
+
 function contextHomeName(ctx: AvailableHomeContext) {
   return (
     String(ctx.home_name || "").trim() ||
@@ -135,14 +144,43 @@ export default function useActiveContext() {
 
     setLoading(true);
     try {
-      const res = await API.get("/me/context");
-      const payload = (res as any)?.data?.data ?? (res as any)?.data ?? {};
+      let resolved: ResolvedContext;
+      try {
+        const res = await API.get("/me/context/resolved", { params: { surface: "consumer" } });
+        const payload = (res as any)?.data?.data ?? (res as any)?.data ?? {};
+        resolved = (payload?.context || payload) as ResolvedContext;
+      } catch (error: any) {
+        // Preserve existing consumer behavior while older deployed backends roll forward.
+        if (Number(error?.response?.status || 0) !== 404) throw error;
+        const legacy = await API.get("/me/context");
+        const payload = (legacy as any)?.data?.data ?? (legacy as any)?.data ?? {};
+        resolved = {
+          estate: payload?.estate ?? null,
+          home: payload?.home ?? null,
+          estate_id: payload?.estate_id ?? payload?.estate?.id ?? null,
+          home_id: payload?.home_id ?? payload?.home?.id ?? null,
+          available_homes: Array.isArray(payload?.available_contexts) ? payload.available_contexts.map((home: any) => ({ id: home.home_id, name: home.home_name, block: home.block, unit: home.unit, estate_id: home.estate_id, electricity_meter: home.electricity_meter, water_meter: home.water_meter, internet_id: home.internet_id, gate_code: home.gate_code })) : [],
+          available_estates: [],
+        };
+      }
       const nextState = applyRememberedContext({
-        estate: payload?.estate ?? null,
-        home: payload?.home ?? null,
-        estate_id: payload?.estate_id ?? payload?.estate?.id ?? null,
-        home_id: payload?.home_id ?? payload?.home?.id ?? null,
-        available_contexts: Array.isArray(payload?.available_contexts) ? payload.available_contexts : [],
+        estate: resolved?.estate ?? null,
+        home: resolved?.home ?? null,
+        estate_id: resolved?.estate_id ?? resolved?.estate?.id ?? null,
+        home_id: resolved?.home_id ?? resolved?.home?.id ?? null,
+        available_contexts: Array.isArray(resolved?.available_homes) ? resolved.available_homes.map((home) => ({
+          estate_id: home.estate_id,
+          estate_name: resolved.available_estates?.find((estate) => estate.id === home.estate_id)?.name || null,
+          home_id: home.id,
+          home_name: home.name || null,
+          block: home.block || null,
+          unit: home.unit || null,
+          electricity_meter: home.electricity_meter || null,
+          water_meter: home.water_meter || null,
+          internet_id: home.internet_id || null,
+          gate_code: home.gate_code || null,
+          is_active: home.id === resolved.home_id,
+        })) : [],
       });
       setContext(nextState);
     } catch {
