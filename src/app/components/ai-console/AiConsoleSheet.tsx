@@ -10,6 +10,7 @@ import DynamicSuggestionCard from "@/app/components/DynamicSuggestionCard";
 import ChatFooter from "@/app/components/ChatFooter";
 import RemotePanelRenderer from "@/app/components/remotes/RemotePanelRenderer";
 import DeviceDiscoveryPanel from "@/app/components/remotes/DeviceDiscoveryPanel";
+import { resolveConsumerOyiTarget } from "@/services/oyiTargetRegistry";
 
 import type { ChatMessage } from "./types";
 
@@ -112,13 +113,13 @@ function MiniSources({ sources }: { sources?: Array<Record<string, any>> }) {
   );
 }
 
-function MiniSuggestedActions({ actions, onOpen }: { actions?: Array<Record<string, any>>; onOpen: (route: string) => void }) {
-  const rows = (actions || []).filter((action) => action?.route && action?.label);
+function MiniSuggestedActions({ actions, onOpen }: { actions?: Array<Record<string, any>>; onOpen: (action: Record<string, any>) => void }) {
+  const rows = (actions || []).filter((action) => action?.label && (action?.route || action?.target?.target_type));
   if (!rows.length) return null;
   return (
     <div className="mt-2 flex flex-wrap gap-1.5">
       {rows.slice(0, 4).map((action, index) => (
-        <button key={`${action.route}-${index}`} type="button" onClick={() => onOpen(String(action.route))} className="rounded-full border border-cyan-200/15 bg-cyan-400/[0.07] px-2.5 py-1.5 text-[10px] font-medium text-cyan-100/84 transition active:scale-95">
+        <button key={`${action.route || action.label}-${index}`} type="button" onClick={() => onOpen(action)} className="rounded-full border border-cyan-200/15 bg-cyan-400/[0.07] px-2.5 py-1.5 text-[10px] font-medium text-cyan-100/84 transition active:scale-95">
           {action.label}
         </button>
       ))}
@@ -348,7 +349,13 @@ export default function AiConsoleSheet(props: {
                                     <MiniStructuredCards cards={m.cards} displayMode={m.display_mode} />
                                     <MiniOperatingStatus execution={m.execution} />
                                     <MiniSources sources={m.sources} />
-                                    <MiniSuggestedActions actions={m.suggested_actions} onOpen={(route) => router.push(route)} />
+                                    <MiniSuggestedActions
+                                      actions={m.suggested_actions}
+                                      onOpen={(action) => {
+                                        const result = resolveConsumerOyiTarget(action.target, router);
+                                        if (!result.handled && action.route) router.push(String(action.route));
+                                      }}
+                                    />
                                   </> : null}
                                 </>
                               ) : null}

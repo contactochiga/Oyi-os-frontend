@@ -9,6 +9,8 @@ import useAuth from "@/hooks/useAuth";
 import useActiveContext from "@/hooks/useActiveContext";
 import { aiService, type AiChatResponse } from "@/services/aiService";
 import { oyiService, type OyiThreadMessage } from "@/services/oyiService";
+import { resolveConsumerOyiTarget } from "@/services/oyiTargetRegistry";
+import type { OyiTarget } from "@/services/oyiService";
 
 type AiMessage = {
   id: string;
@@ -163,7 +165,7 @@ function Spinner() {
   return <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border border-white/18 border-t-sky-200 align-[-2px]" />;
 }
 
-function StructuredCards({ cards }: { cards?: Array<Record<string, any>> }) {
+function StructuredCards({ cards, onTarget }: { cards?: Array<Record<string, any>>; onTarget: (target: OyiTarget | null | undefined) => boolean }) {
   const visibleCards = (cards || []).filter((card) => !["capability", "capability_registry"].includes(String(card?.type || "")));
   if (!visibleCards.length) return null;
   return (
@@ -178,10 +180,10 @@ function StructuredCards({ cards }: { cards?: Array<Record<string, any>> }) {
             {items.length ? (
               <div className="mt-2 grid gap-1.5">
                 {items.slice(0, 6).map((item: any, itemIndex: number) => (
-                  <div key={itemIndex} className="flex items-start justify-between gap-3 rounded-xl bg-white/[0.035] px-2.5 py-2 text-xs">
+                  <button key={itemIndex} type="button" onClick={() => onTarget(item.target || card.target)} className="flex w-full items-start justify-between gap-3 rounded-xl bg-white/[0.035] px-2.5 py-2 text-left text-xs">
                     <span className="min-w-0 break-words text-white/58">{item.title || item.label || item.subtitle || "Item"}</span>
                     <span className="max-w-[48%] shrink-0 break-words text-right text-white/82">{item.value !== undefined ? String(item.value) : item.status || item.subtitle || ""}</span>
-                  </div>
+                  </button>
                 ))}
               </div>
             ) : null}
@@ -236,13 +238,13 @@ function SourceLabels({ sources }: { sources?: Array<Record<string, any>> }) {
   );
 }
 
-function SuggestedActions({ actions, onOpen }: { actions?: Array<Record<string, any>>; onOpen: (route: string) => void }) {
-  const rows = (actions || []).filter((action) => action?.route && action?.label);
+function SuggestedActions({ actions, onOpen, onTarget }: { actions?: Array<Record<string, any>>; onOpen: (route: string) => void; onTarget: (target: OyiTarget | null | undefined) => boolean }) {
+  const rows = (actions || []).filter((action) => action?.label && (action?.route || (action?.target && action.target.target_type !== "none")));
   if (!rows.length) return null;
   return (
     <div className="mt-3 flex flex-wrap gap-2">
       {rows.slice(0, 4).map((action, index) => (
-        <button key={`${action.route}-${index}`} type="button" onClick={() => onOpen(String(action.route))} className="rounded-full border border-sky-200/15 bg-sky-400/[0.07] px-3 py-1.5 text-[11px] font-medium text-sky-100/84 transition active:scale-95">
+        <button key={`${action.route || action.label}-${index}`} type="button" onClick={() => { if (!onTarget(action.target) && action.route) onOpen(String(action.route)); }} className="rounded-full border border-sky-200/15 bg-sky-400/[0.07] px-3 py-1.5 text-[11px] font-medium text-sky-100/84 transition active:scale-95">
           {action.label}
         </button>
       ))}
@@ -335,7 +337,14 @@ function OyiAiCommandCenterContent() {
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const [audioLevels, setAudioLevels] = useState<number[]>(Array.from({ length: 28 }, () => 0.2));
   const [composerHeight, setComposerHeight] = useState(132);
+  const [targetError, setTargetError] = useState<string | null>(null);
   const moduleContext = searchParams.get("module") || "ai";
+
+  function openTarget(target: OyiTarget | null | undefined) {
+    const result = resolveConsumerOyiTarget(target, router);
+    if (!result.handled && result.error) setTargetError(result.error);
+    return result.handled;
+  }
 
   const context = useMemo(
     () => ({
@@ -735,6 +744,7 @@ function OyiAiCommandCenterContent() {
             <div className="mt-0.5 text-[11px] text-white/42">Living intelligence</div>
           </div>
         </header>
+        {targetError ? <div className="relative z-20 mx-auto mt-2 max-w-[680px] px-5"><p className="rounded-xl border border-amber-300/20 bg-amber-400/[0.08] px-3 py-2 text-xs text-amber-100">{targetError}</p></div> : null}
 
         <section className="relative z-10 mx-auto flex h-full max-w-[680px] flex-col px-5" style={{ paddingTop: 8, paddingBottom: composerReserve }}>
           <div
@@ -769,10 +779,10 @@ function OyiAiCommandCenterContent() {
                       {!message.pending && message.role === "assistant" ? (
                         <>
                           {shouldRenderSupport(message.display_mode) ? <>
-                            <StructuredCards cards={message.cards} />
+                            <StructuredCards cards={message.cards} onTarget={openTarget} />
                             <OperatingStatus execution={message.execution} />
                             <SourceLabels sources={message.sources} />
-                            <SuggestedActions actions={message.suggested_actions} onOpen={(route) => router.push(route)} />
+                            <SuggestedActions actions={message.suggested_actions} onOpen={(route) => router.push(route)} onTarget={openTarget} />
                           </> : null}
                         </>
                       ) : null}

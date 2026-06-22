@@ -12,6 +12,13 @@ export type OisContext = {
   permissions: string[];
   resolved_at: string;
 };
+export type OyiTarget = {
+  target_type: "workflow" | "prediction" | "incident" | "maintenance" | "visitor" | "device" | "camera" | "infrastructure" | "wallet" | "service" | "community" | "message" | "handover" | "none";
+  target_id?: string | null;
+  infrastructure_source?: "devices" | "cameras" | "edge" | "utilities" | "providers";
+  open_as: "drawer" | "page" | "queue" | "attention" | "none";
+  action?: "inspect" | "approve" | "assign" | "acknowledge" | "verify" | "resolve" | "escalate" | "control" | "pay" | "message";
+};
 
 export type OyiAwareness = {
   headline: string;
