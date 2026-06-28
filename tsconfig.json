@@ -16,7 +16,7 @@
     "isolatedModules": true,
     "jsx": "preserve",
     "noEmit": true,
-    "incremental": true,
+    "incremental": false,
     "esModuleInterop": true,
     "baseUrl": "src",
     "paths": {
@@ -47,8 +47,7 @@
   },
   "include": [
     "next-env.d.ts",
-    "src/**/*",
-    ".next/types/**/*.ts"
+    "src/**/*"
   ],
   "exclude": [
     "node_modules"

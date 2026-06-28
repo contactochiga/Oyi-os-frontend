@@ -15,6 +15,7 @@ const nextConfig = {
 
   // ✅ stop Vercel build from failing at TypeScript checking step
   typescript: {
+    tsconfigPath: "./tsconfig.next.json",
     ignoreBuildErrors: true,
   },
 };
