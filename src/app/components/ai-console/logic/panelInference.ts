@@ -1,4 +1,6 @@
-export function inferPanel(aiPanel?: string | null, userText?: string): string | null {
+import type { AiPanel } from "../types";
+
+export function inferPanel(aiPanel?: string | null, userText?: string): AiPanel | null {
   const src = `${aiPanel || ""} ${userText || ""}`
     .toLowerCase()
     .replace(/[^\w\s]/g, "");

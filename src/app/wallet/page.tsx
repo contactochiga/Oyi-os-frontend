@@ -144,6 +144,7 @@ export default function WalletPage() {
       setInfo("Verifying payment...");
 
       const verifyRes: any = await walletService.verifyPayment(paymentReference);
+      const verifyRes: any = await walletService.verifyPayment(paymentReference);
       if (cancelled) return;
 
       if (verifyRes?.error) {

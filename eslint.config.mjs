@@ -11,6 +11,7 @@ export default defineConfig([
     ".next/**",
     "next-env.d.ts",
     "out/**",
+    "node_modules/**",
     "ios/**",
     "android/**",
   ]),

@@ -44,6 +44,7 @@ import useAuth from "@/hooks/useAuth";
 import useActiveContext from "@/hooks/useActiveContext";
 import { scopeMatches } from "@/lib/footerBadges";
 import { getSocket } from "@/services/socket";
+import { extractRuntimeDeviceUpdate } from "@/lib/runtimeSignal";
 
 /* =================================================
    RENDERER
@@ -102,19 +103,21 @@ export default function RemotePanelRenderer({
 
     // If backend emits device:update, bump lastUpdated for matching device
     const onUpdate = (payload: any) => {
-      const eventDeviceId = String(payload?.deviceId || payload?.device_id || "");
-      if (!eventDeviceId) return;
+      const update = extractRuntimeDeviceUpdate(payload);
+      if (!update?.deviceId) return;
       if ((payload?.estate_id || payload?.estateId || payload?.home_id || payload?.homeId) && !scopeMatches(
         { estateId: payload?.estate_id || payload?.estateId, homeId: payload?.home_id || payload?.homeId },
         { estateId: activeContext.estate_id, homeId: activeContext.home_id },
         { allowUnscoped: false },
       )) return;
-      if (deviceId && eventDeviceId === String(deviceId)) {
+      if (deviceId && update.deviceId === String(deviceId)) {
         setComputedLastUpdated(Date.now());
       }
     };
 
     socket.on("connect", onConnect);
+    socket.on("signal", onUpdate);
+    socket.on("device.status.updated", onUpdate);
     socket.on("device:update", onUpdate);
 
     if (socket.connected && estateId) socket.emit("subscribe:estate", estateId);
@@ -122,6 +125,8 @@ export default function RemotePanelRenderer({
 
     return () => {
       socket.off("connect", onConnect);
+      socket.off("signal", onUpdate);
+      socket.off("device.status.updated", onUpdate);
       socket.off("device:update", onUpdate);
     };
   }, [estateId, deviceId, activeContext.contextKey]);

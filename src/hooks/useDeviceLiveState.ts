@@ -6,6 +6,7 @@ import { deviceService } from "@/services/deviceService";
 import { getSocket } from "@/services/socket";
 import useActiveContext from "@/hooks/useActiveContext";
 import { scopeMatches } from "@/lib/footerBadges";
+import { extractRuntimeDeviceUpdate } from "@/lib/runtimeSignal";
 
 type LiveState = {
   state: Record<string, any> | null;
@@ -75,8 +76,8 @@ export function useDeviceLiveState(deviceId?: string, estateId?: string | null) 
     };
 
     const onUpdate = (payload: any) => {
-      const eventDeviceId = String(payload?.deviceId || payload?.device_id || "");
-      if (!eventDeviceId || eventDeviceId !== String(deviceId)) return;
+      const update = extractRuntimeDeviceUpdate(payload);
+      if (!update || update.deviceId !== deviceId) return;
       if ((payload?.estate_id || payload?.estateId || payload?.home_id || payload?.homeId) && !scopeMatches(
         { estateId: payload?.estate_id || payload?.estateId, homeId: payload?.home_id || payload?.homeId },
         { estateId: activeContext.estate_id, homeId: activeContext.home_id },
@@ -85,13 +86,15 @@ export function useDeviceLiveState(deviceId?: string, estateId?: string | null) 
 
       setData((s) => ({
         ...s,
-        state: payload?.state ?? s.state,
+        state: update.state ?? s.state,
         lastSeen: new Date().toISOString(),
         error: null,
       }));
     };
 
     socket.on("connect", onConnect);
+    socket.on("signal", onUpdate);
+    socket.on("device.status.updated", onUpdate);
     socket.on("device:update", onUpdate);
 
     // If already connected, join immediately (important when estateId arrives late)
@@ -100,6 +103,8 @@ export function useDeviceLiveState(deviceId?: string, estateId?: string | null) 
 
     return () => {
       socket.off("connect", onConnect);
+      socket.off("signal", onUpdate);
+      socket.off("device.status.updated", onUpdate);
       socket.off("device:update", onUpdate);
     };
   }, [deviceId, estateId, activeContext.contextKey]);

@@ -85,14 +85,20 @@ export default function LoginClient() {
           email: (u as any)?.email ?? decoded.email ?? email.trim(),
           role: (u as any)?.role ?? decoded.role,
           full_name: (u as any)?.full_name ?? decoded.full_name,
-          username: (u as any)?.username ?? decoded.username,
+          username: (u as any)?.username ?? (u as any)?.full_name ?? decoded.username,
           phone: (u as any)?.phone ?? decoded.phone,
           avatar_url: (u as any)?.avatar_url ?? decoded.avatar_url,
           profile_image_url: (u as any)?.profile_image_url ?? decoded.profile_image_url,
           estate_id:
             (u as any)?.estate_id ?? estate?.id ?? payload?.estate_id ?? decoded.estate_id,
+          estate_name:
+            (u as any)?.estate_name ?? estate?.name ?? decoded.estate_name,
           home_id:
             (u as any)?.home_id ?? home?.id ?? payload?.home_id ?? decoded.home_id,
+          unit_id:
+            (u as any)?.unit_id ?? payload?.unit_id ?? decoded.unit_id,
+          unit_name:
+            (u as any)?.unit_name ?? home?.name ?? payload?.unit_name ?? decoded.unit_name,
           onboarding_complete: payload?.onboarding_complete === true || (u as any)?.onboarding_complete === true,
         };
 

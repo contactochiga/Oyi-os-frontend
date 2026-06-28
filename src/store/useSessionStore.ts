@@ -7,14 +7,14 @@ export type SessionUser = {
   username?: string;
   role?: string;
   estate_id?: string;
+  estate_name?: string;
   home_id?: string;
+  unit_id?: string;
+  unit_name?: string;
   full_name?: string;
   phone?: string;
   avatar_url?: string | null;
   profile_image_url?: string | null;
-  estate_name?: string;
-  unit_name?: string;
-  unit_id?: string;
   permissions?: string[];
   permission_scopes?: string[];
   onboarding_complete?: boolean;
@@ -63,18 +63,19 @@ function deriveUserFromToken(token: string): SessionUser | null {
     id: decoded.id,
     email: decoded.email,
     role: decoded.role,
-    estate_id: decoded.estate_id,
-    home_id: decoded.home_id,
-    full_name: decoded.full_name,
     username: decoded.username,
+    estate_id: decoded.estate_id,
+    estate_name: decoded.estate_name,
+    home_id: decoded.home_id,
+    unit_id: decoded.unit_id,
+    unit_name: decoded.unit_name,
+    full_name: decoded.full_name,
     phone: decoded.phone,
     avatar_url: decoded.avatar_url,
     profile_image_url: decoded.profile_image_url,
-    estate_name: decoded.estate_name,
-    unit_name: decoded.unit_name,
-    unit_id: decoded.unit_id,
     permissions: decoded.permissions,
     permission_scopes: decoded.permission_scopes,
+    onboarding_complete: decoded.onboarding_complete,
   };
 }
 

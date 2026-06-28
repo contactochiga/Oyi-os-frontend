@@ -80,12 +80,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           id: (u as any)?.id ?? user?.id,
           email: (u as any)?.email ?? user?.email,
           full_name: (u as any)?.full_name ?? (user as any)?.full_name,
-          username: (u as any)?.username ?? (user as any)?.username,
+          username: (u as any)?.username ?? (u as any)?.full_name ?? (user as any)?.username ?? user?.full_name,
           phone: (u as any)?.phone ?? (user as any)?.phone,
           avatar_url: (u as any)?.avatar_url ?? (user as any)?.avatar_url,
           profile_image_url: (u as any)?.profile_image_url ?? (user as any)?.profile_image_url,
           estate_id: (u as any)?.estate_id ?? estate?.id ?? payload?.estate_id ?? user?.estate_id,
+          estate_name: (u as any)?.estate_name ?? estate?.name ?? user?.estate_name,
           home_id: (u as any)?.home_id ?? home?.id ?? payload?.home_id ?? user?.home_id,
+          unit_id: (u as any)?.unit_id ?? payload?.unit_id ?? user?.unit_id,
+          unit_name: (u as any)?.unit_name ?? home?.name ?? payload?.unit_name ?? user?.unit_name,
           onboarding_complete: payload?.onboarding_complete === true || (u as any)?.onboarding_complete === true,
         };
 

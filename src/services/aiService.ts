@@ -1,6 +1,7 @@
 // src/services/aiService.ts
 import API from "./api";
 import { oyiService, type OyiAwareness } from "./oyiService";
+import { runOyiCoreConversation } from "./oyiCoreRuntimeService";
 
 export type AiAction =
   | {
@@ -105,6 +106,25 @@ export const aiService = {
       return normalize(res.data);
     } catch (err) {
       console.warn("aiService.chat error:", err);
+
+      try {
+        const runtime = await runOyiCoreConversation(message, context);
+        if (runtime) {
+          return {
+            reply: String(runtime.answer || runtime.summary || "I reviewed the current operational context."),
+            intent: runtime.intent || "info",
+            confidence:
+              typeof runtime.confidence === "number"
+                ? Math.max(0, Math.min(1, runtime.confidence))
+                : 0.4,
+            actions: [],
+            panel: null,
+            requiresConfirmation: Boolean(runtime.approvalRequired),
+          };
+        }
+      } catch (runtimeErr) {
+        console.warn("aiService.chat runtime fallback error:", runtimeErr);
+      }
 
       return {
         reply: "I couldn't reach Oyi right now.",

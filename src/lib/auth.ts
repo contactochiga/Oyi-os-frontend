@@ -1,7 +1,9 @@
 import { jwtDecode } from "jwt-decode";
 import { permissionsForRole, type OyiIdentity } from "@/lib/oyiFoundation";
 
-export type DecodedToken = OyiIdentity;
+export type DecodedToken = OyiIdentity & {
+  onboarding_complete?: boolean;
+};
 
 export function decodeToken(token: string): DecodedToken | null {
   try {
