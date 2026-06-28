@@ -89,7 +89,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           home_id: (u as any)?.home_id ?? home?.id ?? payload?.home_id ?? user?.home_id,
           unit_id: (u as any)?.unit_id ?? payload?.unit_id ?? user?.unit_id,
           unit_name: (u as any)?.unit_name ?? home?.name ?? payload?.unit_name ?? user?.unit_name,
-          onboarding_complete: payload?.onboarding_complete === true || (u as any)?.onboarding_complete === true,
+          onboarding_complete:
+            payload?.onboarding_complete === true ||
+            (u as any)?.onboarding_complete === true ||
+            user?.onboarding_complete === true,
         };
 
         setSession(token, mergedUser as any);

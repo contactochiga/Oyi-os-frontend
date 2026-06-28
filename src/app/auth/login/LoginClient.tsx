@@ -99,7 +99,10 @@ export default function LoginClient() {
             (u as any)?.unit_id ?? payload?.unit_id ?? decoded.unit_id,
           unit_name:
             (u as any)?.unit_name ?? home?.name ?? payload?.unit_name ?? decoded.unit_name,
-          onboarding_complete: payload?.onboarding_complete === true || (u as any)?.onboarding_complete === true,
+          onboarding_complete:
+            payload?.onboarding_complete === true ||
+            (u as any)?.onboarding_complete === true ||
+            decoded.onboarding_complete === true,
         };
 
         setSession(res.token, mergedUser as any);

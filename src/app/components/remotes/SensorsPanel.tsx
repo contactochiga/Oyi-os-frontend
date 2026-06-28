@@ -42,6 +42,7 @@ export default function SensorsPanel({
   lastUpdated?: number;
   onInteraction?: () => void;
 }) {
+  void _onInteraction;
   const { user } = useAuth();
   const estateId = useMemo(
     () =>
