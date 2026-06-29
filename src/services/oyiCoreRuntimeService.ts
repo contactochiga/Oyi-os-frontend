@@ -36,13 +36,25 @@ export async function runOyiCoreConversation(query: string, context?: Record<str
   return (data?.response || null) as OyiCoreConversationResponse | null;
 }
 
-export async function loadOyiCoreExecutionHistory(limit = 40) {
-  const { data } = await API.get("/oyi/runtime/executions/history", { params: { limit } });
+export type OyiCoreExecutionHistoryParams = {
+  limit?: number;
+  deviceId?: string | null;
+  provider?: string | null;
+  origin?: string | null;
+  action?: string | null;
+  initiatorId?: string | null;
+  status?: string | null;
+};
+
+export async function loadOyiCoreExecutionHistory(params: number | OyiCoreExecutionHistoryParams = 40) {
+  const query = typeof params === "number" ? { limit: params } : params;
+  const { data } = await API.get("/oyi/runtime/executions/history", { params: query });
   return Array.isArray(data?.executions) ? data.executions : [];
 }
 
-export async function loadOyiCoreExecutionStatistics(limit = 120) {
-  const { data } = await API.get("/oyi/runtime/executions/stats/summary", { params: { limit } });
+export async function loadOyiCoreExecutionStatistics(params: number | OyiCoreExecutionHistoryParams = 120) {
+  const query = typeof params === "number" ? { limit: params } : params;
+  const { data } = await API.get("/oyi/runtime/executions/stats/summary", { params: query });
   return {
     statistics: data?.statistics || null,
     operators: Array.isArray(data?.operators) ? data.operators : [],

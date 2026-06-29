@@ -31,6 +31,7 @@ import HamburgerMenu from "@/app/components/HamburgerMenu";
 import MessagesInboxButton from "@/app/components/MessagesInboxButton";
 import BottomNav from "@/app/components/BottomNav";
 import ActivityMetricsRail from "@/app/components/ActivityMetricsRail";
+import RuntimeExplainabilityCard from "@/app/components/runtime/RuntimeExplainabilityCard";
 import { getSocket } from "@/services/socket";
 import { getDeviceIconFromText } from "@/lib/devicePresentation";
 import { acknowledgeActivityEvent, acknowledgeSeenActivityEvents, getActivityFeed, notificationIdFromActivity, type ActivityCategory, type ActivityEvent, type ActivitySummary } from "@/services/activityService";
@@ -39,6 +40,8 @@ import useActiveContext from "@/hooks/useActiveContext";
 import useAuth from "@/hooks/useAuth";
 import { scopeMatches, type BadgeScope } from "@/lib/footerBadges";
 import { intelligenceService, type IntelligenceMetricSummary } from "@/services/intelligenceService";
+import { loadOyiCoreExecutionHistory } from "@/services/oyiCoreRuntimeService";
+import { useRuntimeIntelligenceStore } from "@/store/useRuntimeIntelligenceStore";
 
 type FilterKey = "all" | "alerts" | "devices" | "people";
 
@@ -99,12 +102,15 @@ export default function ActivityPage() {
   const [error, setError] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [intelligenceMetrics, setIntelligenceMetrics] = useState<IntelligenceMetricSummary | null>(null);
+  const [runtimeExecutions, setRuntimeExecutions] = useState<Array<Record<string, any>>>([]);
   const acknowledgedRef = useRef<Set<string>>(new Set());
   const requestRef = useRef(0);
   const markNotificationsRead = useNotificationStore((state) => state.markNotificationsRead);
   const markBucketViewed = useNotificationStore((state) => state.markBucketViewed);
   const scope = useMemo<BadgeScope>(() => ({ userId: (user as any)?.id || null, estateId: activeContext.estate_id, homeId: activeContext.home_id }), [user, activeContext.estate_id, activeContext.home_id]);
   const contextReady = Boolean(ready && token && activeContext.ready);
+  const latestAwareness = useRuntimeIntelligenceStore((state) => state.latestAwareness);
+  const latestRecommendations = useRuntimeIntelligenceStore((state) => state.latestRecommendations);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -161,6 +167,22 @@ export default function ActivityPage() {
     markBucketViewed("activity");
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contextReady, activeContext.contextKey]);
+
+  useEffect(() => {
+    if (!contextReady) {
+      setRuntimeExecutions([]);
+      return;
+    }
+    let alive = true;
+    void loadOyiCoreExecutionHistory({ limit: 8 }).then((executions) => {
+      if (alive) setRuntimeExecutions(Array.isArray(executions) ? executions : []);
+    }).catch(() => {
+      if (alive) setRuntimeExecutions([]);
+    });
+    return () => {
+      alive = false;
+    };
   }, [contextReady, activeContext.contextKey]);
 
   useEffect(() => {
@@ -266,6 +288,16 @@ export default function ActivityPage() {
             ) : null}
 
             <section className="mt-4">
+              <RuntimeExplainabilityCard
+                heading="Operational activity context"
+                summary="Recent home activity is enriched with provenance, confidence, and the next best action."
+                awareness={latestAwareness}
+                recommendation={latestRecommendations[0] || null}
+                executionHistory={runtimeExecutions}
+              />
+            </section>
+
+            <section className="mt-4">
               <div className="mb-2.5 flex items-center justify-between">
                 <div className="text-xs text-white/38">{lastSync ? `Synced ${formatTime(lastSync)}` : loading ? "Syncing activity" : "Live feed"}</div>
                 <button type="button" onClick={() => load(true)} disabled={loading || refreshing} className="rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-1.5 text-xs text-white/60 disabled:opacity-45">
@@ -309,6 +341,12 @@ function ActivityRow({ item }: { item: ActivityEvent }) {
   const tone = eventTone(item.category, item.severity);
   const Icon = item.category === "device" ? getDeviceIconFromText(`  `) : tone.Icon;
   const actionable = Boolean(item.action?.href);
+  const runtimeMeta = [
+    item.metadata?.origin ? `Source ${item.metadata.origin}` : null,
+    item.metadata?.initiatorType ? `Initiator ${item.metadata.initiatorType}` : null,
+    typeof item.metadata?.confidence === "number" ? `Confidence ${Math.round(item.metadata.confidence * 100)}%` : null,
+    item.metadata?.recommendedAction ? `Action ${item.metadata.recommendedAction}` : null,
+  ].filter(Boolean);
   const content = (
     <>
       <div className="flex items-center gap-3">
@@ -327,6 +365,7 @@ function ActivityRow({ item }: { item: ActivityEvent }) {
         )}
         {actionable ? <ChevronRight className="h-4 w-4 text-sky-200/55" /> : null}
       </div>
+      {runtimeMeta.length ? <div className="mt-2 pl-12 text-[10px] text-white/42">{runtimeMeta.slice(0, 2).join(" • ")}</div> : null}
       {actionable ? <div className="mt-2 pl-12 text-[10px] font-medium text-sky-200/62">{item.action?.label || "Open"}</div> : null}
     </>
   );

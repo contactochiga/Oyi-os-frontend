@@ -4,9 +4,12 @@
 import { useEffect, useMemo, useState } from "react";
 import ConsumerShell from "@/app/components/ConsumerShell";
 import ActivityMetricsRail from "@/app/components/ActivityMetricsRail";
+import RuntimeExplainabilityCard from "@/app/components/runtime/RuntimeExplainabilityCard";
 import useAuth from "@/hooks/useAuth";
 import { walletService, type WalletDTO } from "@/services/walletService";
 import { servicesService, type ServicePayment } from "@/services/servicesService";
+import { loadOyiCoreExecutionHistory, loadOyiCoreExecutionStatistics } from "@/services/oyiCoreRuntimeService";
+import { useRuntimeIntelligenceStore } from "@/store/useRuntimeIntelligenceStore";
 import { FiClock, FiCreditCard, FiRefreshCw, FiTrendingUp } from "react-icons/fi";
 
 function formatMoney(amount: number, currency = "NGN") {
@@ -39,6 +42,10 @@ export default function WalletPage() {
   const [amount, setAmount] = useState<string>("");
   const [servicePayments, setServicePayments] = useState<ServicePayment[]>([]);
   const [selectedPayment, setSelectedPayment] = useState<ServicePayment | null>(null);
+  const [runtimeExecutions, setRuntimeExecutions] = useState<Array<Record<string, any>>>([]);
+  const [runtimeStats, setRuntimeStats] = useState<Record<string, any> | null>(null);
+  const latestAwareness = useRuntimeIntelligenceStore((state) => state.latestAwareness);
+  const latestRecommendations = useRuntimeIntelligenceStore((state) => state.latestRecommendations);
 
   async function load() {
     setLoading(true);
@@ -76,6 +83,21 @@ export default function WalletPage() {
       const rows = await servicesService.history({ limit: 5 });
       setServicePayments(Array.isArray(rows) ? rows : []);
     })();
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    void Promise.all([
+      loadOyiCoreExecutionHistory({ limit: 8, action: "payment" }).catch(() => []),
+      loadOyiCoreExecutionStatistics({ limit: 40, action: "payment" }).catch(() => null),
+    ]).then(([executions, stats]) => {
+      if (!alive) return;
+      setRuntimeExecutions(Array.isArray(executions) ? executions : []);
+      setRuntimeStats(stats?.statistics || null);
+    });
+    return () => {
+      alive = false;
+    };
   }, []);
 
   async function fund() {
@@ -171,6 +193,14 @@ export default function WalletPage() {
   return (
     <ConsumerShell title="Wallet" subtitle="Home operations finance • dues • utilities">
       <div className="oyi-living-page space-y-3 pb-8">
+      <RuntimeExplainabilityCard
+        heading="Financial runtime posture"
+        summary="Wallet activity is paired with execution source, confidence, and recommended action."
+        awareness={latestAwareness}
+        recommendation={latestRecommendations[0] || null}
+        executionHistory={runtimeExecutions}
+      />
+
       {info && (
         <div className="mb-4 rounded-2xl border border-cyan-500/20 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
           {info}
@@ -200,6 +230,7 @@ export default function WalletPage() {
           { icon: FiCreditCard, label: "Balance", value: formatMoney(balance, currency), color: "text-sky-300" },
           { icon: FiTrendingUp, label: "Payments", value: servicePayments.length, color: "text-emerald-200" },
           { icon: FiClock, label: "Recent", value: servicePayments[0]?.status || "None", color: "text-amber-200" },
+          { icon: FiTrendingUp, label: "Runtime", value: runtimeStats?.total || runtimeExecutions.length, color: "text-cyan-300" },
         ]}
       />
 

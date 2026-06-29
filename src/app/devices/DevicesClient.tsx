@@ -36,11 +36,14 @@ import LayoutWrapper from "@/app/components/LayoutWrapper";
 import HamburgerMenu from "@/app/components/HamburgerMenu";
 import MessagesInboxButton from "@/app/components/MessagesInboxButton";
 import BottomNav from "@/app/components/BottomNav";
+import RuntimeExplainabilityCard from "@/app/components/runtime/RuntimeExplainabilityCard";
 import useAuth from "@/hooks/useAuth";
 import useActiveContext from "@/hooks/useActiveContext";
 import { deviceService } from "@/services/deviceService";
+import { loadOyiCoreExecutionHistory } from "@/services/oyiCoreRuntimeService";
 import { sceneService } from "@/services/sceneService";
 import { getSocket } from "@/services/socket";
+import { useRuntimeIntelligenceStore } from "@/store/useRuntimeIntelligenceStore";
 import GangRingSwitch from "@/app/components/devices/GangRingSwitch";
 import { getDeviceFamily, getDeviceIcon, getDeviceIconTone, isSimplePowerDevice } from "@/lib/devicePresentation";
 import { scopeMatches } from "@/lib/footerBadges";
@@ -406,6 +409,9 @@ export default function DeviceClient() {
   const [assignRoom, setAssignRoom] = useState("");
   const [editingFavorites, setEditingFavorites] = useState(false);
   const [tool, setTool] = useState<{ kind: DeviceTool; device: AnyDevice } | null>(null);
+  const [deviceExecutions, setDeviceExecutions] = useState<Array<Record<string, any>>>([]);
+  const latestAwareness = useRuntimeIntelligenceStore((state) => state.latestAwareness);
+  const latestRecommendations = useRuntimeIntelligenceStore((state) => state.latestRecommendations);
 
   async function hydrateStates(list: AnyDevice[]) {
     const jobs = list
@@ -535,6 +541,30 @@ export default function DeviceClient() {
     return () => window.clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items]);
+
+  useEffect(() => {
+    if (!sheetOpen || !sheetDevice) {
+      setDeviceExecutions([]);
+      return;
+    }
+    const provider = String(sheetDevice?.provider || sheetDevice?.vendor || sheetDevice?.adapter || "").trim();
+    const deviceId = String(pickDbId(sheetDevice) || pickExternalId(sheetDevice) || "").trim();
+    let alive = true;
+    void loadOyiCoreExecutionHistory({
+      limit: 8,
+      deviceId: deviceId || undefined,
+      provider: provider || undefined,
+    })
+      .then((executions) => {
+        if (alive) setDeviceExecutions(Array.isArray(executions) ? executions : []);
+      })
+      .catch(() => {
+        if (alive) setDeviceExecutions([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [sheetOpen, sheetDevice]);
 
   const selectedDiscoveryIds = useMemo(() => Object.keys(selectedDiscover).filter((k) => selectedDiscover[k]), [selectedDiscover]);
   const providerDevices = useMemo(() => items.filter((device) => !device?.home_id && String(device?.provider || device?.vendor || device?.adapter || "").toLowerCase() === "tuya"), [items]);
@@ -917,7 +947,7 @@ export default function DeviceClient() {
 
         {addDeviceOpen ? <AddDeviceSheet tab={addDeviceTab} setTab={setAddDeviceTab} discovering={discovering} binding={binding} discovered={discovered} providerDevices={providerDevices} selectedDiscover={selectedDiscover} selectedCount={selectedDiscoveryIds.length} bindRoom={bindRoom} setBindRoom={setBindRoom} setSelectedDiscover={setSelectedDiscover} onClose={() => setAddDeviceOpen(false)} onScan={refreshDiscovery} onBind={bindSelectedDevices} /> : null}
         {assignDevice ? <UnassignedDeviceSheet device={assignDevice} room={assignRoom} setRoom={setAssignRoom} binding={binding} onClose={() => setAssignDevice(null)} onAssign={assignListedDevice} /> : null}
-        {sheetOpen && sheetDevice ? <DeviceModalRouter device={sheetDevice} state={stateMap[String(pickDbId(sheetDevice))] || {}} busy={busyId === String(pickDbId(sheetDevice))} onClose={() => setSheetOpen(false)} onToggleGang={toggleGang} onPower={toggleMasterPower} onCommand={sendDeviceCommand} onTool={(kind, device) => setTool({ kind, device })} onCreateScene={(device) => router.push(`/scenes?create=scene&deviceId=${encodeURIComponent(String(pickDbId(device) || ""))}`)} /> : null}
+        {sheetOpen && sheetDevice ? <DeviceModalRouter device={sheetDevice} state={stateMap[String(pickDbId(sheetDevice))] || {}} busy={busyId === String(pickDbId(sheetDevice))} executionHistory={deviceExecutions} awareness={latestAwareness} recommendation={latestRecommendations[0] || null} onClose={() => setSheetOpen(false)} onToggleGang={toggleGang} onPower={toggleMasterPower} onCommand={sendDeviceCommand} onTool={(kind, device) => setTool({ kind, device })} onCreateScene={(device) => router.push(`/scenes?create=scene&deviceId=${encodeURIComponent(String(pickDbId(device) || ""))}`)} /> : null}
         {tool ? <DeviceToolSheet kind={tool.kind} device={tool.device} busy={busyId === String(pickDbId(tool.device))} onClose={() => setTool(null)} onTimer={(command, patch) => sendDeviceCommand(tool.device, command, patch)} onSchedule={(input) => saveDeviceSchedule(tool.device, input)} onSettings={async ({ favorite, room }) => {
           const id = String(pickDbId(tool.device) || "");
           if (!id) return;
@@ -1071,7 +1101,7 @@ function AddDeviceSheet({ tab, setTab, discovering, binding, discovered, provide
   );
 }
 
-function DeviceModalRouter({ device, state, busy, onClose, onToggleGang, onPower, onCommand, onTool, onCreateScene }: { device: AnyDevice; state: any; busy: boolean; onClose: () => void; onToggleGang: (device: AnyDevice, gangIndex: number, next: boolean) => void; onPower: (device: AnyDevice) => void; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => void; onTool: (kind: DeviceTool, device: AnyDevice) => void; onCreateScene: (device: AnyDevice) => void }) {
+function DeviceModalRouter({ device, state, busy, executionHistory, awareness, recommendation, onClose, onToggleGang, onPower, onCommand, onTool, onCreateScene }: { device: AnyDevice; state: any; busy: boolean; executionHistory: Array<Record<string, any>>; awareness?: Record<string, any> | null; recommendation?: Record<string, any> | null; onClose: () => void; onToggleGang: (device: AnyDevice, gangIndex: number, next: boolean) => void; onPower: (device: AnyDevice) => void; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => void; onTool: (kind: DeviceTool, device: AnyDevice) => void; onCreateScene: (device: AnyDevice) => void }) {
   const gangCount = guessGangCount(device, state);
   const values = Object.keys(state || {}).length ? readGangValues(gangCount, state) : Array.from({ length: gangCount }, () => null);
   const caps = uiCapabilities(device);
@@ -1098,6 +1128,13 @@ function DeviceModalRouter({ device, state, busy, onClose, onToggleGang, onPower
             </div>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4" style={{ WebkitOverflowScrolling: "touch" }}>
+            <RuntimeExplainabilityCard
+              heading={`${pickName(device)} operational trace`}
+              summary="Current state is paired with execution source, provider lineage, and recommended action."
+              awareness={awareness}
+              recommendation={recommendation}
+              executionHistory={executionHistory}
+            />
             {needsIrProfile ? <IRProfilePicker onSelect={setSelectedIrProfile} /> : null}
             {renderer === "tv" ? <TVRenderer device={device} busy={busy} onPower={onPower} onCommand={onCommand} /> : null}
             {renderer === "ac" ? <ACRenderer device={device} state={state} busy={busy} onPower={onPower} onCommand={onCommand} onTool={onTool} /> : null}

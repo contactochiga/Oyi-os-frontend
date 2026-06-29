@@ -3,11 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import ConsumerShell from "@/app/components/ConsumerShell";
 import ActivityMetricsRail from "@/app/components/ActivityMetricsRail";
+import RuntimeExplainabilityCard from "@/app/components/runtime/RuntimeExplainabilityCard";
 import {
   visitorService,
   type VisitorAccess,
   type VisitorStatus,
 } from "@/services/visitorService";
+import { loadOyiCoreExecutionHistory } from "@/services/oyiCoreRuntimeService";
+import { useRuntimeIntelligenceStore } from "@/store/useRuntimeIntelligenceStore";
 
 import {
   UserPlus,
@@ -176,10 +179,13 @@ export default function VisitorsPage() {
   const [infoLoading, setInfoLoading] = useState(false);
   const [infoErr, setInfoErr] = useState<string | null>(null);
   const [infoItem, setInfoItem] = useState<VisitorAccess | null>(null);
+  const [visitorExecutions, setVisitorExecutions] = useState<Array<Record<string, any>>>([]);
 
   // UI state
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [tab, setTab] = useState<"all" | "pending" | "active">("all");
+  const latestAwareness = useRuntimeIntelligenceStore((state) => state.latestAwareness);
+  const latestRecommendations = useRuntimeIntelligenceStore((state) => state.latestRecommendations);
 
   async function loadMine() {
     setLoading(true);
@@ -257,6 +263,7 @@ export default function VisitorsPage() {
     setInfoLoading(true);
     setInfoErr(null);
     setInfoItem(null);
+    setVisitorExecutions([]);
 
     try {
       const res: any = await visitorService.getInfo(id);
@@ -265,6 +272,8 @@ export default function VisitorsPage() {
         return;
       }
       setInfoItem(res?.visitor || null);
+      const runtime = await loadOyiCoreExecutionHistory({ limit: 8, action: "visitor" }).catch(() => []);
+      setVisitorExecutions(Array.isArray(runtime) ? runtime : []);
     } catch (e: any) {
       setInfoErr(e?.message || "Failed to load visitor info");
     } finally {
@@ -630,6 +639,14 @@ export default function VisitorsPage() {
                     </div>
                   ) : infoItem ? (
                     <div className="space-y-3">
+                      <RuntimeExplainabilityCard
+                        heading={`${infoItem.visitor_name || "Visitor"} execution timeline`}
+                        summary="Arrival, verification, approval chain, and departure are paired with runtime history when available."
+                        awareness={latestAwareness}
+                        recommendation={latestRecommendations[0] || null}
+                        executionHistory={visitorExecutions}
+                      />
+
                       <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                         <div className="text-[11px] text-white/40">Name</div>
                         <div className="text-sm text-white mt-1">{infoItem.visitor_name}</div>

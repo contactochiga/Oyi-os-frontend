@@ -26,12 +26,14 @@ import LayoutWrapper from "@/app/components/LayoutWrapper";
 import HamburgerMenu from "@/app/components/HamburgerMenu";
 import MessagesInboxButton from "@/app/components/MessagesInboxButton";
 import BottomNav from "@/app/components/BottomNav";
+import RuntimeExplainabilityCard from "@/app/components/runtime/RuntimeExplainabilityCard";
 import LiveBroadcastComposer from "@/app/components/community/LiveBroadcastComposer";
 import LiveSessionPlayer from "@/app/components/community/LiveSessionPlayer";
 import useAuth from "@/hooks/useAuth";
 import useActiveContext from "@/hooks/useActiveContext";
 import { communityService, type CommunityComment, type CommunityPost } from "@/services/communityService";
 import { useNotificationStore } from "@/store/useNotificationStore";
+import { useRuntimeIntelligenceStore } from "@/store/useRuntimeIntelligenceStore";
 
 const BODY_META_PREFIX = "__OYI_POST_V1__:";
 type TabKey = "all" | "announcements" | "urgent" | "discussions" | "media" | "questions";
@@ -253,6 +255,9 @@ export default function CommunityPage() {
   const canPost = canUseCommunityWrite(user);
   const canBroadcast = canUseCommunityBroadcast(user);
   const readStorageKey = useMemo(() => `oyi:community:read:${String((user as any)?.id || "user")}:${estateId || "estate"}:${String(activeContext.home_id || "home")}`, [user, estateId, activeContext.home_id]);
+  const latestAwareness = useRuntimeIntelligenceStore((state) => state.latestAwareness);
+  const latestRecommendations = useRuntimeIntelligenceStore((state) => state.latestRecommendations);
+  const latestInsights = useRuntimeIntelligenceStore((state) => state.latestInsights);
   const unread = useMemo(() => notificationItems.filter((item: any) => {
     const postId = String(item?.payload?.post_id || item?.entity_id || item?.post_id || "");
     return String(item?.status || "") !== "read" && !localReadIds.has(postId) && /community|announcement|notice/.test(`${item?.type || ""} ${item?.title || ""} ${item?.message || ""}`.toLowerCase());
@@ -437,6 +442,13 @@ export default function CommunityPage() {
         <div className="relative z-10 h-full overflow-y-auto px-4 pb-[calc(132px+var(--sab))] pt-[calc(14px+var(--sat))]">
           <div className="mx-auto w-full max-w-[760px] space-y-4">
             <CommunityHeader unread={unread} />
+            <RuntimeExplainabilityCard
+              heading="Community intelligence"
+              summary={latestInsights[0]?.summary || "Resident sentiment, estate priorities, and recommended actions are surfaced here."}
+              awareness={latestAwareness}
+              recommendation={latestRecommendations[0] || null}
+              executionHistory={[]}
+            />
 
             {canPost ? (
               <section className="rounded-[21px] border border-white/[0.065] bg-white/[0.03] p-2.5 shadow-[0_14px_42px_rgba(0,0,0,0.22)] backdrop-blur-xl">
