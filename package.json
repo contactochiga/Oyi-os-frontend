@@ -14,7 +14,8 @@
     "cap:open:android": "npx cap open android",
     "cap:open:ios": "npx cap open ios",
     "cap:copy": "npx cap copy",
-    "cap:update": "npx cap update"
+    "cap:update": "npx cap update",
+    "validate:release": "node scripts/validate-release.mjs"
   },
   "dependencies": {
     "@capacitor-community/speech-recognition": "^6.0.0",
