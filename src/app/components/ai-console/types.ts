@@ -57,5 +57,11 @@ export type ChatMessage = {
   execution?: Record<string, any>;
   display_mode?: "conversation" | "list" | "detail" | "audit" | "report" | "awareness";
   confirmations?: Array<Record<string, any>>;
+  executionSummary?: string;
+  executionHistory?: Array<Record<string, any>>;
+  approvalRequired?: boolean;
+  trustScore?: number | null;
+  initiatorType?: string | null;
+  approvedBy?: string | null;
   lastUpdated?: number;
 };

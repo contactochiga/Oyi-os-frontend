@@ -47,6 +47,14 @@ export type AiChatResponse = {
   awareness?: OyiAwareness;
   thread_id?: string;
   safe_mode?: boolean;
+  approvalRequired?: boolean;
+  executionSummary?: string;
+  executionHistory?: Array<Record<string, any>>;
+  provider?: string | null;
+  providerEventId?: string | null;
+  trustScore?: number | null;
+  initiatorType?: string | null;
+  approvedBy?: string | null;
 
   requiresConfirmation?: boolean;
 };
@@ -78,8 +86,16 @@ function normalize(resp: any): AiChatResponse {
     awareness: resp?.awareness || undefined,
     thread_id: resp?.thread_id ? String(resp.thread_id) : undefined,
     safe_mode: Boolean(resp?.safe_mode),
+    approvalRequired: Boolean(resp?.approvalRequired),
+    executionSummary: typeof resp?.executionSummary === "string" ? resp.executionSummary : undefined,
+    executionHistory: Array.isArray(resp?.executionHistory) ? resp.executionHistory : undefined,
+    provider: typeof resp?.provider === "string" ? resp.provider : null,
+    providerEventId: typeof resp?.providerEventId === "string" ? resp.providerEventId : null,
+    trustScore: typeof resp?.trustScore === "number" ? resp.trustScore : null,
+    initiatorType: typeof resp?.initiatorType === "string" ? resp.initiatorType : null,
+    approvedBy: typeof resp?.approvedBy === "string" ? resp.approvedBy : null,
 
-    requiresConfirmation: Boolean(resp?.requiresConfirmation || (Array.isArray(resp?.confirmations) && resp.confirmations.length)),
+    requiresConfirmation: Boolean(resp?.requiresConfirmation || resp?.approvalRequired || (Array.isArray(resp?.confirmations) && resp.confirmations.length)),
   };
 }
 
@@ -120,6 +136,9 @@ export const aiService = {
             actions: [],
             panel: null,
             requiresConfirmation: Boolean(runtime.approvalRequired),
+            approvalRequired: Boolean(runtime.approvalRequired),
+            executionSummary: runtime.executionSummary,
+            executionHistory: runtime.executionHistory,
           };
         }
       } catch (runtimeErr) {

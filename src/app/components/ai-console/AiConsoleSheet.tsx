@@ -99,6 +99,40 @@ function MiniOperatingStatus({ execution }: { intent?: string; understood?: stri
   );
 }
 
+function MiniExecutionAccountability({
+  executionSummary,
+  executionHistory,
+  approvalRequired,
+  trustScore,
+  initiatorType,
+  approvedBy,
+}: {
+  executionSummary?: string;
+  executionHistory?: Array<Record<string, any>>;
+  approvalRequired?: boolean;
+  trustScore?: number | null;
+  initiatorType?: string | null;
+  approvedBy?: string | null;
+}) {
+  const latest = Array.isArray(executionHistory) ? executionHistory[0] : null;
+  const rows = [
+    executionSummary,
+    latest?.origin ? `Origin: ${latest.origin}` : null,
+    initiatorType || latest?.initiatorType ? `Initiator: ${initiatorType || latest?.initiatorType}` : null,
+    approvalRequired ? `Approval: ${approvedBy ? `approved by ${approvedBy}` : "required"}` : approvedBy ? `Approval: approved by ${approvedBy}` : null,
+    typeof trustScore === "number" ? `Trust: ${Math.round(trustScore * 100)}%` : null,
+  ].filter(Boolean);
+
+  if (!rows.length) return null;
+  return (
+    <div className="mt-2 rounded-2xl border border-white/10 bg-white/[0.035] p-2.5 text-[11px] text-white/56">
+      {rows.slice(0, 4).map((row) => (
+        <div key={String(row)} className="leading-4">{String(row)}</div>
+      ))}
+    </div>
+  );
+}
+
 function MiniSources({ sources }: { sources?: Array<Record<string, any>> }) {
   const visibleSources = (sources || []).filter((source) => !/ai_tool|execution_ledger|capability registry/i.test(String(source?.label || source?.table || "")));
   if (!visibleSources.length) return null;
@@ -348,6 +382,14 @@ export default function AiConsoleSheet(props: {
                                   {shouldRenderSupport(m.display_mode) ? <>
                                     <MiniStructuredCards cards={m.cards} displayMode={m.display_mode} />
                                     <MiniOperatingStatus execution={m.execution} />
+                                    <MiniExecutionAccountability
+                                      executionSummary={m.executionSummary}
+                                      executionHistory={m.executionHistory}
+                                      approvalRequired={m.approvalRequired}
+                                      trustScore={m.trustScore}
+                                      initiatorType={m.initiatorType}
+                                      approvedBy={m.approvedBy}
+                                    />
                                     <MiniSources sources={m.sources} />
                                     <MiniSuggestedActions
                                       actions={m.suggested_actions}

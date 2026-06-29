@@ -26,6 +26,12 @@ type AiMessage = {
   understood?: string;
   execution?: Record<string, any>;
   display_mode?: "conversation" | "list" | "detail" | "audit" | "report" | "awareness";
+  executionSummary?: string;
+  executionHistory?: Array<Record<string, any>>;
+  approvalRequired?: boolean;
+  trustScore?: number | null;
+  initiatorType?: string | null;
+  approvedBy?: string | null;
 };
 
 type Suggestion = { label: string; prompt?: string; href?: string; tone?: "blue" | "green" | "amber" | "violet" };
@@ -220,6 +226,37 @@ function OperatingStatus({ execution }: { intent?: string; understood?: string; 
         {status}
       </div>
       {first.summary || first.error ? <div className="mt-1 text-xs leading-5 opacity-90">{String(first.summary || first.error)}</div> : null}
+    </div>
+  );
+}
+
+function ExecutionAccountability({
+  executionSummary,
+  executionHistory,
+  approvalRequired,
+  trustScore,
+  initiatorType,
+  approvedBy,
+}: {
+  executionSummary?: string;
+  executionHistory?: Array<Record<string, any>>;
+  approvalRequired?: boolean;
+  trustScore?: number | null;
+  initiatorType?: string | null;
+  approvedBy?: string | null;
+}) {
+  const latest = Array.isArray(executionHistory) ? executionHistory[0] : null;
+  const rows = [
+    executionSummary,
+    latest?.origin ? `Origin: ${latest.origin}` : null,
+    initiatorType || latest?.initiatorType ? `Initiator: ${initiatorType || latest?.initiatorType}` : null,
+    approvalRequired ? `Approval: ${approvedBy ? `approved by ${approvedBy}` : "required"}` : approvedBy ? `Approval: approved by ${approvedBy}` : null,
+    typeof trustScore === "number" ? `Trust score ${Math.round(trustScore * 100)}%` : null,
+  ].filter(Boolean);
+  if (!rows.length) return null;
+  return (
+    <div className="mt-3 rounded-[18px] border border-white/[0.07] bg-white/[0.035] p-3 text-xs leading-5 text-white/58">
+      {rows.slice(0, 4).map((row) => <div key={String(row)}>{String(row)}</div>)}
     </div>
   );
 }
@@ -515,7 +552,7 @@ function OyiAiCommandCenterContent() {
       const content = replyFromResponse(resp) || "Done.";
       const state = responseState(resp);
       if (state === "success") remember(options?.usageLabel || command);
-      const nextMessages = baseMessages.map((item) => item.id === pendingId ? { ...item, pending: false, content, state, confirmations: resp.confirmations || [], cards: awarenessCards(resp), sources: resp.sources || [], suggested_actions: resp.suggested_actions || [], intent: resp.intent, understood: resp.understood, execution: resp.execution, display_mode: resp.display_mode || "conversation" } : item);
+      const nextMessages = baseMessages.map((item) => item.id === pendingId ? { ...item, pending: false, content, state, confirmations: resp.confirmations || [], cards: awarenessCards(resp), sources: resp.sources || [], suggested_actions: resp.suggested_actions || [], intent: resp.intent, understood: resp.understood, execution: resp.execution, display_mode: resp.display_mode || "conversation", executionSummary: resp.executionSummary, executionHistory: resp.executionHistory, approvalRequired: resp.approvalRequired, trustScore: resp.trustScore, initiatorType: resp.initiatorType, approvedBy: resp.approvedBy } : item);
       setMessages(nextMessages);
       persistConversation(nextMessages, nextThreadId || undefined);
       if (options?.fromVoice) {
@@ -781,6 +818,14 @@ function OyiAiCommandCenterContent() {
                           {shouldRenderSupport(message.display_mode) ? <>
                             <StructuredCards cards={message.cards} onTarget={openTarget} />
                             <OperatingStatus execution={message.execution} />
+                            <ExecutionAccountability
+                              executionSummary={message.executionSummary}
+                              executionHistory={message.executionHistory}
+                              approvalRequired={message.approvalRequired}
+                              trustScore={message.trustScore}
+                              initiatorType={message.initiatorType}
+                              approvedBy={message.approvedBy}
+                            />
                             <SourceLabels sources={message.sources} />
                             <SuggestedActions actions={message.suggested_actions} onOpen={(route) => router.push(route)} onTarget={openTarget} />
                           </> : null}
