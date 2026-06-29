@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import ConsumerShell from "@/app/components/ConsumerShell";
+import RuntimeExplainabilityCard from "@/app/components/runtime/RuntimeExplainabilityCard";
 import useAuth from "@/hooks/useAuth";
 import messagesService, {
   ChatMessage,
@@ -9,6 +10,8 @@ import messagesService, {
   InboxThread,
 } from "@/services/messagesService";
 import { getSocket } from "@/services/socket";
+import { loadOyiCoreExecutionHistory } from "@/services/oyiCoreRuntimeService";
+import { useRuntimeIntelligenceStore } from "@/store/useRuntimeIntelligenceStore";
 import { FiCheck, FiChevronLeft, FiEdit2, FiPaperclip, FiRefreshCw, FiSearch, FiSend } from "react-icons/fi";
 
 function displayName(r?: ChatResident | null) {
@@ -72,10 +75,13 @@ export default function MessagesPage() {
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [runtimeExecutions, setRuntimeExecutions] = useState<Array<Record<string, any>>>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const chatFrameRef = useRef<HTMLDivElement | null>(null);
   const [chatViewportHeight, setChatViewportHeight] = useState<number | null>(null);
+  const latestAwareness = useRuntimeIntelligenceStore((state) => state.latestAwareness);
+  const latestRecommendations = useRuntimeIntelligenceStore((state) => state.latestRecommendations);
 
   async function loadInbox() {
     const list = await messagesService.listInbox();
@@ -139,6 +145,18 @@ export default function MessagesPage() {
     }, 12000);
     return () => window.clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    void loadOyiCoreExecutionHistory({ limit: 8, action: "message" }).then((executions) => {
+      if (alive) setRuntimeExecutions(Array.isArray(executions) ? executions : []);
+    }).catch(() => {
+      if (alive) setRuntimeExecutions([]);
+    });
+    return () => {
+      alive = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -236,6 +254,7 @@ export default function MessagesPage() {
     if (!q) return residents;
     return residents.filter((r) => `${r.full_name || ""} ${r.username || ""}`.toLowerCase().includes(q));
   }, [residents, peopleQuery]);
+  const unreadThreads = useMemo(() => threads.reduce((sum, thread) => sum + Number(thread.unread_count || 0), 0), [threads]);
 
   async function send() {
     if (!activeThread?.id) return;
@@ -372,7 +391,15 @@ export default function MessagesPage() {
   ) : null;
 
   return (
-    <ConsumerShell title="Messages" subtitle="Direct messages" disableContentScroll={view === "chat"}>
+    <ConsumerShell title="Messages" subtitle="Direct messages" strip={[{ label: "Threads", value: threads.length }, { label: "Unread", value: unreadThreads }, { label: "Runtime", value: runtimeExecutions.length }, { label: "View", value: view === "chat" ? "Conversation" : "Inbox" }]} disableContentScroll={view === "chat"}>
+      <RuntimeExplainabilityCard
+        heading="Communication operations"
+        summary="Messages are paired with operational awareness, recommendation context, and execution history when available."
+        awareness={latestAwareness}
+        recommendation={latestRecommendations[0] || null}
+        executionHistory={runtimeExecutions}
+      />
+
       {err ? (
         <div className="mb-3 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
           {err}

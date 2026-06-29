@@ -26,6 +26,7 @@ import HamburgerMenu from "../components/HamburgerMenu";
 import MessagesInboxButton from "../components/MessagesInboxButton";
 import BottomNav from "../components/BottomNav";
 import OyiContextRail from "../components/OyiContextRail";
+import RuntimeExplainabilityCard from "@/app/components/runtime/RuntimeExplainabilityCard";
 import { getDeviceIcon, getDeviceIconTone } from "@/lib/devicePresentation";
 
 import { deviceService } from "../../services/deviceService";
@@ -48,6 +49,7 @@ import { describeOyiWatchStatus, getOyiWatchSyncStatus } from "@/services/watchS
 import { sceneService, type ConsumerScene } from "@/services/sceneService";
 import { intelligenceService, type IntelligenceMetricSummary } from "@/services/intelligenceService";
 import { oyiService, type OyiAwareness } from "@/services/oyiService";
+import { loadOyiCoreExecutionHistory, loadOyiCoreExecutionStatistics } from "@/services/oyiCoreRuntimeService";
 import useActiveContext, { type AvailableHomeContext } from "@/hooks/useActiveContext";
 import useAuth from "../../hooks/useAuth";
 
@@ -186,6 +188,8 @@ export default function HomePage() {
   const [watchLabel, setWatchLabel] = useState("Unavailable");
   const [intelligenceMetrics, setIntelligenceMetrics] = useState<IntelligenceMetricSummary | null>(null);
   const [backendAwareness, setBackendAwareness] = useState<OyiAwareness | null>(null);
+  const [runtimeExecutions, setRuntimeExecutions] = useState<Array<Record<string, any>>>([]);
+  const [runtimeStats, setRuntimeStats] = useState<Record<string, any> | null>(null);
   const [awarenessStatus, setAwarenessStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [contextOpen, setContextOpen] = useState(false);
   const [contextSwitching, setContextSwitching] = useState(false);
@@ -315,6 +319,26 @@ export default function HomePage() {
     window.addEventListener("oyi:device-registry-updated", refresh);
     return () => window.removeEventListener("oyi:device-registry-updated", refresh);
   }, [contextReady, activeContext.contextKey]);
+
+  useEffect(() => {
+    if (!contextReady || !estateId || !homeId) {
+      setRuntimeExecutions([]);
+      setRuntimeStats(null);
+      return;
+    }
+    let alive = true;
+    void Promise.all([
+      loadOyiCoreExecutionHistory({ limit: 10 }).catch(() => []),
+      loadOyiCoreExecutionStatistics({ limit: 40 }).catch(() => null),
+    ]).then(([executions, stats]) => {
+      if (!alive) return;
+      setRuntimeExecutions(Array.isArray(executions) ? executions : []);
+      setRuntimeStats(stats?.statistics || null);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [contextReady, estateId, homeId, activeContext.contextKey]);
 
   const canMountAuthedBridges = !!ready && !!token;
 
@@ -699,6 +723,58 @@ export default function HomePage() {
                 }))}
               />
             </motion.div>
+
+            <motion.section
+              initial={reduceMotion ? false : { opacity: 0, y: 12 }}
+              animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+              transition={{ duration: 0.48, delay: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              className="mt-5 space-y-3"
+            >
+              <RuntimeExplainabilityCard
+                heading="Home runtime briefing"
+                summary={backendAwareness?.summary || backendAwareness?.recommended_action || "Home state is backed by runtime awareness and execution history."}
+                awareness={backendAwareness as any}
+                recommendation={backendAwareness?.recommended_action ? { title: backendAwareness.recommended_action } : null}
+                executionHistory={runtimeExecutions}
+              />
+
+              <section className="rounded-[22px] border border-white/[0.08] bg-[linear-gradient(145deg,rgba(255,255,255,0.045),rgba(255,255,255,0.014))] p-4 shadow-[0_14px_42px_rgba(0,0,0,0.28)] backdrop-blur-2xl">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/46">Operational timeline</div>
+                    <h2 className="mt-1 text-[15px] font-semibold tracking-[-0.03em] text-white">Manual, physical, automation, and provider activity</h2>
+                  </div>
+                  <div className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2.5 py-1 text-[10px] text-white/58">
+                    {runtimeStats?.total || runtimeExecutions.length} records
+                  </div>
+                </div>
+                <div className="mt-3 space-y-2">
+                  {runtimeExecutions.slice(0, 5).map((item) => (
+                    <button
+                      key={item.executionId || item.signalId}
+                      type="button"
+                      onClick={() => router.push("/activity")}
+                      className="flex w-full items-start justify-between gap-3 rounded-[18px] border border-white/[0.07] bg-black/18 px-3 py-3 text-left"
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-medium text-white">{item.action || "Runtime activity"}</span>
+                        <span className="mt-1 block text-xs text-white/48">
+                          {(item.origin || "system")} · {(item.provider || "backend")} · {(item.status || "recorded")}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-[11px] text-white/40">
+                        {new Date(item.completedAt || item.requestedAt || Date.now()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </button>
+                  ))}
+                  {!runtimeExecutions.length ? (
+                    <div className="rounded-[18px] border border-dashed border-white/[0.08] px-3 py-4 text-sm text-white/45">
+                      Runtime activity will appear here as Oyi observes physical, manual, and automated actions.
+                    </div>
+                  ) : null}
+                </div>
+              </section>
+            </motion.section>
 
             {totalVisibleDevices ? <motion.section
               initial={reduceMotion ? false : { opacity: 0, y: 12 }}

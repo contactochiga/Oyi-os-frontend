@@ -389,10 +389,18 @@ function OyiAiCommandCenterContent() {
       scope: "home",
       module: moduleContext,
       route: pathname || "/ai",
+      page: pathname || "/ai",
       estate_id: activeContext.estate_id || (user as any)?.estate_id || null,
       home_id: activeContext.home_id || (user as any)?.home_id || null,
+      room_id: searchParams.get("roomId") || null,
+      device_id: searchParams.get("deviceId") || null,
+      visitor_id: searchParams.get("visitorId") || null,
+      wallet_reference: searchParams.get("transactionId") || null,
+      maintenance_id: searchParams.get("ticketId") || null,
+      notification_id: searchParams.get("notificationId") || null,
+      conversation_id: searchParams.get("threadId") || null,
     }),
-    [activeContext.estate_id, activeContext.home_id, moduleContext, pathname, user],
+    [activeContext.estate_id, activeContext.home_id, moduleContext, pathname, searchParams, user],
   );
 
   const suggestions = useMemo(() => {
