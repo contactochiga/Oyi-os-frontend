@@ -2,8 +2,22 @@
 
 import React from "react";
 import { MessageCircle } from "lucide-react";
+import { usePathname, useSearchParams } from "next/navigation";
+import useActiveContext from "@/hooks/useActiveContext";
 
 export default function AiConsoleLauncher({ onOpen }: { onOpen: () => void }) {
+  const pathname = usePathname() || "/home";
+  const searchParams = useSearchParams();
+  const activeContext = useActiveContext();
+  const moduleLabel = pathname.replace(/^\//, "").split("/")[0].replace(/-/g, " ") || "home";
+  const focusLabel =
+    searchParams.get("deviceId")
+    || searchParams.get("roomId")
+    || searchParams.get("visitorId")
+    || searchParams.get("transactionId")
+    || searchParams.get("ticketId")
+    || null;
+
   return (
     <div className="fixed left-0 right-0 bottom-0 z-[60] px-4 pb-[calc(14px+var(--sab))]">
       <div className="max-w-3xl mx-auto">
@@ -21,10 +35,14 @@ export default function AiConsoleLauncher({ onOpen }: { onOpen: () => void }) {
             <MessageCircle className="w-5 h-5 text-white/85" />
           </div>
           <div className="flex-1 text-left">
-            <div className="text-sm text-white/90 font-medium">I&apos;m Oyi, how can I help?</div>
-            <div className="text-[11px] text-white/45">Tap to open assistant</div>
+            <div className="text-sm text-white/90 font-medium">Ask Oyi about this moment.</div>
+            <div className="text-[11px] text-white/45">
+              {focusLabel
+                ? `Context ready for ${focusLabel}`
+                : `${activeContext.home?.name || activeContext.estate?.name || "Current home"} · ${moduleLabel}`}
+            </div>
           </div>
-          <div className="text-xs text-white/45">Open</div>
+          <div className="text-xs text-white/45">Assistant</div>
         </button>
       </div>
     </div>

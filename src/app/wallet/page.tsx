@@ -3,14 +3,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import ConsumerShell from "@/app/components/ConsumerShell";
-import ActivityMetricsRail from "@/app/components/ActivityMetricsRail";
 import RuntimeExplainabilityCard from "@/app/components/runtime/RuntimeExplainabilityCard";
 import useAuth from "@/hooks/useAuth";
 import { walletService, type WalletDTO } from "@/services/walletService";
 import { servicesService, type ServicePayment } from "@/services/servicesService";
 import { loadOyiCoreExecutionHistory, loadOyiCoreExecutionStatistics } from "@/services/oyiCoreRuntimeService";
 import { useRuntimeIntelligenceStore } from "@/store/useRuntimeIntelligenceStore";
-import { FiClock, FiCreditCard, FiRefreshCw, FiTrendingUp } from "react-icons/fi";
 
 function formatMoney(amount: number, currency = "NGN") {
   try {
@@ -187,11 +185,17 @@ export default function WalletPage() {
 
   const currency = wallet?.currency || "NGN";
   const balance = safeNum(wallet?.balance);
+  const strip = [
+    { label: "Balance", value: formatMoney(balance, currency) },
+    { label: "Payments", value: servicePayments.length },
+    { label: "Recent", value: String(servicePayments[0]?.status || "None") },
+    { label: "Runtime", value: runtimeStats?.total || runtimeExecutions.length },
+  ];
 
   const quickAmounts = [1000, 5000, 10000, 20000];
 
   return (
-    <ConsumerShell title="Wallet" subtitle="Home operations finance • dues • utilities">
+    <ConsumerShell title="Wallet" subtitle="Balance, payments and dues." strip={strip}>
       <div className="oyi-living-page space-y-3 pb-8">
       <RuntimeExplainabilityCard
         heading="Financial runtime posture"
@@ -207,32 +211,17 @@ export default function WalletPage() {
         </div>
       )}
 
+      {loading && (
+        <div className="mb-4 rounded-2xl border border-white/10 bg-white/[0.035] px-4 py-3 text-sm text-white/60">
+          Syncing wallet posture…
+        </div>
+      )}
+
       {err && (
         <div className="mb-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
           {err}
         </div>
       )}
-
-      <section className="flex items-center justify-end gap-2">
-        <button
-          onClick={load}
-          disabled={loading}
-          className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-2 text-xs font-medium text-white/68 transition active:scale-[0.98] disabled:opacity-50"
-          type="button"
-        >
-          <FiRefreshCw className="h-3.5 w-3.5" />
-          {loading ? "Syncing" : "Refresh"}
-        </button>
-      </section>
-
-      <ActivityMetricsRail
-        items={[
-          { icon: FiCreditCard, label: "Balance", value: formatMoney(balance, currency), color: "text-sky-300" },
-          { icon: FiTrendingUp, label: "Payments", value: servicePayments.length, color: "text-emerald-200" },
-          { icon: FiClock, label: "Recent", value: servicePayments[0]?.status || "None", color: "text-amber-200" },
-          { icon: FiTrendingUp, label: "Runtime", value: runtimeStats?.total || runtimeExecutions.length, color: "text-cyan-300" },
-        ]}
-      />
 
       <section className="rounded-[24px] border border-white/10 bg-white/[0.035] p-4">
         <div>

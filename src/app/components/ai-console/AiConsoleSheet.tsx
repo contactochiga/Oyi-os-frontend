@@ -291,7 +291,10 @@ export default function AiConsoleSheet(props: {
                     <div className="h-7 w-7 rounded-xl border border-white/10 bg-white/5 flex items-center justify-center">
                       <Sparkles className="w-4 h-4 text-cyan-200" />
                     </div>
-                    <div className="text-xs text-white/55">I&apos;m Oyi, how can I help?</div>
+                    <div>
+                      <div className="text-xs font-medium text-white/82">Operational assistant</div>
+                      <div className="text-[11px] text-white/45">Context-aware conversation for your current home</div>
+                    </div>
                   </div>
 
                   <div className="flex items-center gap-2">

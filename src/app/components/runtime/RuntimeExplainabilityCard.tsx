@@ -28,24 +28,28 @@ export default function RuntimeExplainabilityCard({
   executionHistory?: ExecutionRecord[];
 }) {
   const latest = executionHistory[0] || null;
+  const confidence =
+    typeof awareness?.confidence === "number"
+      ? Math.round(Number(awareness.confidence) * 100)
+      : typeof latest?.verification?.trustScore === "number"
+        ? Math.round(Number(latest.verification.trustScore) * 100)
+        : typeof latest?.trustScore === "number"
+          ? Math.round(Number(latest.trustScore) * 100)
+          : null;
   const rows = [
     latest?.origin ? `Source ${label(latest.origin, "system")}` : null,
     latest?.initiator?.name || latest?.initiatorType ? `Initiator ${label(latest?.initiator?.name || latest?.initiatorType, "system")}` : null,
-    typeof latest?.verification?.trustScore === "number"
-      ? `Trust ${Math.round(Number(latest.verification.trustScore) * 100)}%`
-      : typeof latest?.trustScore === "number"
-      ? `Trust ${Math.round(Number(latest.trustScore) * 100)}%`
-      : null,
+    confidence !== null ? `Confidence ${confidence}%` : null,
     latest?.provider ? `Provider ${label(latest.provider, "backend")}` : null,
   ].filter(Boolean);
 
   return (
-    <section className="rounded-[22px] border border-white/[0.08] bg-[linear-gradient(145deg,rgba(255,255,255,0.05),rgba(255,255,255,0.014))] p-4 shadow-[0_14px_42px_rgba(0,0,0,0.28)] backdrop-blur-2xl">
+    <section className="rounded-[22px] border border-white/[0.08] bg-[linear-gradient(145deg,rgba(255,255,255,0.05),rgba(255,255,255,0.014))] p-3.5 shadow-[0_14px_42px_rgba(0,0,0,0.28)] backdrop-blur-2xl">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/46">Runtime intelligence</div>
-          <h2 className="mt-1 text-[15px] font-semibold tracking-[-0.03em] text-white">{heading}</h2>
-          <p className="mt-1 text-xs leading-5 text-white/52">
+          <div className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/46">Runtime briefing</div>
+          <h2 className="mt-1 text-[14px] font-semibold tracking-[-0.03em] text-white">{heading}</h2>
+          <p className="mt-1 text-[11px] leading-5 text-white/52">
             {summary || awareness?.summary || awareness?.reason || "Operational context is attached to this activity."}
           </p>
         </div>
@@ -65,28 +69,28 @@ export default function RuntimeExplainabilityCard({
       ) : null}
 
       {recommendation?.title || recommendation?.summary || recommendation?.action ? (
-        <div className="mt-3 rounded-[18px] border border-emerald-300/14 bg-emerald-400/[0.055] p-3">
+        <div className="mt-3 rounded-[18px] border border-emerald-300/14 bg-emerald-400/[0.055] p-2.5">
           <div className="text-[10px] uppercase tracking-[0.14em] text-emerald-100/58">Recommended action</div>
-          <div className="mt-1 text-sm font-medium text-white">
+          <div className="mt-1 text-[13px] font-medium text-white">
             {label(recommendation?.title || recommendation?.action, "No immediate action required")}
           </div>
           {(recommendation?.summary || recommendation?.reason) ? (
-            <div className="mt-1 text-xs leading-5 text-emerald-50/72">{label(recommendation?.summary || recommendation?.reason, "")}</div>
+            <div className="mt-1 text-[11px] leading-5 text-emerald-50/72">{label(recommendation?.summary || recommendation?.reason, "")}</div>
           ) : null}
         </div>
       ) : null}
 
       {latest ? (
-        <div className="mt-3 rounded-[18px] border border-white/[0.07] bg-black/20 p-3">
+        <div className="mt-3 rounded-[18px] border border-white/[0.07] bg-black/20 p-2.5">
           <div className="flex items-start justify-between gap-3">
             <div>
               <div className="text-[10px] uppercase tracking-[0.14em] text-white/40">Latest execution</div>
-              <div className="mt-1 text-sm font-medium text-white">{label(latest.action, "Runtime execution")}</div>
-              <div className="mt-1 text-xs text-white/50">
+              <div className="mt-1 text-[13px] font-medium text-white">{label(latest.action, "Runtime execution")}</div>
+              <div className="mt-1 text-[11px] text-white/50">
                 {label(latest.status, "recorded")} · {when(latest.completedAt || latest.requestedAt)}
               </div>
             </div>
-            <div className="text-right text-[11px] text-white/44">
+            <div className="text-right text-[10px] text-white/44">
               {latest?.approvalRequired ? "Approval required" : "No approval"}
             </div>
           </div>

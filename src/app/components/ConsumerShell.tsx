@@ -68,31 +68,44 @@ export default function ConsumerShell({
           }}
         >
           <div className="oyi-living-page oyi-page-fade mx-auto w-full max-w-[860px]">
-            <header className="mb-4 flex items-start justify-between gap-3 px-0.5">
-              <div className="flex min-w-0 items-start gap-2.5">
-                <div className="pt-0.5">
-                  <HamburgerMenu />
+            <header className="mb-3.5 px-0.5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-start gap-2.5">
+                  <div className="pt-0.5">
+                    <HamburgerMenu />
+                  </div>
+                  <div className="min-w-0 pt-0.5">
+                    <h1 className="text-[26px] font-semibold leading-none tracking-[-0.055em] text-white sm:text-[29px]">
+                      {title || "Oyi Home"}
+                    </h1>
+                    <p className="mt-1.5 max-w-2xl text-[12px] leading-5 text-white/50">
+                      {subtitle || "Your living environment."}
+                    </p>
+                  </div>
                 </div>
-                <div className="min-w-0 pt-0.5">
-                  <h1 className="text-[28px] font-semibold leading-none tracking-[-0.055em] text-white sm:text-[31px]">
-                    {title || "Oyi Home"}
-                  </h1>
-                  <p className="mt-2 max-w-2xl text-[13px] leading-5 text-white/54">
-                    {subtitle || "Your living environment."}
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {stripItems.slice(0, 4).map((item) => (
-                      <span key={`${item.label}:${item.value}`} className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2.5 py-1 text-[10px] text-white/56">
-                        <span className="text-white/34">{item.label}</span> {item.value}
-                      </span>
-                    ))}
+                <div className="flex shrink-0 items-center gap-2">
+                  <MessagesInboxButton />
+                  <div className="hidden h-10 w-10 sm:block">
+                    <div className="oyi-orb h-10 w-10" aria-hidden="true" />
                   </div>
                 </div>
               </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <MessagesInboxButton />
-                <div className="hidden h-10 w-10 sm:block">
-                  <div className="oyi-orb h-10 w-10" aria-hidden="true" />
+
+              <div className="mt-3 overflow-hidden rounded-[20px] border border-white/[0.07] bg-[linear-gradient(145deg,rgba(255,255,255,0.042),rgba(255,255,255,0.012))] px-2.5 py-2 shadow-[0_12px_38px_rgba(0,0,0,0.28)] backdrop-blur-2xl">
+                <div className="flex snap-x snap-mandatory gap-2 overflow-x-auto scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  {stripItems.slice(0, 6).map((item) => (
+                    <div
+                      key={`${item.label}:${item.value}`}
+                      className="min-w-[118px] shrink-0 snap-start rounded-[16px] border border-white/[0.05] bg-white/[0.028] px-3 py-2"
+                    >
+                      <div className="text-[9px] uppercase tracking-[0.16em] text-white/32">
+                        {item.label}
+                      </div>
+                      <div className="mt-1 text-[13px] font-semibold leading-4 tracking-[-0.03em] text-white/88">
+                        {item.value}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </header>

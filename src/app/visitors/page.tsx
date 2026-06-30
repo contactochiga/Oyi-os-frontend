@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import ConsumerShell from "@/app/components/ConsumerShell";
-import ActivityMetricsRail from "@/app/components/ActivityMetricsRail";
 import RuntimeExplainabilityCard from "@/app/components/runtime/RuntimeExplainabilityCard";
 import {
   visitorService,
@@ -318,9 +317,15 @@ export default function VisitorsPage() {
   }, [tabItems]);
 
   const pendingCount = vClampCount(pendingVisitors.length);
+  const strip = [
+    { label: "Active", value: activeVisitors.length },
+    { label: "Pending", value: pendingVisitors.length },
+    { label: "Approved", value: approvedVisitors.length },
+    { label: "Runtime", value: visitorExecutions.length },
+  ];
 
   return (
-    <ConsumerShell title="Visitor Access" subtitle="Trusted arrivals and temporary access.">
+    <ConsumerShell title="Visitor Access" subtitle="Trusted arrivals and temporary access." strip={strip}>
       <div className="oyi-living-page space-y-3 pb-8">
       {err && (
         <div className="mb-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
@@ -330,14 +335,6 @@ export default function VisitorsPage() {
 
       <section className="flex items-center justify-end gap-2">
         <button
-          onClick={loadMine}
-          disabled={loading}
-          className="rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-2 text-xs font-medium text-white/68 transition active:scale-[0.98] disabled:opacity-50"
-          type="button"
-        >
-          {loading ? "Syncing" : "Refresh"}
-        </button>
-        <button
           onClick={() => setShowAddDialog(true)}
           className="inline-flex items-center gap-1.5 rounded-full border border-sky-300/18 bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-100 shadow-[0_0_18px_rgba(0,132,255,0.14)] transition active:scale-[0.98]"
           type="button"
@@ -346,14 +343,6 @@ export default function VisitorsPage() {
           Add Visitor
         </button>
       </section>
-
-      <ActivityMetricsRail
-        items={[
-          { icon: User, label: "Active", value: activeVisitors.length, color: "text-sky-300" },
-          { icon: Clock, label: "Pending", value: pendingVisitors.length, color: "text-amber-200" },
-          { icon: CheckCircle, label: "Approved", value: approvedVisitors.length, color: "text-emerald-200" },
-        ]}
-      />
 
       {/* Created result */}
       {created && (

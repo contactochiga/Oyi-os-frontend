@@ -16,21 +16,13 @@ import {
   Cpu,
   Home,
   AlertTriangle,
-  Activity as ActivityIcon,
   MessageCircle,
   Sparkles,
   UserPlus,
   Watch,
-  Brain,
-  ClipboardCheck,
-  CheckCircle2,
 } from "lucide-react";
 
-import LayoutWrapper from "@/app/components/LayoutWrapper";
-import HamburgerMenu from "@/app/components/HamburgerMenu";
-import MessagesInboxButton from "@/app/components/MessagesInboxButton";
-import BottomNav from "@/app/components/BottomNav";
-import ActivityMetricsRail from "@/app/components/ActivityMetricsRail";
+import ConsumerShell from "@/app/components/ConsumerShell";
 import RuntimeExplainabilityCard from "@/app/components/runtime/RuntimeExplainabilityCard";
 import { getSocket } from "@/services/socket";
 import { getDeviceIconFromText } from "@/lib/devicePresentation";
@@ -221,27 +213,18 @@ export default function ActivityPage() {
   }, [contextReady, activeContext.contextKey]);
 
   const visibleEvents = useMemo(() => events.filter((item) => matchesFilter(item, filter)), [events, filter]);
+  const strip = [
+    { label: "Events", value: summaryValue(summary.total_events) },
+    { label: "Alerts", value: summaryValue(summary.alerts) },
+    { label: "Visitors", value: summaryValue(summary.visitors) },
+    { label: "Actions", value: summaryValue(summary.actions) },
+    { label: "Runtime", value: runtimeExecutions.length },
+    { label: "Predictions", value: summaryValue(intelligenceMetrics?.predictions) },
+  ];
 
   return (
-    <LayoutWrapper>
-      <main className="fixed inset-0 overflow-hidden bg-[#02060b] text-white">
-        <div className="oyi-ambient-bg" />
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_72%_14%,rgba(0,132,255,0.14),transparent_30%),linear-gradient(180deg,rgba(3,10,19,0.22),rgba(0,0,0,0.94))]" />
-
-        <div className="fixed inset-x-0 z-[80] px-5" style={{ top: "calc(8px + var(--sat))" }}>
-          <div className="mx-auto flex max-w-[430px] items-center justify-between">
-            <div className="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/[0.03] shadow-[0_8px_26px_rgba(0,0,0,0.28)] backdrop-blur-2xl"><HamburgerMenu /></div>
-            <div className="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/[0.028] shadow-[0_8px_26px_rgba(0,0,0,0.28)] backdrop-blur-2xl"><MessagesInboxButton /></div>
-          </div>
-        </div>
-
-        <div className="absolute inset-x-0 overflow-y-auto px-5" style={{ top: "calc(70px + var(--sat))", bottom: "calc(78px + var(--sab))", WebkitOverflowScrolling: "touch" }}>
-          <div className="mx-auto max-w-[430px] pb-5">
-            <header>
-              <h1 className="text-[27px] font-semibold leading-none tracking-[-0.055em] text-white">Activity</h1>
-              <p className="mt-2 text-[13px] leading-5 text-white/56">Live updates from your home.</p>
-            </header>
-
+    <ConsumerShell title="Activity" subtitle="Live home events and explanations." strip={strip}>
+      <div className="oyi-living-page space-y-4 pb-8">
             <section className="mt-5 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Activity filters">
               {FILTERS.map((item) => {
                 const Icon = item.icon;
@@ -264,30 +247,14 @@ export default function ActivityPage() {
               })}
             </section>
 
-            <ActivityMetricsRail
-              title="Today"
-              items={[
-                { icon: ActivityIcon, label: "Events", value: summaryValue(summary.total_events), color: "text-sky-300" },
-                { icon: ShieldCheck, label: "Alerts", value: summaryValue(summary.alerts), color: "text-emerald-300" },
-                { icon: Users, label: "Visitors", value: summaryValue(summary.visitors), color: "text-violet-300" },
-                { icon: Bolt, label: "Actions", value: summaryValue(summary.actions), color: "text-amber-300" },
-                { icon: Brain, label: "Predictions", value: summaryValue(intelligenceMetrics?.predictions), color: "text-cyan-300" },
-                { icon: ClipboardCheck, label: "Workflows", value: summaryValue(intelligenceMetrics?.workflows), color: "text-blue-300" },
-                { icon: CheckCircle2, label: "Approvals", value: summaryValue(intelligenceMetrics?.approvals), color: "text-emerald-200" },
-                { icon: Cpu, label: "Devices", value: summaryValue(intelligenceMetrics?.devices), color: "text-amber-200" },
-                { icon: Wrench, label: "Maintenance", value: summaryValue(events.filter((event) => event.category === "maintenance").length), color: "text-orange-200" },
-              ]}
-              className="mt-4"
-            />
-
             {error ? (
-              <section className="mt-4 rounded-[20px] border border-amber-300/16 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
+              <section className="rounded-[20px] border border-amber-300/16 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
                 <div className="font-medium">Activity temporarily unavailable.</div>
                 <div className="mt-1 text-xs text-amber-100/70">{error}</div>
               </section>
             ) : null}
 
-            <section className="mt-4">
+            <section>
               <RuntimeExplainabilityCard
                 heading="Operational activity context"
                 summary="Recent home activity is enriched with provenance, confidence, and the next best action."
@@ -297,12 +264,10 @@ export default function ActivityPage() {
               />
             </section>
 
-            <section className="mt-4">
+            <section>
               <div className="mb-2.5 flex items-center justify-between">
                 <div className="text-xs text-white/38">{lastSync ? `Synced ${formatTime(lastSync)}` : loading ? "Syncing activity" : "Live feed"}</div>
-                <button type="button" onClick={() => load(true)} disabled={loading || refreshing} className="rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-1.5 text-xs text-white/60 disabled:opacity-45">
-                  {refreshing ? "Refreshing" : "Refresh"}
-                </button>
+                <div className="text-[11px] text-white/42">{refreshing ? "Refreshing…" : "Runtime-aware feed"}</div>
               </div>
 
               {loading ? <ActivitySkeleton /> : null}
@@ -326,12 +291,8 @@ export default function ActivityPage() {
                 </div>
               ) : null}
             </section>
-          </div>
-        </div>
-
-        <BottomNav />
-      </main>
-    </LayoutWrapper>
+      </div>
+    </ConsumerShell>
   );
 }
 
