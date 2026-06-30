@@ -323,26 +323,27 @@ export default function VisitorsPage() {
     { label: "Approved", value: approvedVisitors.length },
     { label: "Runtime", value: visitorExecutions.length },
   ];
+  const addVisitorAction = (
+    <section className="flex items-center justify-end gap-2">
+      <button
+        onClick={() => setShowAddDialog(true)}
+        className="inline-flex items-center gap-1.5 rounded-full border border-sky-300/18 bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-100 shadow-[0_0_18px_rgba(0,132,255,0.14)] transition active:scale-[0.98]"
+        type="button"
+      >
+        <UserPlus className="h-3.5 w-3.5" />
+        Add Visitor
+      </button>
+    </section>
+  );
 
   return (
-    <ConsumerShell title="Visitor Access" subtitle="Trusted arrivals and temporary access." strip={strip}>
+    <ConsumerShell title="Visitor Access" subtitle="Trusted arrivals and temporary access." strip={strip} preStripSlot={addVisitorAction}>
       <div className="oyi-living-page space-y-3 pb-8">
       {err && (
         <div className="mb-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
           {err}
         </div>
       )}
-
-      <section className="flex items-center justify-end gap-2">
-        <button
-          onClick={() => setShowAddDialog(true)}
-          className="inline-flex items-center gap-1.5 rounded-full border border-sky-300/18 bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-100 shadow-[0_0_18px_rgba(0,132,255,0.14)] transition active:scale-[0.98]"
-          type="button"
-        >
-          <UserPlus className="h-3.5 w-3.5" />
-          Add Visitor
-        </button>
-      </section>
 
       {/* Created result */}
       {created && (

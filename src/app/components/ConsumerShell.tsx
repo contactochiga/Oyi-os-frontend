@@ -16,12 +16,14 @@ export default function ConsumerShell({
   title,
   subtitle,
   strip = [],
+  preStripSlot,
   disableContentScroll = false,
 }: {
   children: ReactNode;
   title?: string;
   subtitle?: string;
   strip?: Array<{ label: string; value: string | number }>;
+  preStripSlot?: ReactNode;
   disableContentScroll?: boolean;
 }) {
   const pathname = usePathname();
@@ -90,6 +92,8 @@ export default function ConsumerShell({
                   </div>
                 </div>
               </div>
+
+              {preStripSlot ? <div className="mt-3">{preStripSlot}</div> : null}
 
               <div className="mt-3 overflow-hidden rounded-[20px] border border-white/[0.07] bg-[linear-gradient(145deg,rgba(255,255,255,0.042),rgba(255,255,255,0.012))] px-2.5 py-2 shadow-[0_12px_38px_rgba(0,0,0,0.28)] backdrop-blur-2xl">
                 <div className="flex snap-x snap-mandatory gap-2 overflow-x-auto scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">

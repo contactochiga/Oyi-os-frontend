@@ -264,6 +264,17 @@ export default function MaintenancePage() {
     : openCount
       ? `${openCount} active request${openCount === 1 ? "" : "s"} are being tracked.`
       : "Service requests and scheduled care.";
+  const requestAction = (
+    <section className="flex items-center justify-end gap-2">
+      <button
+        onClick={() => setShowNew(true)}
+        className="rounded-full border border-sky-300/18 bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-100 shadow-[0_0_18px_rgba(0,132,255,0.14)] transition active:scale-[0.98]"
+        type="button"
+      >
+        New Request
+      </button>
+    </section>
+  );
 
   async function load() {
     setLoading(true);
@@ -334,18 +345,9 @@ export default function MaintenancePage() {
       title="Maintenance"
       subtitle={subtitle}
       strip={strip}
+      preStripSlot={requestAction}
     >
       <div className="oyi-living-page space-y-2.5 pb-8">
-      <section className="flex items-center justify-end gap-2">
-        <button
-          onClick={() => setShowNew(true)}
-          className="rounded-full border border-sky-300/18 bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-100 shadow-[0_0_18px_rgba(0,132,255,0.14)] transition active:scale-[0.98]"
-          type="button"
-        >
-          New Request
-        </button>
-      </section>
-
       {err ? <div className="rounded-[18px] border border-red-300/16 bg-red-500/10 px-3.5 py-3 text-xs text-red-100">{err}</div> : null}
 
       <section className="overflow-hidden rounded-[22px] border border-white/[0.06] bg-[linear-gradient(145deg,rgba(255,255,255,0.04),rgba(255,255,255,0.012))] px-2.5 py-2.5 shadow-[0_14px_44px_rgba(0,0,0,0.28)] backdrop-blur-2xl">

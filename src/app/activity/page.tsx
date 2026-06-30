@@ -23,7 +23,6 @@ import {
 } from "lucide-react";
 
 import ConsumerShell from "@/app/components/ConsumerShell";
-import RuntimeExplainabilityCard from "@/app/components/runtime/RuntimeExplainabilityCard";
 import { getSocket } from "@/services/socket";
 import { getDeviceIconFromText } from "@/lib/devicePresentation";
 import { acknowledgeActivityEvent, acknowledgeSeenActivityEvents, getActivityFeed, notificationIdFromActivity, type ActivityCategory, type ActivityEvent, type ActivitySummary } from "@/services/activityService";
@@ -33,7 +32,6 @@ import useAuth from "@/hooks/useAuth";
 import { scopeMatches, type BadgeScope } from "@/lib/footerBadges";
 import { intelligenceService, type IntelligenceMetricSummary } from "@/services/intelligenceService";
 import { loadOyiCoreExecutionHistory } from "@/services/oyiCoreRuntimeService";
-import { useRuntimeIntelligenceStore } from "@/store/useRuntimeIntelligenceStore";
 
 type FilterKey = "all" | "alerts" | "devices" | "people";
 
@@ -101,8 +99,6 @@ export default function ActivityPage() {
   const markBucketViewed = useNotificationStore((state) => state.markBucketViewed);
   const scope = useMemo<BadgeScope>(() => ({ userId: (user as any)?.id || null, estateId: activeContext.estate_id, homeId: activeContext.home_id }), [user, activeContext.estate_id, activeContext.home_id]);
   const contextReady = Boolean(ready && token && activeContext.ready);
-  const latestAwareness = useRuntimeIntelligenceStore((state) => state.latestAwareness);
-  const latestRecommendations = useRuntimeIntelligenceStore((state) => state.latestRecommendations);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -253,16 +249,6 @@ export default function ActivityPage() {
                 <div className="mt-1 text-xs text-amber-100/70">{error}</div>
               </section>
             ) : null}
-
-            <section>
-              <RuntimeExplainabilityCard
-                heading="Operational activity context"
-                summary="Recent home activity is enriched with provenance, confidence, and the next best action."
-                awareness={latestAwareness}
-                recommendation={latestRecommendations[0] || null}
-                executionHistory={runtimeExecutions}
-              />
-            </section>
 
             <section>
               <div className="mb-2.5 flex items-center justify-between">

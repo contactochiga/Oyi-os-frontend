@@ -278,6 +278,11 @@ export default function ServicesPage() {
     : electricityLinked || waterLinked || internetLinked
       ? `Home services are linked and ready for resident actions.`
       : `Managed living, utilities and home support.`;
+  const requestServiceAction = (
+    <section className="flex items-center justify-end gap-2">
+      <ServiceActionChip label="Request Service" Icon={FiTool} onClick={() => setRequestSheetOpen(true)} />
+    </section>
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -390,7 +395,7 @@ export default function ServicesPage() {
   }
 
   return (
-    <ConsumerShell title="Services" subtitle={subtitle} strip={strip}>
+    <ConsumerShell title="Services" subtitle={subtitle} strip={strip} preStripSlot={requestServiceAction}>
       <div className="oyi-living-page space-y-3 pb-8">
       {err ? <div className="mb-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">{err}</div> : null}
       {msg ? <div className="mb-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">{msg}</div> : null}
@@ -399,10 +404,6 @@ export default function ServicesPage() {
           Estate service pricing is using fallback defaults until facility billing configuration is saved.
         </div>
       ) : null}
-
-      <section className="flex items-center justify-end gap-2">
-        <ServiceActionChip label="Request Service" Icon={FiTool} onClick={() => setRequestSheetOpen(true)} />
-      </section>
 
       <section className="space-y-2.5">
         <div className="px-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-white/42">Service Catalog</div>

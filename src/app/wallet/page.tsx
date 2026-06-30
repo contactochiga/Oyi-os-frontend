@@ -3,7 +3,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import ConsumerShell from "@/app/components/ConsumerShell";
-import RuntimeExplainabilityCard from "@/app/components/runtime/RuntimeExplainabilityCard";
 import useAuth from "@/hooks/useAuth";
 import { walletService, type WalletDTO } from "@/services/walletService";
 import { servicesService, type ServicePayment } from "@/services/servicesService";
@@ -43,7 +42,6 @@ export default function WalletPage() {
   const [runtimeExecutions, setRuntimeExecutions] = useState<Array<Record<string, any>>>([]);
   const [runtimeStats, setRuntimeStats] = useState<Record<string, any> | null>(null);
   const latestAwareness = useRuntimeIntelligenceStore((state) => state.latestAwareness);
-  const latestRecommendations = useRuntimeIntelligenceStore((state) => state.latestRecommendations);
 
   async function load() {
     setLoading(true);
@@ -191,20 +189,15 @@ export default function WalletPage() {
     { label: "Recent", value: String(servicePayments[0]?.status || "None") },
     { label: "Runtime", value: runtimeStats?.total || runtimeExecutions.length },
   ];
+  const subtitle = latestAwareness?.summary
+    ? String(latestAwareness.summary)
+    : "Balance, payments and dues.";
 
   const quickAmounts = [1000, 5000, 10000, 20000];
 
   return (
-    <ConsumerShell title="Wallet" subtitle="Balance, payments and dues." strip={strip}>
+    <ConsumerShell title="Wallet" subtitle={subtitle} strip={strip}>
       <div className="oyi-living-page space-y-3 pb-8">
-      <RuntimeExplainabilityCard
-        heading="Financial runtime posture"
-        summary="Wallet activity is paired with execution source, confidence, and recommended action."
-        awareness={latestAwareness}
-        recommendation={latestRecommendations[0] || null}
-        executionHistory={runtimeExecutions}
-      />
-
       {info && (
         <div className="mb-4 rounded-2xl border border-cyan-500/20 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
           {info}
