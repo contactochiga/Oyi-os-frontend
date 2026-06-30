@@ -26,7 +26,6 @@ import HamburgerMenu from "../components/HamburgerMenu";
 import MessagesInboxButton from "../components/MessagesInboxButton";
 import BottomNav from "../components/BottomNav";
 import OyiContextRail from "../components/OyiContextRail";
-import RuntimeExplainabilityCard from "@/app/components/runtime/RuntimeExplainabilityCard";
 import { getDeviceIcon, getDeviceIconTone } from "@/lib/devicePresentation";
 
 import { deviceService } from "../../services/deviceService";
@@ -728,16 +727,8 @@ export default function HomePage() {
               initial={reduceMotion ? false : { opacity: 0, y: 12 }}
               animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
               transition={{ duration: 0.48, delay: 0.22, ease: [0.22, 1, 0.36, 1] }}
-              className="mt-5 space-y-3"
+              className="mt-5"
             >
-              <RuntimeExplainabilityCard
-                heading="Home runtime briefing"
-                summary={backendAwareness?.summary || backendAwareness?.recommended_action || "Home state is backed by runtime awareness and execution history."}
-                awareness={backendAwareness as any}
-                recommendation={backendAwareness?.recommended_action ? { title: backendAwareness.recommended_action } : null}
-                executionHistory={runtimeExecutions}
-              />
-
               <section className="rounded-[22px] border border-white/[0.08] bg-[linear-gradient(145deg,rgba(255,255,255,0.045),rgba(255,255,255,0.014))] p-4 shadow-[0_14px_42px_rgba(0,0,0,0.28)] backdrop-blur-2xl">
                 <div className="flex items-start justify-between gap-3">
                   <div>

@@ -22,11 +22,7 @@ import {
   Wrench,
 } from "lucide-react";
 
-import LayoutWrapper from "@/app/components/LayoutWrapper";
-import HamburgerMenu from "@/app/components/HamburgerMenu";
-import MessagesInboxButton from "@/app/components/MessagesInboxButton";
-import BottomNav from "@/app/components/BottomNav";
-import RuntimeExplainabilityCard from "@/app/components/runtime/RuntimeExplainabilityCard";
+import ConsumerShell from "@/app/components/ConsumerShell";
 import LiveBroadcastComposer from "@/app/components/community/LiveBroadcastComposer";
 import LiveSessionPlayer from "@/app/components/community/LiveSessionPlayer";
 import useAuth from "@/hooks/useAuth";
@@ -206,24 +202,6 @@ async function toDataUrl(file: File) {
   });
 }
 
-function CommunityHeader({ unread }: { unread: number }) {
-  return (
-    <div className="flex items-start justify-between gap-3 pt-0">
-      <div className="flex items-start gap-2.5">
-        <HamburgerMenu />
-        <div>
-          <h1 className="text-[29px] font-semibold leading-none tracking-[-0.05em] text-white">Community</h1>
-          <p className="mt-2 text-[13px] leading-5 text-white/52">Estate updates and resident notices.</p>
-        </div>
-      </div>
-      <div className="relative">
-        <MessagesInboxButton />
-        {unread > 0 ? <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-blue-400 shadow-[0_0_12px_rgba(59,130,246,0.85)]" /> : null}
-      </div>
-    </div>
-  );
-}
-
 export default function CommunityPage() {
   const { user } = useAuth();
   const activeContext = useActiveContext();
@@ -255,8 +233,6 @@ export default function CommunityPage() {
   const canPost = canUseCommunityWrite(user);
   const canBroadcast = canUseCommunityBroadcast(user);
   const readStorageKey = useMemo(() => `oyi:community:read:${String((user as any)?.id || "user")}:${estateId || "estate"}:${String(activeContext.home_id || "home")}`, [user, estateId, activeContext.home_id]);
-  const latestAwareness = useRuntimeIntelligenceStore((state) => state.latestAwareness);
-  const latestRecommendations = useRuntimeIntelligenceStore((state) => state.latestRecommendations);
   const latestInsights = useRuntimeIntelligenceStore((state) => state.latestInsights);
   const unread = useMemo(() => notificationItems.filter((item: any) => {
     const postId = String(item?.payload?.post_id || item?.entity_id || item?.post_id || "");
@@ -434,28 +410,31 @@ export default function CommunityPage() {
   }
 
   const estateName = String(estate?.name || (home as any)?.estate_name || "Your estate");
+  const strip = [
+    { label: "Posts", value: counts.all },
+    { label: "Alerts", value: counts.urgent },
+    { label: "Discussions", value: counts.discussions },
+    { label: "Moderation", value: counts.announcements },
+    { label: "Unread", value: unread },
+  ];
+  const subtitle = latestInsights[0]?.summary
+    ? String(latestInsights[0].summary)
+    : `${estateName} notices, discussions and resident updates.`;
 
   return (
-    <LayoutWrapper>
-      <main className="fixed inset-0 overflow-hidden bg-[#02060b] text-white">
-        <div className="oyi-ambient-bg" />
-        <div className="relative z-10 h-full overflow-y-auto px-4 pb-[calc(132px+var(--sab))] pt-[calc(14px+var(--sat))]">
-          <div className="mx-auto w-full max-w-[760px] space-y-4">
-            <CommunityHeader unread={unread} />
-            <RuntimeExplainabilityCard
-              heading="Community intelligence"
-              summary={latestInsights[0]?.summary || "Resident sentiment, estate priorities, and recommended actions are surfaced here."}
-              awareness={latestAwareness}
-              recommendation={latestRecommendations[0] || null}
-              executionHistory={[]}
-            />
-
+    <ConsumerShell title="Community" subtitle={subtitle} strip={strip}>
+      <div className="oyi-living-page mx-auto w-full max-w-[760px] space-y-4 pb-8">
             {canPost ? (
               <section className="rounded-[21px] border border-white/[0.065] bg-white/[0.03] p-2.5 shadow-[0_14px_42px_rgba(0,0,0,0.22)] backdrop-blur-xl">
                 {!composerOpen ? (
-                  <button type="button" onClick={() => setComposerOpen(true)} className="flex w-full items-center justify-center gap-2 rounded-[17px] border border-sky-300/10 bg-sky-400/[0.045] px-3.5 py-2.5 text-[13px] font-semibold text-sky-200 transition active:scale-[0.99]">
-                    <MessageCircle className="h-3.5 w-3.5" />
-                    Share with estate
+                  <button type="button" onClick={() => setComposerOpen(true)} className="flex w-full items-center gap-3 rounded-[17px] border border-white/[0.075] bg-black/20 px-3.5 py-3 text-left transition hover:bg-white/[0.045] active:scale-[0.99]">
+                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-sky-300/14 bg-sky-400/[0.10] text-sky-200">
+                      <MessageCircle className="h-4 w-4" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[13px] font-semibold text-white/84">What&apos;s happening in the estate?</span>
+                      <span className="mt-0.5 block text-[11px] text-white/42">Share an update, question or notice.</span>
+                    </span>
                   </button>
                 ) : (
                   <div className="space-y-3">
@@ -530,11 +509,8 @@ export default function CommunityPage() {
                 </div>
               )}
             </section>
-          </div>
-        </div>
-        <BottomNav />
-      </main>
-    </LayoutWrapper>
+      </div>
+    </ConsumerShell>
   );
 }
 

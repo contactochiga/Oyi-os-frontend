@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import ConsumerShell from "@/app/components/ConsumerShell";
-import RuntimeExplainabilityCard from "@/app/components/runtime/RuntimeExplainabilityCard";
 import useAuth from "@/hooks/useAuth";
 import messagesService, {
   ChatMessage,
@@ -81,7 +80,6 @@ export default function MessagesPage() {
   const chatFrameRef = useRef<HTMLDivElement | null>(null);
   const [chatViewportHeight, setChatViewportHeight] = useState<number | null>(null);
   const latestAwareness = useRuntimeIntelligenceStore((state) => state.latestAwareness);
-  const latestRecommendations = useRuntimeIntelligenceStore((state) => state.latestRecommendations);
 
   async function loadInbox() {
     const list = await messagesService.listInbox();
@@ -255,6 +253,17 @@ export default function MessagesPage() {
     return residents.filter((r) => `${r.full_name || ""} ${r.username || ""}`.toLowerCase().includes(q));
   }, [residents, peopleQuery]);
   const unreadThreads = useMemo(() => threads.reduce((sum, thread) => sum + Number(thread.unread_count || 0), 0), [threads]);
+  const strip = [
+    { label: "Threads", value: threads.length },
+    { label: "Unread", value: unreadThreads },
+    { label: "Runtime", value: runtimeExecutions.length },
+    { label: "View", value: view === "chat" ? "Conversation" : "Inbox" },
+  ];
+  const subtitle = activeThread?.peer
+    ? `${displayName(activeThread.peer)} · ${presenceLabel(activeThread.peer)}`
+    : latestAwareness?.summary
+      ? String(latestAwareness.summary)
+      : "Direct messages with runtime-aware context.";
 
   async function send() {
     if (!activeThread?.id) return;
@@ -391,14 +400,7 @@ export default function MessagesPage() {
   ) : null;
 
   return (
-    <ConsumerShell title="Messages" subtitle="Direct messages" strip={[{ label: "Threads", value: threads.length }, { label: "Unread", value: unreadThreads }, { label: "Runtime", value: runtimeExecutions.length }, { label: "View", value: view === "chat" ? "Conversation" : "Inbox" }]} disableContentScroll={view === "chat"}>
-      <RuntimeExplainabilityCard
-        heading="Communication operations"
-        summary="Messages are paired with operational awareness, recommendation context, and execution history when available."
-        awareness={latestAwareness}
-        recommendation={latestRecommendations[0] || null}
-        executionHistory={runtimeExecutions}
-      />
+    <ConsumerShell title="Messages" subtitle={subtitle} strip={strip} disableContentScroll={view === "chat"}>
 
       {err ? (
         <div className="mb-3 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">

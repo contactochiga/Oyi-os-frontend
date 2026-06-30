@@ -2,11 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import ConsumerShell from "@/app/components/ConsumerShell";
-import ActivityMetricsRail from "@/app/components/ActivityMetricsRail";
 import { servicesService, type HomeServiceRegistry, type ServiceConfig, type ServiceKey, type ServicePayment } from "@/services/servicesService";
 import { getSocket } from "@/services/socket";
 import useActiveContext from "@/hooks/useActiveContext";
-import { FiChevronRight, FiClock, FiCreditCard, FiDroplet, FiFileText, FiHeadphones, FiHome, FiLayers, FiSliders, FiTool, FiWifi, FiZap } from "react-icons/fi";
+import { FiChevronRight, FiClock, FiCreditCard, FiDroplet, FiHeadphones, FiHome, FiLayers, FiSliders, FiTool, FiWifi, FiZap } from "react-icons/fi";
 
 type HomeContext = {
   id: string;
@@ -144,27 +143,6 @@ function ServiceActionChip({ label, Icon, onClick }: { label: string; Icon: any;
   );
 }
 
-function AwarenessRail({ items }: { items: Array<{ icon: any; label: string; tone: string }> }) {
-  return (
-    <section className="overflow-hidden rounded-[20px] border border-white/[0.055] bg-[linear-gradient(145deg,rgba(255,255,255,0.038),rgba(255,255,255,0.011))] px-2.5 py-2 shadow-[0_10px_32px_rgba(0,0,0,0.24)] backdrop-blur-2xl">
-      <div className="flex snap-x snap-mandatory gap-1.5 overflow-x-auto scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {items.map((item) => {
-          const Icon = item.icon;
-          return (
-            <div
-              key={item.label}
-              className="flex h-9 min-w-max snap-start items-center gap-2 rounded-full border border-white/[0.055] bg-white/[0.028] px-3"
-            >
-              <Icon className={`h-4 w-4 shrink-0 ${item.tone}`} />
-              <span className="whitespace-nowrap text-[11.5px] font-medium text-white/68">{item.label}</span>
-            </div>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
 function RequestServiceSheet({ open, onClose, onSelect, onSupport }: { open: boolean; onClose: () => void; onSelect: (key: ServiceKey) => void; onSupport: () => void }) {
   if (!open) return null;
   const actions: Array<{ label: string; detail: string; icon: any; serviceKey?: ServiceKey; support?: boolean }> = [
@@ -273,7 +251,6 @@ export default function ServicesPage() {
     if (!activeServiceKey) return [];
     return history.filter((h) => h.service_key === activeServiceKey).slice(0, 8);
   }, [activeServiceKey, history]);
-  const serviceChargePaid = useMemo(() => history.filter((item) => item.service_key === "service_charge").reduce((sum, item) => sum + Number(item.amount || 0), 0), [history]);
   const selectedGroup = useMemo(() => SERVICE_GROUPS.find((group) => group.title === activeCategory) || SERVICE_GROUPS[0], [activeCategory]);
   const visibleServiceItems = useMemo(() => SERVICE_ITEMS.filter((item) => selectedGroup.keys.includes(item.key)), [selectedGroup]);
   const linkedUtilityAccounts = useMemo(() => {
@@ -284,19 +261,23 @@ export default function ServicesPage() {
     if (!registry) return SERVICE_ITEMS.filter((item) => (configs[item.key]?.active ?? true)).length;
     return [registry.electricity, registry.water, registry.internet, registry.estate_fees, registry.facility_services].filter((item: any) => item?.enabled).length;
   }, [configs, registry]);
-  const awarenessItems = useMemo(() => {
-    const electricityLinked = Boolean(registry?.electricity?.linked ?? home?.electricity_meter);
-    const waterLinked = Boolean(registry?.water?.linked ?? home?.water_meter);
-    const internetLinked = Boolean(registry?.internet?.linked ?? home?.internet_id);
-    const serviceDue = Number(registry?.estate_fees?.outstanding || 0) > 0;
-    return [
-      { icon: FiZap, label: electricityLinked ? "Electricity account active" : "Meter not linked", tone: electricityLinked ? "text-emerald-300" : "text-amber-300" },
-      { icon: FiDroplet, label: waterLinked ? "Water account active" : "Water setup needed", tone: waterLinked ? "text-sky-300" : "text-amber-300" },
-      { icon: FiWifi, label: internetLinked ? "Internet service active" : "Internet plan needed", tone: internetLinked ? "text-emerald-300" : "text-amber-300" },
-      { icon: FiCreditCard, label: serviceDue ? "Service charge due" : history.length ? "Payment history available" : "No payment history", tone: serviceDue ? "text-amber-300" : history.length ? "text-emerald-300" : "text-white/55" },
-      { icon: FiHeadphones, label: registry?.facility_services?.enabled ? "Facility services available" : "Facility services unavailable", tone: registry?.facility_services?.enabled ? "text-violet-300" : "text-white/45" },
-    ];
-  }, [home, history.length, registry]);
+  const electricityLinked = Boolean(registry?.electricity?.linked ?? home?.electricity_meter);
+  const waterLinked = Boolean(registry?.water?.linked ?? home?.water_meter);
+  const internetLinked = Boolean(registry?.internet?.linked ?? home?.internet_id);
+  const outstanding = Number(registry?.estate_fees?.outstanding || 0);
+  const supportReady = Boolean(registry?.facility_services?.enabled);
+  const strip = [
+    { label: "Active services", value: activeServices },
+    { label: "Utility account", value: linkedUtilityAccounts },
+    { label: "Internet plan", value: internetLinked ? "Active" : "Setup" },
+    { label: "Support", value: supportReady ? "Ready" : "Pending" },
+    { label: "Outstanding", value: outstanding > 0 ? toNaira(outstanding) : "Clear" },
+  ];
+  const subtitle = outstanding > 0
+    ? `One or more service obligations need review.`
+    : electricityLinked || waterLinked || internetLinked
+      ? `Home services are linked and ready for resident actions.`
+      : `Managed living, utilities and home support.`;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -409,7 +390,7 @@ export default function ServicesPage() {
   }
 
   return (
-    <ConsumerShell title="Services" subtitle="Managed living, utilities and home support.">
+    <ConsumerShell title="Services" subtitle={subtitle} strip={strip}>
       <div className="oyi-living-page space-y-3 pb-8">
       {err ? <div className="mb-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">{err}</div> : null}
       {msg ? <div className="mb-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">{msg}</div> : null}
@@ -422,19 +403,6 @@ export default function ServicesPage() {
       <section className="flex items-center justify-end gap-2">
         <ServiceActionChip label="Request Service" Icon={FiTool} onClick={() => setRequestSheetOpen(true)} />
       </section>
-
-      <ActivityMetricsRail
-        items={[
-          { icon: FiLayers, label: "Active Services", value: activeServices, color: "text-sky-300" },
-          { icon: FiHome, label: "Utility Accounts", value: linkedUtilityAccounts, color: "text-cyan-200" },
-          { icon: FiWifi, label: "Internet Plans", value: registry?.internet?.linked ? 1 : 0, color: "text-violet-200" },
-          { icon: FiHeadphones, label: "Support Tickets", value: "Ready", color: "text-amber-200" },
-          { icon: FiCreditCard, label: "Outstanding", value: Number(registry?.estate_fees?.outstanding || 0) > 0 ? toNaira(Number(registry?.estate_fees?.outstanding || 0)) : serviceChargePaid ? toNaira(serviceChargePaid) : "Ready", color: "text-emerald-200" },
-          { icon: FiFileText, label: "Receipts", value: history.length, color: "text-white/65" },
-        ]}
-      />
-
-      <AwarenessRail items={awarenessItems} />
 
       <section className="space-y-2.5">
         <div className="px-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-white/42">Service Catalog</div>

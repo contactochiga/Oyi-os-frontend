@@ -306,6 +306,7 @@ function ActivityRow({ item }: { item: ActivityEvent }) {
     item.metadata?.origin ? `Source ${item.metadata.origin}` : null,
     item.metadata?.initiatorType ? `Initiator ${item.metadata.initiatorType}` : null,
     typeof item.metadata?.confidence === "number" ? `Confidence ${Math.round(item.metadata.confidence * 100)}%` : null,
+    item.metadata?.evidence ? `Evidence ${String(item.metadata.evidence)}` : null,
     item.metadata?.recommendedAction ? `Action ${item.metadata.recommendedAction}` : null,
   ].filter(Boolean);
   const content = (
@@ -326,7 +327,7 @@ function ActivityRow({ item }: { item: ActivityEvent }) {
         )}
         {actionable ? <ChevronRight className="h-4 w-4 text-sky-200/55" /> : null}
       </div>
-      {runtimeMeta.length ? <div className="mt-2 pl-12 text-[10px] text-white/42">{runtimeMeta.slice(0, 2).join(" • ")}</div> : null}
+      {runtimeMeta.length ? <div className="mt-2 pl-12 text-[10px] text-white/42">{runtimeMeta.slice(0, 3).join(" • ")}</div> : null}
       {actionable ? <div className="mt-2 pl-12 text-[10px] font-medium text-sky-200/62">{item.action?.label || "Open"}</div> : null}
     </>
   );

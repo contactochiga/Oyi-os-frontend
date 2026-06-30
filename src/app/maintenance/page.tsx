@@ -3,9 +3,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import ConsumerShell from "../components/ConsumerShell";
-import ActivityMetricsRail from "../components/ActivityMetricsRail";
 import { maintenanceService, type MaintenanceTicket } from "@/services/maintenanceService";
-import { FiAlertTriangle, FiCheckCircle, FiChevronRight, FiClock, FiDroplet, FiTool, FiUserCheck, FiWind, FiZap } from "react-icons/fi";
+import { FiCheckCircle, FiChevronRight, FiDroplet, FiTool, FiWind, FiZap } from "react-icons/fi";
 
 function pill(status?: string) {
   const s = String(status || "open").toLowerCase();
@@ -253,6 +252,18 @@ export default function MaintenancePage() {
   const completedCount = useMemo(() => tickets.filter((ticket) => /resolved|completed|closed/i.test(String(ticket.status || ""))).length, [tickets]);
   const ongoingTickets = useMemo(() => tickets.filter((ticket) => !/resolved|completed|closed/i.test(String(ticket.status || ""))), [tickets]);
   const recentTickets = useMemo(() => tickets.filter((ticket) => /resolved|completed|closed/i.test(String(ticket.status || ""))).slice(0, 5), [tickets]);
+  const strip = [
+    { label: "Open", value: openCount },
+    { label: "In progress", value: inProgressCount },
+    { label: "Assigned", value: assignedCount },
+    { label: "Overdue", value: overdueCount },
+    { label: "Completed", value: completedCount },
+  ];
+  const subtitle = overdueCount
+    ? `${overdueCount} request${overdueCount === 1 ? "" : "s"} need faster follow-up.`
+    : openCount
+      ? `${openCount} active request${openCount === 1 ? "" : "s"} are being tracked.`
+      : "Service requests and scheduled care.";
 
   async function load() {
     setLoading(true);
@@ -321,18 +332,11 @@ export default function MaintenancePage() {
   return (
     <ConsumerShell
       title="Maintenance"
-      subtitle="Service requests and scheduled care."
+      subtitle={subtitle}
+      strip={strip}
     >
       <div className="oyi-living-page space-y-2.5 pb-8">
       <section className="flex items-center justify-end gap-2">
-        <button
-          onClick={load}
-          disabled={loading}
-          className="rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-2 text-xs font-medium text-white/68 transition active:scale-[0.98] disabled:opacity-50"
-          type="button"
-        >
-          {loading ? "Syncing" : "Refresh"}
-        </button>
         <button
           onClick={() => setShowNew(true)}
           className="rounded-full border border-sky-300/18 bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-100 shadow-[0_0_18px_rgba(0,132,255,0.14)] transition active:scale-[0.98]"
@@ -343,16 +347,6 @@ export default function MaintenancePage() {
       </section>
 
       {err ? <div className="rounded-[18px] border border-red-300/16 bg-red-500/10 px-3.5 py-3 text-xs text-red-100">{err}</div> : null}
-
-      <ActivityMetricsRail
-        items={[
-          { icon: FiClock, label: "Open", value: openCount, color: "text-sky-300" },
-          { icon: FiTool, label: "In Progress", value: inProgressCount, color: "text-amber-200" },
-          { icon: FiUserCheck, label: "Assigned", value: assignedCount, color: "text-blue-200" },
-          { icon: FiAlertTriangle, label: "Overdue", value: overdueCount, color: overdueCount ? "text-red-200" : "text-white/55" },
-          { icon: FiCheckCircle, label: "Completed", value: completedCount, color: "text-emerald-200" },
-        ]}
-      />
 
       <section className="overflow-hidden rounded-[22px] border border-white/[0.06] bg-[linear-gradient(145deg,rgba(255,255,255,0.04),rgba(255,255,255,0.012))] px-2.5 py-2.5 shadow-[0_14px_44px_rgba(0,0,0,0.28)] backdrop-blur-2xl">
         <div className="flex snap-x snap-mandatory gap-1.5 overflow-x-auto scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
