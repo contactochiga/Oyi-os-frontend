@@ -8,16 +8,29 @@ import NotificationsBridge from "@/app/components/NotificationsBridge";
 import PresenceBridge from "@/app/components/PresenceBridge";
 import GeoFenceBridge from "@/app/components/GeoFenceBridge";
 import ContextIsolationBridge from "@/app/components/ContextIsolationBridge";
+import type { Metadata, Viewport } from "next";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "Oyi OS",
-  description: "Oyi operating system — resident + estate management",
+  description: "Oyi Consumer OS for homes, devices, visitors, wallet activity and operational intelligence.",
+  applicationName: "Oyi",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Oyi",
+  },
+  icons: {
+    icon: "/oyi-logo-transparent.png",
+    apple: "/oyi-logo-transparent.png",
+  },
 };
 
-export const viewport = {
+export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  viewportFit: "cover" as const,
+  viewportFit: "cover",
+  themeColor: "#000000",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
