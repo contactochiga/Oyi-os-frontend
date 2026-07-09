@@ -5,28 +5,28 @@ import ConsumerShell from "@/app/components/ConsumerShell";
 import useActiveContext from "@/hooks/useActiveContext";
 import { getSocket } from "@/services/socket";
 import { servicesService, type HomeServiceRegistry, type ServiceAccount, type ServiceConfig, type ServiceKey, type ServicePayment } from "@/services/servicesService";
-import { FiActivity, FiAlertCircle, FiCreditCard, FiDroplet, FiLayers, FiTool, FiWifi, FiZap } from "react-icons/fi";
+import { FiActivity, FiAlertCircle, FiChevronDown, FiChevronUp, FiCreditCard, FiDroplet, FiLayers, FiTool, FiWifi, FiZap } from "react-icons/fi";
 
-const FILTERS = ["All", "Electricity", "Water", "Internet", "Gas", "Generator", "Solar", "Fees"] as const;
-
-const CARD_ORDER: Array<{
+const SERVICE_CARDS: Array<{
   key: ServiceKey;
   title: string;
   subtitle: string;
   icon: any;
-  filter: typeof FILTERS[number];
+  domain: "Power & Energy" | "Water" | "Internet" | "Gas" | "Estate Fees" | "Facility Services";
   cta: string;
   transactionType?: string;
 }> = [
-  { key: "utility_token", title: "Electricity", subtitle: "Meter vending and prepaid service readiness", icon: FiZap, filter: "Electricity", cta: "Buy Electricity", transactionType: "electricity_purchase" },
-  { key: "water_service", title: "Water", subtitle: "Water billing and usage continuity", icon: FiDroplet, filter: "Water", cta: "Report Issue", transactionType: "issue_report" },
-  { key: "internet_service", title: "Internet", subtitle: "Connectivity, plan, and renewal posture", icon: FiWifi, filter: "Internet", cta: "Renew / Support", transactionType: "internet_renewal" },
-  { key: "gas_service", title: "Gas", subtitle: "Household gas continuity and refill readiness", icon: FiTool, filter: "Gas", cta: "Order Gas", transactionType: "gas_order" },
-  { key: "generator_recovery", title: "Generator Recovery", subtitle: "Backup recovery and outage continuity", icon: FiActivity, filter: "Generator", cta: "Open Recovery", transactionType: "generator_recovery" },
-  { key: "solar_battery_service", title: "Solar / Battery", subtitle: "Solar, inverter, and battery continuity", icon: FiLayers, filter: "Solar", cta: "Review Service", transactionType: "solar_battery_support" },
-  { key: "service_charge", title: "Estate Fees", subtitle: "Operational dues linked to this home", icon: FiCreditCard, filter: "Fees", cta: "Review Fees", transactionType: "estate_fee" },
-  { key: "other_facility_fees", title: "Facility Services", subtitle: "Facility-linked support and partner services", icon: FiAlertCircle, filter: "Fees", cta: "Request Support", transactionType: "facility_service" },
+  { key: "utility_token", title: "Electricity", subtitle: "Meter vending and prepaid readiness", icon: FiZap, domain: "Power & Energy", cta: "Buy Electricity", transactionType: "electricity_purchase" },
+  { key: "generator_recovery", title: "Generator Recovery", subtitle: "Backup recovery and outage continuity", icon: FiActivity, domain: "Power & Energy", cta: "Open Recovery", transactionType: "generator_recovery" },
+  { key: "solar_battery_service", title: "Solar / Battery", subtitle: "Solar, inverter, and battery continuity", icon: FiLayers, domain: "Power & Energy", cta: "Review Service", transactionType: "solar_battery_support" },
+  { key: "water_service", title: "Water", subtitle: "Water billing and service continuity", icon: FiDroplet, domain: "Water", cta: "Report Issue", transactionType: "issue_report" },
+  { key: "internet_service", title: "Internet", subtitle: "Connectivity, plans, and renewal posture", icon: FiWifi, domain: "Internet", cta: "Renew / Support", transactionType: "internet_renewal" },
+  { key: "gas_service", title: "Gas", subtitle: "Household gas continuity and refill readiness", icon: FiTool, domain: "Gas", cta: "Order Gas", transactionType: "gas_order" },
+  { key: "service_charge", title: "Estate Fees", subtitle: "Operational dues linked to this home", icon: FiCreditCard, domain: "Estate Fees", cta: "Review Fees", transactionType: "estate_fee" },
+  { key: "other_facility_fees", title: "Facility Services", subtitle: "Facility-linked support and partner services", icon: FiAlertCircle, domain: "Facility Services", cta: "Request Support", transactionType: "facility_service" },
 ];
+
+const DOMAIN_FILTERS = ["All", "Power & Energy", "Water", "Internet", "Gas", "Estate Fees", "Facility Services"] as const;
 
 function toNaira(amount?: number | null) {
   if (amount == null || !Number.isFinite(Number(amount))) return "Pending source";
@@ -45,8 +45,8 @@ function toneFor(value?: string | null) {
   const text = String(value || "").toLowerCase();
   if (/ready|active|available|stable|online/.test(text)) return "text-emerald-200 border-emerald-300/20 bg-emerald-400/10";
   if (/issue|failed|warning|blocked|degraded/.test(text)) return "text-amber-200 border-amber-300/20 bg-amber-400/10";
-  if (/unsupported|offline|unavailable/.test(text)) return "text-red-200 border-red-300/20 bg-red-400/10";
-  return "text-sky-100 border-sky-300/20 bg-sky-400/10";
+  if (/unsupported|offline|unavailable/.test(text)) return "text-rose-200 border-rose-300/20 bg-rose-400/10";
+  return "text-white/78 border-white/10 bg-white/[0.06]";
 }
 
 function registryEntryFor(serviceKey: ServiceKey, registry: HomeServiceRegistry | null) {
@@ -66,6 +66,13 @@ function accountMapFor(accounts: ServiceAccount[]) {
   return new Map(accounts.map((account) => [account.service_key, account]));
 }
 
+function maskIdentifier(value?: string | null) {
+  const text = String(value || "").trim();
+  if (!text) return "Pending source";
+  if (text.length <= 4) return text;
+  return `••••${text.slice(-4)}`;
+}
+
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2.5">
@@ -75,83 +82,152 @@ function Field({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ServiceCard({
+function frontDetailsFor(item: (typeof SERVICE_CARDS)[number], account?: ServiceAccount | null, registry?: HomeServiceRegistry | null, latestPayment?: ServicePayment | null) {
+  const entry = registryEntryFor(item.key, registry || null) as any;
+  const identifier = account?.identifier || account?.meter_number || account?.account_number || entry?.meter_id || entry?.account_id || null;
+  const provider = account?.provider || entry?.provider || null;
+  const status = String(account?.status || entry?.status || account?.vending_readiness || entry?.vending_readiness || "Pending").replace(/_/g, " ");
+
+  if (item.key === "utility_token") {
+    return {
+      primary: `Meter ending ${maskIdentifier(identifier)}`,
+      secondary: latestPayment ? `Last purchase ${toNaira(latestPayment.amount)}` : "Balance feed pending provider integration",
+      status,
+      provider,
+    };
+  }
+
+  if (item.key === "water_service") {
+    return {
+      primary: provider ? `Provider ${provider}` : "Provider pending",
+      secondary: "Usage feed pending provider integration",
+      status,
+      provider,
+    };
+  }
+
+  if (item.key === "internet_service") {
+    return {
+      primary: provider ? `${provider} service` : "Provider pending",
+      secondary: account?.plan || entry?.plan || "Plan pending",
+      status,
+      provider,
+    };
+  }
+
+  if (item.key === "gas_service") {
+    return {
+      primary: provider ? `Provider ${provider}` : "Provider pending",
+      secondary: "Order flow routes through Facility provisioning",
+      status,
+      provider,
+    };
+  }
+
+  return {
+    primary: provider ? `Provider ${provider}` : "Provider pending",
+    secondary: latestPayment ? `Last activity ${dateText(latestPayment.created_at)}` : "Operational continuity record ready",
+    status,
+    provider,
+  };
+}
+
+function detailFieldsFor(item: (typeof SERVICE_CARDS)[number], account?: ServiceAccount | null, registry?: HomeServiceRegistry | null, latestPayment?: ServicePayment | null) {
+  const entry = registryEntryFor(item.key, registry || null) as any;
+  const identifier = account?.identifier || account?.meter_number || account?.account_number || entry?.meter_id || entry?.account_id || "Pending source";
+  const provider = account?.provider || entry?.provider || "Pending source";
+  const tariff = account?.tariff_profile || entry?.tariff_profile || "Pending source";
+  const billing = account?.billing_profile || entry?.billing_profile || "Pending source";
+  const readiness = account?.vending_readiness || entry?.vending_readiness || account?.status || entry?.status || "Pending";
+
+  if (item.key === "utility_token") {
+    return [
+      { label: "Meter number", value: identifier },
+      { label: "KCT / KCTN", value: [account?.kct || entry?.kct, account?.kctn || entry?.kctn].filter(Boolean).join(" / ") || "Pending source" },
+      { label: "Provider", value: provider },
+      { label: "Tariff", value: tariff },
+      { label: "Billing", value: billing },
+      { label: "Readiness", value: String(readiness).replace(/_/g, " ") },
+    ];
+  }
+
+  if (item.key === "water_service") {
+    return [
+      { label: "Meter ID", value: identifier },
+      { label: "Provider", value: provider },
+      { label: "Billing", value: billing },
+      { label: "Status", value: String(account?.status || entry?.status || "Pending").replace(/_/g, " ") },
+      { label: "Usage", value: "Usage feed pending provider integration" },
+      { label: "Last activity", value: dateText(account?.last_activity_at || latestPayment?.created_at) },
+    ];
+  }
+
+  if (item.key === "internet_service") {
+    return [
+      { label: "Internet ID", value: identifier },
+      { label: "Provider", value: provider },
+      { label: "Plan", value: account?.plan || entry?.plan || "Pending source" },
+      { label: "Billing", value: billing },
+      { label: "Status", value: String(account?.status || entry?.status || "Pending").replace(/_/g, " ") },
+      { label: "Last activity", value: dateText(account?.last_activity_at || latestPayment?.created_at) },
+    ];
+  }
+
+  if (item.key === "gas_service") {
+    return [
+      { label: "Gas ID", value: identifier },
+      { label: "Provider", value: provider },
+      { label: "Billing", value: billing },
+      { label: "Status", value: String(account?.status || entry?.status || "Pending").replace(/_/g, " ") },
+      { label: "Last activity", value: dateText(account?.last_activity_at || latestPayment?.created_at) },
+      { label: "Notes", value: String(account?.metadata?.service_notes || "Awaiting provider-linked ordering.") },
+    ];
+  }
+
+  return [
+    { label: "Provider", value: provider },
+    { label: "Identifier", value: identifier },
+    { label: "Billing", value: billing },
+    { label: "Status", value: String(account?.status || entry?.status || "Pending").replace(/_/g, " ") },
+    { label: "Tariff", value: tariff },
+    { label: "Last activity", value: dateText(account?.last_activity_at || latestPayment?.created_at) },
+  ];
+}
+
+function GroupedServiceCard({
   item,
   account,
   registry,
   config,
   latestPayment,
   busy,
+  expanded,
+  onToggle,
   onAction,
 }: {
-  item: (typeof CARD_ORDER)[number];
+  item: (typeof SERVICE_CARDS)[number];
   account?: ServiceAccount | null;
   registry: HomeServiceRegistry | null;
   config?: ServiceConfig | null;
   latestPayment?: ServicePayment | null;
   busy?: boolean;
+  expanded: boolean;
+  onToggle: () => void;
   onAction: () => void;
 }) {
   const Icon = item.icon;
   const entry = registryEntryFor(item.key, registry) as any;
-  const identifier = account?.identifier || account?.meter_number || account?.account_number || entry?.meter_id || entry?.account_id || "Pending source";
-  const provider = account?.provider || entry?.provider || "Pending source";
-  const tariff = account?.tariff_profile || entry?.tariff_profile || "Pending source";
-  const billing = account?.billing_profile || entry?.billing_profile || "Pending source";
+  const linked = Boolean(account?.linked ?? entry?.linked);
   const readiness = account?.vending_readiness || entry?.vending_readiness || account?.status || entry?.status || "Pending";
   const health = account?.provider_health || entry?.provider_health || "Unknown";
-  const linked = Boolean(account?.linked ?? entry?.linked);
-
-  const fields = item.key === "utility_token"
-    ? [
-        { label: "Meter", value: identifier },
-        { label: "KCT / KCTN", value: [account?.kct || entry?.kct, account?.kctn || entry?.kctn].filter(Boolean).join(" / ") || "Pending source" },
-        { label: "Provider", value: provider },
-        { label: "Tariff", value: tariff },
-        { label: "Billing", value: billing },
-        { label: "Last transaction", value: latestPayment?.reference || dateText(account?.last_activity_at || latestPayment?.created_at) },
-      ]
-    : item.key === "water_service"
-    ? [
-        { label: "Meter ID", value: identifier },
-        { label: "Provider", value: provider },
-        { label: "Billing", value: billing },
-        { label: "Status", value: String(account?.status || entry?.status || "Pending").replace(/_/g, " ") },
-        { label: "Usage", value: "Usage feed pending provider integration" },
-        { label: "Last activity", value: dateText(account?.last_activity_at || latestPayment?.created_at) },
-      ]
-    : item.key === "internet_service"
-    ? [
-        { label: "Internet ID", value: identifier },
-        { label: "Provider", value: provider },
-        { label: "Plan", value: account?.plan || entry?.plan || "Pending source" },
-        { label: "Billing", value: billing },
-        { label: "Status", value: String(account?.status || entry?.status || "Pending").replace(/_/g, " ") },
-        { label: "Last activity", value: dateText(account?.last_activity_at || latestPayment?.created_at) },
-      ]
-    : item.key === "gas_service"
-    ? [
-        { label: "Gas ID", value: identifier },
-        { label: "Provider", value: provider },
-        { label: "Billing", value: billing },
-        { label: "Status", value: String(account?.status || entry?.status || "Pending").replace(/_/g, " ") },
-        { label: "Last activity", value: dateText(account?.last_activity_at || latestPayment?.created_at) },
-        { label: "Notes", value: String(account?.metadata?.service_notes || "Awaiting provider-linked ordering.") },
-      ]
-    : [
-        { label: "Provider", value: provider },
-        { label: "Identifier", value: identifier },
-        { label: "Billing", value: billing },
-        { label: "Status", value: String(account?.status || entry?.status || "Pending").replace(/_/g, " ") },
-        { label: "Notes", value: String(account?.metadata?.service_notes || "Operational continuity record is ready.") },
-        { label: "Last activity", value: dateText(account?.last_activity_at || latestPayment?.created_at) },
-      ];
+  const front = frontDetailsFor(item, account, registry, latestPayment);
+  const details = detailFieldsFor(item, account, registry, latestPayment);
 
   return (
-    <section className="rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.025))] p-4 shadow-[0_20px_60px_rgba(0,0,0,0.28)]">
+    <section className="rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.02))] p-4 shadow-[0_16px_48px_rgba(0,0,0,0.24)]">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
-          <div className="grid h-11 w-11 shrink-0 place-items-center rounded-[16px] bg-white/[0.05] text-white/80">
+          <div className="grid h-11 w-11 shrink-0 place-items-center rounded-[16px] border border-white/10 bg-white/[0.04] text-white/80">
             <Icon className="h-5 w-5" />
           </div>
           <div className="min-w-0">
@@ -159,21 +235,22 @@ function ServiceCard({
             <p className="mt-1 text-[12px] leading-5 text-white/48">{item.subtitle}</p>
           </div>
         </div>
-        <div className="flex flex-col items-end gap-2">
-          <span className={`rounded-full border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.18em] ${toneFor(readiness)}`}>{String(readiness).replace(/_/g, " ")}</span>
-          <span className={`rounded-full border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.18em] ${toneFor(health)}`}>{String(health).replace(/_/g, " ")}</span>
+        <span className={`rounded-full border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.18em] ${toneFor(readiness)}`}>
+          {String(readiness).replace(/_/g, " ")}
+        </span>
+      </div>
+
+      <div className="mt-4 space-y-2">
+        <div className="text-[13px] font-medium text-white/88">{front.primary}</div>
+        <div className="text-[12px] text-white/56">{front.secondary}</div>
+        <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/44">
+          <span>{linked ? "Provisioned by Facility" : "Awaiting facility provisioning"}</span>
+          <span>•</span>
+          <span>{dateText(account?.last_activity_at || latestPayment?.created_at)}</span>
         </div>
       </div>
 
-      <div className="mt-4 grid gap-2 sm:grid-cols-2">
-        {fields.map((field) => <Field key={field.label} label={field.label} value={field.value} />)}
-      </div>
-
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="text-[11px] text-white/45">
-          {linked ? "Provisioned by Facility and linked to this home." : "Awaiting facility provisioning."}
-          {config?.suggested_amount ? ` Suggested amount ${toNaira(Number(config.suggested_amount))}.` : ""}
-        </div>
+      <div className="mt-4 flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={onAction}
@@ -182,11 +259,28 @@ function ServiceCard({
         >
           {busy ? "Recording..." : item.cta}
         </button>
+        <button
+          type="button"
+          onClick={onToggle}
+          className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-medium text-white/72"
+        >
+          {expanded ? <FiChevronUp className="h-3.5 w-3.5" /> : <FiChevronDown className="h-3.5 w-3.5" />}
+          More info
+        </button>
+        <span className={`rounded-full border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.18em] ${toneFor(health)}`}>
+          {String(health).replace(/_/g, " ")}
+        </span>
       </div>
 
-      {latestPayment ? (
-        <div className="mt-3 rounded-2xl border border-white/8 bg-black/20 px-3 py-2.5 text-[12px] text-white/64">
-          Latest activity: {latestPayment.service_title || item.title} · {toNaira(latestPayment.amount)} · {dateText(latestPayment.created_at)}
+      {expanded ? (
+        <div className="mt-4 space-y-3 rounded-[20px] border border-white/8 bg-black/20 p-3">
+          <div className="grid gap-2 sm:grid-cols-2">
+            {details.map((field) => <Field key={field.label} label={field.label} value={field.value} />)}
+          </div>
+          <div className="text-[11px] text-white/42">
+            {config?.suggested_amount ? `Suggested amount ${toNaira(Number(config.suggested_amount))}. ` : ""}
+            Account metadata stays available here without forcing technical identifiers into the first service view.
+          </div>
         </div>
       ) : null}
     </section>
@@ -202,7 +296,8 @@ export default function ServicesPage() {
   const [history, setHistory] = useState<ServicePayment[]>([]);
   const [configs, setConfigs] = useState<Partial<Record<ServiceKey, ServiceConfig>>>({});
   const [busyKey, setBusyKey] = useState<string | null>(null);
-  const [activeFilter, setActiveFilter] = useState<typeof FILTERS[number]>("All");
+  const [activeFilter, setActiveFilter] = useState<(typeof DOMAIN_FILTERS)[number]>("All");
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -251,10 +346,6 @@ export default function ServicesPage() {
   }, [contextReady, estateId, activeContext.home_id, activeContext.contextKey]);
 
   const accountMap = useMemo(() => accountMapFor(accounts), [accounts]);
-  const visibleCards = useMemo(
-    () => CARD_ORDER.filter((item) => activeFilter === "All" || item.filter === activeFilter),
-    [activeFilter],
-  );
   const latestByKey = useMemo(() => {
     const map = new Map<ServiceKey, ServicePayment>();
     for (const row of history) {
@@ -264,13 +355,22 @@ export default function ServicesPage() {
   }, [history]);
 
   const strip = [
-    { label: "Services", value: accounts.length || CARD_ORDER.length },
+    { label: "Services", value: accounts.length || SERVICE_CARDS.length },
     { label: "Ready", value: accounts.filter((item) => item.vending_readiness === "ready").length },
     { label: "Pending", value: accounts.filter((item) => /pending|manual_review|unsupported/.test(String(item.last_transaction_status || item.vending_readiness || ""))).length },
     { label: "Wallet", value: registry?.wallet?.balance != null ? toNaira(Number(registry.wallet.balance || 0)) : "Pending" },
   ];
 
-  async function handleCardAction(item: (typeof CARD_ORDER)[number]) {
+  const groupedSections = useMemo(() => {
+    return DOMAIN_FILTERS.filter((item) => item !== "All")
+      .filter((domain) => activeFilter === "All" || activeFilter === domain)
+      .map((domain) => ({
+        title: domain,
+        cards: SERVICE_CARDS.filter((item) => item.domain === domain),
+      }));
+  }, [activeFilter]);
+
+  async function handleCardAction(item: (typeof SERVICE_CARDS)[number]) {
     setBusyKey(item.key);
     setMessage(null);
     setError(null);
@@ -303,7 +403,7 @@ export default function ServicesPage() {
   return (
     <ConsumerShell
       title="Infrastructure Services"
-      subtitle="Resident-bound electricity, water, internet, gas, and continuity services."
+      subtitle="Resident-ready electricity, water, connectivity, fees, and continuity services."
       strip={strip}
     >
       <div className="space-y-4 pb-8">
@@ -311,32 +411,50 @@ export default function ServicesPage() {
         {message ? <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">{message}</div> : null}
 
         <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {FILTERS.map((filter) => (
+          {DOMAIN_FILTERS.map((filter) => (
             <button
               key={filter}
               type="button"
               onClick={() => setActiveFilter(filter)}
-              className={`rounded-full border px-3 py-2 text-xs transition ${activeFilter === filter ? "border-sky-300/24 bg-sky-400/12 text-sky-100" : "border-white/[0.08] bg-white/[0.03] text-white/60"}`}
+              className={`rounded-full border px-3 py-2 text-xs transition ${activeFilter === filter ? "border-white/18 bg-white/[0.09] text-white" : "border-white/[0.08] bg-white/[0.03] text-white/60"}`}
             >
               {filter}
             </button>
           ))}
         </div>
 
-        <section className="space-y-3">
-          {visibleCards.map((item) => (
-            <ServiceCard
-              key={item.key}
-              item={item}
-              account={accountMap.get(item.key) || null}
-              registry={registry}
-              config={configs[item.key] || null}
-              latestPayment={latestByKey.get(item.key) || null}
-              busy={busyKey === item.key}
-              onAction={() => void handleCardAction(item)}
-            />
-          ))}
-        </section>
+        {groupedSections.map((section) => (
+          <section key={section.title} className="space-y-3">
+            <div className="rounded-[24px] border border-white/10 bg-white/[0.03] px-4 py-3">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-white/34">{section.title}</div>
+              <div className="mt-1 text-[13px] text-white/56">
+                {section.title === "Power & Energy" ? "Electricity, generator backup, and solar continuity." :
+                  section.title === "Water" ? "Water supply and continuity services." :
+                  section.title === "Internet" ? "Connectivity, plan, and renewal services." :
+                  section.title === "Gas" ? "Gas ordering and continuity services." :
+                  section.title === "Estate Fees" ? "Estate dues and service-charge records." :
+                  "Facility support and resident-consumable service records."}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {section.cards.map((item) => (
+                <GroupedServiceCard
+                  key={item.key}
+                  item={item}
+                  account={accountMap.get(item.key) || null}
+                  registry={registry}
+                  config={configs[item.key] || null}
+                  latestPayment={latestByKey.get(item.key) || null}
+                  busy={busyKey === item.key}
+                  expanded={expandedKey === item.key}
+                  onToggle={() => setExpandedKey((current) => current === item.key ? null : item.key)}
+                  onAction={() => void handleCardAction(item)}
+                />
+              ))}
+            </div>
+          </section>
+        ))}
 
         <section className="rounded-[24px] border border-white/10 bg-white/[0.03] p-4">
           <div className="text-[11px] uppercase tracking-[0.18em] text-white/36">Recent service activity</div>
@@ -344,7 +462,7 @@ export default function ServicesPage() {
             {history.slice(0, 8).map((payment) => (
               <div key={payment.id} className="rounded-2xl border border-white/8 bg-black/20 px-3 py-2.5">
                 <div className="text-[13px] text-white/86">{payment.service_title || payment.service_key.replace(/_/g, " ")}</div>
-                <div className="mt-1 text-[12px] text-white/48">{payment.reference} · {toNaira(payment.amount)} · {dateText(payment.created_at)}</div>
+                <div className="mt-1 text-[12px] text-white/48">{payment.reference} • {toNaira(payment.amount)} • {dateText(payment.created_at)}</div>
               </div>
             ))}
             {!history.length ? <div className="rounded-2xl border border-dashed border-white/10 px-3 py-4 text-sm text-white/45">No service activity has been recorded for this home yet.</div> : null}

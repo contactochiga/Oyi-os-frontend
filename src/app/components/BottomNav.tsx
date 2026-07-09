@@ -94,9 +94,11 @@ export default function BottomNav() {
   const railRef = useRef<HTMLDivElement | null>(null);
   const scrollTimerRef = useRef<number | null>(null);
   const collapseTimerRef = useRef<number | null>(null);
+  const scrollIntentResetRef = useRef<number | null>(null);
   const collapsedRef = useRef(false);
   const lastScrollY = useRef(0);
   const lastCollapseChangeAt = useRef(0);
+  const scrollIntent = useRef(0);
   const notifications = useNotificationStore((state) => state.items);
   const markBucketViewed = useNotificationStore((state) => state.markBucketViewed);
   const markNotificationsRead = useNotificationStore((state) => state.markNotificationsRead);
@@ -209,16 +211,39 @@ export default function BottomNav() {
       const element = target && "scrollTop" in target ? (target as HTMLElement) : document.scrollingElement || document.documentElement;
       const y = Number(element?.scrollTop || window.scrollY || 0);
       const diff = y - lastScrollY.current;
-      if (Math.abs(diff) < 14) return;
-      if (y < 28) setCollapsedStable(false);
-      else if (diff > 18) setCollapsedStable(true);
-      else if (diff < -18) setCollapsedStable(false);
+      if (Math.abs(diff) < 8) return;
+      if (y < 28) {
+        scrollIntent.current = 0;
+        setCollapsedStable(false);
+        lastScrollY.current = y;
+        return;
+      }
+
+      if (scrollIntentResetRef.current) window.clearTimeout(scrollIntentResetRef.current);
+      scrollIntentResetRef.current = window.setTimeout(() => {
+        scrollIntent.current = 0;
+      }, 140);
+
+      if (diff > 0) {
+        scrollIntent.current = Math.max(0, scrollIntent.current) + diff;
+        if (scrollIntent.current > 42) {
+          setCollapsedStable(true);
+          scrollIntent.current = 0;
+        }
+      } else {
+        scrollIntent.current = Math.min(0, scrollIntent.current) + diff;
+        if (scrollIntent.current < -34) {
+          setCollapsedStable(false);
+          scrollIntent.current = 0;
+        }
+      }
       lastScrollY.current = y;
     };
     window.addEventListener("scroll", onScroll, { passive: true, capture: true });
     document.addEventListener("scroll", onScroll, { passive: true, capture: true });
     return () => {
       if (collapseTimerRef.current) window.clearTimeout(collapseTimerRef.current);
+      if (scrollIntentResetRef.current) window.clearTimeout(scrollIntentResetRef.current);
       window.removeEventListener("scroll", onScroll, { capture: true } as any);
       document.removeEventListener("scroll", onScroll, { capture: true } as any);
     };
