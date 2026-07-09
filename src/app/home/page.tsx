@@ -48,9 +48,10 @@ import { describeOyiWatchStatus, getOyiWatchSyncStatus } from "@/services/watchS
 import { sceneService, type ConsumerScene } from "@/services/sceneService";
 import { intelligenceService, type IntelligenceMetricSummary } from "@/services/intelligenceService";
 import { oyiService, type OyiAwareness } from "@/services/oyiService";
-import { loadOyiCoreExecutionHistory, loadOyiCoreExecutionStatistics } from "@/services/oyiCoreRuntimeService";
 import useActiveContext, { type AvailableHomeContext } from "@/hooks/useActiveContext";
 import useAuth from "../../hooks/useAuth";
+import { useRuntimeIntelligenceStore } from "@/store/useRuntimeIntelligenceStore";
+import { awarenessFromBackend, awarenessFromRuntimeSignal, dedupeAwareness, type ConsumerAwarenessItem } from "@/lib/consumerAwareness";
 
 function isOnline(device: any) {
   if (typeof device?.online === "boolean") return device.online;
@@ -187,8 +188,6 @@ export default function HomePage() {
   const [watchLabel, setWatchLabel] = useState("Unavailable");
   const [intelligenceMetrics, setIntelligenceMetrics] = useState<IntelligenceMetricSummary | null>(null);
   const [backendAwareness, setBackendAwareness] = useState<OyiAwareness | null>(null);
-  const [runtimeExecutions, setRuntimeExecutions] = useState<Array<Record<string, any>>>([]);
-  const [runtimeStats, setRuntimeStats] = useState<Record<string, any> | null>(null);
   const [awarenessStatus, setAwarenessStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [contextOpen, setContextOpen] = useState(false);
   const [contextSwitching, setContextSwitching] = useState(false);
@@ -202,6 +201,10 @@ export default function HomePage() {
   const contextReady = Boolean(ready && token && activeContext.ready);
   const estateId = useMemo(() => activeContext.estate_id ? String(activeContext.estate_id) : "", [activeContext.estate_id]);
   const homeId = useMemo(() => activeContext.home_id ? String(activeContext.home_id) : "", [activeContext.home_id]);
+  const latestSignal = useRuntimeIntelligenceStore((state) => state.latestSignal);
+  const latestExecution = useRuntimeIntelligenceStore((state) => state.latestExecution);
+  const latestRecommendations = useRuntimeIntelligenceStore((state) => state.latestRecommendations);
+  const latestRuntimeAwareness = useRuntimeIntelligenceStore((state) => state.latestAwareness);
 
   async function refreshDevicePanelData() {
     if (!contextReady || !estateId || !homeId) return;
@@ -318,26 +321,6 @@ export default function HomePage() {
     window.addEventListener("oyi:device-registry-updated", refresh);
     return () => window.removeEventListener("oyi:device-registry-updated", refresh);
   }, [contextReady, activeContext.contextKey]);
-
-  useEffect(() => {
-    if (!contextReady || !estateId || !homeId) {
-      setRuntimeExecutions([]);
-      setRuntimeStats(null);
-      return;
-    }
-    let alive = true;
-    void Promise.all([
-      loadOyiCoreExecutionHistory({ limit: 10 }).catch(() => []),
-      loadOyiCoreExecutionStatistics({ limit: 40 }).catch(() => null),
-    ]).then(([executions, stats]) => {
-      if (!alive) return;
-      setRuntimeExecutions(Array.isArray(executions) ? executions : []);
-      setRuntimeStats(stats?.statistics || null);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [contextReady, estateId, homeId, activeContext.contextKey]);
 
   const canMountAuthedBridges = !!ready && !!token;
 
@@ -511,7 +494,7 @@ export default function HomePage() {
     if (hours < 24) return `Last activity detected ${hours} hour${hours === 1 ? "" : "s"} ago`;
     return "Review recent activity";
   })();
-  const homeAwareness = (() => {
+  const fallbackHomeAwareness = (() => {
     if (awarenessStatus === "loading" && !backendAwareness) {
       return { primary: "Checking home awareness.", secondary: "Ranking home signals now →", href: "/activity" };
     }
@@ -538,6 +521,53 @@ export default function HomePage() {
     if (importantUpdates || unread) return { primary: "Home is secure.", secondary: `Review ${importantUpdates || unread} recent update${(importantUpdates || unread) === 1 ? "" : "s"} →`, href: "/activity?filter=attention" };
     return { primary: "Home is operating normally.", secondary: "No action required →", href: "/activity" };
   })();
+  const awarenessItems = useMemo<ConsumerAwarenessItem[]>(() => {
+    const backendItem = awarenessFromBackend(backendAwareness);
+    const liveItem = awarenessFromRuntimeSignal(latestSignal);
+    const executionItem = awarenessFromRuntimeSignal({
+      id: latestExecution?.executionId || latestExecution?.signalId || latestExecution?.id || "",
+      type: latestExecution?.status === "failed" ? "device.command.failed" : latestExecution?.action || "runtime.activity",
+      severity: latestExecution?.status === "failed" ? "warning" : "info",
+      entity: {
+        id: latestExecution?.device || latestExecution?.deviceId || latestExecution?.entityId || null,
+        name: latestExecution?.deviceName || latestExecution?.action || "Home activity",
+      },
+      metadata: {
+        observed_source: latestExecution?.origin,
+        provider: latestExecution?.provider,
+        summary: latestExecution?.result || latestExecution?.status,
+      },
+    });
+    const runtimeAwarenessItem = latestRuntimeAwareness?.headline
+      ? awarenessFromBackend({
+          headline: String(latestRuntimeAwareness.headline),
+          summary: String(latestRuntimeAwareness.summary || latestRuntimeAwareness.reason || ""),
+          severity: (latestRuntimeAwareness.severity || "info") as any,
+          destination: String(latestRuntimeAwareness.destination || "/activity"),
+          recommended_action: String(latestRuntimeAwareness.recommended_action || ""),
+        })
+      : null;
+    const recommendationItem = latestRecommendations[0]
+      ? {
+          id: `recommendation:${latestRecommendations[0]?.id || latestRecommendations[0]?.title || "next"}`,
+          title: String(latestRecommendations[0]?.title || "Recommendation available"),
+          summary: String(latestRecommendations[0]?.summary || latestRecommendations[0]?.reason || "Oyi has a suggested next step for your home."),
+          actionLabel: "View activity",
+          destination: String(latestRecommendations[0]?.destination || "/activity"),
+          urgency: "warning" as const,
+          icon: "activity" as const,
+          priority: 35,
+        }
+      : null;
+    return dedupeAwareness([backendItem, runtimeAwarenessItem, liveItem, executionItem, recommendationItem]).slice(0, 3);
+  }, [backendAwareness, latestExecution, latestRecommendations, latestRuntimeAwareness, latestSignal]);
+  const homeAwareness = awarenessItems[0]
+    ? {
+        primary: awarenessItems[0].title,
+        secondary: `${awarenessItems[0].summary} →`,
+        href: awarenessItems[0].destination,
+      }
+    : fallbackHomeAwareness;
   const securityState = activeVisitors ? `${activeVisitors} visitor${activeVisitors > 1 ? "s" : ""}` : "Protected";
   const deviceStateLabel = devicesBusy
     ? "Syncing"
@@ -825,37 +855,38 @@ export default function HomePage() {
               <section className="rounded-[22px] border border-white/[0.08] bg-[linear-gradient(145deg,rgba(255,255,255,0.045),rgba(255,255,255,0.014))] p-4 shadow-[0_14px_42px_rgba(0,0,0,0.28)] backdrop-blur-2xl">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <div className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/46">Operational timeline</div>
-                    <h2 className="mt-1 text-[15px] font-semibold tracking-[-0.03em] text-white">Manual, physical, automation, and provider activity</h2>
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/46">Oyi awareness</div>
+                    <h2 className="mt-1 text-[15px] font-semibold tracking-[-0.03em] text-white">What matters right now</h2>
                   </div>
-                  <div className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2.5 py-1 text-[10px] text-white/58">
-                    {runtimeStats?.total || runtimeExecutions.length} records
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => router.push("/activity")}
+                    className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2.5 py-1 text-[10px] text-white/58"
+                  >
+                    Activity
+                  </button>
                 </div>
                 <div className="mt-3 space-y-2">
-                  {runtimeExecutions.slice(0, 5).map((item) => (
+                  {awarenessItems.length ? awarenessItems.map((item) => (
                     <button
-                      key={item.executionId || item.signalId}
+                      key={item.id}
                       type="button"
-                      onClick={() => router.push("/activity")}
-                      className="flex w-full items-start justify-between gap-3 rounded-[18px] border border-white/[0.07] bg-black/18 px-3 py-3 text-left"
+                      onClick={() => router.push(item.destination)}
+                      className="flex w-full items-start justify-between gap-3 rounded-[18px] border border-white/[0.07] bg-black/18 px-3 py-3 text-left transition hover:bg-white/[0.05] active:scale-[0.99]"
                     >
                       <span className="min-w-0 flex-1">
-                        <span className="block text-sm font-medium text-white">{item.action || "Runtime activity"}</span>
-                        <span className="mt-1 block text-xs text-white/48">
-                          {(item.origin || "system")} · {(item.provider || "backend")} · {(item.status || "recorded")}
-                        </span>
+                        <span className="block text-sm font-medium text-white">{item.title}</span>
+                        <span className="mt-1 block text-xs leading-5 text-white/48">{item.summary}</span>
                       </span>
-                      <span className="shrink-0 text-[11px] text-white/40">
-                        {new Date(item.completedAt || item.requestedAt || Date.now()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      <span className="shrink-0 rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-[10px] text-white/58">
+                        {item.actionLabel}
                       </span>
                     </button>
-                  ))}
-                  {!runtimeExecutions.length ? (
+                  )) : (
                     <div className="rounded-[18px] border border-dashed border-white/[0.08] px-3 py-4 text-sm text-white/45">
-                      Runtime activity will appear here as Oyi observes physical, manual, and automated actions.
+                      No important activity needs your attention.
                     </div>
-                  ) : null}
+                  )}
                 </div>
               </section>
             </motion.section>

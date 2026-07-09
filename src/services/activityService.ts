@@ -1,5 +1,6 @@
 import API from "./api";
 import { acknowledgeNotification } from "./notificationsService";
+import { awarenessFromRuntimeSignal, cleanRuntimeText } from "@/lib/consumerAwareness";
 
 export type ActivityCategory =
   | "device"
@@ -120,7 +121,7 @@ function humanizeActivityText(value: any, fallback = "Home activity") {
   if (/device command executed/.test(text)) return "Device control completed";
   if (/device command requested/.test(text)) return "Device control requested";
   if (/ai tool requested|ai command received|tool registry|audit|schema|route|database/.test(text)) return "Oyi processed a home request";
-  return raw.charAt(0).toUpperCase() + raw.slice(1);
+  return cleanRuntimeText(raw, fallback);
 }
 
 function calculateSummary(items: ActivityEvent[]): ActivitySummary {
@@ -174,15 +175,56 @@ function normalizeActivityItem(item: any): ActivityEvent {
   const severity = severityFrom(`${item.severity} ${item.type} ${item.title}`);
   const rawAction = item.action && typeof item.action === "object" ? item.action : item.metadata?.action;
   const route = firstString(rawAction?.route, rawAction?.href);
+  const runtimeAwareness = awarenessFromRuntimeSignal({
+    id: item.id,
+    type: item.type,
+    title: item.title,
+    summary: item.summary,
+    description: item.description,
+    severity: item.severity,
+    entity: item.target,
+    metadata: item.metadata,
+    context: item.metadata?.context,
+  });
+  const runtimeCategory: ActivityCategory | null =
+    runtimeAwareness?.icon === "visitor"
+      ? "visitor"
+      : runtimeAwareness?.icon === "service"
+        ? "service"
+        : runtimeAwareness?.icon === "wallet"
+          ? "wallet"
+          : runtimeAwareness?.icon === "maintenance"
+            ? "maintenance"
+            : runtimeAwareness?.icon === "community"
+              ? "community"
+              : runtimeAwareness?.icon === "security"
+                ? "security"
+                : runtimeAwareness?.icon === "automation"
+                  ? "automation"
+                  : runtimeAwareness?.icon === "device"
+                    ? "device"
+                    : runtimeAwareness?.icon === "activity"
+                      ? "system"
+                      : null;
+  const runtimeSeverity: ActivitySeverity | null =
+    runtimeAwareness?.urgency === "critical"
+      ? "critical"
+      : runtimeAwareness?.urgency === "warning"
+        ? "warning"
+        : runtimeAwareness?.urgency === "normal"
+          ? "info"
+          : null;
   const action = route
     ? { ...rawAction, route, href: route, label: rawAction?.label || "Open", entity_id: rawAction?.entity_id || null }
-    : actionForNotification(item, category);
-  const title = humanizeActivityText(item.title || item.type || item.source, "Home activity");
-  const description = humanizeActivityText(item.summary || item.description || title, "Home activity");
+    : runtimeAwareness
+      ? { href: runtimeAwareness.destination, route: runtimeAwareness.destination, label: runtimeAwareness.actionLabel, entity_id: null }
+      : actionForNotification(item, category);
+  const title = runtimeAwareness?.title || humanizeActivityText(item.title || item.type || item.source, "Home activity");
+  const description = runtimeAwareness?.summary || humanizeActivityText(item.summary || item.description || title, "Home activity");
   return {
     ...item,
-    category: (item.category || category) as ActivityCategory,
-    severity: (item.severity || severity) as ActivitySeverity,
+    category: (item.category || runtimeCategory || category) as ActivityCategory,
+    severity: (item.severity || runtimeSeverity || severity) as ActivitySeverity,
     title,
     description,
     summary: item.summary || description,

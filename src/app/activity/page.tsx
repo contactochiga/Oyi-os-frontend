@@ -32,6 +32,7 @@ import useAuth from "@/hooks/useAuth";
 import { scopeMatches, type BadgeScope } from "@/lib/footerBadges";
 import { intelligenceService, type IntelligenceMetricSummary } from "@/services/intelligenceService";
 import { loadOyiCoreExecutionHistory } from "@/services/oyiCoreRuntimeService";
+import { cleanRuntimeText, runtimeSourceLabel } from "@/lib/consumerAwareness";
 
 type FilterKey = "all" | "alerts" | "devices" | "people";
 
@@ -289,11 +290,10 @@ function ActivityRow({ item }: { item: ActivityEvent }) {
   const Icon = item.category === "device" ? getDeviceIconFromText(`  `) : tone.Icon;
   const actionable = Boolean(item.action?.href);
   const runtimeMeta = [
-    item.metadata?.origin ? `Source ${item.metadata.origin}` : null,
-    item.metadata?.initiatorType ? `Initiator ${item.metadata.initiatorType}` : null,
+    item.metadata?.origin ? runtimeSourceLabel(item.metadata.origin) : null,
+    item.metadata?.initiatorType ? cleanRuntimeText(item.metadata.initiatorType, "") : null,
     typeof item.metadata?.confidence === "number" ? `Confidence ${Math.round(item.metadata.confidence * 100)}%` : null,
-    item.metadata?.evidence ? `Evidence ${String(item.metadata.evidence)}` : null,
-    item.metadata?.recommendedAction ? `Action ${item.metadata.recommendedAction}` : null,
+    item.metadata?.recommendedAction ? cleanRuntimeText(item.metadata.recommendedAction, "") : null,
   ].filter(Boolean);
   const content = (
     <>
