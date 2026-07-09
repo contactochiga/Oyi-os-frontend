@@ -526,7 +526,7 @@ export default function HomePage() {
     const liveItem = awarenessFromRuntimeSignal(latestSignal);
     const executionItem = awarenessFromRuntimeSignal({
       id: latestExecution?.executionId || latestExecution?.signalId || latestExecution?.id || "",
-      type: latestExecution?.status === "failed" ? "device.command.failed" : latestExecution?.action || "runtime.activity",
+      type: latestExecution?.status === "failed" ? "device.command.failed" : latestExecution?.action || "home.activity",
       severity: latestExecution?.status === "failed" ? "warning" : "info",
       entity: {
         id: latestExecution?.device || latestExecution?.deviceId || latestExecution?.entityId || null,
@@ -733,6 +733,20 @@ export default function HomePage() {
                 >
                   {homeAwareness.secondary}
                 </button>
+                {awarenessItems.length > 1 ? (
+                  <div className="mt-3 flex flex-wrap justify-center gap-2">
+                    {awarenessItems.slice(1, 3).map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => router.push(item.destination)}
+                        className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-[11px] font-medium text-white/66 transition hover:bg-white/[0.06] active:scale-[0.99]"
+                      >
+                        {item.title}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             </motion.section>
 
@@ -845,51 +859,6 @@ export default function HomePage() {
                 </div>
               </motion.section>
             )}
-
-            <motion.section
-              initial={reduceMotion ? false : { opacity: 0, y: 12 }}
-              animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-              transition={{ duration: 0.48, delay: 0.22, ease: [0.22, 1, 0.36, 1] }}
-              className="mt-5"
-            >
-              <section className="rounded-[22px] border border-white/[0.08] bg-[linear-gradient(145deg,rgba(255,255,255,0.045),rgba(255,255,255,0.014))] p-4 shadow-[0_14px_42px_rgba(0,0,0,0.28)] backdrop-blur-2xl">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/46">Oyi awareness</div>
-                    <h2 className="mt-1 text-[15px] font-semibold tracking-[-0.03em] text-white">What matters right now</h2>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => router.push("/activity")}
-                    className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2.5 py-1 text-[10px] text-white/58"
-                  >
-                    Activity
-                  </button>
-                </div>
-                <div className="mt-3 space-y-2">
-                  {awarenessItems.length ? awarenessItems.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => router.push(item.destination)}
-                      className="flex w-full items-start justify-between gap-3 rounded-[18px] border border-white/[0.07] bg-black/18 px-3 py-3 text-left transition hover:bg-white/[0.05] active:scale-[0.99]"
-                    >
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-sm font-medium text-white">{item.title}</span>
-                        <span className="mt-1 block text-xs leading-5 text-white/48">{item.summary}</span>
-                      </span>
-                      <span className="shrink-0 rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-[10px] text-white/58">
-                        {item.actionLabel}
-                      </span>
-                    </button>
-                  )) : (
-                    <div className="rounded-[18px] border border-dashed border-white/[0.08] px-3 py-4 text-sm text-white/45">
-                      No important activity needs your attention.
-                    </div>
-                  )}
-                </div>
-              </section>
-            </motion.section>
 
             {favoriteDevices.length ? (
               <section className="mt-5 rounded-[24px] border border-white/[0.055] bg-white/[0.02] p-2.5 backdrop-blur-2xl">

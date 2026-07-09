@@ -27,9 +27,18 @@ const SERVICE_CARDS: Array<{
 ];
 
 const DOMAIN_FILTERS = ["All", "Power & Energy", "Water", "Internet", "Gas", "Estate Fees", "Facility Services"] as const;
+const FILTER_LABELS: Record<(typeof DOMAIN_FILTERS)[number], string> = {
+  All: "All",
+  "Power & Energy": "Power",
+  Water: "Water",
+  Internet: "Internet",
+  Gas: "Gas",
+  "Estate Fees": "Fees",
+  "Facility Services": "Facility",
+};
 
 function toNaira(amount?: number | null) {
-  if (amount == null || !Number.isFinite(Number(amount))) return "Pending source";
+  if (amount == null || !Number.isFinite(Number(amount))) return "Awaiting source";
   return new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN", maximumFractionDigits: 2 }).format(Number(amount));
 }
 
@@ -68,7 +77,7 @@ function accountMapFor(accounts: ServiceAccount[]) {
 
 function maskIdentifier(value?: string | null) {
   const text = String(value || "").trim();
-  if (!text) return "Pending source";
+  if (!text) return "Meter not linked yet";
   if (text.length <= 4) return text;
   return `••••${text.slice(-4)}`;
 }
@@ -77,7 +86,7 @@ function Field({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2.5">
       <div className="text-[10px] uppercase tracking-[0.18em] text-white/36">{label}</div>
-      <div className="mt-1 text-[13px] text-white/86">{value || "Pending source"}</div>
+      <div className="mt-1 text-[13px] text-white/86">{value || "Awaiting setup"}</div>
     </div>
   );
 }
@@ -90,7 +99,7 @@ function frontDetailsFor(item: (typeof SERVICE_CARDS)[number], account?: Service
 
   if (item.key === "utility_token") {
     return {
-      primary: `Meter ending ${maskIdentifier(identifier)}`,
+      primary: identifier ? `Meter ending ${maskIdentifier(identifier)}` : "Meter not linked yet",
       secondary: latestPayment ? `Last purchase ${toNaira(latestPayment.amount)}` : "Balance feed pending provider integration",
       status,
       provider,
@@ -134,16 +143,16 @@ function frontDetailsFor(item: (typeof SERVICE_CARDS)[number], account?: Service
 
 function detailFieldsFor(item: (typeof SERVICE_CARDS)[number], account?: ServiceAccount | null, registry?: HomeServiceRegistry | null, latestPayment?: ServicePayment | null) {
   const entry = registryEntryFor(item.key, registry || null) as any;
-  const identifier = account?.identifier || account?.meter_number || account?.account_number || entry?.meter_id || entry?.account_id || "Pending source";
-  const provider = account?.provider || entry?.provider || "Pending source";
-  const tariff = account?.tariff_profile || entry?.tariff_profile || "Pending source";
-  const billing = account?.billing_profile || entry?.billing_profile || "Pending source";
+  const identifier = account?.identifier || account?.meter_number || account?.account_number || entry?.meter_id || entry?.account_id || "Awaiting meter setup";
+  const provider = account?.provider || entry?.provider || "Awaiting provider setup";
+  const tariff = account?.tariff_profile || entry?.tariff_profile || "Awaiting tariff setup";
+  const billing = account?.billing_profile || entry?.billing_profile || "Awaiting billing setup";
   const readiness = account?.vending_readiness || entry?.vending_readiness || account?.status || entry?.status || "Pending";
 
   if (item.key === "utility_token") {
     return [
       { label: "Meter number", value: identifier },
-      { label: "KCT / KCTN", value: [account?.kct || entry?.kct, account?.kctn || entry?.kctn].filter(Boolean).join(" / ") || "Pending source" },
+      { label: "KCT / KCTN", value: [account?.kct || entry?.kct, account?.kctn || entry?.kctn].filter(Boolean).join(" / ") || "Awaiting meter setup" },
       { label: "Provider", value: provider },
       { label: "Tariff", value: tariff },
       { label: "Billing", value: billing },
@@ -166,7 +175,7 @@ function detailFieldsFor(item: (typeof SERVICE_CARDS)[number], account?: Service
     return [
       { label: "Internet ID", value: identifier },
       { label: "Provider", value: provider },
-      { label: "Plan", value: account?.plan || entry?.plan || "Pending source" },
+      { label: "Plan", value: account?.plan || entry?.plan || "Awaiting plan setup" },
       { label: "Billing", value: billing },
       { label: "Status", value: String(account?.status || entry?.status || "Pending").replace(/_/g, " ") },
       { label: "Last activity", value: dateText(account?.last_activity_at || latestPayment?.created_at) },
@@ -218,8 +227,8 @@ function GroupedServiceCard({
   const Icon = item.icon;
   const entry = registryEntryFor(item.key, registry) as any;
   const linked = Boolean(account?.linked ?? entry?.linked);
-  const readiness = account?.vending_readiness || entry?.vending_readiness || account?.status || entry?.status || "Pending";
-  const health = account?.provider_health || entry?.provider_health || "Unknown";
+  const readiness = account?.vending_readiness || entry?.vending_readiness || account?.status || entry?.status || "Setup pending";
+  const health = account?.provider_health || entry?.provider_health || "Setup pending";
   const front = frontDetailsFor(item, account, registry, latestPayment);
   const details = detailFieldsFor(item, account, registry, latestPayment);
 
@@ -416,9 +425,9 @@ export default function ServicesPage() {
               key={filter}
               type="button"
               onClick={() => setActiveFilter(filter)}
-              className={`rounded-full border px-3 py-2 text-xs transition ${activeFilter === filter ? "border-white/18 bg-white/[0.09] text-white" : "border-white/[0.08] bg-white/[0.03] text-white/60"}`}
+              className={`rounded-full border px-3 py-1.5 text-[11px] font-medium transition ${activeFilter === filter ? "border-white/18 bg-white/[0.09] text-white" : "border-white/[0.08] bg-white/[0.03] text-white/60"}`}
             >
-              {filter}
+              {FILTER_LABELS[filter]}
             </button>
           ))}
         </div>
