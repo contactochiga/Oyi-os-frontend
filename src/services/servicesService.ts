@@ -3,8 +3,11 @@ import API from "./api";
 export type ServiceKey =
   | "utility_token"
   | "water_service"
+  | "gas_service"
   | "internet_service"
   | "fiber_internet"
+  | "generator_recovery"
+  | "solar_battery_service"
   | "service_charge"
   | "other_facility_fees";
 
@@ -33,9 +36,12 @@ export type HomeServiceRegistry = {
   home_id: string;
   using_fallback?: boolean;
   wallet?: { balance?: number; currency?: string };
-  electricity: { enabled: boolean; meter_id?: string | null; provider?: string | null; linked: boolean; status: string; balance?: number | null; last_payment_at?: string | null };
-  water: { enabled: boolean; meter_id?: string | null; linked: boolean; status: string; balance?: number | null; last_payment_at?: string | null };
-  internet: { enabled: boolean; provider?: string | null; plan?: string | null; account_id?: string | null; linked: boolean; status: string; expires_at?: string | null };
+  electricity: { enabled: boolean; meter_id?: string | null; provider?: string | null; linked: boolean; status: string; balance?: number | null; last_payment_at?: string | null; tariff_profile?: string | null; billing_profile?: string | null; kct?: string | null; kctn?: string | null; provider_integration_mode?: string | null };
+  water: { enabled: boolean; meter_id?: string | null; provider?: string | null; linked: boolean; status: string; balance?: number | null; last_payment_at?: string | null; tariff_profile?: string | null; billing_profile?: string | null };
+  gas?: { enabled: boolean; meter_id?: string | null; account_id?: string | null; provider?: string | null; linked: boolean; status: string; balance?: number | null; last_payment_at?: string | null; tariff_profile?: string | null; billing_profile?: string | null };
+  internet: { enabled: boolean; provider?: string | null; plan?: string | null; account_id?: string | null; linked: boolean; status: string; expires_at?: string | null; tariff_profile?: string | null; billing_profile?: string | null };
+  generator_recovery?: { enabled: boolean; provider?: string | null; account_id?: string | null; linked: boolean; status: string; last_payment_at?: string | null; tariff_profile?: string | null; billing_profile?: string | null };
+  solar_battery?: { enabled: boolean; provider?: string | null; plan?: string | null; account_id?: string | null; linked: boolean; status: string; last_payment_at?: string | null; tariff_profile?: string | null; billing_profile?: string | null };
   estate_fees: { enabled: boolean; outstanding?: number | null; status: string; due_date?: string | null; last_payment_at?: string | null };
   facility_services: { enabled: boolean; available_count?: number; status?: string; last_payment_at?: string | null };
 };

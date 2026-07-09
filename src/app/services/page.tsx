@@ -34,14 +34,18 @@ type ServicePreset = {
 const SERVICE_ITEMS: ServiceItem[] = [
   { key: "utility_token", title: "Utility Token", subtitle: "Electricity token purchase", icon: FiZap },
   { key: "water_service", title: "Water Service", subtitle: "Water meter recharge and usage billing", icon: FiDroplet },
+  { key: "gas_service", title: "Gas Service", subtitle: "Gas refill and household continuity", icon: FiTool },
   { key: "internet_service", title: "Internet", subtitle: "Bundles and monthly fiber plans", icon: FiWifi },
+  { key: "generator_recovery", title: "Generator Recovery", subtitle: "Backup power and outage recovery", icon: FiSliders },
+  { key: "solar_battery_service", title: "Solar / Battery", subtitle: "Solar, inverter, and battery continuity", icon: FiLayers },
   { key: "service_charge", title: "Estate Fees", subtitle: "Estate operational dues", icon: FiHome },
   { key: "other_facility_fees", title: "Facility Services", subtitle: "Partner and external estate services", icon: FiLayers },
 ];
 
 const SERVICE_GROUPS: Array<{ title: string; keys: ServiceKey[] }> = [
-  { title: "All", keys: ["utility_token", "water_service", "internet_service", "service_charge", "other_facility_fees"] },
-  { title: "Utilities", keys: ["utility_token", "water_service"] },
+  { title: "All", keys: ["utility_token", "water_service", "gas_service", "internet_service", "generator_recovery", "solar_battery_service", "service_charge", "other_facility_fees"] },
+  { title: "Utilities", keys: ["utility_token", "water_service", "gas_service"] },
+  { title: "Continuity", keys: ["generator_recovery", "solar_battery_service"] },
   { title: "Connectivity", keys: ["internet_service", "fiber_internet"] as ServiceKey[] },
   { title: "Estate Fees", keys: ["service_charge"] },
   { title: "Facility Services", keys: ["other_facility_fees"] },
@@ -53,10 +57,20 @@ const SERVICE_PRESETS: Partial<Record<ServiceKey, ServicePreset[]>> = {
     { label: "Standard Fill", amount: 12000, meta: { period_label: "Standard Water Fill" } },
     { label: "Bulk Fill", amount: 25000, meta: { period_label: "Bulk Water Fill" } },
   ],
+  gas_service: [
+    { label: "Cylinder Top-up", amount: 8000, meta: { period_label: "Gas Cylinder Top-up" } },
+    { label: "Household Refill", amount: 15000, meta: { period_label: "Household Gas Refill" } },
+  ],
   internet_service: [
     { label: "20 Mbps", amount: 11500, meta: { bundle_name: "20 Mbps Fiber" } },
     { label: "25 Mbps", amount: 18000, meta: { bundle_name: "25 Mbps Fiber" } },
     { label: "50 Mbps", amount: 32500, meta: { bundle_name: "50 Mbps Fiber" } },
+  ],
+  generator_recovery: [
+    { label: "Recovery Cycle", amount: 7500, meta: { period_label: "Generator Recovery Cycle" } },
+  ],
+  solar_battery_service: [
+    { label: "Battery Continuity", amount: 12000, meta: { period_label: "Battery Continuity Plan" } },
   ],
   service_charge: [
     { label: "Monthly Flat Rate", amount: 500000, meta: { period_label: "Monthly Flat Rate" } },
@@ -84,7 +98,10 @@ function registryEntryFor(serviceKey: ServiceKey, registry: HomeServiceRegistry 
   if (!registry) return null;
   if (serviceKey === "utility_token") return registry.electricity;
   if (serviceKey === "water_service") return registry.water;
+  if (serviceKey === "gas_service") return registry.gas;
   if (serviceKey === "internet_service" || serviceKey === "fiber_internet") return registry.internet;
+  if (serviceKey === "generator_recovery") return registry.generator_recovery;
+  if (serviceKey === "solar_battery_service") return registry.solar_battery;
   if (serviceKey === "service_charge") return registry.estate_fees;
   if (serviceKey === "other_facility_fees") return registry.facility_services;
   return null;
@@ -94,7 +111,10 @@ function accountRefFor(serviceKey: ServiceKey, home: HomeContext | null, registr
   if (registry) {
     if (serviceKey === "utility_token") return String(registry.electricity?.meter_id || "");
     if (serviceKey === "water_service") return String(registry.water?.meter_id || "");
+    if (serviceKey === "gas_service") return String(registry.gas?.account_id || registry.gas?.meter_id || "");
     if (serviceKey === "internet_service" || serviceKey === "fiber_internet") return String(registry.internet?.account_id || "");
+    if (serviceKey === "generator_recovery") return String(registry.generator_recovery?.account_id || "");
+    if (serviceKey === "solar_battery_service") return String(registry.solar_battery?.account_id || "");
     if (serviceKey === "service_charge") return String(registry.home_id || home?.id || "");
     if (serviceKey === "other_facility_fees") return String(registry.home_id || home?.id || "");
   }
@@ -125,7 +145,9 @@ function serviceStatusFor(serviceKey: ServiceKey, linkedRef: string, active: boo
   if (!active) return { label: "Unavailable", className: "border-white/8 bg-white/[0.04] text-white/40" };
   if (serviceKey === "utility_token") return { label: linkedRef ? "Available" : "Link Meter", className: linkedRef ? "border-emerald-300/12 bg-emerald-400/10 text-emerald-200" : "border-amber-300/14 bg-amber-400/10 text-amber-200" };
   if (serviceKey === "water_service") return { label: linkedRef ? "Connected" : "Setup Needed", className: linkedRef ? "border-sky-300/12 bg-sky-400/10 text-sky-200" : "border-amber-300/14 bg-amber-400/10 text-amber-200" };
+  if (serviceKey === "gas_service") return { label: linkedRef ? "Connected" : "Setup Needed", className: linkedRef ? "border-amber-300/18 bg-amber-400/10 text-amber-100" : "border-amber-300/14 bg-amber-400/10 text-amber-200" };
   if (serviceKey === "internet_service" || serviceKey === "fiber_internet") return { label: linkedRef ? "Active" : "Setup Needed", className: linkedRef ? "border-emerald-300/12 bg-emerald-400/10 text-emerald-200" : "border-amber-300/14 bg-amber-400/10 text-amber-200" };
+  if (serviceKey === "generator_recovery" || serviceKey === "solar_battery_service") return { label: linkedRef ? "Ready" : "Provisioning", className: linkedRef ? "border-cyan-300/12 bg-cyan-400/10 text-cyan-200" : "border-amber-300/14 bg-amber-400/10 text-amber-200" };
   if (serviceKey === "service_charge") return { label: "No Due", className: "border-emerald-300/12 bg-emerald-400/10 text-emerald-200" };
   return { label: "On Demand", className: "border-cyan-300/12 bg-cyan-400/10 text-cyan-200" };
 }
@@ -149,7 +171,10 @@ function RequestServiceSheet({ open, onClose, onSelect, onSupport }: { open: boo
     { label: "Pay Service Charge", detail: "Estate dues and fees", icon: FiHome, serviceKey: "service_charge" },
     { label: "Buy Electricity", detail: "Meter token purchase", icon: FiZap, serviceKey: "utility_token" },
     { label: "Buy Water", detail: "Recharge water account", icon: FiDroplet, serviceKey: "water_service" },
+    { label: "Gas Service", detail: "Refill or settle gas service", icon: FiTool, serviceKey: "gas_service" },
     { label: "Internet / Fiber", detail: "Plans and renewal", icon: FiWifi, serviceKey: "internet_service" },
+    { label: "Generator Recovery", detail: "Backup power continuity", icon: FiSliders, serviceKey: "generator_recovery" },
+    { label: "Solar / Battery", detail: "Energy backup service", icon: FiLayers, serviceKey: "solar_battery_service" },
     { label: "Estate Fees", detail: "Home-linked estate payments", icon: FiCreditCard, serviceKey: "service_charge" },
     { label: "Facility Services", detail: "Cleaning, waste and support", icon: FiLayers, serviceKey: "other_facility_fees" },
     { label: "Support Request", detail: "Open resident support", icon: FiHeadphones, support: true },
@@ -254,16 +279,27 @@ export default function ServicesPage() {
   const selectedGroup = useMemo(() => SERVICE_GROUPS.find((group) => group.title === activeCategory) || SERVICE_GROUPS[0], [activeCategory]);
   const visibleServiceItems = useMemo(() => SERVICE_ITEMS.filter((item) => selectedGroup.keys.includes(item.key)), [selectedGroup]);
   const linkedUtilityAccounts = useMemo(() => {
-    if (registry) return [registry.electricity?.linked, registry.water?.linked, registry.internet?.linked].filter(Boolean).length;
+    if (registry) {
+      return [
+        registry.electricity?.linked,
+        registry.water?.linked,
+        registry.gas?.linked,
+        registry.internet?.linked,
+        registry.generator_recovery?.linked,
+        registry.solar_battery?.linked,
+      ].filter(Boolean).length;
+    }
     return [home?.electricity_meter, home?.water_meter, home?.internet_id].filter(Boolean).length;
   }, [home, registry]);
   const activeServices = useMemo(() => {
     if (!registry) return SERVICE_ITEMS.filter((item) => (configs[item.key]?.active ?? true)).length;
-    return [registry.electricity, registry.water, registry.internet, registry.estate_fees, registry.facility_services].filter((item: any) => item?.enabled).length;
+    return [registry.electricity, registry.water, registry.gas, registry.internet, registry.generator_recovery, registry.solar_battery, registry.estate_fees, registry.facility_services].filter((item: any) => item?.enabled).length;
   }, [configs, registry]);
   const electricityLinked = Boolean(registry?.electricity?.linked ?? home?.electricity_meter);
   const waterLinked = Boolean(registry?.water?.linked ?? home?.water_meter);
+  const gasLinked = Boolean(registry?.gas?.linked);
   const internetLinked = Boolean(registry?.internet?.linked ?? home?.internet_id);
+  const continuityLinked = Boolean(registry?.generator_recovery?.linked || registry?.solar_battery?.linked);
   const outstanding = Number(registry?.estate_fees?.outstanding || 0);
   const supportReady = Boolean(registry?.facility_services?.enabled);
   const strip = [
@@ -275,9 +311,9 @@ export default function ServicesPage() {
   ];
   const subtitle = outstanding > 0
     ? `One or more service obligations need review.`
-    : electricityLinked || waterLinked || internetLinked
+    : electricityLinked || waterLinked || gasLinked || internetLinked || continuityLinked
       ? `Home services are linked and ready for resident actions.`
-      : `Managed living, utilities and home support.`;
+      : `Managed living, infrastructure services, and home support.`;
   const requestServiceAction = (
     <section className="flex items-center justify-end gap-2">
       <ServiceActionChip label="Request Service" Icon={FiTool} onClick={() => setRequestSheetOpen(true)} />
@@ -395,7 +431,7 @@ export default function ServicesPage() {
   }
 
   return (
-    <ConsumerShell title="Services" subtitle={subtitle} strip={strip} preStripSlot={requestServiceAction}>
+    <ConsumerShell title="Infrastructure Services" subtitle={subtitle} strip={strip} preStripSlot={requestServiceAction}>
       <div className="oyi-living-page space-y-3 pb-8">
       {err ? <div className="mb-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">{err}</div> : null}
       {msg ? <div className="mb-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">{msg}</div> : null}
