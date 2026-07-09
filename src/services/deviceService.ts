@@ -1,5 +1,6 @@
 // src/services/deviceService.ts
 import API from "./api";
+import type { DeviceRuntimeContract } from "@/lib/deviceRuntimeContract";
 
 export type AssignDevicesPayload = {
   deviceIds?: string[];
@@ -8,10 +9,8 @@ export type AssignDevicesPayload = {
   room_id?: string | null;
 };
 
-export type DeviceStateResponse = {
+export type DeviceStateResponse = DeviceRuntimeContract & {
   deviceId?: string;
-  state: Record<string, any>;
-  lastSeen?: string | null;
   error?: string;
 };
 
@@ -97,6 +96,18 @@ export const deviceService = {
       return {
         deviceId: res.data?.deviceId,
         state: res.data?.state ?? {},
+        normalized_state: res.data?.normalized_state ?? null,
+        capabilities: res.data?.capabilities ?? [],
+        supported_controls: res.data?.supported_controls ?? [],
+        control_profile: res.data?.control_profile ?? null,
+        health_status: res.data?.health_status ?? null,
+        provider_health: res.data?.provider_health ?? null,
+        primary_state: res.data?.primary_state ?? null,
+        telemetry_summary: res.data?.telemetry_summary ?? null,
+        last_signal: res.data?.last_signal ?? null,
+        activity_summary: res.data?.activity_summary ?? null,
+        device_family: res.data?.device_family ?? null,
+        device_type: res.data?.device_type ?? null,
         lastSeen: res.data?.lastSeen ?? null,
         error: res.data?.error,
       };

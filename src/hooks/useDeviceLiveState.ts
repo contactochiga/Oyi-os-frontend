@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { deviceService } from "@/services/deviceService";
+import type { DeviceRuntimeContract } from "@/lib/deviceRuntimeContract";
 import { getSocket } from "@/services/socket";
 import useActiveContext from "@/hooks/useActiveContext";
 import { scopeMatches } from "@/lib/footerBadges";
@@ -10,6 +11,7 @@ import { extractRuntimeDeviceUpdate } from "@/lib/runtimeSignal";
 
 type LiveState = {
   state: Record<string, any> | null;
+  runtime: DeviceRuntimeContract | null;
   lastSeen?: string | null;
   loading: boolean;
   error: string | null;
@@ -19,6 +21,7 @@ export function useDeviceLiveState(deviceId?: string, estateId?: string | null) 
   const activeContext = useActiveContext();
   const [data, setData] = useState<LiveState>({
     state: null,
+    runtime: null,
     lastSeen: null,
     loading: false,
     error: null,
@@ -37,6 +40,7 @@ export function useDeviceLiveState(deviceId?: string, estateId?: string | null) 
       setData((s) => ({
         ...s,
         state: resp?.state ?? null,
+        runtime: resp ?? null,
         lastSeen: resp?.lastSeen ?? null,
         loading: false,
       }));
@@ -87,6 +91,7 @@ export function useDeviceLiveState(deviceId?: string, estateId?: string | null) 
       setData((s) => ({
         ...s,
         state: update.state ?? s.state,
+        runtime: s.runtime ? { ...s.runtime, state: update.state ?? s.state } : s.runtime,
         lastSeen: new Date().toISOString(),
         error: null,
       }));

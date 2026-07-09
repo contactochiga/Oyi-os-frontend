@@ -46,6 +46,18 @@ import { getSocket } from "@/services/socket";
 import { useRuntimeIntelligenceStore } from "@/store/useRuntimeIntelligenceStore";
 import GangRingSwitch from "@/app/components/devices/GangRingSwitch";
 import { getDeviceFamily, getDeviceIcon, getDeviceIconTone, isSimplePowerDevice } from "@/lib/devicePresentation";
+import {
+  activitySummary as runtimeActivitySummary,
+  controlProfileLabel,
+  deviceFamilyLabel,
+  displayPrimaryState,
+  healthLabel,
+  normalizeRuntimeContract,
+  onlineState,
+  simplePowerState,
+  statusLabel,
+  type DeviceRuntimeContract,
+} from "@/lib/deviceRuntimeContract";
 import { scopeMatches } from "@/lib/footerBadges";
 
 type AnyDevice = Record<string, any>;
@@ -106,7 +118,9 @@ function pickDiscoveryExternalId(d: DiscoveryDevice) {
   return d?.external_id || d?.externalId || d?.device_id || d?.dev_id || d?.uuid || null;
 }
 
-function isOnline(d: AnyDevice): boolean | null {
+function isOnline(d: AnyDevice, runtime?: Partial<DeviceRuntimeContract> | null): boolean | null {
+  const direct = onlineState(d, runtime);
+  if (direct !== null) return direct;
   if (typeof d?.online === "boolean") return d.online;
   if (typeof d?.isOnline === "boolean") return d.isOnline;
   if (typeof d?.connected === "boolean") return d.connected;
@@ -140,7 +154,11 @@ function iconTone(device: AnyDevice) {
   return getDeviceIconTone(device);
 }
 
-function guessGangCount(device: AnyDevice, state: any): 1 | 2 | 3 {
+function guessGangCount(device: AnyDevice, state: any, runtime?: Partial<DeviceRuntimeContract> | null): 1 | 2 | 3 {
+  const normalized = normalizeRuntimeContract(device, runtime).normalized_state || {};
+  const switchKeys = Object.keys((normalized as any)?.switches || {});
+  if (switchKeys.includes("switch_3")) return 3;
+  if (switchKeys.includes("switch_2")) return 2;
   const raw = (device?.metadata?.raw ?? device?.metadata ?? device?.meta ?? {}) as any;
   const rawKeys = Object.keys(raw || {});
   const has2 = rawKeys.some((k) => k === "switch_2" || k === "switch_2_code");
@@ -159,11 +177,13 @@ function guessGangCount(device: AnyDevice, state: any): 1 | 2 | 3 {
   return 1;
 }
 
-function readGangValues(gangCount: 1 | 2 | 3, state: any): Array<boolean | null> {
+function readGangValues(gangCount: 1 | 2 | 3, state: any, runtime?: Partial<DeviceRuntimeContract> | null): Array<boolean | null> {
+  const normalized = normalizeRuntimeContract({}, runtime).normalized_state || {};
+  const switches = (normalized as any)?.switches || {};
   const out: Array<boolean | null> = [];
   for (let i = 1; i <= gangCount; i += 1) {
     const k = `switch_${i}`;
-    const v = state?.[k];
+    const v = switches?.[k] ?? state?.[k];
     out.push(typeof v === "boolean" ? v : null);
   }
   if (gangCount === 1 && out[0] === null) {
@@ -177,36 +197,35 @@ function normalizeCommandKey(gangCount: 1 | 2 | 3, gangIndex: number) {
   return gangCount === 1 ? "switch" : `switch_${gangIndex + 1}`;
 }
 
-function readPowerState(state: any): boolean | null {
-  if (!state) return null;
-  const v = state?.switch ?? state?.power ?? state?.on ?? null;
-  if (typeof v === "boolean") return v;
-  const keys = ["switch_1", "switch_2", "switch_3"];
-  for (const k of keys) if (typeof state?.[k] === "boolean" && state[k] === true) return true;
-  return keys.some((k) => typeof state?.[k] === "boolean") ? false : null;
+function readPowerState(state: any, runtime?: Partial<DeviceRuntimeContract> | null): boolean | null {
+  return simplePowerState({}, { state, ...(runtime || {}) });
 }
 
-function readTemperature(state: any): string | null {
-  const raw = state?.temp_current ?? state?.temperature ?? state?.temp ?? state?.current_temperature;
+function readTemperature(state: any, runtime?: Partial<DeviceRuntimeContract> | null): string | null {
+  const normalized = normalizeRuntimeContract({}, runtime).normalized_state || {};
+  const raw = (normalized as any)?.temperature ?? state?.temp_current ?? state?.temperature ?? state?.temp ?? state?.current_temperature;
   const n = Number(raw);
   if (!Number.isFinite(n)) return null;
   const c = n > 80 ? Math.round(n / 10) : Math.round(n);
   return `${c}°C`;
 }
 
-function readLockState(device: AnyDevice, state: any): string | null {
+function readLockState(device: AnyDevice, state: any, runtime?: Partial<DeviceRuntimeContract> | null): string | null {
   const family = inferFamily(device);
   if (family !== "lock") return null;
-  const raw = String(state?.lock_state ?? state?.door_state ?? state?.status ?? "").toLowerCase();
+  const normalized = normalizeRuntimeContract(device, runtime).normalized_state || {};
+  const raw = String((normalized as any)?.lock_state ?? state?.lock_state ?? state?.door_state ?? state?.status ?? "").toLowerCase();
   if (raw.includes("unlock") || raw === "open") return "Unlocked";
   if (raw.includes("lock") || raw === "closed") return "Locked";
   return null;
 }
 
-function displayState(device: AnyDevice, state: any) {
-  const lock = readLockState(device, state);
+function displayState(device: AnyDevice, state: any, runtime?: Partial<DeviceRuntimeContract> | null) {
+  const primary = displayPrimaryState(device, { state, ...(runtime || {}) });
+  if (primary && primary !== "Awaiting sync") return primary;
+  const lock = readLockState(device, state, runtime);
   if (lock) return lock;
-  const temp = readTemperature(state);
+  const temp = readTemperature(state, runtime);
   if (temp) return temp;
   const family = inferFamily(device);
   if (family === "curtain") {
@@ -214,17 +233,17 @@ function displayState(device: AnyDevice, state: any) {
     if (typeof open === "boolean") return open ? "Open" : "Closed";
     if (typeof open === "number") return open > 0 ? "Open" : "Closed";
   }
-  const power = readPowerState(state);
+  const power = readPowerState(state, runtime);
   if (power !== null) return power ? "On" : "Off";
-  const online = isOnline(device);
+  const online = isOnline(device, runtime);
   if (online === false) return "Offline";
   if (online === true) return "Online";
   return "Awaiting sync";
 }
 
-function isSimpleControlDevice(device: AnyDevice, state: any) {
-  const gangCount = guessGangCount(device, state);
-  return gangCount === 1 && canSwitchDevice(device);
+function isSimpleControlDevice(device: AnyDevice, state: any, runtime?: Partial<DeviceRuntimeContract> | null) {
+  const gangCount = guessGangCount(device, state, runtime);
+  return gangCount === 1 && canSwitchDevice(device, runtime);
 }
 
 function isFavoriteDevice(device: AnyDevice) {
@@ -232,19 +251,22 @@ function isFavoriteDevice(device: AnyDevice) {
   return Boolean(device?.favorite || device?.is_favorite || device?.pinned || meta?.favorite || meta?.is_favorite || meta?.pinned);
 }
 
-function friendlyStateRows(device: AnyDevice, state: any) {
-  const online = isOnline(device);
-  const power = readPowerState(state);
+function friendlyStateRows(device: AnyDevice, state: any, runtime?: Partial<DeviceRuntimeContract> | null) {
+  const contract = normalizeRuntimeContract(device, { state, ...(runtime || {}) });
+  const online = isOnline(device, contract);
+  const power = readPowerState(state, contract);
   const rows = [
-    { label: "State", value: displayState(device, state) },
+    { label: "State", value: displayState(device, state, contract) },
+    { label: "Health", value: healthLabel(contract.health_status, "Unknown") },
     { label: "Connection", value: online === null ? "Unknown" : online ? "Online" : "Offline" },
     { label: "Room", value: pickRoomName(device) || "Unassigned" },
-    { label: "Device type", value: inferFamily(device).replace("_", " ") },
+    { label: "Device type", value: deviceFamilyLabel(contract.device_family || inferFamily(device), "Device") },
+    { label: "Control profile", value: controlProfileLabel(contract.control_profile, "Standard") },
   ];
   if (power !== null && rows[0].value !== (power ? "On" : "Off")) rows.push({ label: "Power", value: power ? "On" : "Off" });
   const lastSeen = state?.last_seen || state?.lastSeen || device?.last_seen || device?.lastSeen || device?.updated_at;
   if (lastSeen) rows.push({ label: "Last active", value: new Date(lastSeen).toLocaleString() });
-  const caps = uiCapabilities(device);
+  const caps = uiCapabilities(device, contract);
   const supported = [
     caps.canSwitch && "Power",
     caps.timer && "Timer",
@@ -255,14 +277,16 @@ function friendlyStateRows(device: AnyDevice, state: any) {
     caps.ac.length ? "AC remote" : null,
   ].filter(Boolean);
   if (supported.length) rows.push({ label: "Supported controls", value: supported.join(", ") });
+  const summary = runtimeActivitySummary(device, contract, "");
+  if (summary) rows.push({ label: "Recent activity", value: summary });
   return rows;
 }
 
-function attentionReason(device: AnyDevice, state: any) {
-  if (isOnline(device) === false) return "Connection lost";
+function attentionReason(device: AnyDevice, state: any, runtime?: Partial<DeviceRuntimeContract> | null) {
+  if (isOnline(device, runtime) === false) return "Connection lost";
   const battery = Number(state?.battery ?? state?.battery_percentage ?? device?.battery);
   if (Number.isFinite(battery) && battery > 0 && battery <= 20) return "Battery low";
-  const status = String(device?.status || state?.status || "").toLowerCase();
+  const status = String(runtime?.health_status || device?.status || state?.status || "").toLowerCase();
   if (status.includes("firmware")) return "Firmware update available";
   if (status.includes("error") || status.includes("fault")) return "Attention needed";
   return null;
@@ -297,13 +321,15 @@ function friendlyCapabilities(device: AnyDevice) {
   return Array.from(new Set(labels)).slice(0, 6);
 }
 
-function uiCapabilities(device: AnyDevice) {
+function uiCapabilities(device: AnyDevice, runtime?: Partial<DeviceRuntimeContract> | null) {
+  const contract = normalizeRuntimeContract(device, runtime);
   const ui = device?.ui_capabilities && typeof device.ui_capabilities === "object" ? device.ui_capabilities : {};
   const supported = Array.isArray(ui.supported_commands) ? ui.supported_commands.map((item: any) => String(item).toLowerCase()) : [];
+  const runtimeSupported = Array.isArray(contract.supported_controls) ? contract.supported_controls.map((item) => String(item).toLowerCase()) : [];
   return {
-    canSwitch: Boolean(ui.can_switch || supported.includes("switch") || friendlyCapabilities(device).includes("Power")),
-    timer: Boolean(ui.timer || supported.includes("timer")),
-    schedule: Boolean(ui.schedule || supported.includes("schedule")),
+    canSwitch: Boolean(ui.can_switch || supported.includes("switch") || runtimeSupported.includes("power") || contract.control_profile === "switch" || contract.control_profile === "plug" || friendlyCapabilities(device).includes("Power")),
+    timer: Boolean(ui.timer || supported.includes("timer") || runtimeSupported.includes("timer")),
+    schedule: Boolean(ui.schedule || supported.includes("schedule") || runtimeSupported.includes("schedule")),
     cycle: Boolean(ui.cycle || supported.includes("cycle")),
     inching: Boolean(ui.inching || supported.includes("inching")),
     tv: Array.isArray(ui?.remote?.tv) ? ui.remote.tv.map((item: any) => String(item).toLowerCase()) : [],
@@ -311,8 +337,8 @@ function uiCapabilities(device: AnyDevice) {
   };
 }
 
-function canSwitchDevice(device: AnyDevice) {
-  const caps = uiCapabilities(device);
+function canSwitchDevice(device: AnyDevice, runtime?: Partial<DeviceRuntimeContract> | null) {
+  const caps = uiCapabilities(device, runtime);
   return caps.canSwitch && isSimplePowerDevice(device);
 }
 
@@ -362,8 +388,9 @@ function learnedIrTemplate(device: AnyDevice): IrProfile | null {
   return null;
 }
 
-function deviceRendererKind(device: AnyDevice): DeviceRendererKind {
-  const family = inferFamily(device);
+function deviceRendererKind(device: AnyDevice, runtime?: Partial<DeviceRuntimeContract> | null): DeviceRendererKind {
+  const contract = normalizeRuntimeContract(device, runtime);
+  const family = String(contract.control_profile || contract.device_family || inferFamily(device)).toLowerCase();
   const profile = learnedIrTemplate(device);
   const text = `${device?.remote_type || ""} ${device?.remoteType || ""} ${device?.ir_profile || ""} ${device?.device_type || ""} ${device?.product_name || ""} ${device?.productName || ""} ${device?.model || ""} ${device?.category || ""} ${device?.type || ""} ${device?.name || ""} ${device?.metadata?.category || ""} ${device?.metadata?.remoteType || ""} ${device?.metadata?.ir_profile || ""}`.toLowerCase();
   if (family === "tv" || /\btv\b|television|decoder|set.top/.test(text)) return "tv";
@@ -392,6 +419,7 @@ export default function DeviceClient() {
   const [q, setQ] = useState("");
   const [category, setCategory] = useState<CategoryKey>("all");
   const [stateMap, setStateMap] = useState<Record<string, any>>({});
+  const [runtimeMap, setRuntimeMap] = useState<Record<string, DeviceRuntimeContract>>({});
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetDevice, setSheetDevice] = useState<AnyDevice | null>(null);
   const [stateOpen, setStateOpen] = useState(false);
@@ -420,17 +448,22 @@ export default function DeviceClient() {
       .map(async ({ sid }) => {
         try {
           const res = await deviceService.getDeviceState(String(sid));
-          return { sid: String(sid), state: (res as any)?.state ?? res ?? {} };
+          return { sid: String(sid), runtime: normalizeRuntimeContract(list.find((d) => String(pickDbId(d) || "") === String(sid)) || {}, res), state: (res as any)?.state ?? res ?? {} };
         } catch {
           return null;
         }
       });
     const settled = await Promise.allSettled(jobs);
     const patch: Record<string, any> = {};
+    const runtimePatch: Record<string, DeviceRuntimeContract> = {};
     settled.forEach((s) => {
-      if (s.status === "fulfilled" && s.value?.sid) patch[s.value.sid] = s.value.state;
+      if (s.status === "fulfilled" && s.value?.sid) {
+        patch[s.value.sid] = s.value.state;
+        runtimePatch[s.value.sid] = s.value.runtime;
+      }
     });
     if (Object.keys(patch).length) setStateMap((prev) => ({ ...prev, ...patch }));
+    if (Object.keys(runtimePatch).length) setRuntimeMap((prev) => ({ ...prev, ...runtimePatch }));
   }
 
   async function load() {
@@ -492,6 +525,13 @@ export default function DeviceClient() {
       setStateMap((prev) => ({
         ...prev,
         [sid]: { ...(prev[sid] || {}), ...(payload?.state || {}) },
+      }));
+      setRuntimeMap((prev) => ({
+        ...prev,
+        [sid]: normalizeRuntimeContract(target, {
+          ...(prev[sid] || { state: {} }),
+          state: { ...((prev[sid] as any)?.state || {}), ...(payload?.state || {}) },
+        }),
       }));
     };
 
@@ -577,7 +617,7 @@ export default function DeviceClient() {
       const categoryMatch = category === "all" || deviceCategory === category || (category === "lights" && family === "switch");
       if (!categoryMatch) return false;
       if (!term) return true;
-      return [pickName(d), pickRoomName(d), displayState(d, stateMap[String(pickDbId(d))] || {})]
+      return [pickName(d), pickRoomName(d), displayState(d, stateMap[String(pickDbId(d))] || {}, runtimeMap[String(pickDbId(d))] || null)]
         .filter(Boolean)
         .join(" ")
         .toLowerCase()
@@ -603,9 +643,9 @@ export default function DeviceClient() {
 
   const attentionItems = useMemo(() => {
     return items
-      .map((device) => ({ device, reason: attentionReason(device, stateMap[String(pickDbId(device))] || {}) }))
+      .map((device) => ({ device, reason: attentionReason(device, stateMap[String(pickDbId(device))] || {}, runtimeMap[String(pickDbId(device))] || null) }))
       .filter((item) => Boolean(item.reason));
-  }, [items, stateMap]);
+  }, [items, stateMap, runtimeMap]);
 
   async function warmState(device: AnyDevice) {
     const dbId = pickDbId(device);
@@ -621,7 +661,8 @@ export default function DeviceClient() {
   }
 
   function buildPowerCommand(device: AnyDevice, state: any, next: boolean) {
-    const gangCount = guessGangCount(device, state);
+    const runtime = runtimeMap[String(pickDbId(device) || "")] || null;
+    const gangCount = guessGangCount(device, state, runtime);
     if (gangCount === 1) return { switch: next };
     const out: Record<string, boolean> = {};
     for (let i = 1; i <= gangCount; i += 1) out[`switch_${i}`] = next;
@@ -631,14 +672,14 @@ export default function DeviceClient() {
   async function toggleGang(device: AnyDevice, gangIndex: number, next: boolean) {
     const dbId = pickDbId(device);
     if (!dbId) return setErr("This device is not assigned yet.");
-    if (!canSwitchDevice(device)) return setErr(`${pickName(device)} does not expose a supported power command.`);
     const sid = String(dbId);
+    if (!canSwitchDevice(device, runtimeMap[sid] || null)) return setErr(`${pickName(device)} does not expose a supported power command.`);
     setBusyId(sid);
     setErr(null);
     try {
       await warmState(device);
       const cached = stateMap[sid] || {};
-      const gangCount = guessGangCount(device, cached);
+      const gangCount = guessGangCount(device, cached, runtimeMap[sid] || null);
       const code = normalizeCommandKey(gangCount, gangIndex);
       await deviceService.commandDevice(sid, { [code]: next });
       setStateMap((p) => ({ ...p, [sid]: { ...(p[sid] || {}), [code]: next, ...(gangCount === 1 ? { switch: next, power: next, on: next } : {}) } }));
@@ -652,15 +693,15 @@ export default function DeviceClient() {
   async function toggleMasterPower(device: AnyDevice) {
     const dbId = pickDbId(device);
     if (!dbId) return setErr("This device is not assigned yet.");
-    if (isOnline(device) === false) return setErr(`${pickName(device)} is offline.`);
-    if (!canSwitchDevice(device)) return setErr(`${pickName(device)} does not expose a supported power command.`);
     const sid = String(dbId);
+    if (isOnline(device, runtimeMap[sid] || null) === false) return setErr(`${pickName(device)} is offline.`);
+    if (!canSwitchDevice(device, runtimeMap[sid] || null)) return setErr(`${pickName(device)} does not expose a supported power command.`);
     setBusyId(sid);
     setErr(null);
     try {
       await warmState(device);
       const cached = stateMap[sid] || {};
-      const nowOn = readPowerState(cached);
+      const nowOn = readPowerState(cached, runtimeMap[sid] || null);
       const next = nowOn === null ? true : !nowOn;
       const command = buildPowerCommand(device, cached, next);
       await deviceService.commandDevice(sid, command);
@@ -675,8 +716,8 @@ export default function DeviceClient() {
   async function sendDeviceCommand(device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) {
     const dbId = pickDbId(device);
     if (!dbId) return setErr("This device is not assigned yet.");
-    if (isOnline(device) === false) return setErr(`${pickName(device)} is offline.`);
     const sid = String(dbId);
+    if (isOnline(device, runtimeMap[sid] || null) === false) return setErr(`${pickName(device)} is offline.`);
     setBusyId(sid);
     setErr(null);
     try {
@@ -778,14 +819,15 @@ export default function DeviceClient() {
     if (!dbId) return;
     const sid = String(dbId);
     setStateTitle(pickName(device));
-    setStateMeta({ rows: friendlyStateRows(device, stateMap[sid] || {}) });
+      setStateMeta({ rows: friendlyStateRows(device, stateMap[sid] || {}, runtimeMap[sid] || null) });
     setStateOpen(true);
     setStateLoading(true);
     try {
       const res = await deviceService.getDeviceState(sid);
       const state = (res as any)?.state ?? res ?? {};
       setStateMap((p) => ({ ...p, [sid]: state }));
-      setStateMeta({ rows: friendlyStateRows(device, state) });
+      setRuntimeMap((p) => ({ ...p, [sid]: normalizeRuntimeContract(device, res) }));
+      setStateMeta({ rows: friendlyStateRows(device, state, normalizeRuntimeContract(device, res)) });
     } finally {
       setStateLoading(false);
     }
@@ -890,7 +932,7 @@ export default function DeviceClient() {
               </div>
               {favorites.length ? (
                 <div className="flex snap-x gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                  {favorites.map((device) => <FavoriteCard key={String(pickDbId(device) || pickExternalId(device) || pickName(device))} device={device} state={stateMap[String(pickDbId(device))] || {}} busy={busyId === String(pickDbId(device))} onOpen={openDevice} onPower={toggleMasterPower} />)}
+                  {favorites.map((device) => <FavoriteCard key={String(pickDbId(device) || pickExternalId(device) || pickName(device))} device={device} state={stateMap[String(pickDbId(device))] || {}} runtime={runtimeMap[String(pickDbId(device))] || null} busy={busyId === String(pickDbId(device))} onOpen={openDevice} onPower={toggleMasterPower} />)}
                 </div>
               ) : (
                 <div className="rounded-[22px] border border-white/[0.07] bg-[linear-gradient(145deg,rgba(255,255,255,0.042),rgba(255,255,255,0.012))] p-4 text-sm text-white/54 shadow-[0_14px_48px_rgba(0,0,0,0.28)] backdrop-blur-2xl">
@@ -921,7 +963,7 @@ export default function DeviceClient() {
               <section className="mt-5">
                 <h2 className="text-[17px] font-semibold tracking-[-0.04em] text-white">Attention Needed</h2>
                 <div className="mt-3 space-y-2">
-                  {attentionItems.map(({ device, reason }) => <AttentionRow key={String(pickDbId(device) || pickExternalId(device) || pickName(device))} device={device} reason={String(reason)} />)}
+                  {attentionItems.map(({ device, reason }) => <AttentionRow key={String(pickDbId(device) || pickExternalId(device) || pickName(device))} device={device} runtime={runtimeMap[String(pickDbId(device))] || null} reason={String(reason)} />)}
                 </div>
               </section>
             ) : null}
@@ -939,7 +981,7 @@ export default function DeviceClient() {
               <div className="mt-3 overflow-hidden rounded-[24px] border border-white/[0.07] bg-[linear-gradient(145deg,rgba(255,255,255,0.042),rgba(255,255,255,0.012))] shadow-[0_14px_48px_rgba(0,0,0,0.29)] backdrop-blur-2xl">
                 {loading && !filtered.length ? <div className="px-4 py-5 text-sm text-white/50">Loading devices…</div> : null}
                 {!loading && !filtered.length ? <div className="px-4 py-5 text-sm text-white/50">No devices available.</div> : null}
-                {filtered.map((device, index) => <DeviceRow key={String(pickDbId(device) || pickExternalId(device) || pickName(device))} device={device} state={stateMap[String(pickDbId(device))] || {}} busy={busyId === String(pickDbId(device))} bordered={index > 0} editingFavorites={editingFavorites} onOpen={openDevice} onPower={toggleMasterPower} onFavorite={toggleFavorite} />)}
+                {filtered.map((device, index) => <DeviceRow key={String(pickDbId(device) || pickExternalId(device) || pickName(device))} device={device} state={stateMap[String(pickDbId(device))] || {}} runtime={runtimeMap[String(pickDbId(device))] || null} busy={busyId === String(pickDbId(device))} bordered={index > 0} editingFavorites={editingFavorites} onOpen={openDevice} onPower={toggleMasterPower} onFavorite={toggleFavorite} />)}
               </div>
             </section>
           </div>
@@ -947,7 +989,7 @@ export default function DeviceClient() {
 
         {addDeviceOpen ? <AddDeviceSheet tab={addDeviceTab} setTab={setAddDeviceTab} discovering={discovering} binding={binding} discovered={discovered} providerDevices={providerDevices} selectedDiscover={selectedDiscover} selectedCount={selectedDiscoveryIds.length} bindRoom={bindRoom} setBindRoom={setBindRoom} setSelectedDiscover={setSelectedDiscover} onClose={() => setAddDeviceOpen(false)} onScan={refreshDiscovery} onBind={bindSelectedDevices} /> : null}
         {assignDevice ? <UnassignedDeviceSheet device={assignDevice} room={assignRoom} setRoom={setAssignRoom} binding={binding} onClose={() => setAssignDevice(null)} onAssign={assignListedDevice} /> : null}
-        {sheetOpen && sheetDevice ? <DeviceModalRouter device={sheetDevice} state={stateMap[String(pickDbId(sheetDevice))] || {}} busy={busyId === String(pickDbId(sheetDevice))} executionHistory={deviceExecutions} awareness={latestAwareness} recommendation={latestRecommendations[0] || null} onClose={() => setSheetOpen(false)} onToggleGang={toggleGang} onPower={toggleMasterPower} onCommand={sendDeviceCommand} onTool={(kind, device) => setTool({ kind, device })} onCreateScene={(device) => router.push(`/scenes?create=scene&deviceId=${encodeURIComponent(String(pickDbId(device) || ""))}`)} /> : null}
+        {sheetOpen && sheetDevice ? <DeviceModalRouter device={sheetDevice} state={stateMap[String(pickDbId(sheetDevice))] || {}} runtime={runtimeMap[String(pickDbId(sheetDevice))] || null} busy={busyId === String(pickDbId(sheetDevice))} executionHistory={deviceExecutions} awareness={latestAwareness} recommendation={latestRecommendations[0] || null} onClose={() => setSheetOpen(false)} onToggleGang={toggleGang} onPower={toggleMasterPower} onCommand={sendDeviceCommand} onTool={(kind, device) => setTool({ kind, device })} onCreateScene={(device) => router.push(`/scenes?create=scene&deviceId=${encodeURIComponent(String(pickDbId(device) || ""))}`)} /> : null}
         {tool ? <DeviceToolSheet kind={tool.kind} device={tool.device} busy={busyId === String(pickDbId(tool.device))} onClose={() => setTool(null)} onTimer={(command, patch) => sendDeviceCommand(tool.device, command, patch)} onSchedule={(input) => saveDeviceSchedule(tool.device, input)} onSettings={async ({ favorite, room }) => {
           const id = String(pickDbId(tool.device) || "");
           if (!id) return;
@@ -971,9 +1013,9 @@ export default function DeviceClient() {
   );
 }
 
-function FavoriteCard({ device, state, busy, onOpen, onPower }: { device: AnyDevice; state: any; busy: boolean; onOpen: (device: AnyDevice) => void; onPower: (device: AnyDevice) => void }) {
+function FavoriteCard({ device, state, runtime, busy, onOpen, onPower }: { device: AnyDevice; state: any; runtime?: Partial<DeviceRuntimeContract> | null; busy: boolean; onOpen: (device: AnyDevice) => void; onPower: (device: AnyDevice) => void }) {
   const Icon = deviceIcon(device);
-  const stateText = busy ? "Working…" : displayState(device, state);
+  const stateText = busy ? "Working…" : displayState(device, state, runtime);
   return (
     <button type="button" onClick={() => onOpen(device)} className="relative min-h-[142px] w-[156px] shrink-0 snap-start overflow-hidden rounded-[26px] border border-white/[0.075] bg-[linear-gradient(145deg,rgba(255,255,255,0.052),rgba(255,255,255,0.014))] p-3.5 text-left shadow-[0_16px_48px_rgba(0,0,0,0.30)] backdrop-blur-2xl transition active:scale-[0.985]">
       <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-sky-400/12 blur-3xl" />
@@ -1034,17 +1076,17 @@ function UnassignedDeviceSheet({ device, room, setRoom, binding, onClose, onAssi
   );
 }
 
-function DeviceRow({ device, state, busy, bordered, editingFavorites, onOpen, onPower, onFavorite }: { device: AnyDevice; state: any; busy: boolean; bordered: boolean; editingFavorites: boolean; onOpen: (device: AnyDevice) => void; onPower: (device: AnyDevice) => void; onFavorite: (device: AnyDevice) => void }) {
+function DeviceRow({ device, state, runtime, busy, bordered, editingFavorites, onOpen, onPower, onFavorite }: { device: AnyDevice; state: any; runtime?: Partial<DeviceRuntimeContract> | null; busy: boolean; bordered: boolean; editingFavorites: boolean; onOpen: (device: AnyDevice) => void; onPower: (device: AnyDevice) => void; onFavorite: (device: AnyDevice) => void }) {
   const Icon = deviceIcon(device);
-  const simple = isSimpleControlDevice(device, state);
-  const stateText = busy ? "Working…" : displayState(device, state);
+  const simple = isSimpleControlDevice(device, state, runtime);
+  const stateText = busy ? "Working…" : displayState(device, state, runtime);
   return (
     <div className={cn("flex w-full items-center gap-3 px-3.5 py-3 transition hover:bg-white/[0.035]", bordered && "border-t border-white/[0.055]")}>
       <button type="button" onClick={() => onOpen(device)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
         <span className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-full border", iconTone(device))}><Icon className="h-5 w-5" /></span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[14px] font-semibold tracking-[-0.025em] text-white">{pickName(device)}</span>
-          <span className="mt-0.5 block truncate text-xs text-white/44">{pickRoomName(device) || "Unassigned"}</span>
+          <span className="mt-0.5 block truncate text-xs text-white/44">{runtimeActivitySummary(device, runtime, pickRoomName(device) || "Unassigned")}</span>
         </span>
       </button>
       <span className="shrink-0 text-right text-[13px] font-medium text-white/72">{stateText}</span>
@@ -1053,11 +1095,11 @@ function DeviceRow({ device, state, busy, bordered, editingFavorites, onOpen, on
   );
 }
 
-function AttentionRow({ device, reason }: { device: AnyDevice; reason: string }) {
+function AttentionRow({ device, runtime, reason }: { device: AnyDevice; runtime?: Partial<DeviceRuntimeContract> | null; reason: string }) {
   return (
     <div className="flex items-center gap-3 rounded-[20px] border border-amber-300/12 bg-amber-400/[0.055] px-3.5 py-3 text-left">
       <span className="grid h-9 w-9 place-items-center rounded-full border border-amber-300/15 bg-amber-400/10 text-amber-200"><AlertTriangle className="h-4.5 w-4.5" /></span>
-      <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-white">{pickName(device)}</span><span className="mt-0.5 block text-xs text-amber-100/66">{reason}</span></span>
+      <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-white">{pickName(device)}</span><span className="mt-0.5 block text-xs text-amber-100/66">{reason} · {healthLabel(runtime?.health_status, "Attention")}</span></span>
     </div>
   );
 }
@@ -1101,12 +1143,12 @@ function AddDeviceSheet({ tab, setTab, discovering, binding, discovered, provide
   );
 }
 
-function DeviceModalRouter({ device, state, busy, executionHistory, awareness, recommendation, onClose, onToggleGang, onPower, onCommand, onTool, onCreateScene }: { device: AnyDevice; state: any; busy: boolean; executionHistory: Array<Record<string, any>>; awareness?: Record<string, any> | null; recommendation?: Record<string, any> | null; onClose: () => void; onToggleGang: (device: AnyDevice, gangIndex: number, next: boolean) => void; onPower: (device: AnyDevice) => void; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => void; onTool: (kind: DeviceTool, device: AnyDevice) => void; onCreateScene: (device: AnyDevice) => void }) {
-  const gangCount = guessGangCount(device, state);
-  const values = Object.keys(state || {}).length ? readGangValues(gangCount, state) : Array.from({ length: gangCount }, () => null);
-  const caps = uiCapabilities(device);
+function DeviceModalRouter({ device, state, runtime, busy, executionHistory, awareness, recommendation, onClose, onToggleGang, onPower, onCommand, onTool, onCreateScene }: { device: AnyDevice; state: any; runtime?: Partial<DeviceRuntimeContract> | null; busy: boolean; executionHistory: Array<Record<string, any>>; awareness?: Record<string, any> | null; recommendation?: Record<string, any> | null; onClose: () => void; onToggleGang: (device: AnyDevice, gangIndex: number, next: boolean) => void; onPower: (device: AnyDevice) => void; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => void; onTool: (kind: DeviceTool, device: AnyDevice) => void; onCreateScene: (device: AnyDevice) => void }) {
+  const gangCount = guessGangCount(device, state, runtime);
+  const values = Object.keys(state || {}).length ? readGangValues(gangCount, state, runtime) : Array.from({ length: gangCount }, () => null);
+  const caps = uiCapabilities(device, runtime);
   const [selectedIrProfile, setSelectedIrProfile] = useState<IrProfile | null>(null);
-  const baseRenderer = deviceRendererKind(device);
+  const baseRenderer = deviceRendererKind(device, runtime);
   const learnedProfile = learnedIrTemplate(device);
   const activeIrProfile = learnedProfile || selectedIrProfile;
   const renderer = baseRenderer === "ir" && activeIrProfile === "tv" ? "tv" : baseRenderer === "ir" && activeIrProfile === "ac" ? "ac" : baseRenderer;
@@ -1120,7 +1162,7 @@ function DeviceModalRouter({ device, state, busy, executionHistory, awareness, r
           <div className="flex shrink-0 items-start justify-between gap-3 px-4 py-3">
             <div className="min-w-0">
               <h2 className="truncate text-lg font-semibold tracking-[-0.04em] text-white">{pickName(device)}</h2>
-              <p className="mt-1 truncate text-xs text-white/46">{pickRoomName(device) || "Unassigned"} • {displayState(device, state)}</p>
+              <p className="mt-1 truncate text-xs text-white/46">{pickRoomName(device) || "Unassigned"} • {displayState(device, state, runtime)}</p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <button type="button" onClick={() => onCreateScene(device)} className="grid h-8 w-8 place-items-center rounded-full border border-sky-300/14 bg-sky-400/10 text-sky-100" aria-label="Create scene with this device"><Star className="h-3.5 w-3.5" /></button>
@@ -1136,12 +1178,12 @@ function DeviceModalRouter({ device, state, busy, executionHistory, awareness, r
               executionHistory={executionHistory}
             />
             {needsIrProfile ? <IRProfilePicker onSelect={setSelectedIrProfile} /> : null}
-            {renderer === "tv" ? <TVRenderer device={device} busy={busy} onPower={onPower} onCommand={onCommand} /> : null}
-            {renderer === "ac" ? <ACRenderer device={device} state={state} busy={busy} onPower={onPower} onCommand={onCommand} onTool={onTool} /> : null}
-            {renderer === "socket" ? <SocketRenderer device={device} state={state} caps={caps} gangCount={gangCount} values={values} busy={busy} onToggleGang={onToggleGang} onTool={onTool} /> : null}
-            {renderer === "ir" && !needsIrProfile ? <IRRenderer device={device} state={state} busy={busy} onPower={onPower} onCommand={onCommand} onTool={onTool} /> : null}
-            {renderer === "switch" ? <SwitchRenderer device={device} state={state} caps={caps} gangCount={gangCount} values={values} busy={busy} onToggleGang={onToggleGang} onTool={onTool} /> : null}
-            {renderer === "unsupported" ? <UnsupportedDeviceRenderer device={device} /> : null}
+            {renderer === "tv" ? <TVRenderer device={device} runtime={runtime} busy={busy} onPower={onPower} onCommand={onCommand} /> : null}
+            {renderer === "ac" ? <ACRenderer device={device} state={state} runtime={runtime} busy={busy} onPower={onPower} onCommand={onCommand} onTool={onTool} /> : null}
+            {renderer === "socket" ? <SocketRenderer device={device} state={state} runtime={runtime} caps={caps} gangCount={gangCount} values={values} busy={busy} onToggleGang={onToggleGang} onTool={onTool} /> : null}
+            {renderer === "ir" && !needsIrProfile ? <IRRenderer device={device} state={state} runtime={runtime} busy={busy} onPower={onPower} onCommand={onCommand} onTool={onTool} /> : null}
+            {renderer === "switch" ? <SwitchRenderer device={device} state={state} runtime={runtime} caps={caps} gangCount={gangCount} values={values} busy={busy} onToggleGang={onToggleGang} onTool={onTool} /> : null}
+            {renderer === "unsupported" ? <UnsupportedDeviceRenderer device={device} runtime={runtime} /> : null}
           </div>
         </section>
       </div>
@@ -1149,14 +1191,15 @@ function DeviceModalRouter({ device, state, busy, executionHistory, awareness, r
   );
 }
 
-function UnsupportedDeviceRenderer({ device }: { device: AnyDevice }) {
-  const family = inferFamily(device);
+function UnsupportedDeviceRenderer({ device, runtime }: { device: AnyDevice; runtime?: Partial<DeviceRuntimeContract> | null }) {
+  const family = String(normalizeRuntimeContract(device, runtime).device_family || inferFamily(device));
+  const profile = controlProfileLabel(runtime?.control_profile, "Standard");
   const isRemoteLike = family === "remote" || /ir|infrared|remote/i.test(`${device?.category || ""} ${device?.type || ""} ${device?.name || ""} ${JSON.stringify(device?.metadata || {})}`);
   return (
     <div className="rounded-[24px] border border-white/[0.07] bg-white/[0.035] p-4">
       <div className="text-sm font-semibold text-white">{isRemoteLike ? "Device profile required" : "Control profile unavailable"}</div>
       <p className="mt-2 text-xs leading-5 text-white/46">
-        {isRemoteLike ? "Choose or sync the IR profile before Oyi shows remote controls for this device." : "Oyi does not have a safe control profile for this device yet."}
+        {isRemoteLike ? "Choose or sync the IR profile before Oyi shows remote controls for this device." : `Oyi has not unlocked a safe ${profile.toLowerCase()} control surface for this device yet.`}
       </p>
     </div>
   );
@@ -1184,14 +1227,14 @@ function IRProfilePicker({ onSelect }: { onSelect: (profile: IrProfile) => void 
   );
 }
 
-function SwitchRenderer({ device, caps, gangCount, values, busy, onToggleGang, onTool }: { device: AnyDevice; state: any; caps: ReturnType<typeof uiCapabilities>; gangCount: number; values: Array<boolean | null>; busy: boolean; onToggleGang: (device: AnyDevice, gangIndex: number, next: boolean) => void; onTool: (kind: DeviceTool, device: AnyDevice) => void }) {
+function SwitchRenderer({ device, runtime, caps, gangCount, values, busy, onToggleGang, onTool }: { device: AnyDevice; state: any; runtime?: Partial<DeviceRuntimeContract> | null; caps: ReturnType<typeof uiCapabilities>; gangCount: number; values: Array<boolean | null>; busy: boolean; onToggleGang: (device: AnyDevice, gangIndex: number, next: boolean) => void; onTool: (kind: DeviceTool, device: AnyDevice) => void }) {
   const safeGangCount = Math.min(3, Math.max(1, gangCount)) as 1 | 2 | 3;
   const timerCode = commandCodeFor(device, [/countdown/, /timer/]);
   return (
     <div className="space-y-3">
       <div className="rounded-[24px] border border-white/[0.07] bg-white/[0.035] p-4">
         <div className="mb-4 text-sm font-semibold text-white">Controls</div>
-        {caps.canSwitch ? <GangRingSwitch gangCount={safeGangCount} online={isOnline(device)} values={values} busy={busy} onToggleGang={(gangIndex, next) => onToggleGang(device, gangIndex, next)} size={safeGangCount === 1 ? 88 : 70} /> : null}
+        {caps.canSwitch ? <GangRingSwitch gangCount={safeGangCount} online={isOnline(device, runtime)} values={values} busy={busy} onToggleGang={(gangIndex, next) => onToggleGang(device, gangIndex, next)} size={safeGangCount === 1 ? 88 : 70} /> : null}
       </div>
       <div className="grid grid-cols-3 gap-2">
         {timerCode ? <ToolCard icon={Clock} label="Timer" onClick={() => onTool("timer", device)} /> : null}
@@ -1206,8 +1249,8 @@ function SocketRenderer(props: Parameters<typeof SwitchRenderer>[0]) {
   return <SwitchRenderer {...props} gangCount={1} />;
 }
 
-function ACRenderer({ device, state, busy, onPower, onCommand, onTool }: { device: AnyDevice; state: any; busy: boolean; onPower: (device: AnyDevice) => void; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => void; onTool: (kind: DeviceTool, device: AnyDevice) => void }) {
-  const temp = readTemperature(state);
+function ACRenderer({ device, state, runtime, busy, onPower, onCommand, onTool }: { device: AnyDevice; state: any; runtime?: Partial<DeviceRuntimeContract> | null; busy: boolean; onPower: (device: AnyDevice) => void; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => void; onTool: (kind: DeviceTool, device: AnyDevice) => void }) {
+  const temp = readTemperature(state, runtime);
   const powerCode = commandCodeFor(device, [/^power$/, /power_switch/, /power_state/]);
   const canPower = Boolean(powerCode);
   const tempCode = commandCodeFor(device, [/temp_set/, /temperature/, /^temp$/]);
@@ -1227,7 +1270,7 @@ function ACRenderer({ device, state, busy, onPower, onCommand, onTool }: { devic
             <div className="mt-1 text-4xl font-semibold tracking-[-0.08em] text-white">{temp || "—"}<span className="text-lg text-white/42">°C</span></div>
             <div className="mt-1 text-xs text-white/42">Supported range 16°C – 30°C</div>
           </div>
-          {canPower ? <button type="button" disabled={busy || isOnline(device) === false} onClick={() => powerCode && onCommand(device, { type: "ac_remote", key: "power_toggle", [powerCode]: true }, { [powerCode]: true })} className="grid h-14 w-14 place-items-center rounded-full border border-sky-300/22 bg-sky-400/12 text-sky-100 shadow-[0_0_28px_rgba(56,189,248,0.18)]" aria-label="Power">
+          {canPower ? <button type="button" disabled={busy || isOnline(device, runtime) === false} onClick={() => powerCode && onCommand(device, { type: "ac_remote", key: "power_toggle", [powerCode]: true }, { [powerCode]: true })} className="grid h-14 w-14 place-items-center rounded-full border border-sky-300/22 bg-sky-400/12 text-sky-100 shadow-[0_0_28px_rgba(56,189,248,0.18)]" aria-label="Power">
             <Power className="h-5 w-5" />
           </button> : null}
         </div>
@@ -1249,11 +1292,11 @@ function ACRenderer({ device, state, busy, onPower, onCommand, onTool }: { devic
   );
 }
 
-function TVRenderer({ device, busy, onPower, onCommand }: { device: AnyDevice; busy: boolean; onPower: (device: AnyDevice) => void; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => void }) {
-  const caps = uiCapabilities(device);
+function TVRenderer({ device, runtime, busy, onPower, onCommand }: { device: AnyDevice; runtime?: Partial<DeviceRuntimeContract> | null; busy: boolean; onPower: (device: AnyDevice) => void; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => void }) {
+  const caps = uiCapabilities(device, runtime);
   const exposedKeys = new Set(caps.tv);
   const supports = (...keys: string[]) => !exposedKeys.size || keys.some((key) => exposedKeys.has(key));
-  const switchPower = canSwitchDevice(device);
+  const switchPower = canSwitchDevice(device, runtime);
   const keyCode = commandCodeFor(device, [/ir_code/, /remote_key/, /key_code/, /control/]);
   const canShow = (key: string, ...aliases: string[]) => !keyCode || supports(key, ...aliases);
   const canSend = (key: string, ...aliases: string[]) => Boolean(keyCode && supports(key, ...aliases));
@@ -1272,7 +1315,7 @@ function TVRenderer({ device, busy, onPower, onCommand }: { device: AnyDevice; b
   return (
     <div className="space-y-2">
       <div className="grid grid-cols-2 gap-2">
-        {canPower ? <TvRemoteKey icon={Power} label="Power" enabled={isOnline(device) !== false && canSendPower} busy={busy} onClick={powerClick} /> : null}
+        {canPower ? <TvRemoteKey icon={Power} label="Power" enabled={isOnline(device, runtime) !== false && canSendPower} busy={busy} onClick={powerClick} /> : null}
         {canShow("mute") ? <TvRemoteKey icon={VolumeX} label="Mute" enabled={canSend("mute")} onClick={() => sendKey("mute")} /> : null}
       </div>
       {hasNavigation ? <div className="rounded-[24px] border border-white/[0.07] bg-white/[0.035] p-3">
@@ -1345,10 +1388,10 @@ function TvRemoteKey({ icon: Icon, label, enabled, busy, onClick }: { icon: any;
   );
 }
 
-function IRRenderer({ device, state, busy, onPower, onCommand, onTool }: { device: AnyDevice; state: any; busy: boolean; onPower: (device: AnyDevice) => void; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => void; onTool: (kind: DeviceTool, device: AnyDevice) => void }) {
+function IRRenderer({ device, state, runtime, busy, onPower, onCommand, onTool }: { device: AnyDevice; state: any; runtime?: Partial<DeviceRuntimeContract> | null; busy: boolean; onPower: (device: AnyDevice) => void; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => void; onTool: (kind: DeviceTool, device: AnyDevice) => void }) {
   const profile = learnedIrTemplate(device);
-  if (profile === "ac") return <ACRenderer device={device} state={state} busy={busy} onPower={onPower} onCommand={onCommand} onTool={onTool} />;
-  return <TVRenderer device={device} busy={busy} onPower={onPower} onCommand={onCommand} />;
+  if (profile === "ac") return <ACRenderer device={device} state={state} runtime={runtime} busy={busy} onPower={onPower} onCommand={onCommand} onTool={onTool} />;
+  return <TVRenderer device={device} runtime={runtime} busy={busy} onPower={onPower} onCommand={onCommand} />;
 }
 
 function ControlGroup({ title, children }: { title: string; children: ReactNode }) {

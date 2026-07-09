@@ -33,6 +33,7 @@ import { scopeMatches, type BadgeScope } from "@/lib/footerBadges";
 import { intelligenceService, type IntelligenceMetricSummary } from "@/services/intelligenceService";
 import { loadOyiCoreExecutionHistory } from "@/services/oyiCoreRuntimeService";
 import { cleanRuntimeText, runtimeSourceLabel } from "@/lib/consumerAwareness";
+import { activitySummary as runtimeActivitySummary, healthLabel, originLabel, statusLabel } from "@/lib/deviceRuntimeContract";
 
 type FilterKey = "all" | "alerts" | "devices" | "people";
 
@@ -289,9 +290,29 @@ function ActivityRow({ item }: { item: ActivityEvent }) {
   const tone = eventTone(item.category, item.severity);
   const Icon = item.category === "device" ? getDeviceIconFromText(`  `) : tone.Icon;
   const actionable = Boolean(item.action?.href);
+  const deviceSummary = item.category === "device"
+    ? runtimeActivitySummary(
+        {
+          name: item.target?.name || item.metadata?.device_name || item.title,
+          activity_summary: item.metadata?.activity_summary,
+          last_signal: item.metadata?.last_signal,
+        },
+        {
+          state: item.metadata?.new_state || {},
+          normalized_state: item.metadata?.normalized_state || {},
+          primary_state: item.metadata?.primary_state,
+          health_status: item.metadata?.health_status,
+          activity_summary: item.metadata?.activity_summary,
+          last_signal: item.metadata?.last_signal,
+        },
+        item.description,
+      )
+    : item.description;
   const runtimeMeta = [
-    item.metadata?.origin ? runtimeSourceLabel(item.metadata.origin) : null,
+    item.metadata?.origin ? originLabel(item.metadata.origin) : null,
     item.metadata?.initiatorType ? cleanRuntimeText(item.metadata.initiatorType, "") : null,
+    item.metadata?.primary_state ? statusLabel(item.metadata.primary_state, "") : null,
+    item.metadata?.health_status ? healthLabel(item.metadata.health_status, "") : null,
     typeof item.metadata?.confidence === "number" ? `Confidence ${Math.round(item.metadata.confidence * 100)}%` : null,
     item.metadata?.recommendedAction ? cleanRuntimeText(item.metadata.recommendedAction, "") : null,
   ].filter(Boolean);
@@ -301,7 +322,7 @@ function ActivityRow({ item }: { item: ActivityEvent }) {
         <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full border ${tone.ring}`}><Icon className="h-4 w-4" /></span>
         <div className="min-w-0 flex-1">
           <div className="truncate text-[14px] font-semibold tracking-[-0.025em] text-white">{item.title}</div>
-          <div className="mt-0.5 truncate text-[12px] text-white/50">{item.description}</div>
+          <div className="mt-0.5 truncate text-[12px] text-white/50">{deviceSummary}</div>
         </div>
         {item.thumbnail_url ? (
           // eslint-disable-next-line @next/next/no-img-element

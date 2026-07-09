@@ -1,4 +1,5 @@
 import type { OyiAwareness } from "@/services/oyiService";
+import { activitySummary as runtimeActivitySummary, displayPrimaryState, healthLabel, originLabel } from "@/lib/deviceRuntimeContract";
 
 export type ConsumerAwarenessItem = {
   id: string;
@@ -47,14 +48,7 @@ function providerLabel(value: any) {
 }
 
 export function runtimeSourceLabel(value: any) {
-  const raw = text(value).toLowerCase().replace(/[_-]+/g, " ");
-  if (!raw) return "system activity";
-  if (raw.includes("consumer app") || raw === "app" || raw === "watch") return "from your phone";
-  if (raw.includes("facility")) return "from facility";
-  if (raw.includes("physical")) return "manual switch action";
-  if (raw.includes("automation") || raw.includes("scene")) return "automation";
-  if (raw.includes("provider")) return "provider sync";
-  return raw;
+  return originLabel(value, "System activity").toLowerCase();
 }
 
 export function cleanRuntimeText(value: any, fallback = "Home activity") {
@@ -149,6 +143,27 @@ export function awarenessFromRuntimeSignal(rawSignal: Record<string, any> | null
   const provider = providerLabel(metadata.provider || raw.provider);
   const observedSource = text(metadata.observed_source, context.command_source, raw.origin).toLowerCase();
   const name = deviceName(raw);
+  const stateSummary = runtimeActivitySummary({
+    name,
+    activity_summary: metadata.activity_summary || raw.activity_summary,
+    last_signal: metadata.last_signal || raw.last_signal,
+  }, {
+    state: metadata.new_state || context.new_state || {},
+    normalized_state: metadata.normalized_state || {},
+    primary_state: metadata.primary_state || context.primary_state,
+    health_status: metadata.health_status || context.health_status,
+    activity_summary: metadata.activity_summary || raw.summary,
+    last_signal: metadata.last_signal,
+  }, "");
+  const primaryState = displayPrimaryState(
+    { name },
+    {
+      state: metadata.new_state || context.new_state || {},
+      normalized_state: metadata.normalized_state || {},
+      primary_state: metadata.primary_state || context.primary_state,
+    },
+  );
+  const health = healthLabel(metadata.health_status || context.health_status || raw.severity, "");
 
   let title = "";
   let summary = "";
@@ -173,10 +188,13 @@ export function awarenessFromRuntimeSignal(rawSignal: Record<string, any> | null
     summary = "The device has resumed reporting normally.";
   } else if (eventType === "device.provider.sync") {
     title = `${name} updated`;
-    summary = `The ${provider} reported a new device update.`;
+    summary = stateSummary || `The ${provider} reported a new device update.`;
   } else if (eventType === "device.telemetry.received") {
     title = `${name} updated`;
-    summary = "Oyi received a fresh device update.";
+    summary = stateSummary || "Oyi received a fresh device update.";
+  } else if (eventType === "device.health.degraded") {
+    title = `${name} needs attention`;
+    summary = health ? `${name} health is now ${health.toLowerCase()}.` : "A connected device reported a health issue.";
   } else if (eventType === "visitor.access.used") {
     title = "Visitor access used";
     summary = "A visitor code was used at the gate.";
@@ -201,13 +219,16 @@ export function awarenessFromRuntimeSignal(rawSignal: Record<string, any> | null
   }
 
   if (!title) {
+    if (eventType.startsWith("device.") && primaryState && primaryState !== "Awaiting sync") {
+      title = `${name} ${primaryState.toLowerCase()}`;
+    }
     const fallbackTitle = cleanRuntimeText(text(raw.title, raw.headline, metadata.title, eventType), "Home activity");
     const fallbackSummary = cleanRuntimeText(
-      text(raw.summary, raw.description, metadata.summary, metadata.reason, context.reason),
+      text(stateSummary, raw.summary, raw.description, metadata.summary, metadata.reason, context.reason),
       "Oyi observed new home activity.",
     );
-    title = fallbackTitle;
-    summary = fallbackSummary;
+    title = title || fallbackTitle;
+    summary = summary || fallbackSummary;
   }
 
   const icon = iconFor(eventType, title, summary);
@@ -258,4 +279,3 @@ export function dedupeAwareness(items: Array<ConsumerAwarenessItem | null | unde
       return true;
     });
 }
-
