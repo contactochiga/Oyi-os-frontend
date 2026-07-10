@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import ConsumerShell from "@/app/components/ConsumerShell";
 import useAuth from "@/hooks/useAuth";
-import { walletService, type WalletDTO } from "@/services/walletService";
+import { walletService, type WalletDTO, type WalletReceipt } from "@/services/walletService";
 import { servicesService, type ServicePayment } from "@/services/servicesService";
 import { loadOyiCoreExecutionHistory, loadOyiCoreExecutionStatistics } from "@/services/oyiCoreRuntimeService";
 import { useRuntimeIntelligenceStore } from "@/store/useRuntimeIntelligenceStore";
@@ -39,6 +39,7 @@ export default function WalletPage() {
   const [amount, setAmount] = useState<string>("");
   const [servicePayments, setServicePayments] = useState<ServicePayment[]>([]);
   const [selectedPayment, setSelectedPayment] = useState<ServicePayment | null>(null);
+  const [selectedReceipt, setSelectedReceipt] = useState<WalletReceipt | null>(null);
   const [runtimeExecutions, setRuntimeExecutions] = useState<Array<Record<string, any>>>([]);
   const [runtimeStats, setRuntimeStats] = useState<Record<string, any> | null>(null);
   const latestAwareness = useRuntimeIntelligenceStore((state) => state.latestAwareness);
@@ -75,6 +76,24 @@ export default function WalletPage() {
   }, [servicePayments]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const receiptReference = String(new URLSearchParams(window.location.search).get("receipt") || "").trim();
+    if (!receiptReference) return;
+    let alive = true;
+    void walletService.getFundingReceipt(receiptReference).then((response: any) => {
+      if (!alive) return;
+      if (response?.receipt) {
+        setSelectedReceipt(response.receipt);
+      } else if (response?.error) {
+        setErr(String(response.error));
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
     (async () => {
       const rows = await servicesService.history({ limit: 5 });
       setServicePayments(Array.isArray(rows) ? rows : []);
@@ -108,7 +127,7 @@ export default function WalletPage() {
     try {
       const callbackUrl =
         typeof window !== "undefined"
-          ? `${window.location.origin}/wallet?funding=1`
+          ? `${window.location.origin}/wallet/payment/return`
           : undefined;
 
       const res: any = await walletService.initPayment({
@@ -146,40 +165,6 @@ export default function WalletPage() {
       setFunding(false);
     }
   }
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const url = new URL(window.location.href);
-    const funding = url.searchParams.get("funding");
-    const reference = url.searchParams.get("reference") || url.searchParams.get("trxref");
-    if (!funding || !reference) return;
-    const paymentReference = reference;
-
-    let cancelled = false;
-
-    async function verifyAndRefresh() {
-      setErr(null);
-      setInfo("Verifying payment...");
-
-      const verifyRes: any = await walletService.verifyPayment(paymentReference);
-      if (cancelled) return;
-
-      if (verifyRes?.error) {
-        setErr(String(verifyRes.error));
-        setInfo(null);
-      } else {
-        setInfo("Payment verified. Wallet updated.");
-      }
-
-      await load();
-    }
-
-    verifyAndRefresh();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const currency = wallet?.currency || "NGN";
   const balance = safeNum(wallet?.balance);
@@ -262,7 +247,7 @@ export default function WalletPage() {
           </div>
 
           <div className="mt-3 text-[11px] text-white/35">
-            Balance updates via webhook. If funding returns to this page, verification runs automatically.
+            Balance updates after secure provider confirmation and return to the wallet flow.
           </div>
         </div>
       </section>
@@ -315,6 +300,25 @@ export default function WalletPage() {
               <div className="mt-1">Date: <span className="text-white/82">{selectedPayment.created_at ? new Date(selectedPayment.created_at).toLocaleString() : "—"}</span></div>
             </div>
             <button type="button" onClick={() => setSelectedPayment(null)} className="mt-4 h-11 w-full rounded-full bg-white text-sm font-semibold text-black">Close</button>
+          </section>
+        </div>
+      ) : null}
+      {selectedReceipt ? (
+        <div className="fixed inset-0 z-[126]">
+          <button type="button" aria-label="Close receipt" className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setSelectedReceipt(null)} />
+          <section className="absolute inset-x-4 bottom-[calc(16px+var(--sab))] mx-auto max-w-xl rounded-[26px] border border-white/10 bg-zinc-950 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.55)]">
+            <div className="text-[10px] uppercase tracking-[0.22em] text-sky-100/54">Wallet receipt</div>
+            <h2 className="mt-1 text-lg font-semibold tracking-[-0.04em] text-white">Funding confirmed</h2>
+            <div className="mt-2 text-2xl font-semibold text-cyan-100">
+              {formatMoney(Number(selectedReceipt.credited_amount || selectedReceipt.amount || 0), selectedReceipt.currency || currency)}
+            </div>
+            <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.035] p-3 text-xs text-white/58">
+              <div>Reference: <span className="text-white/82">{selectedReceipt.transaction_reference || "—"}</span></div>
+              <div className="mt-1">Provider ref: <span className="text-white/82">{selectedReceipt.provider_reference || "—"}</span></div>
+              <div className="mt-1">Method: <span className="capitalize text-white/82">{selectedReceipt.payment_method || "card"}</span></div>
+              <div className="mt-1">Paid at: <span className="text-white/82">{selectedReceipt.paid_at ? new Date(selectedReceipt.paid_at).toLocaleString() : "—"}</span></div>
+            </div>
+            <button type="button" onClick={() => setSelectedReceipt(null)} className="mt-4 h-11 w-full rounded-full bg-white text-sm font-semibold text-black">Close</button>
           </section>
         </div>
       ) : null}
