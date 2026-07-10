@@ -244,7 +244,7 @@ function GroupedServiceCard({
             <p className="mt-1 text-[12px] leading-5 text-white/48">{item.subtitle}</p>
           </div>
         </div>
-        <span className={`rounded-full border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.18em] ${toneFor(readiness)}`}>
+        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${toneFor(readiness)}`}>
           {String(readiness).replace(/_/g, " ")}
         </span>
       </div>
@@ -276,7 +276,7 @@ function GroupedServiceCard({
           {expanded ? <FiChevronUp className="h-3.5 w-3.5" /> : <FiChevronDown className="h-3.5 w-3.5" />}
           More info
         </button>
-        <span className={`rounded-full border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.18em] ${toneFor(health)}`}>
+        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${toneFor(health)}`}>
           {String(health).replace(/_/g, " ")}
         </span>
       </div>
@@ -434,18 +434,6 @@ export default function ServicesPage() {
 
         {groupedSections.map((section) => (
           <section key={section.title} className="space-y-3">
-            <div className="rounded-[24px] border border-white/10 bg-white/[0.03] px-4 py-3">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-white/34">{section.title}</div>
-              <div className="mt-1 text-[13px] text-white/56">
-                {section.title === "Power & Energy" ? "Electricity, generator backup, and solar continuity." :
-                  section.title === "Water" ? "Water supply and continuity services." :
-                  section.title === "Internet" ? "Connectivity, plan, and renewal services." :
-                  section.title === "Gas" ? "Gas ordering and continuity services." :
-                  section.title === "Estate Fees" ? "Estate dues and service-charge records." :
-                  "Facility support and resident-consumable service records."}
-              </div>
-            </div>
-
             <div className="space-y-3">
               {section.cards.map((item) => (
                 <GroupedServiceCard

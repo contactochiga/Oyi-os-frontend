@@ -14,6 +14,16 @@ export type DeviceStateResponse = DeviceRuntimeContract & {
   error?: string;
 };
 
+export type IrProfileOption = {
+  key: string;
+  label?: string;
+  appliance_type?: string;
+  control_profile?: string;
+  device_family?: string;
+  supported_controls?: string[];
+  source?: string;
+};
+
 /**
  * ✅ RULES (keep it simple)
  * - DISCOVERY = /devices/discover  (things Tuya can see, not yet “bound”)
@@ -148,5 +158,15 @@ export const deviceService = {
   async commandDevice(deviceId: string, command: Record<string, any>) {
     const res = await API.post(`/devices/${encodeURIComponent(deviceId)}/command`, { command });
     return res.data as { ok?: boolean; status?: string; error?: string; details?: string; state?: Record<string, any> };
+  },
+
+  async getIrProfiles(deviceId: string) {
+    const res = await API.get(`/devices/${encodeURIComponent(deviceId)}/ir/profiles`);
+    return res.data as { hub_id?: string; available_profiles?: IrProfileOption[]; appliances?: any[] };
+  },
+
+  async createIrAppliance(deviceId: string, payload: { profile: string; label?: string; brand?: string; model?: string }) {
+    const res = await API.post(`/devices/${encodeURIComponent(deviceId)}/ir/appliances`, payload);
+    return res.data as { ok?: boolean; appliance?: Record<string, any>; error?: string };
   },
 };

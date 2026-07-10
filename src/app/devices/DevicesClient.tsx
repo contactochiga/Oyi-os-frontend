@@ -39,7 +39,7 @@ import BottomNav from "@/app/components/BottomNav";
 import RuntimeExplainabilityCard from "@/app/components/runtime/RuntimeExplainabilityCard";
 import useAuth from "@/hooks/useAuth";
 import useActiveContext from "@/hooks/useActiveContext";
-import { deviceService } from "@/services/deviceService";
+import { deviceService, type IrProfileOption } from "@/services/deviceService";
 import { loadOyiCoreExecutionHistory } from "@/services/oyiCoreRuntimeService";
 import { sceneService } from "@/services/sceneService";
 import { getSocket } from "@/services/socket";
@@ -476,8 +476,8 @@ export default function DeviceClient() {
     setLoading(true);
     setErr(null);
     try {
-      const list = await deviceService.getRegistryDevices(estateId || undefined);
-      const nextList = Array.isArray(list) ? list : [];
+      const list = await deviceService.getAssignedDevices(estateId || undefined);
+      const nextList = Array.isArray(list) ? list.filter((device) => String(device?.home_id || "") === String(homeId || "")) : [];
       setItems(nextList);
       await hydrateStates(nextList);
     } catch (e: any) {
@@ -752,6 +752,31 @@ export default function DeviceClient() {
     }
   }
 
+  async function bindIrAppliance(device: AnyDevice, profile: IrProfile) {
+    const dbId = pickDbId(device);
+    if (!dbId) return setErr("This device is not assigned yet.");
+    const sid = String(dbId);
+    setBusyId(sid);
+    setErr(null);
+    try {
+      const result = await deviceService.createIrAppliance(sid, { profile });
+      if (result?.error) {
+        setErr(String(result.error));
+        return;
+      }
+      await load();
+      const applianceId = String(result?.appliance?.id || "").trim();
+      if (applianceId) {
+        const nextDevice = items.find((item) => String(pickDbId(item) || "") === applianceId);
+        if (nextDevice) setSheetDevice(nextDevice);
+      }
+    } catch (e: any) {
+      setErr(e?.response?.data?.error || e?.message || "Add or sync an appliance profile before using this remote.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   function openDevice(device: AnyDevice) {
     if (!device?.home_id) {
       setAssignDevice(device);
@@ -989,7 +1014,7 @@ export default function DeviceClient() {
 
         {addDeviceOpen ? <AddDeviceSheet tab={addDeviceTab} setTab={setAddDeviceTab} discovering={discovering} binding={binding} discovered={discovered} providerDevices={providerDevices} selectedDiscover={selectedDiscover} selectedCount={selectedDiscoveryIds.length} bindRoom={bindRoom} setBindRoom={setBindRoom} setSelectedDiscover={setSelectedDiscover} onClose={() => setAddDeviceOpen(false)} onScan={refreshDiscovery} onBind={bindSelectedDevices} /> : null}
         {assignDevice ? <UnassignedDeviceSheet device={assignDevice} room={assignRoom} setRoom={setAssignRoom} binding={binding} onClose={() => setAssignDevice(null)} onAssign={assignListedDevice} /> : null}
-        {sheetOpen && sheetDevice ? <DeviceModalRouter device={sheetDevice} state={stateMap[String(pickDbId(sheetDevice))] || {}} runtime={runtimeMap[String(pickDbId(sheetDevice))] || null} busy={busyId === String(pickDbId(sheetDevice))} executionHistory={deviceExecutions} awareness={latestAwareness} recommendation={latestRecommendations[0] || null} onClose={() => setSheetOpen(false)} onToggleGang={toggleGang} onPower={toggleMasterPower} onCommand={sendDeviceCommand} onTool={(kind, device) => setTool({ kind, device })} onCreateScene={(device) => router.push(`/scenes?create=scene&deviceId=${encodeURIComponent(String(pickDbId(device) || ""))}`)} /> : null}
+        {sheetOpen && sheetDevice ? <DeviceModalRouter device={sheetDevice} state={stateMap[String(pickDbId(sheetDevice))] || {}} runtime={runtimeMap[String(pickDbId(sheetDevice))] || null} busy={busyId === String(pickDbId(sheetDevice))} executionHistory={deviceExecutions} awareness={latestAwareness} recommendation={latestRecommendations[0] || null} onClose={() => setSheetOpen(false)} onToggleGang={toggleGang} onPower={toggleMasterPower} onCommand={sendDeviceCommand} onTool={(kind, device) => setTool({ kind, device })} onCreateScene={(device) => router.push(`/scenes?create=scene&deviceId=${encodeURIComponent(String(pickDbId(device) || ""))}`)} onBindIrAppliance={bindIrAppliance} /> : null}
         {tool ? <DeviceToolSheet kind={tool.kind} device={tool.device} busy={busyId === String(pickDbId(tool.device))} onClose={() => setTool(null)} onTimer={(command, patch) => sendDeviceCommand(tool.device, command, patch)} onSchedule={(input) => saveDeviceSchedule(tool.device, input)} onSettings={async ({ favorite, room }) => {
           const id = String(pickDbId(tool.device) || "");
           if (!id) return;
@@ -1143,16 +1168,34 @@ function AddDeviceSheet({ tab, setTab, discovering, binding, discovered, provide
   );
 }
 
-function DeviceModalRouter({ device, state, runtime, busy, executionHistory, awareness, recommendation, onClose, onToggleGang, onPower, onCommand, onTool, onCreateScene }: { device: AnyDevice; state: any; runtime?: Partial<DeviceRuntimeContract> | null; busy: boolean; executionHistory: Array<Record<string, any>>; awareness?: Record<string, any> | null; recommendation?: Record<string, any> | null; onClose: () => void; onToggleGang: (device: AnyDevice, gangIndex: number, next: boolean) => void; onPower: (device: AnyDevice) => void; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => void; onTool: (kind: DeviceTool, device: AnyDevice) => void; onCreateScene: (device: AnyDevice) => void }) {
+function DeviceModalRouter({ device, state, runtime, busy, executionHistory, awareness, recommendation, onClose, onToggleGang, onPower, onCommand, onTool, onCreateScene, onBindIrAppliance }: { device: AnyDevice; state: any; runtime?: Partial<DeviceRuntimeContract> | null; busy: boolean; executionHistory: Array<Record<string, any>>; awareness?: Record<string, any> | null; recommendation?: Record<string, any> | null; onClose: () => void; onToggleGang: (device: AnyDevice, gangIndex: number, next: boolean) => void; onPower: (device: AnyDevice) => void; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => void; onTool: (kind: DeviceTool, device: AnyDevice) => void; onCreateScene: (device: AnyDevice) => void; onBindIrAppliance: (device: AnyDevice, profile: IrProfile) => void }) {
   const gangCount = guessGangCount(device, state, runtime);
   const values = Object.keys(state || {}).length ? readGangValues(gangCount, state, runtime) : Array.from({ length: gangCount }, () => null);
   const caps = uiCapabilities(device, runtime);
   const [selectedIrProfile, setSelectedIrProfile] = useState<IrProfile | null>(null);
+  const [irOptions, setIrOptions] = useState<IrProfileOption[]>([]);
   const baseRenderer = deviceRendererKind(device, runtime);
   const learnedProfile = learnedIrTemplate(device);
   const activeIrProfile = learnedProfile || selectedIrProfile;
   const renderer = baseRenderer === "ir" && activeIrProfile === "tv" ? "tv" : baseRenderer === "ir" && activeIrProfile === "ac" ? "ac" : baseRenderer;
   const needsIrProfile = baseRenderer === "ir" && !activeIrProfile;
+  useEffect(() => {
+    let cancelled = false;
+    async function loadProfiles() {
+      const dbId = pickDbId(device);
+      if (!dbId || baseRenderer !== "ir") return;
+      try {
+        const result = await deviceService.getIrProfiles(String(dbId));
+        if (!cancelled) setIrOptions(Array.isArray(result?.available_profiles) ? result.available_profiles : []);
+      } catch {
+        if (!cancelled) setIrOptions([]);
+      }
+    }
+    void loadProfiles();
+    return () => {
+      cancelled = true;
+    };
+  }, [baseRenderer, device]);
   return (
     <div className="fixed inset-0 z-[120]">
       <div className="absolute inset-0 bg-black/65 backdrop-blur-md" onClick={onClose} />
@@ -1177,7 +1220,7 @@ function DeviceModalRouter({ device, state, runtime, busy, executionHistory, awa
               recommendation={recommendation}
               executionHistory={executionHistory}
             />
-            {needsIrProfile ? <IRProfilePicker onSelect={setSelectedIrProfile} /> : null}
+            {needsIrProfile ? <IRProfilePicker options={irOptions} onSelect={(profile) => { setSelectedIrProfile(profile); onBindIrAppliance(device, profile); }} /> : null}
             {renderer === "tv" ? <TVRenderer device={device} runtime={runtime} busy={busy} onPower={onPower} onCommand={onCommand} /> : null}
             {renderer === "ac" ? <ACRenderer device={device} state={state} runtime={runtime} busy={busy} onPower={onPower} onCommand={onCommand} onTool={onTool} /> : null}
             {renderer === "socket" ? <SocketRenderer device={device} state={state} runtime={runtime} caps={caps} gangCount={gangCount} values={values} busy={busy} onToggleGang={onToggleGang} onTool={onTool} /> : null}
@@ -1205,13 +1248,19 @@ function UnsupportedDeviceRenderer({ device, runtime }: { device: AnyDevice; run
   );
 }
 
-function IRProfilePicker({ onSelect }: { onSelect: (profile: IrProfile) => void }) {
-  const profiles: Array<{ key: IrProfile; label: string }> = [
-    { key: "tv", label: "TV" },
-    { key: "ac", label: "AC" },
-    { key: "fan", label: "Fan" },
-    { key: "projector", label: "Projector" },
-  ];
+function IRProfilePicker({ options, onSelect }: { options?: IrProfileOption[]; onSelect: (profile: IrProfile) => void }) {
+  const profiles: Array<{ key: IrProfile; label: string }> = (
+    Array.isArray(options) && options.length
+      ? options
+          .map((option) => ({ key: String(option.key) as IrProfile, label: String(option.label || option.key) }))
+          .filter((option) => option.key)
+      : [
+          { key: "tv", label: "TV" },
+          { key: "ac", label: "AC" },
+          { key: "fan", label: "Fan" },
+          { key: "projector", label: "Projector" },
+        ]
+  );
   return (
     <div className="rounded-[24px] border border-white/[0.07] bg-white/[0.035] p-4">
       <div className="text-sm font-semibold text-white">Choose remote profile</div>
