@@ -7,13 +7,11 @@ import { Haptics, ImpactStyle } from "@capacitor/haptics";
 import {
   AlertTriangle,
   ArrowUp,
-  CalendarClock,
   Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronUp,
-  Clock,
   Fan,
   Flame,
   Home,
@@ -65,7 +63,7 @@ type AnyDevice = Record<string, any>;
 type DiscoveryDevice = Record<string, any>;
 type AddDeviceTab = "nearby" | "provider" | "manual";
 type CategoryKey = "all" | "lights" | "climate" | "security" | "entertainment" | "sensors";
-type DeviceTool = "timer" | "schedule" | "settings";
+type DeviceTool = "timer" | "schedule" | "settings" | "activity";
 type IrProfile = "tv" | "ac" | "fan" | "projector";
 
 const CATEGORIES: Array<{ key: CategoryKey; label: string }> = [
@@ -1151,8 +1149,8 @@ export default function DeviceClient() {
 
         {addDeviceOpen ? <AddDeviceSheet tab={addDeviceTab} setTab={setAddDeviceTab} discovering={discovering} binding={binding} discovered={discovered} providerDevices={providerDevices} selectedDiscover={selectedDiscover} selectedCount={selectedDiscoveryIds.length} bindRoom={bindRoom} setBindRoom={setBindRoom} setSelectedDiscover={setSelectedDiscover} onClose={() => setAddDeviceOpen(false)} onScan={refreshDiscovery} onBind={bindSelectedDevices} /> : null}
         {assignDevice ? <UnassignedDeviceSheet device={assignDevice} room={assignRoom} setRoom={setAssignRoom} binding={binding} onClose={() => setAssignDevice(null)} onAssign={assignListedDevice} /> : null}
-        {sheetOpen && sheetDevice ? <DeviceModalRouter device={sheetDevice} state={stateMap[String(pickDbId(sheetDevice))] || {}} runtime={runtimeMap[String(pickDbId(sheetDevice))] || null} busy={busyId === String(pickDbId(sheetDevice))} executionHistory={deviceExecutions} awareness={latestAwareness} recommendation={latestRecommendations[0] || null} onClose={() => setSheetOpen(false)} onToggleGang={toggleGang} onPower={toggleMasterPower} onCommand={sendDeviceCommand} onTool={(kind, device) => setTool({ kind, device })} onCreateScene={(device) => router.push(`/scenes?create=scene&deviceId=${encodeURIComponent(String(pickDbId(device) || ""))}`)} onBindIrAppliance={bindIrAppliance} /> : null}
-        {tool ? <DeviceToolSheet kind={tool.kind} device={tool.device} busy={busyId === String(pickDbId(tool.device))} onClose={() => setTool(null)} onTimer={(command, patch) => sendDeviceCommand(tool.device, command, patch)} onSchedule={(input) => saveDeviceSchedule(tool.device, input)} onSettings={async ({ favorite, room }) => {
+        {sheetOpen && sheetDevice ? <DeviceModalRouter device={sheetDevice} state={stateMap[String(pickDbId(sheetDevice))] || {}} runtime={runtimeMap[String(pickDbId(sheetDevice))] || null} busy={busyId === String(pickDbId(sheetDevice))} awareness={latestAwareness} recommendation={latestRecommendations[0] || null} onClose={() => setSheetOpen(false)} onToggleGang={toggleGang} onPower={toggleMasterPower} onCommand={sendDeviceCommand} onTool={(kind, device) => setTool({ kind, device })} onCreateScene={(device) => router.push(`/scenes?create=scene&deviceId=${encodeURIComponent(String(pickDbId(device) || ""))}`)} onBindIrAppliance={bindIrAppliance} /> : null}
+        {tool ? <DeviceToolSheet kind={tool.kind} device={tool.device} runtime={runtimeMap[String(pickDbId(tool.device))] || null} executionHistory={deviceExecutions} busy={busyId === String(pickDbId(tool.device))} onClose={() => setTool(null)} onTimer={(command, patch) => sendDeviceCommand(tool.device, command, patch)} onSchedule={(input) => saveDeviceSchedule(tool.device, input)} onSettings={async ({ favorite, room }) => {
           const id = String(pickDbId(tool.device) || "");
           if (!id) return;
           setBusyId(id);
@@ -1205,7 +1203,6 @@ function RoomCard({ room }: { room: { key: string; roomId: string; name: string;
 
 function UnassignedDeviceSheet({ device, room, setRoom, binding, onClose, onAssign }: { device: AnyDevice; room: string; setRoom: (value: string) => void; binding: boolean; onClose: () => void; onAssign: () => void }) {
   const Icon = deviceIcon(device);
-  const capabilities = friendlyCapabilities(device);
   const suggestion = suggestedRoom(device);
   return (
     <div className="fixed inset-0 z-[135]">
@@ -1305,7 +1302,7 @@ function AddDeviceSheet({ tab, setTab, discovering, binding, discovered, provide
   );
 }
 
-function DeviceModalRouter({ device, state, runtime, busy, executionHistory, awareness, recommendation, onClose, onToggleGang, onPower, onCommand, onTool, onCreateScene, onBindIrAppliance }: { device: AnyDevice; state: any; runtime?: Partial<DeviceRuntimeContract> | null; busy: boolean; executionHistory: Array<Record<string, any>>; awareness?: Record<string, any> | null; recommendation?: Record<string, any> | null; onClose: () => void; onToggleGang: (device: AnyDevice, gangIndex: number, next: boolean) => void; onPower: (device: AnyDevice) => void; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => void; onTool: (kind: DeviceTool, device: AnyDevice) => void; onCreateScene: (device: AnyDevice) => void; onBindIrAppliance: (device: AnyDevice, profile: IrProfile) => void }) {
+function DeviceModalRouter({ device, state, runtime, busy, awareness, recommendation, onClose, onToggleGang, onPower, onCommand, onTool, onCreateScene, onBindIrAppliance }: { device: AnyDevice; state: any; runtime?: Partial<DeviceRuntimeContract> | null; busy: boolean; awareness?: Record<string, any> | null; recommendation?: Record<string, any> | null; onClose: () => void; onToggleGang: (device: AnyDevice, gangIndex: number, next: boolean) => void; onPower: (device: AnyDevice) => void; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => void; onTool: (kind: DeviceTool, device: AnyDevice) => void; onCreateScene: (device: AnyDevice) => void; onBindIrAppliance: (device: AnyDevice, profile: IrProfile) => void }) {
   const { user } = useAuth();
   const activeContext = useActiveContext();
   const gangCount = guessGangCount(device, state, runtime);
@@ -1329,8 +1326,9 @@ function DeviceModalRouter({ device, state, runtime, busy, executionHistory, awa
   const renderer = baseRenderer === "ir" && activeIrProfile === "tv" ? "tv" : baseRenderer === "ir" && activeIrProfile === "ac" ? "ac" : baseRenderer;
   const needsIrProfile = baseRenderer === "ir" && !activeIrProfile;
   const awarenessMessage = deriveAwarenessMessage(device, state, runtime, awareness, recommendation);
-  const timelineEntries = useMemo(() => buildDeviceTimelineEntries(device, executionHistory, runtime), [device, executionHistory, runtime]);
-  const detailsRows = useMemo(() => friendlyStateRows(device, state, runtime), [device, state, runtime]);
+  const latestAssistantLine = [...conversationLines].reverse().find((line) => line.role === "assistant")?.content || "";
+  const latestUserLine = [...conversationLines].reverse().find((line) => line.role === "user")?.content || "";
+  const intelligenceContext = normalizeRuntimeContract(device, runtime);
 
   useEffect(() => () => {
     if (timerRef.current) window.clearInterval(timerRef.current);
@@ -1343,9 +1341,8 @@ function DeviceModalRouter({ device, state, runtime, busy, executionHistory, awa
     resetRef.current = window.setTimeout(() => {
       setConversationState("idle");
       setConversationLines([]);
-      setComposerValue("");
       setVoiceHint("");
-    }, 2200);
+    }, 12000);
   }
 
   function stopVoiceCapture() {
@@ -1409,7 +1406,14 @@ function DeviceModalRouter({ device, state, runtime, busy, executionHistory, awa
     if (resetRef.current) window.clearTimeout(resetRef.current);
     stopVoiceCapture();
     setConversationState("thinking");
-    setConversationLines([{ role: "user", content: message }, { role: "assistant", content: "Understanding…\nChecking device…\nApplying Oyi context…" }]);
+    setConversationLines([{ role: "user", content: message }, { role: "assistant", content: "Understanding…" }]);
+    const thinkingStages = ["Understanding…", "Checking device…", "Applying context…"];
+    const stageTimers: number[] = [];
+    thinkingStages.slice(1).forEach((stage, index) => {
+      stageTimers.push(window.setTimeout(() => {
+        setConversationLines([{ role: "user", content: message }, { role: "assistant", content: stage }]);
+      }, 700 * (index + 1)));
+    });
     try {
       const response = await aiService.chat(message, {
         surface: "consumer",
@@ -1419,8 +1423,20 @@ function DeviceModalRouter({ device, state, runtime, busy, executionHistory, awa
         device_id: pickDbId(device),
         device_name: pickName(device),
         room_name: pickRoomName(device),
-        control_profile: normalizeRuntimeContract(device, runtime).control_profile,
+        control_profile: intelligenceContext.control_profile,
+        primary_state: intelligenceContext.primary_state,
+        health_status: intelligenceContext.health_status,
+        supported_controls: intelligenceContext.supported_controls,
+        channel_definitions: intelligenceContext.channel_definitions,
+        memory_summary: intelligenceContext.memory_summary,
+        relationships: intelligenceContext.relationships,
+        predictive_findings: intelligenceContext.predictive_findings,
+        recent_executions: intelligenceContext.recent_executions,
+        active_scenes: intelligenceContext.active_scenes,
+        active_automations: intelligenceContext.active_automations,
+        conversation_context: intelligenceContext.conversation_context,
       });
+      stageTimers.forEach((timer) => window.clearTimeout(timer));
       setConversationLines([
         { role: "user", content: message },
         { role: "assistant", content: String(response.reply || "Done.") },
@@ -1428,6 +1444,7 @@ function DeviceModalRouter({ device, state, runtime, busy, executionHistory, awa
       setConversationState(response.intent === "error" ? "error" : "done");
       resetConversationSoon();
     } catch {
+      stageTimers.forEach((timer) => window.clearTimeout(timer));
       setConversationLines([
         { role: "user", content: message },
         { role: "assistant", content: "I couldn’t complete that right now. Try again in a moment." },
@@ -1472,83 +1489,40 @@ function DeviceModalRouter({ device, state, runtime, busy, executionHistory, awa
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4" style={{ WebkitOverflowScrolling: "touch" }}>
             <section className="pb-4">
-              <p className="text-[17px] font-semibold tracking-[-0.04em] text-white">{awarenessMessage.headline}</p>
-              <p className="mt-1.5 text-sm leading-6 text-white/74">{awarenessMessage.body}</p>
-              <p className="mt-2 text-xs leading-5 text-white/46">{awarenessMessage.support}</p>
+              <p className="text-[17px] font-semibold tracking-[-0.04em] text-white">
+                {latestAssistantLine || awarenessMessage.headline}
+              </p>
+              <p className="mt-1.5 text-sm leading-6 text-white/74">
+                {latestAssistantLine ? latestUserLine || awarenessMessage.body : awarenessMessage.body}
+              </p>
+              <p className="mt-2 text-xs leading-5 text-white/46">
+                {latestAssistantLine ? "Oyi is using this device context, recent activity, health, and room assignment." : awarenessMessage.support}
+              </p>
             </section>
             {needsIrProfile ? <IRProfilePicker options={irOptions} onSelect={(profile) => { setSelectedIrProfile(profile); onBindIrAppliance(device, profile); }} /> : null}
             {renderer === "tv" ? <TVRenderer device={device} runtime={runtime} busy={busy} onPower={onPower} onCommand={onCommand} /> : null}
-            {renderer === "ac" ? <ACRenderer device={device} state={state} runtime={runtime} busy={busy} onPower={onPower} onCommand={onCommand} /> : null}
+            {renderer === "ac" ? <ACRenderer device={device} state={state} runtime={runtime} busy={busy} onCommand={onCommand} /> : null}
             {renderer === "socket" ? <SocketRenderer device={device} state={state} runtime={runtime} caps={caps} gangCount={gangCount} values={values} busy={busy} onToggleGang={onToggleGang} /> : null}
             {renderer === "ir" && !needsIrProfile ? <IRRenderer device={device} state={state} runtime={runtime} busy={busy} onPower={onPower} onCommand={onCommand} /> : null}
             {renderer === "switch" ? <SwitchRenderer device={device} state={state} runtime={runtime} caps={caps} gangCount={gangCount} values={values} busy={busy} onToggleGang={onToggleGang} /> : null}
             {renderer === "unsupported" ? <UnsupportedDeviceRenderer device={device} runtime={runtime} /> : null}
-            <section className="mt-4 rounded-[24px] border border-white/[0.07] bg-white/[0.03] p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-sm font-semibold text-white">Device Activity</div>
-                  <div className="mt-1 text-xs text-white/44">Readable history for this device.</div>
-                </div>
-                <button type="button" onClick={() => void submitDeviceConversation("Show activity for this device")} className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-[11px] font-medium text-white/72">
-                  Ask Oyi
+            <div className="mt-4 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {[
+                { label: "Show activity", action: () => onTool("activity", device) },
+                { label: "Turn off in 20 mins", action: () => onTool("timer", device) },
+                { label: "Rename device", action: () => onTool("settings", device) },
+                { label: "Create automation", action: () => onCreateScene(device) },
+                { label: "Check connection", action: () => void submitDeviceConversation("Diagnose this device connection") },
+                { label: "View relationships", action: () => void submitDeviceConversation("Show the scenes, automations, and dependencies for this device") },
+              ].map((item) => (
+                <button key={item.label} type="button" onClick={item.action} className="shrink-0 rounded-full border border-sky-200/15 bg-sky-400/[0.07] px-3 py-1.5 text-[11px] font-medium text-sky-100/84 transition active:scale-95">
+                  {item.label}
                 </button>
-              </div>
-              <div className="mt-3 space-y-3">
-                {timelineEntries.map((entry) => (
-                  <div key={entry.id} className="flex items-start gap-3">
-                    <span className={cn("mt-1 h-2.5 w-2.5 shrink-0 rounded-full", entry.tone === "failed" ? "bg-rose-300" : entry.tone === "attention" ? "bg-amber-300" : "bg-emerald-300")} />
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-white/88">{entry.title}</p>
-                      {entry.subtitle ? <p className="mt-0.5 text-xs text-white/46">{entry.subtitle}</p> : null}
-                      <p className="mt-0.5 text-[11px] text-white/34">{entry.time}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-            <details className="mt-4 rounded-[24px] border border-white/[0.07] bg-white/[0.025] p-4">
-              <summary className="cursor-pointer list-none text-sm font-semibold text-white">Device Settings</summary>
-              <p className="mt-1 text-xs text-white/44">Advanced details, diagnostics, and capability metadata.</p>
-              <div className="mt-3 space-y-2">
-                {detailsRows.map((row) => (
-                  <div key={row.label} className="flex items-center justify-between gap-3 rounded-[16px] border border-white/[0.05] bg-black/10 px-3 py-2.5">
-                    <span className="text-xs text-white/42">{row.label}</span>
-                    <span className="max-w-[58%] truncate text-right text-sm text-white/82">{row.value}</span>
-                  </div>
-                ))}
-              </div>
-            </details>
-            <section className="mt-4 rounded-[24px] border border-white/[0.07] bg-white/[0.028] p-3.5">
-              <div className="flex items-center gap-3">
+              ))}
+            </div>
+            <section className="mt-3 rounded-[24px] border border-white/[0.07] bg-white/[0.028] p-3.5">
+              <div className="flex items-center gap-2 rounded-[20px] border border-white/[0.07] bg-black/20 px-2 py-2">
                 <OyiHubOrb state={voiceMode === "recording" ? "listening" : conversationState === "thinking" ? "thinking" : "idle"} onClick={() => void submitDeviceConversation(`What is the current status of ${pickName(device)}?`)} />
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-semibold text-white">Oyi Hub</div>
-                  <div className="mt-0.5 text-xs text-white/46">Talk to Oyi about this device…</div>
-                </div>
-              </div>
-              {conversationLines.length ? (
-                <div className="mt-3 space-y-2">
-                  {conversationLines.map((line, index) => (
-                    <div key={`${line.role}-${index}`} className={cn("rounded-[18px] px-3 py-2 text-sm leading-6", line.role === "user" ? "bg-sky-400/10 text-sky-50" : "bg-white/[0.04] text-white/80")}>
-                      {line.content.split("\n").map((part, partIndex) => <div key={partIndex}>{part}</div>)}
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-              <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {[
-                  { label: "Turn off in 20 mins", action: () => onTool("timer", device) },
-                  { label: "Show activity", action: () => void submitDeviceConversation("Show activity for this device") },
-                  { label: "Rename device", action: () => onTool("settings", device) },
-                  { label: "Create automation", action: () => onCreateScene(device) },
-                  { label: "Energy usage", action: () => void submitDeviceConversation("How much energy has this device used today?") },
-                ].map((item) => (
-                  <button key={item.label} type="button" onClick={item.action} className="shrink-0 rounded-full border border-sky-200/15 bg-sky-400/[0.07] px-3 py-1.5 text-[11px] font-medium text-sky-100/84 transition active:scale-95">
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-              <div className="mt-3 flex items-center gap-2 rounded-[20px] border border-white/[0.07] bg-black/20 px-2.5 py-2">
                 <input
                   value={composerValue}
                   onChange={(event) => setComposerValue(event.target.value)}
@@ -1561,11 +1535,11 @@ function DeviceModalRouter({ device, state, runtime, busy, executionHistory, awa
                     <span className="shrink-0 text-[11px] text-sky-100/74">{voiceSeconds}s</span>
                   </div>
                 ) : null}
-                <button type="button" onClick={startVoiceCapture} className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/[0.08] bg-white/[0.05] text-white/78" aria-label={voiceMode === "recording" ? "Stop recording" : "Record voice command"}>
-                  {voiceMode === "recording" ? <Square className="h-4.5 w-4.5" /> : <Mic className="h-4.5 w-4.5" />}
+                <button type="button" onClick={startVoiceCapture} className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-white/[0.08] bg-white/[0.05] text-white/78" aria-label={voiceMode === "recording" ? "Stop recording" : "Record voice command"}>
+                  {voiceMode === "recording" ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
                 </button>
-                <button type="button" disabled={!composerValue.trim() || conversationState === "thinking"} onClick={() => void submitDeviceConversation(composerValue)} className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white text-black disabled:opacity-45" aria-label="Send device question">
-                  <ArrowUp className="h-4.5 w-4.5" />
+                <button type="button" disabled={!composerValue.trim() || conversationState === "thinking"} onClick={() => void submitDeviceConversation(composerValue)} className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white text-black disabled:opacity-45" aria-label="Send device question">
+                  <ArrowUp className="h-4 w-4" />
                 </button>
               </div>
               {voiceHint ? <p className="mt-2 text-[11px] text-white/42">{voiceHint}</p> : null}
@@ -1635,7 +1609,7 @@ function SocketRenderer(props: Parameters<typeof SwitchRenderer>[0]) {
   return <SwitchRenderer {...props} gangCount={1} />;
 }
 
-function ACRenderer({ device, state, runtime, busy, onPower, onCommand }: { device: AnyDevice; state: any; runtime?: Partial<DeviceRuntimeContract> | null; busy: boolean; onPower: (device: AnyDevice) => void; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => void }) {
+function ACRenderer({ device, state, runtime, busy, onCommand }: { device: AnyDevice; state: any; runtime?: Partial<DeviceRuntimeContract> | null; busy: boolean; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => void }) {
   const temp = readTemperature(state, runtime);
   const powerCode = commandCodeFor(device, [/^power$/, /power_switch/, /power_state/]);
   const canPower = Boolean(powerCode);
@@ -1770,7 +1744,7 @@ function TvRemoteKey({ icon: Icon, label, enabled, busy, onClick }: { icon: any;
 
 function IRRenderer({ device, state, runtime, busy, onPower, onCommand }: { device: AnyDevice; state: any; runtime?: Partial<DeviceRuntimeContract> | null; busy: boolean; onPower: (device: AnyDevice) => void; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => void }) {
   const profile = learnedIrTemplate(device);
-  if (profile === "ac") return <ACRenderer device={device} state={state} runtime={runtime} busy={busy} onPower={onPower} onCommand={onCommand} />;
+  if (profile === "ac") return <ACRenderer device={device} state={state} runtime={runtime} busy={busy} onCommand={onCommand} />;
   return <TVRenderer device={device} runtime={runtime} busy={busy} onPower={onPower} onCommand={onCommand} />;
 }
 
@@ -1806,7 +1780,7 @@ function RemoteKey({ icon: Icon, label, enabled, busy, onClick }: { icon: any; l
   );
 }
 
-function DeviceToolSheet({ kind, device, busy, onClose, onTimer, onSchedule, onSettings }: { kind: DeviceTool; device: AnyDevice; busy: boolean; onClose: () => void; onTimer: (command: Record<string, any>, patch?: Record<string, any>) => void; onSchedule: (input: { time: string; days: string[]; repeat: boolean; power: "on" | "off" }) => void; onSettings: (input: { favorite?: boolean; room: string }) => void }) {
+function DeviceToolSheet({ kind, device, runtime, executionHistory, busy, onClose, onTimer, onSchedule, onSettings }: { kind: DeviceTool; device: AnyDevice; runtime?: Partial<DeviceRuntimeContract> | null; executionHistory?: any[]; busy: boolean; onClose: () => void; onTimer: (command: Record<string, any>, patch?: Record<string, any>) => void; onSchedule: (input: { time: string; days: string[]; repeat: boolean; power: "on" | "off" }) => void; onSettings: (input: { favorite?: boolean; room: string }) => void }) {
   const timerCode = commandCodeFor(device, [/countdown/, /timer/]);
   const [timerMinutes, setTimerMinutes] = useState(30);
   const [timerAction, setTimerAction] = useState<"on" | "off">("off");
@@ -1815,7 +1789,9 @@ function DeviceToolSheet({ kind, device, busy, onClose, onTimer, onSchedule, onS
   const [schedulePower, setSchedulePower] = useState<"on" | "off">("on");
   const [favorite, setFavorite] = useState(isFavoriteDevice(device));
   const [room, setRoom] = useState(pickRoomName(device) || "");
-  const title = kind === "timer" ? "Timer" : kind === "schedule" ? "Schedule" : "Settings";
+  const detailsRows = useMemo(() => friendlyStateRows(device, device?.state || {}, runtime), [device, runtime]);
+  const timelineEntries = useMemo(() => buildDeviceTimelineEntries(device, executionHistory || [], runtime), [device, executionHistory, runtime]);
+  const title = kind === "timer" ? "Timer" : kind === "schedule" ? "Schedule" : kind === "activity" ? "Device Activity" : "Settings";
   const dayOptions = [["mon", "Mon"], ["tue", "Tue"], ["wed", "Wed"], ["thu", "Thu"], ["fri", "Fri"], ["sat", "Sat"], ["sun", "Sun"]] as const;
 
   function toggleDay(day: string) {
@@ -1859,6 +1835,21 @@ function DeviceToolSheet({ kind, device, busy, onClose, onTimer, onSchedule, onS
           </div>
         ) : null}
 
+        {kind === "activity" ? (
+          <div className="mt-4 space-y-3">
+            {timelineEntries.map((entry) => (
+              <div key={entry.id} className="flex items-start gap-3 rounded-[18px] border border-white/[0.06] bg-white/[0.03] px-3 py-3">
+                <span className={cn("mt-1 h-2.5 w-2.5 shrink-0 rounded-full", entry.tone === "failed" ? "bg-rose-300" : entry.tone === "attention" ? "bg-amber-300" : "bg-emerald-300")} />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-white/88">{entry.title}</p>
+                  {entry.subtitle ? <p className="mt-0.5 text-xs text-white/46">{entry.subtitle}</p> : null}
+                  <p className="mt-0.5 text-[11px] text-white/34">{entry.time}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
         {kind === "settings" ? (
           <div className="mt-4 space-y-3">
             <label className="flex items-center justify-between gap-3 rounded-[18px] border border-white/[0.07] bg-white/[0.03] px-3 py-3">
@@ -1866,6 +1857,14 @@ function DeviceToolSheet({ kind, device, busy, onClose, onTimer, onSchedule, onS
               <button type="button" onClick={() => setFavorite((value) => !value)} className={cn("h-7 w-12 rounded-full border p-0.5 transition", favorite ? "border-sky-300/35 bg-sky-400/30" : "border-white/[0.1] bg-white/[0.04]")}><span className={cn("block h-5 w-5 rounded-full bg-white transition", favorite && "translate-x-5")} /></button>
             </label>
             <input value={room} onChange={(event) => setRoom(event.target.value)} placeholder="Room name" className="h-11 w-full rounded-[16px] border border-white/[0.08] bg-white/[0.035] px-3 text-sm text-white outline-none placeholder:text-white/34" />
+            <div className="space-y-2">
+              {detailsRows.map((row) => (
+                <div key={row.label} className="flex items-center justify-between gap-3 rounded-[16px] border border-white/[0.05] bg-black/10 px-3 py-2.5">
+                  <span className="text-xs text-white/42">{row.label}</span>
+                  <span className="max-w-[58%] truncate text-right text-sm text-white/82">{row.value}</span>
+                </div>
+              ))}
+            </div>
             <button type="button" disabled={busy} onClick={() => onSettings({ favorite, room })} className="h-11 w-full rounded-full bg-white text-sm font-semibold text-black disabled:opacity-45">{busy ? "Saving..." : "Save settings"}</button>
           </div>
         ) : null}

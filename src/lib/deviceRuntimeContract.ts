@@ -6,6 +6,14 @@ export type DeviceRuntimeContract = {
   normalized_state?: RuntimeStateRecord | null;
   capabilities?: any[];
   supported_controls?: string[];
+  channel_definitions?: Array<{
+    index: number;
+    code: string;
+    name: string;
+    state: boolean | null;
+    controllable: boolean;
+    last_update: string | null;
+  }>;
   control_profile?: string | null;
   health_status?: string | null;
   provider_health?: string | null;
@@ -15,6 +23,13 @@ export type DeviceRuntimeContract = {
   activity_summary?: string | null;
   device_family?: string | null;
   device_type?: string | null;
+  memory_summary?: Record<string, any> | null;
+  relationships?: Record<string, any> | null;
+  predictive_findings?: Array<Record<string, any>>;
+  recent_executions?: Array<Record<string, any>>;
+  active_scenes?: Array<Record<string, any>>;
+  active_automations?: Array<Record<string, any>>;
+  conversation_context?: Record<string, any> | null;
   lastSeen?: string | null;
   error?: string;
 };
@@ -125,6 +140,7 @@ export function normalizeRuntimeContract(device: Record<string, any> | null | un
     normalized_state: Object.keys(normalized).length ? normalized : null,
     capabilities: Array.isArray(source.capabilities) ? source.capabilities : Array.isArray(device?.capabilities) ? device.capabilities : [],
     supported_controls: Array.isArray(source.supported_controls) ? source.supported_controls : Array.isArray(device?.supported_controls) ? device.supported_controls : [],
+    channel_definitions: Array.isArray(source.channel_definitions) ? source.channel_definitions : [],
     control_profile: profile || null,
     health_status: health || null,
     provider_health: text(source.provider_health, device?.provider_health).toLowerCase() || null,
@@ -134,6 +150,13 @@ export function normalizeRuntimeContract(device: Record<string, any> | null | un
     activity_summary: text(source.activity_summary, source.last_signal, device?.activity_summary, device?.last_signal) || null,
     device_family: family || null,
     device_type: text(source.device_type, device?.device_type, device?.type) || null,
+    memory_summary: record(source.memory_summary),
+    relationships: record(source.relationships),
+    predictive_findings: Array.isArray(source.predictive_findings) ? source.predictive_findings : [],
+    recent_executions: Array.isArray(source.recent_executions) ? source.recent_executions : [],
+    active_scenes: Array.isArray(source.active_scenes) ? source.active_scenes : [],
+    active_automations: Array.isArray(source.active_automations) ? source.active_automations : [],
+    conversation_context: record(source.conversation_context),
     lastSeen: text(source.lastSeen, device?.last_seen_at, device?.updated_at) || null,
     error: text(source.error) || undefined,
   } satisfies DeviceRuntimeContract;
