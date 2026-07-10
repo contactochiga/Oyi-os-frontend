@@ -76,7 +76,24 @@ function textFrom(device: Record<string, any> = {}) {
 }
 
 export function getDeviceFamily(device: Record<string, any> = {}): DeviceFamily {
+  const supportedControls = [
+    ...(Array.isArray(device?.supported_controls) ? device.supported_controls : []),
+    ...(Array.isArray(device?.metadata?.supported_controls) ? device.metadata.supported_controls : []),
+  ].map((value) => String(value || "").toLowerCase());
+  const controlProfile = String(device?.control_profile || device?.metadata?.control_profile || "").toLowerCase();
+  const explicitFamily = String(device?.device_family || device?.metadata?.device_family || "").toLowerCase();
   const text = textFrom(device);
+  const hasPowerCapability = supportedControls.includes("power") || /\b(switch|switch_\d+|relay|power|plug)\b/.test(text);
+  if (explicitFamily === "switch" || controlProfile === "switch") return "switch";
+  if (explicitFamily === "plug" || controlProfile === "plug") return "plug";
+  if (explicitFamily === "climate" || controlProfile === "climate") return "climate";
+  if (explicitFamily === "camera" || controlProfile === "camera") return "camera";
+  if (explicitFamily === "lock" || controlProfile === "lock") return "lock";
+  if (explicitFamily === "curtain" || controlProfile === "curtain") return "curtain";
+  if (explicitFamily === "sensor" || controlProfile === "sensor") return "sensor";
+  if (explicitFamily === "tv" || controlProfile === "tv") return "tv";
+  if (explicitFamily === "ir_remote" || controlProfile === "ir_remote") return "remote";
+  if (hasPowerCapability && /\b(ac|a\/c|air conditioner|aircon|hvac|climate|cooling|cooler)\b/.test(text)) return "switch";
   if (/\b(tv|television|smart tv|android tv|google tv|samsung tv|lg tv|hisense tv|tcl|tcl tv|set top|decoder)\b/.test(text)) return "tv";
   if (/\b(ir remote|smart ir|infrared remote|universal remote|remote control)\b/.test(text)) return "remote";
   if (/\b(media|screen|projector)\b/.test(text)) return "tv";

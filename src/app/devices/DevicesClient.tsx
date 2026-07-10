@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Haptics, ImpactStyle } from "@capacitor/haptics";
 import {
   AlertTriangle,
+  ArrowUp,
   CalendarClock,
   Check,
   ChevronDown,
@@ -16,15 +17,16 @@ import {
   Fan,
   Flame,
   Home,
+  Mic,
   Minus,
   Moon,
-  Pause,
   Play,
   Power,
   Plus,
   Search,
   SlidersHorizontal,
   Snowflake,
+  Square,
   Star,
   Thermometer,
   VolumeX,
@@ -36,10 +38,10 @@ import LayoutWrapper from "@/app/components/LayoutWrapper";
 import HamburgerMenu from "@/app/components/HamburgerMenu";
 import MessagesInboxButton from "@/app/components/MessagesInboxButton";
 import BottomNav from "@/app/components/BottomNav";
-import RuntimeExplainabilityCard from "@/app/components/runtime/RuntimeExplainabilityCard";
 import useAuth from "@/hooks/useAuth";
 import useActiveContext from "@/hooks/useActiveContext";
 import { deviceService, type IrProfileOption } from "@/services/deviceService";
+import { aiService } from "@/services/aiService";
 import { loadOyiCoreExecutionHistory } from "@/services/oyiCoreRuntimeService";
 import { sceneService } from "@/services/sceneService";
 import { getSocket } from "@/services/socket";
@@ -55,7 +57,6 @@ import {
   normalizeRuntimeContract,
   onlineState,
   simplePowerState,
-  statusLabel,
   type DeviceRuntimeContract,
 } from "@/lib/deviceRuntimeContract";
 import { scopeMatches } from "@/lib/footerBadges";
@@ -105,10 +106,6 @@ function idsForDevice(d: AnyDevice) {
 
 function pickName(d: AnyDevice) {
   return d?.name || d?.product_name || d?.productName || d?.model || d?.local_name || d?.localName || d?.alias || "Unnamed Device";
-}
-
-function pickVendor(d: AnyDevice) {
-  return d?.vendor || d?.adapter || d?.protocol || d?.brand || "device";
 }
 
 function pickRoomName(d: AnyDevice) {
@@ -410,6 +407,130 @@ function deviceRendererKind(device: AnyDevice, runtime?: Partial<DeviceRuntimeCo
   if (family === "plug" || /socket|plug|outlet/.test(text)) return "socket";
   if (family === "light" || family === "switch" || /light|switch|relay|gang/.test(text)) return "switch";
   return "unsupported";
+}
+
+function relativeTimeLabel(value?: string | number | null) {
+  if (!value) return "Just now";
+  const timestamp = typeof value === "number" ? value : new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) return "Recently";
+  const diff = Math.max(0, Date.now() - timestamp);
+  const minutes = Math.round(diff / 60000);
+  if (minutes <= 1) return "Just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hr ago`;
+  const days = Math.round(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
+}
+
+function telemetryContextLine(device: AnyDevice, runtime?: Partial<DeviceRuntimeContract> | null) {
+  const contract = normalizeRuntimeContract(device, runtime);
+  const summary = runtimeActivitySummary(device, runtime, "");
+  if (summary) return summary;
+  const lastSeen = contract.lastSeen ? relativeTimeLabel(contract.lastSeen) : null;
+  return lastSeen ? `Last activity ${lastSeen}.` : `${pickName(device)} is ready.`;
+}
+
+function deriveAwarenessMessage(device: AnyDevice, state: any, runtime?: Partial<DeviceRuntimeContract> | null, awareness?: Record<string, any> | null, recommendation?: Record<string, any> | null) {
+  const title = displayState(device, state, runtime);
+  const summary = runtimeActivitySummary(device, runtime, `${pickName(device)} is ready.`);
+  const rec = String(recommendation?.title || recommendation?.headline || recommendation?.summary || "").trim();
+  return {
+    headline: String(awareness?.headline || `${pickName(device)} • ${title}`).trim(),
+    body: String(awareness?.summary || awareness?.body || summary).trim(),
+    support: rec || telemetryContextLine(device, runtime),
+  };
+}
+
+function naturalLabel(value: any, fallback = "Activity update") {
+  const raw = String(value || "").trim();
+  if (!raw) return fallback;
+  return raw
+    .replace(/_/g, " ")
+    .replace(/\bconsumer app\b/gi, "from your phone")
+    .replace(/\bfacility app\b/gi, "from facility")
+    .replace(/\bprovider\b/gi, "provider")
+    .replace(/\btuya\b/gi, "connected device provider")
+    .replace(/\btelemetry\b/gi, "device update")
+    .replace(/\bcommand failed\b/gi, "did not respond")
+    .replace(/\bmanual control\b/gi, "manual control")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildDeviceTimelineEntries(device: AnyDevice, executionHistory: Array<Record<string, any>>, runtime?: Partial<DeviceRuntimeContract> | null) {
+  const rows = executionHistory
+    .map((entry, index) => {
+      const status = String(entry?.status || entry?.result?.status || "").toLowerCase();
+      const action = String(
+        entry?.result?.summary ||
+        entry?.executionSummary ||
+        entry?.action ||
+        entry?.summary ||
+        entry?.title ||
+        entry?.message ||
+        entry?.event_type ||
+        ""
+      ).trim();
+      const actor = String(entry?.initiatorType || entry?.origin || entry?.source || "").trim();
+      const title = naturalLabel(action, runtimeActivitySummary(device, runtime, "Device activity"));
+      const subtitle = actor ? naturalLabel(actor, "") : "";
+      const occurredAt = entry?.completedAt || entry?.requestedAt || entry?.created_at || entry?.occurred_at || entry?.timestamp || null;
+      return {
+        id: String(entry?.executionId || entry?.id || `${pickDbId(device) || "device"}-${index}`),
+        title,
+        subtitle,
+        time: relativeTimeLabel(occurredAt),
+        tone: status.includes("fail") ? "failed" : status.includes("offline") ? "attention" : "normal",
+      };
+    })
+    .filter((entry) => entry.title);
+
+  if (rows.length) return rows.slice(0, 6);
+
+  return [
+    {
+      id: "default-activity",
+      title: naturalLabel(runtimeActivitySummary(device, runtime, `${pickName(device)} is operating normally.`)),
+      subtitle: "",
+      time: relativeTimeLabel(normalizeRuntimeContract(device, runtime).lastSeen),
+      tone: "normal" as const,
+    },
+  ];
+}
+
+function ComposerWaveform({ active, levels }: { active: boolean; levels?: number[] }) {
+  const bars = levels?.length ? levels : Array.from({ length: 18 }).map((_, index) => 0.18 + (((index * 5) % 18) / 24));
+  return (
+    <div className="flex h-7 items-center gap-[3px] overflow-hidden" aria-hidden="true">
+      {bars.slice(-18).map((level, index) => (
+        <span
+          key={index}
+          className="w-[2px] rounded-full bg-sky-200/80 shadow-[0_0_8px_rgba(56,189,248,0.32)]"
+          style={{
+            height: `${Math.max(5, Math.min(18, 4 + level * 20))}px`,
+            opacity: active ? 0.82 : 0.32,
+            transition: "height 90ms ease, opacity 120ms ease",
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function OyiHubOrb({ state = "idle", onClick }: { state?: "idle" | "listening" | "thinking"; onClick?: () => void }) {
+  const stateClass =
+    state === "listening"
+      ? "border-sky-200/70 shadow-[0_0_36px_rgba(0,132,255,0.52)] animate-pulse"
+      : state === "thinking"
+        ? "border-sky-300/46 shadow-[0_0_30px_rgba(0,132,255,0.34)] animate-pulse"
+        : "border-sky-300/38 shadow-[0_0_20px_rgba(0,132,255,0.22)]";
+  return (
+    <button type="button" onClick={onClick} className={cn("relative grid h-10 w-10 shrink-0 place-items-center rounded-full border bg-[radial-gradient(circle_at_center,rgba(32,129,255,0.28),rgba(3,8,16,0.96)_68%)] text-[11px] font-semibold tracking-[-0.08em] transition active:scale-95", stateClass)} aria-label="Talk to Oyi about this device">
+      <span className="absolute inset-[-10px] rounded-full bg-sky-400/10 blur-xl" />
+      <span className="relative">Oyi</span>
+    </button>
+  );
 }
 
 export default function DeviceClient() {
@@ -1185,16 +1306,137 @@ function AddDeviceSheet({ tab, setTab, discovering, binding, discovered, provide
 }
 
 function DeviceModalRouter({ device, state, runtime, busy, executionHistory, awareness, recommendation, onClose, onToggleGang, onPower, onCommand, onTool, onCreateScene, onBindIrAppliance }: { device: AnyDevice; state: any; runtime?: Partial<DeviceRuntimeContract> | null; busy: boolean; executionHistory: Array<Record<string, any>>; awareness?: Record<string, any> | null; recommendation?: Record<string, any> | null; onClose: () => void; onToggleGang: (device: AnyDevice, gangIndex: number, next: boolean) => void; onPower: (device: AnyDevice) => void; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => void; onTool: (kind: DeviceTool, device: AnyDevice) => void; onCreateScene: (device: AnyDevice) => void; onBindIrAppliance: (device: AnyDevice, profile: IrProfile) => void }) {
+  const { user } = useAuth();
+  const activeContext = useActiveContext();
   const gangCount = guessGangCount(device, state, runtime);
   const values = Object.keys(state || {}).length ? readGangValues(gangCount, state, runtime) : Array.from({ length: gangCount }, () => null);
   const caps = uiCapabilities(device, runtime);
   const [selectedIrProfile, setSelectedIrProfile] = useState<IrProfile | null>(null);
   const [irOptions, setIrOptions] = useState<IrProfileOption[]>([]);
+  const [composerValue, setComposerValue] = useState("");
+  const [conversationState, setConversationState] = useState<"idle" | "thinking" | "done" | "error">("idle");
+  const [conversationLines, setConversationLines] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]);
+  const [voiceMode, setVoiceMode] = useState<"idle" | "recording">("idle");
+  const [voiceSeconds, setVoiceSeconds] = useState(0);
+  const [voiceLevels, setVoiceLevels] = useState<number[]>([]);
+  const [voiceHint, setVoiceHint] = useState("");
+  const recognitionRef = useRef<any>(null);
+  const timerRef = useRef<number | null>(null);
+  const resetRef = useRef<number | null>(null);
   const baseRenderer = deviceRendererKind(device, runtime);
   const learnedProfile = learnedIrTemplate(device);
   const activeIrProfile = learnedProfile || selectedIrProfile;
   const renderer = baseRenderer === "ir" && activeIrProfile === "tv" ? "tv" : baseRenderer === "ir" && activeIrProfile === "ac" ? "ac" : baseRenderer;
   const needsIrProfile = baseRenderer === "ir" && !activeIrProfile;
+  const awarenessMessage = deriveAwarenessMessage(device, state, runtime, awareness, recommendation);
+  const timelineEntries = useMemo(() => buildDeviceTimelineEntries(device, executionHistory, runtime), [device, executionHistory, runtime]);
+  const detailsRows = useMemo(() => friendlyStateRows(device, state, runtime), [device, state, runtime]);
+
+  useEffect(() => () => {
+    if (timerRef.current) window.clearInterval(timerRef.current);
+    if (resetRef.current) window.clearTimeout(resetRef.current);
+    try { recognitionRef.current?.stop?.(); } catch {}
+  }, []);
+
+  function resetConversationSoon() {
+    if (resetRef.current) window.clearTimeout(resetRef.current);
+    resetRef.current = window.setTimeout(() => {
+      setConversationState("idle");
+      setConversationLines([]);
+      setComposerValue("");
+      setVoiceHint("");
+    }, 2200);
+  }
+
+  function stopVoiceCapture() {
+    try { recognitionRef.current?.stop?.(); } catch {}
+    recognitionRef.current = null;
+    if (timerRef.current) window.clearInterval(timerRef.current);
+    timerRef.current = null;
+    setVoiceMode("idle");
+  }
+
+  function startVoiceCapture() {
+    if (voiceMode === "recording") {
+      stopVoiceCapture();
+      return;
+    }
+    if (typeof window === "undefined") return;
+    setVoiceHint("");
+    setVoiceLevels(Array.from({ length: 18 }).map((_, index) => 0.22 + (((index * 7) % 14) / 28)));
+    setVoiceSeconds(0);
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setVoiceHint("Voice capture is not available here yet. Type your device request.");
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognitionRef.current = recognition;
+      recognition.lang = "en-US";
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
+      recognition.onresult = (event: any) => {
+        const text = Array.from(event?.results || [])
+          .map((result: any) => String(result?.[0]?.transcript || ""))
+          .join(" ")
+          .trim();
+        setComposerValue(text);
+      };
+      recognition.onerror = () => {
+        setVoiceHint("I could not hear clearly. Try again or type your request.");
+        stopVoiceCapture();
+      };
+      recognition.onend = () => {
+        stopVoiceCapture();
+      };
+      setVoiceMode("recording");
+      timerRef.current = window.setInterval(() => {
+        setVoiceSeconds((current) => current + 1);
+        setVoiceLevels((current) => [...current.slice(-17), 0.18 + Math.random() * 0.72]);
+      }, 1000);
+      recognition.start();
+    } catch {
+      setVoiceHint("Voice capture could not start. Type your device request instead.");
+      stopVoiceCapture();
+    }
+  }
+
+  async function submitDeviceConversation(prompt: string) {
+    const message = String(prompt || "").trim();
+    if (!message || busy) return;
+    if (resetRef.current) window.clearTimeout(resetRef.current);
+    stopVoiceCapture();
+    setConversationState("thinking");
+    setConversationLines([{ role: "user", content: message }, { role: "assistant", content: "Understanding…\nChecking device…\nApplying Oyi context…" }]);
+    try {
+      const response = await aiService.chat(message, {
+        surface: "consumer",
+        module: "device_drawer",
+        estate_id: activeContext.estate_id || user?.estate_id || null,
+        home_id: activeContext.home_id || user?.home_id || null,
+        device_id: pickDbId(device),
+        device_name: pickName(device),
+        room_name: pickRoomName(device),
+        control_profile: normalizeRuntimeContract(device, runtime).control_profile,
+      });
+      setConversationLines([
+        { role: "user", content: message },
+        { role: "assistant", content: String(response.reply || "Done.") },
+      ]);
+      setConversationState(response.intent === "error" ? "error" : "done");
+      resetConversationSoon();
+    } catch {
+      setConversationLines([
+        { role: "user", content: message },
+        { role: "assistant", content: "I couldn’t complete that right now. Try again in a moment." },
+      ]);
+      setConversationState("error");
+      resetConversationSoon();
+    }
+  }
+
   useEffect(() => {
     let cancelled = false;
     async function loadProfiles() {
@@ -1229,20 +1471,105 @@ function DeviceModalRouter({ device, state, runtime, busy, executionHistory, awa
             </div>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4" style={{ WebkitOverflowScrolling: "touch" }}>
-            <RuntimeExplainabilityCard
-              heading={`${pickName(device)} operational trace`}
-              summary="Current state is paired with execution source, provider lineage, and recommended action."
-              awareness={awareness}
-              recommendation={recommendation}
-              executionHistory={executionHistory}
-            />
+            <section className="pb-4">
+              <p className="text-[17px] font-semibold tracking-[-0.04em] text-white">{awarenessMessage.headline}</p>
+              <p className="mt-1.5 text-sm leading-6 text-white/74">{awarenessMessage.body}</p>
+              <p className="mt-2 text-xs leading-5 text-white/46">{awarenessMessage.support}</p>
+            </section>
             {needsIrProfile ? <IRProfilePicker options={irOptions} onSelect={(profile) => { setSelectedIrProfile(profile); onBindIrAppliance(device, profile); }} /> : null}
             {renderer === "tv" ? <TVRenderer device={device} runtime={runtime} busy={busy} onPower={onPower} onCommand={onCommand} /> : null}
-            {renderer === "ac" ? <ACRenderer device={device} state={state} runtime={runtime} busy={busy} onPower={onPower} onCommand={onCommand} onTool={onTool} /> : null}
-            {renderer === "socket" ? <SocketRenderer device={device} state={state} runtime={runtime} caps={caps} gangCount={gangCount} values={values} busy={busy} onToggleGang={onToggleGang} onTool={onTool} /> : null}
-            {renderer === "ir" && !needsIrProfile ? <IRRenderer device={device} state={state} runtime={runtime} busy={busy} onPower={onPower} onCommand={onCommand} onTool={onTool} /> : null}
-            {renderer === "switch" ? <SwitchRenderer device={device} state={state} runtime={runtime} caps={caps} gangCount={gangCount} values={values} busy={busy} onToggleGang={onToggleGang} onTool={onTool} /> : null}
+            {renderer === "ac" ? <ACRenderer device={device} state={state} runtime={runtime} busy={busy} onPower={onPower} onCommand={onCommand} /> : null}
+            {renderer === "socket" ? <SocketRenderer device={device} state={state} runtime={runtime} caps={caps} gangCount={gangCount} values={values} busy={busy} onToggleGang={onToggleGang} /> : null}
+            {renderer === "ir" && !needsIrProfile ? <IRRenderer device={device} state={state} runtime={runtime} busy={busy} onPower={onPower} onCommand={onCommand} /> : null}
+            {renderer === "switch" ? <SwitchRenderer device={device} state={state} runtime={runtime} caps={caps} gangCount={gangCount} values={values} busy={busy} onToggleGang={onToggleGang} /> : null}
             {renderer === "unsupported" ? <UnsupportedDeviceRenderer device={device} runtime={runtime} /> : null}
+            <section className="mt-4 rounded-[24px] border border-white/[0.07] bg-white/[0.03] p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-white">Device Activity</div>
+                  <div className="mt-1 text-xs text-white/44">Readable history for this device.</div>
+                </div>
+                <button type="button" onClick={() => void submitDeviceConversation("Show activity for this device")} className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-[11px] font-medium text-white/72">
+                  Ask Oyi
+                </button>
+              </div>
+              <div className="mt-3 space-y-3">
+                {timelineEntries.map((entry) => (
+                  <div key={entry.id} className="flex items-start gap-3">
+                    <span className={cn("mt-1 h-2.5 w-2.5 shrink-0 rounded-full", entry.tone === "failed" ? "bg-rose-300" : entry.tone === "attention" ? "bg-amber-300" : "bg-emerald-300")} />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-white/88">{entry.title}</p>
+                      {entry.subtitle ? <p className="mt-0.5 text-xs text-white/46">{entry.subtitle}</p> : null}
+                      <p className="mt-0.5 text-[11px] text-white/34">{entry.time}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+            <details className="mt-4 rounded-[24px] border border-white/[0.07] bg-white/[0.025] p-4">
+              <summary className="cursor-pointer list-none text-sm font-semibold text-white">Device Settings</summary>
+              <p className="mt-1 text-xs text-white/44">Advanced details, diagnostics, and capability metadata.</p>
+              <div className="mt-3 space-y-2">
+                {detailsRows.map((row) => (
+                  <div key={row.label} className="flex items-center justify-between gap-3 rounded-[16px] border border-white/[0.05] bg-black/10 px-3 py-2.5">
+                    <span className="text-xs text-white/42">{row.label}</span>
+                    <span className="max-w-[58%] truncate text-right text-sm text-white/82">{row.value}</span>
+                  </div>
+                ))}
+              </div>
+            </details>
+            <section className="mt-4 rounded-[24px] border border-white/[0.07] bg-white/[0.028] p-3.5">
+              <div className="flex items-center gap-3">
+                <OyiHubOrb state={voiceMode === "recording" ? "listening" : conversationState === "thinking" ? "thinking" : "idle"} onClick={() => void submitDeviceConversation(`What is the current status of ${pickName(device)}?`)} />
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold text-white">Oyi Hub</div>
+                  <div className="mt-0.5 text-xs text-white/46">Talk to Oyi about this device…</div>
+                </div>
+              </div>
+              {conversationLines.length ? (
+                <div className="mt-3 space-y-2">
+                  {conversationLines.map((line, index) => (
+                    <div key={`${line.role}-${index}`} className={cn("rounded-[18px] px-3 py-2 text-sm leading-6", line.role === "user" ? "bg-sky-400/10 text-sky-50" : "bg-white/[0.04] text-white/80")}>
+                      {line.content.split("\n").map((part, partIndex) => <div key={partIndex}>{part}</div>)}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {[
+                  { label: "Turn off in 20 mins", action: () => onTool("timer", device) },
+                  { label: "Show activity", action: () => void submitDeviceConversation("Show activity for this device") },
+                  { label: "Rename device", action: () => onTool("settings", device) },
+                  { label: "Create automation", action: () => onCreateScene(device) },
+                  { label: "Energy usage", action: () => void submitDeviceConversation("How much energy has this device used today?") },
+                ].map((item) => (
+                  <button key={item.label} type="button" onClick={item.action} className="shrink-0 rounded-full border border-sky-200/15 bg-sky-400/[0.07] px-3 py-1.5 text-[11px] font-medium text-sky-100/84 transition active:scale-95">
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-3 flex items-center gap-2 rounded-[20px] border border-white/[0.07] bg-black/20 px-2.5 py-2">
+                <input
+                  value={composerValue}
+                  onChange={(event) => setComposerValue(event.target.value)}
+                  placeholder="Talk to Oyi about this device..."
+                  className="min-w-0 flex-1 bg-transparent px-1 text-sm text-white outline-none placeholder:text-white/30"
+                />
+                {voiceMode === "recording" ? (
+                  <div className="min-w-0 flex flex-1 items-center gap-2 overflow-hidden">
+                    <ComposerWaveform active levels={voiceLevels} />
+                    <span className="shrink-0 text-[11px] text-sky-100/74">{voiceSeconds}s</span>
+                  </div>
+                ) : null}
+                <button type="button" onClick={startVoiceCapture} className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/[0.08] bg-white/[0.05] text-white/78" aria-label={voiceMode === "recording" ? "Stop recording" : "Record voice command"}>
+                  {voiceMode === "recording" ? <Square className="h-4.5 w-4.5" /> : <Mic className="h-4.5 w-4.5" />}
+                </button>
+                <button type="button" disabled={!composerValue.trim() || conversationState === "thinking"} onClick={() => void submitDeviceConversation(composerValue)} className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white text-black disabled:opacity-45" aria-label="Send device question">
+                  <ArrowUp className="h-4.5 w-4.5" />
+                </button>
+              </div>
+              {voiceHint ? <p className="mt-2 text-[11px] text-white/42">{voiceHint}</p> : null}
+            </section>
           </div>
         </section>
       </div>
@@ -1292,19 +1619,13 @@ function IRProfilePicker({ options, onSelect }: { options?: IrProfileOption[]; o
   );
 }
 
-function SwitchRenderer({ device, runtime, caps, gangCount, values, busy, onToggleGang, onTool }: { device: AnyDevice; state: any; runtime?: Partial<DeviceRuntimeContract> | null; caps: ReturnType<typeof uiCapabilities>; gangCount: number; values: Array<boolean | null>; busy: boolean; onToggleGang: (device: AnyDevice, gangIndex: number, next: boolean) => void; onTool: (kind: DeviceTool, device: AnyDevice) => void }) {
+function SwitchRenderer({ device, runtime, caps, gangCount, values, busy, onToggleGang }: { device: AnyDevice; state: any; runtime?: Partial<DeviceRuntimeContract> | null; caps: ReturnType<typeof uiCapabilities>; gangCount: number; values: Array<boolean | null>; busy: boolean; onToggleGang: (device: AnyDevice, gangIndex: number, next: boolean) => void }) {
   const safeGangCount = Math.min(3, Math.max(1, gangCount)) as 1 | 2 | 3;
-  const timerCode = commandCodeFor(device, [/countdown/, /timer/]);
   return (
     <div className="space-y-3">
       <div className="rounded-[24px] border border-white/[0.07] bg-white/[0.035] p-4">
         <div className="mb-4 text-sm font-semibold text-white">Controls</div>
         {caps.canSwitch ? <GangRingSwitch gangCount={safeGangCount} online={isOnline(device, runtime)} values={values} busy={busy} onToggleGang={(gangIndex, next) => onToggleGang(device, gangIndex, next)} size={safeGangCount === 1 ? 88 : 70} /> : null}
-      </div>
-      <div className="grid grid-cols-3 gap-2">
-        {timerCode ? <ToolCard icon={Clock} label="Timer" onClick={() => onTool("timer", device)} /> : null}
-        <ToolCard icon={CalendarClock} label="Schedule" onClick={() => onTool("schedule", device)} />
-        <ToolCard icon={SlidersHorizontal} label="Settings" onClick={() => onTool("settings", device)} />
       </div>
     </div>
   );
@@ -1314,7 +1635,7 @@ function SocketRenderer(props: Parameters<typeof SwitchRenderer>[0]) {
   return <SwitchRenderer {...props} gangCount={1} />;
 }
 
-function ACRenderer({ device, state, runtime, busy, onPower, onCommand, onTool }: { device: AnyDevice; state: any; runtime?: Partial<DeviceRuntimeContract> | null; busy: boolean; onPower: (device: AnyDevice) => void; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => void; onTool: (kind: DeviceTool, device: AnyDevice) => void }) {
+function ACRenderer({ device, state, runtime, busy, onPower, onCommand }: { device: AnyDevice; state: any; runtime?: Partial<DeviceRuntimeContract> | null; busy: boolean; onPower: (device: AnyDevice) => void; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => void }) {
   const temp = readTemperature(state, runtime);
   const powerCode = commandCodeFor(device, [/^power$/, /power_switch/, /power_state/]);
   const canPower = Boolean(powerCode);
@@ -1322,7 +1643,6 @@ function ACRenderer({ device, state, runtime, busy, onPower, onCommand, onTool }
   const modeCode = commandCodeFor(device, [/^mode$/, /work_mode/]);
   const fanCode = commandCodeFor(device, [/fan/, /wind_speed/, /windspeed/]);
   const swingCode = commandCodeFor(device, [/swing/, /shake/, /oscillat/]);
-  const timerCode = commandCodeFor(device, [/countdown/, /timer/]);
   const modes = [["cool", "Cool", Snowflake], ["heat", "Heat", Flame], ["dry", "Dry", Moon], ["fan", "Fan", Fan], ["auto", "Auto", Thermometer]] as const;
   const fanSpeeds = ["low", "medium", "high", "auto"] as const;
   const currentTemp = Number(String(temp || "").replace(/[^\d]/g, "")) || 24;
@@ -1348,11 +1668,6 @@ function ACRenderer({ device, state, runtime, busy, onPower, onCommand, onTool }
       {modeCode ? <ControlGroup title="Mode">{modes.map(([key, label, Icon]) => <RemoteKey key={key} icon={Icon} label={label} enabled onClick={() => onCommand(device, { [modeCode]: key }, { [modeCode]: key })} />)}</ControlGroup> : null}
       {fanCode ? <ControlGroup title="Fan">{fanSpeeds.map((speed) => <RemoteKey key={speed} icon={Wind} label={speed[0].toUpperCase() + speed.slice(1)} enabled onClick={() => onCommand(device, { [fanCode]: speed }, { [fanCode]: speed })} />)}</ControlGroup> : null}
       {swingCode ? <ControlGroup title="Swing"><RemoteKey icon={ChevronUp} label="Swing" enabled onClick={() => onCommand(device, { [swingCode]: true }, { [swingCode]: true })} /></ControlGroup> : null}
-      <div className="grid grid-cols-3 gap-2">
-        {timerCode ? <ToolCard icon={Clock} label="Timer" onClick={() => onTool("timer", device)} /> : null}
-        <ToolCard icon={CalendarClock} label="Schedule" onClick={() => onTool("schedule", device)} />
-        <ToolCard icon={SlidersHorizontal} label="Settings" onClick={() => onTool("settings", device)} />
-      </div>
     </div>
   );
 }
@@ -1453,9 +1768,9 @@ function TvRemoteKey({ icon: Icon, label, enabled, busy, onClick }: { icon: any;
   );
 }
 
-function IRRenderer({ device, state, runtime, busy, onPower, onCommand, onTool }: { device: AnyDevice; state: any; runtime?: Partial<DeviceRuntimeContract> | null; busy: boolean; onPower: (device: AnyDevice) => void; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => void; onTool: (kind: DeviceTool, device: AnyDevice) => void }) {
+function IRRenderer({ device, state, runtime, busy, onPower, onCommand }: { device: AnyDevice; state: any; runtime?: Partial<DeviceRuntimeContract> | null; busy: boolean; onPower: (device: AnyDevice) => void; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => void }) {
   const profile = learnedIrTemplate(device);
-  if (profile === "ac") return <ACRenderer device={device} state={state} runtime={runtime} busy={busy} onPower={onPower} onCommand={onCommand} onTool={onTool} />;
+  if (profile === "ac") return <ACRenderer device={device} state={state} runtime={runtime} busy={busy} onPower={onPower} onCommand={onCommand} />;
   return <TVRenderer device={device} runtime={runtime} busy={busy} onPower={onPower} onCommand={onCommand} />;
 }
 
@@ -1465,15 +1780,6 @@ function ControlGroup({ title, children }: { title: string; children: ReactNode 
       <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/34">{title}</div>
       <div className="grid grid-cols-2 gap-2">{children}</div>
     </div>
-  );
-}
-
-function ToolCard({ icon: Icon, label, onClick }: { icon: any; label: string; onClick: () => void }) {
-  return (
-    <button type="button" onClick={onClick} className="rounded-[18px] border border-sky-300/14 bg-sky-400/10 px-2.5 py-2.5 text-left text-sky-100 transition active:scale-[0.98]">
-      <Icon className="h-4 w-4" />
-      <span className="mt-1 block text-xs font-semibold">{label}</span>
-    </button>
   );
 }
 
