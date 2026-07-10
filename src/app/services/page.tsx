@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import ConsumerShell from "@/app/components/ConsumerShell";
 import useActiveContext from "@/hooks/useActiveContext";
 import { getSocket } from "@/services/socket";
@@ -8,33 +8,30 @@ import { servicesService, type HomeServiceRegistry, type ServiceAccount, type Se
 import { FiActivity, FiAlertCircle, FiChevronDown, FiChevronUp, FiCreditCard, FiDroplet, FiLayers, FiTool, FiWifi, FiZap } from "react-icons/fi";
 
 const SERVICE_CARDS: Array<{
-  key: ServiceKey;
+  key: string;
   title: string;
   subtitle: string;
   icon: any;
-  domain: "Power & Energy" | "Water" | "Internet" | "Gas" | "Estate Fees" | "Facility Services";
+  domain: "Power" | "Water" | "Internet" | "Gas" | "Estate Fees";
   cta: string;
   transactionType?: string;
+  serviceKeys: ServiceKey[];
 }> = [
-  { key: "utility_token", title: "Electricity", subtitle: "Meter vending and prepaid readiness", icon: FiZap, domain: "Power & Energy", cta: "Buy Electricity", transactionType: "electricity_purchase" },
-  { key: "generator_recovery", title: "Generator Recovery", subtitle: "Backup recovery and outage continuity", icon: FiActivity, domain: "Power & Energy", cta: "Open Recovery", transactionType: "generator_recovery" },
-  { key: "solar_battery_service", title: "Solar / Battery", subtitle: "Solar, inverter, and battery continuity", icon: FiLayers, domain: "Power & Energy", cta: "Review Service", transactionType: "solar_battery_support" },
-  { key: "water_service", title: "Water", subtitle: "Water billing and service continuity", icon: FiDroplet, domain: "Water", cta: "Report Issue", transactionType: "issue_report" },
-  { key: "internet_service", title: "Internet", subtitle: "Connectivity, plans, and renewal posture", icon: FiWifi, domain: "Internet", cta: "Renew / Support", transactionType: "internet_renewal" },
-  { key: "gas_service", title: "Gas", subtitle: "Household gas continuity and refill readiness", icon: FiTool, domain: "Gas", cta: "Order Gas", transactionType: "gas_order" },
-  { key: "service_charge", title: "Estate Fees", subtitle: "Operational dues linked to this home", icon: FiCreditCard, domain: "Estate Fees", cta: "Review Fees", transactionType: "estate_fee" },
-  { key: "other_facility_fees", title: "Facility Services", subtitle: "Facility-linked support and partner services", icon: FiAlertCircle, domain: "Facility Services", cta: "Request Support", transactionType: "facility_service" },
+  { key: "power", title: "Power", subtitle: "Electricity vending, backup continuity, and tariff readiness", icon: FiZap, domain: "Power", cta: "Buy Electricity", transactionType: "electricity_purchase", serviceKeys: ["utility_token", "generator_recovery", "solar_battery_service"] },
+  { key: "water", title: "Water", subtitle: "Water billing and service continuity", icon: FiDroplet, domain: "Water", cta: "Report Issue", transactionType: "issue_report", serviceKeys: ["water_service"] },
+  { key: "internet", title: "Internet", subtitle: "Connectivity, plans, and renewal posture", icon: FiWifi, domain: "Internet", cta: "Renew / Support", transactionType: "internet_renewal", serviceKeys: ["internet_service"] },
+  { key: "gas", title: "Gas", subtitle: "Household gas continuity and refill readiness", icon: FiTool, domain: "Gas", cta: "Order Gas", transactionType: "gas_order", serviceKeys: ["gas_service"] },
+  { key: "estate_fees", title: "Estate Fees", subtitle: "Resident charges, facility dues, and partner services", icon: FiCreditCard, domain: "Estate Fees", cta: "Review Fees", transactionType: "estate_fee", serviceKeys: ["service_charge", "other_facility_fees"] },
 ];
 
-const DOMAIN_FILTERS = ["All", "Power & Energy", "Water", "Internet", "Gas", "Estate Fees", "Facility Services"] as const;
+const DOMAIN_FILTERS = ["All", "Power", "Water", "Internet", "Gas", "Estate Fees"] as const;
 const FILTER_LABELS: Record<(typeof DOMAIN_FILTERS)[number], string> = {
   All: "All",
-  "Power & Energy": "Power",
+  Power: "Power",
   Water: "Water",
   Internet: "Internet",
   Gas: "Gas",
   "Estate Fees": "Fees",
-  "Facility Services": "Facility",
 };
 
 function toNaira(amount?: number | null) {
@@ -71,6 +68,10 @@ function registryEntryFor(serviceKey: ServiceKey, registry: HomeServiceRegistry 
   return null;
 }
 
+function compositeRegistryEntry(serviceKeys: ServiceKey[], registry: HomeServiceRegistry | null) {
+  return serviceKeys.map((key) => registryEntryFor(key, registry)).find(Boolean) || null;
+}
+
 function accountMapFor(accounts: ServiceAccount[]) {
   return new Map(accounts.map((account) => [account.service_key, account]));
 }
@@ -92,21 +93,21 @@ function Field({ label, value }: { label: string; value: string }) {
 }
 
 function frontDetailsFor(item: (typeof SERVICE_CARDS)[number], account?: ServiceAccount | null, registry?: HomeServiceRegistry | null, latestPayment?: ServicePayment | null) {
-  const entry = registryEntryFor(item.key, registry || null) as any;
+  const entry = compositeRegistryEntry(item.serviceKeys, registry || null) as any;
   const identifier = account?.identifier || account?.meter_number || account?.account_number || entry?.meter_id || entry?.account_id || null;
   const provider = account?.provider || entry?.provider || null;
   const status = String(account?.status || entry?.status || account?.vending_readiness || entry?.vending_readiness || "Pending").replace(/_/g, " ");
 
-  if (item.key === "utility_token") {
+  if (item.key === "power") {
     return {
       primary: identifier ? `Meter ending ${maskIdentifier(identifier)}` : "Meter not linked yet",
-      secondary: latestPayment ? `Last purchase ${toNaira(latestPayment.amount)}` : "Balance feed pending provider integration",
+      secondary: "Awaiting facility provisioning",
       status,
       provider,
     };
   }
 
-  if (item.key === "water_service") {
+  if (item.key === "water") {
     return {
       primary: provider ? `Provider ${provider}` : "Provider pending",
       secondary: "Usage feed pending provider integration",
@@ -115,7 +116,7 @@ function frontDetailsFor(item: (typeof SERVICE_CARDS)[number], account?: Service
     };
   }
 
-  if (item.key === "internet_service") {
+  if (item.key === "internet") {
     return {
       primary: provider ? `${provider} service` : "Provider pending",
       secondary: account?.plan || entry?.plan || "Plan pending",
@@ -124,7 +125,7 @@ function frontDetailsFor(item: (typeof SERVICE_CARDS)[number], account?: Service
     };
   }
 
-  if (item.key === "gas_service") {
+  if (item.key === "gas") {
     return {
       primary: provider ? `Provider ${provider}` : "Provider pending",
       secondary: "Order flow routes through Facility provisioning",
@@ -142,14 +143,14 @@ function frontDetailsFor(item: (typeof SERVICE_CARDS)[number], account?: Service
 }
 
 function detailFieldsFor(item: (typeof SERVICE_CARDS)[number], account?: ServiceAccount | null, registry?: HomeServiceRegistry | null, latestPayment?: ServicePayment | null) {
-  const entry = registryEntryFor(item.key, registry || null) as any;
+  const entry = compositeRegistryEntry(item.serviceKeys, registry || null) as any;
   const identifier = account?.identifier || account?.meter_number || account?.account_number || entry?.meter_id || entry?.account_id || "Awaiting meter setup";
   const provider = account?.provider || entry?.provider || "Awaiting provider setup";
   const tariff = account?.tariff_profile || entry?.tariff_profile || "Awaiting tariff setup";
   const billing = account?.billing_profile || entry?.billing_profile || "Awaiting billing setup";
   const readiness = account?.vending_readiness || entry?.vending_readiness || account?.status || entry?.status || "Pending";
 
-  if (item.key === "utility_token") {
+  if (item.key === "power") {
     return [
       { label: "Meter number", value: identifier },
       { label: "KCT / KCTN", value: [account?.kct || entry?.kct, account?.kctn || entry?.kctn].filter(Boolean).join(" / ") || "Awaiting meter setup" },
@@ -160,7 +161,7 @@ function detailFieldsFor(item: (typeof SERVICE_CARDS)[number], account?: Service
     ];
   }
 
-  if (item.key === "water_service") {
+  if (item.key === "water") {
     return [
       { label: "Meter ID", value: identifier },
       { label: "Provider", value: provider },
@@ -171,7 +172,7 @@ function detailFieldsFor(item: (typeof SERVICE_CARDS)[number], account?: Service
     ];
   }
 
-  if (item.key === "internet_service") {
+  if (item.key === "internet") {
     return [
       { label: "Internet ID", value: identifier },
       { label: "Provider", value: provider },
@@ -182,7 +183,7 @@ function detailFieldsFor(item: (typeof SERVICE_CARDS)[number], account?: Service
     ];
   }
 
-  if (item.key === "gas_service") {
+  if (item.key === "gas") {
     return [
       { label: "Gas ID", value: identifier },
       { label: "Provider", value: provider },
@@ -225,10 +226,9 @@ function GroupedServiceCard({
   onAction: () => void;
 }) {
   const Icon = item.icon;
-  const entry = registryEntryFor(item.key, registry) as any;
+  const entry = compositeRegistryEntry(item.serviceKeys, registry) as any;
   const linked = Boolean(account?.linked ?? entry?.linked);
   const readiness = account?.vending_readiness || entry?.vending_readiness || account?.status || entry?.status || "Setup pending";
-  const health = account?.provider_health || entry?.provider_health || "Setup pending";
   const front = frontDetailsFor(item, account, registry, latestPayment);
   const details = detailFieldsFor(item, account, registry, latestPayment);
 
@@ -276,9 +276,6 @@ function GroupedServiceCard({
           {expanded ? <FiChevronUp className="h-3.5 w-3.5" /> : <FiChevronDown className="h-3.5 w-3.5" />}
           More info
         </button>
-        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${toneFor(health)}`}>
-          {String(health).replace(/_/g, " ")}
-        </span>
       </div>
 
       {expanded ? (
@@ -355,6 +352,9 @@ export default function ServicesPage() {
   }, [contextReady, estateId, activeContext.home_id, activeContext.contextKey]);
 
   const accountMap = useMemo(() => accountMapFor(accounts), [accounts]);
+  const accountForCard = useCallback((item: (typeof SERVICE_CARDS)[number]) => {
+    return item.serviceKeys.map((key) => accountMap.get(key) || null).find(Boolean) || null;
+  }, [accountMap]);
   const latestByKey = useMemo(() => {
     const map = new Map<ServiceKey, ServicePayment>();
     for (const row of history) {
@@ -362,9 +362,12 @@ export default function ServicesPage() {
     }
     return map;
   }, [history]);
+  const latestPaymentForCard = useCallback((item: (typeof SERVICE_CARDS)[number]) => {
+    return item.serviceKeys.map((key) => latestByKey.get(key) || null).find(Boolean) || null;
+  }, [latestByKey]);
 
   const strip = [
-    { label: "Services", value: accounts.length || SERVICE_CARDS.length },
+    { label: "Services", value: SERVICE_CARDS.length },
     { label: "Ready", value: accounts.filter((item) => item.vending_readiness === "ready").length },
     { label: "Pending", value: accounts.filter((item) => /pending|manual_review|unsupported/.test(String(item.last_transaction_status || item.vending_readiness || ""))).length },
     { label: "Wallet", value: registry?.wallet?.balance != null ? toNaira(Number(registry.wallet.balance || 0)) : "Pending" },
@@ -384,12 +387,12 @@ export default function ServicesPage() {
     setMessage(null);
     setError(null);
     try {
-      const account = accountMap.get(item.key);
+      const account = accountForCard(item);
       const result: any = await servicesService.initiateTransaction({
-        service_key: item.key,
+        service_key: item.serviceKeys[0],
         account_ref: account?.identifier || undefined,
         transaction_type: item.transactionType,
-        amount: Number(configs[item.key]?.suggested_amount || 0),
+        amount: Number(configs[item.serviceKeys[0]]?.suggested_amount || 0),
         estate_id: estateId || undefined,
         home_id: activeContext.home_id || undefined,
       });
@@ -399,7 +402,7 @@ export default function ServicesPage() {
         setMessage(result?.message || `${item.title} request recorded.`);
         if (result?.transaction) {
           const next = result.transaction;
-          setAccounts((prev) => prev.map((row) => row.service_key === item.key ? { ...row, last_activity_at: next.created_at || new Date().toISOString(), last_transaction_status: next.status, last_transaction_type: next.transaction_type } : row));
+          setAccounts((prev) => prev.map((row) => item.serviceKeys.includes(row.service_key) ? { ...row, last_activity_at: next.created_at || new Date().toISOString(), last_transaction_status: next.status, last_transaction_type: next.transaction_type } : row));
         }
       }
     } catch (err: any) {
@@ -439,10 +442,10 @@ export default function ServicesPage() {
                 <GroupedServiceCard
                   key={item.key}
                   item={item}
-                  account={accountMap.get(item.key) || null}
+                  account={accountForCard(item)}
                   registry={registry}
-                  config={configs[item.key] || null}
-                  latestPayment={latestByKey.get(item.key) || null}
+                  config={configs[item.serviceKeys[0]] || null}
+                  latestPayment={latestPaymentForCard(item)}
                   busy={busyKey === item.key}
                   expanded={expandedKey === item.key}
                   onToggle={() => setExpandedKey((current) => current === item.key ? null : item.key)}

@@ -9,6 +9,7 @@ import API from "./api";
 
 function pickError(err: any, fallback: string) {
   return (
+    err?.userMessage ||
     err?.response?.data?.error ||      // ✅ your backend format
     err?.response?.data?.message ||    // (some endpoints may use message)
     err?.message ||

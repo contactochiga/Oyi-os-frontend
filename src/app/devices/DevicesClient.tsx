@@ -41,6 +41,7 @@ import useActiveContext from "@/hooks/useActiveContext";
 import { deviceService, type IrProfileOption } from "@/services/deviceService";
 import { aiService } from "@/services/aiService";
 import { loadOyiCoreExecutionHistory } from "@/services/oyiCoreRuntimeService";
+import { oyiService } from "@/services/oyiService";
 import { sceneService } from "@/services/sceneService";
 import { getSocket } from "@/services/socket";
 import { useRuntimeIntelligenceStore } from "@/store/useRuntimeIntelligenceStore";
@@ -397,8 +398,10 @@ function deviceRendererKind(device: AnyDevice, runtime?: Partial<DeviceRuntimeCo
   const family = String(contract.control_profile || contract.device_family || inferFamily(device)).toLowerCase();
   const profile = learnedIrTemplate(device);
   const text = `${device?.remote_type || ""} ${device?.remoteType || ""} ${device?.ir_profile || ""} ${device?.device_type || ""} ${device?.product_name || ""} ${device?.productName || ""} ${device?.model || ""} ${device?.category || ""} ${device?.type || ""} ${device?.name || ""} ${device?.metadata?.category || ""} ${device?.metadata?.remoteType || ""} ${device?.metadata?.ir_profile || ""}`.toLowerCase();
+  if (["switch", "plug", "light"].includes(family)) return family === "plug" ? "socket" : "switch";
   if (family === "tv" || /\btv\b|television|decoder|set.top/.test(text)) return "tv";
-  if (family === "climate" || family === "thermostat" || /\bac\b|aircon|air.condition|hvac|climate/.test(text)) return "ac";
+  if ((family === "climate" || family === "thermostat") && !canSwitchDevice(device, runtime)) return "ac";
+  if (!canSwitchDevice(device, runtime) && /\bac\b|aircon|air.condition|hvac|climate/.test(text)) return "ac";
   if (profile === "tv") return "tv";
   if (profile === "ac") return "ac";
   if (family === "remote" || /ir|infrared|remote/.test(text)) return "ir";
@@ -529,6 +532,34 @@ function OyiHubOrb({ state = "idle", onClick }: { state?: "idle" | "listening" |
       <span className="relative">Oyi</span>
     </button>
   );
+}
+
+function splitConversationResponse(value: string, fallbackHeadline: string, fallbackBody: string) {
+  const text = String(value || "").trim();
+  if (!text) return { headline: fallbackHeadline, body: fallbackBody };
+  const parts = text.split(/(?<=[.!?])\s+/).filter(Boolean);
+  if (parts.length === 1) return { headline: parts[0], body: fallbackBody };
+  return {
+    headline: parts[0],
+    body: parts.slice(1).join(" "),
+  };
+}
+
+function threadMatchesDevice(thread: Record<string, any> | null | undefined, device: AnyDevice) {
+  const metadata = thread?.metadata && typeof thread.metadata === "object" ? thread.metadata : {};
+  const objectId = String((metadata as any)?.object_id || (metadata as any)?.device_id || "").trim();
+  const deviceId = String(pickDbId(device) || "").trim();
+  return thread?.module === "device_drawer" && objectId && deviceId && objectId === deviceId;
+}
+
+function messageLinesFromThread(messages: Array<Record<string, any>> = []): Array<{ role: "user" | "assistant"; content: string }> {
+  return messages
+    .filter((message) => message?.role === "user" || message?.role === "assistant")
+    .map((message) => ({
+      role: (message.role === "user" ? "user" : "assistant") as "user" | "assistant",
+      content: String(message.content || "").trim(),
+    }))
+    .filter((message) => message.content);
 }
 
 export default function DeviceClient() {
@@ -1149,7 +1180,7 @@ export default function DeviceClient() {
 
         {addDeviceOpen ? <AddDeviceSheet tab={addDeviceTab} setTab={setAddDeviceTab} discovering={discovering} binding={binding} discovered={discovered} providerDevices={providerDevices} selectedDiscover={selectedDiscover} selectedCount={selectedDiscoveryIds.length} bindRoom={bindRoom} setBindRoom={setBindRoom} setSelectedDiscover={setSelectedDiscover} onClose={() => setAddDeviceOpen(false)} onScan={refreshDiscovery} onBind={bindSelectedDevices} /> : null}
         {assignDevice ? <UnassignedDeviceSheet device={assignDevice} room={assignRoom} setRoom={setAssignRoom} binding={binding} onClose={() => setAssignDevice(null)} onAssign={assignListedDevice} /> : null}
-        {sheetOpen && sheetDevice ? <DeviceModalRouter device={sheetDevice} state={stateMap[String(pickDbId(sheetDevice))] || {}} runtime={runtimeMap[String(pickDbId(sheetDevice))] || null} busy={busyId === String(pickDbId(sheetDevice))} awareness={latestAwareness} recommendation={latestRecommendations[0] || null} onClose={() => setSheetOpen(false)} onToggleGang={toggleGang} onPower={toggleMasterPower} onCommand={sendDeviceCommand} onTool={(kind, device) => setTool({ kind, device })} onCreateScene={(device) => router.push(`/scenes?create=scene&deviceId=${encodeURIComponent(String(pickDbId(device) || ""))}`)} onBindIrAppliance={bindIrAppliance} /> : null}
+        {sheetOpen && sheetDevice ? <DeviceModalRouter device={sheetDevice} state={stateMap[String(pickDbId(sheetDevice))] || {}} runtime={runtimeMap[String(pickDbId(sheetDevice))] || null} busy={busyId === String(pickDbId(sheetDevice))} awareness={latestAwareness} recommendation={latestRecommendations[0] || null} onClose={() => setSheetOpen(false)} onToggleGang={toggleGang} onPower={toggleMasterPower} onCommand={sendDeviceCommand} onTool={(kind, device) => setTool({ kind, device })} onCreateScene={(device) => router.push(`/scenes?create=scene&deviceId=${encodeURIComponent(String(pickDbId(device) || ""))}`)} onCreateAutomation={(device) => router.push(`/scenes?tab=automations&deviceId=${encodeURIComponent(String(pickDbId(device) || ""))}`)} onBindIrAppliance={bindIrAppliance} /> : null}
         {tool ? <DeviceToolSheet kind={tool.kind} device={tool.device} runtime={runtimeMap[String(pickDbId(tool.device))] || null} executionHistory={deviceExecutions} busy={busyId === String(pickDbId(tool.device))} onClose={() => setTool(null)} onTimer={(command, patch) => sendDeviceCommand(tool.device, command, patch)} onSchedule={(input) => saveDeviceSchedule(tool.device, input)} onSettings={async ({ favorite, room }) => {
           const id = String(pickDbId(tool.device) || "");
           if (!id) return;
@@ -1302,7 +1333,7 @@ function AddDeviceSheet({ tab, setTab, discovering, binding, discovered, provide
   );
 }
 
-function DeviceModalRouter({ device, state, runtime, busy, awareness, recommendation, onClose, onToggleGang, onPower, onCommand, onTool, onCreateScene, onBindIrAppliance }: { device: AnyDevice; state: any; runtime?: Partial<DeviceRuntimeContract> | null; busy: boolean; awareness?: Record<string, any> | null; recommendation?: Record<string, any> | null; onClose: () => void; onToggleGang: (device: AnyDevice, gangIndex: number, next: boolean) => void; onPower: (device: AnyDevice) => void; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => void; onTool: (kind: DeviceTool, device: AnyDevice) => void; onCreateScene: (device: AnyDevice) => void; onBindIrAppliance: (device: AnyDevice, profile: IrProfile) => void }) {
+function DeviceModalRouter({ device, state, runtime, busy, awareness, recommendation, onClose, onToggleGang, onPower, onCommand, onTool, onCreateScene, onCreateAutomation, onBindIrAppliance }: { device: AnyDevice; state: any; runtime?: Partial<DeviceRuntimeContract> | null; busy: boolean; awareness?: Record<string, any> | null; recommendation?: Record<string, any> | null; onClose: () => void; onToggleGang: (device: AnyDevice, gangIndex: number, next: boolean) => void; onPower: (device: AnyDevice) => void; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => Promise<void> | void; onTool: (kind: DeviceTool, device: AnyDevice) => void; onCreateScene: (device: AnyDevice) => void; onCreateAutomation: (device: AnyDevice) => void; onBindIrAppliance: (device: AnyDevice, profile: IrProfile) => void }) {
   const { user } = useAuth();
   const activeContext = useActiveContext();
   const gangCount = guessGangCount(device, state, runtime);
@@ -1313,13 +1344,15 @@ function DeviceModalRouter({ device, state, runtime, busy, awareness, recommenda
   const [composerValue, setComposerValue] = useState("");
   const [conversationState, setConversationState] = useState<"idle" | "thinking" | "done" | "error">("idle");
   const [conversationLines, setConversationLines] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]);
+  const [conversationThreadId, setConversationThreadId] = useState<string | null>(null);
+  const [conversationRestoring, setConversationRestoring] = useState(false);
+  const [contextualActions, setContextualActions] = useState<Array<{ label: string; action: () => void }>>([]);
   const [voiceMode, setVoiceMode] = useState<"idle" | "recording">("idle");
   const [voiceSeconds, setVoiceSeconds] = useState(0);
   const [voiceLevels, setVoiceLevels] = useState<number[]>([]);
   const [voiceHint, setVoiceHint] = useState("");
   const recognitionRef = useRef<any>(null);
   const timerRef = useRef<number | null>(null);
-  const resetRef = useRef<number | null>(null);
   const baseRenderer = deviceRendererKind(device, runtime);
   const learnedProfile = learnedIrTemplate(device);
   const activeIrProfile = learnedProfile || selectedIrProfile;
@@ -1328,22 +1361,14 @@ function DeviceModalRouter({ device, state, runtime, busy, awareness, recommenda
   const awarenessMessage = deriveAwarenessMessage(device, state, runtime, awareness, recommendation);
   const latestAssistantLine = [...conversationLines].reverse().find((line) => line.role === "assistant")?.content || "";
   const latestUserLine = [...conversationLines].reverse().find((line) => line.role === "user")?.content || "";
+  const responseSurface = splitConversationResponse(latestAssistantLine, awarenessMessage.headline, awarenessMessage.body);
   const intelligenceContext = normalizeRuntimeContract(device, runtime);
+  const timerCode = commandCodeFor(device, [/countdown/, /timer/]);
 
   useEffect(() => () => {
     if (timerRef.current) window.clearInterval(timerRef.current);
-    if (resetRef.current) window.clearTimeout(resetRef.current);
     try { recognitionRef.current?.stop?.(); } catch {}
   }, []);
-
-  function resetConversationSoon() {
-    if (resetRef.current) window.clearTimeout(resetRef.current);
-    resetRef.current = window.setTimeout(() => {
-      setConversationState("idle");
-      setConversationLines([]);
-      setVoiceHint("");
-    }, 12000);
-  }
 
   function stopVoiceCapture() {
     try { recognitionRef.current?.stop?.(); } catch {}
@@ -1400,28 +1425,136 @@ function DeviceModalRouter({ device, state, runtime, busy, awareness, recommenda
     }
   }
 
+  useEffect(() => {
+    let cancelled = false;
+    async function restoreDeviceConversation() {
+      const estateId = activeContext.estate_id || user?.estate_id || null;
+      const homeId = activeContext.home_id || user?.home_id || null;
+      const deviceId = String(pickDbId(device) || "").trim();
+      setConversationRestoring(true);
+      setConversationLines([]);
+      setConversationThreadId(null);
+      setContextualActions([]);
+      try {
+        const threads = await oyiService.listThreads({
+          surface: "consumer",
+          estate_id: estateId,
+          home_id: homeId,
+          limit: 24,
+        });
+        if (cancelled) return;
+        const match = (threads.threads || []).find((thread) => threadMatchesDevice(thread, device));
+        if (!match?.id) return;
+        const messages = await oyiService.getThreadMessages(match.id);
+        if (cancelled) return;
+        setConversationThreadId(match.id);
+        setConversationLines(messageLinesFromThread(messages.messages || []));
+      } catch {
+        if (!cancelled) {
+          setConversationThreadId(null);
+          setConversationLines([]);
+        }
+      } finally {
+        if (!cancelled) setConversationRestoring(false);
+      }
+    }
+    void restoreDeviceConversation();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeContext.contextKey, device, user?.estate_id, user?.home_id]);
+
+  function setSuggestedFollowUps(message: string) {
+    const normalized = message.toLowerCase();
+    if (/show (?:full )?(?:activity|history)|recent activity|what happened|how many times/.test(normalized)) {
+      setContextualActions([
+        { label: "Show full history", action: () => onTool("activity", device) },
+        { label: "Show failures", action: () => void submitDeviceConversation("Show failures for this selected device.") },
+        { label: "Show physical actions", action: () => void submitDeviceConversation("Show manual switch actions for this selected device.") },
+        { label: "Show scene activity", action: () => void submitDeviceConversation("Show scene and automation activity for this selected device.") },
+      ]);
+      return;
+    }
+    if (/relationship|dependencies|what scenes|what automations/.test(normalized)) {
+      setContextualActions([
+        { label: "Open automations", action: () => onCreateAutomation(device) },
+        { label: "Open scenes", action: () => onCreateScene(device) },
+      ]);
+      return;
+    }
+    setContextualActions([]);
+  }
+
+  async function handleQuickTimer() {
+    if (!timerCode) {
+      setConversationLines((current) => [
+        ...current,
+        { role: "user", content: "Turn off in 20 mins" },
+        { role: "assistant", content: "This device does not expose a timer control yet. Use Set schedule or create an automation instead." },
+      ]);
+      setConversationState("error");
+      setContextualActions([
+        { label: "Set schedule", action: () => onTool("schedule", device) },
+        { label: "Create automation", action: () => onCreateAutomation(device) },
+      ]);
+      return;
+    }
+    setConversationState("thinking");
+    setConversationLines((current) => [...current, { role: "user", content: "Turn off in 20 mins" }]);
+    try {
+      await Promise.resolve(onCommand(device, { [timerCode]: 20 * 60, timer_action: "off" }, { [timerCode]: 20 * 60 }));
+      setConversationLines((current) => [
+        ...current,
+        { role: "assistant", content: "Done. This device will turn off in 20 minutes." },
+      ]);
+      setConversationState("done");
+      setContextualActions([
+        { label: "Show activity", action: () => void submitDeviceConversation("Show activity for this selected device.") },
+        { label: "Set schedule", action: () => onTool("schedule", device) },
+      ]);
+    } catch {
+      setConversationLines((current) => [
+        ...current,
+        { role: "assistant", content: "I could not set that timer right now. Try again in a moment." },
+      ]);
+      setConversationState("error");
+    }
+  }
+
   async function submitDeviceConversation(prompt: string) {
     const message = String(prompt || "").trim();
     if (!message || busy) return;
-    if (resetRef.current) window.clearTimeout(resetRef.current);
     stopVoiceCapture();
+    setComposerValue("");
     setConversationState("thinking");
-    setConversationLines([{ role: "user", content: message }, { role: "assistant", content: "Understanding…" }]);
+    setContextualActions([]);
+    setConversationLines((current) => [...current, { role: "user", content: message }, { role: "assistant", content: "Understanding…" }]);
     const thinkingStages = ["Understanding…", "Checking device…", "Applying context…"];
     const stageTimers: number[] = [];
     thinkingStages.slice(1).forEach((stage, index) => {
       stageTimers.push(window.setTimeout(() => {
-        setConversationLines([{ role: "user", content: message }, { role: "assistant", content: stage }]);
+        setConversationLines((current) => {
+          const next = [...current];
+          for (let i = next.length - 1; i >= 0; i -= 1) {
+            if (next[i]?.role === "assistant") {
+              next[i] = { role: "assistant", content: stage };
+              break;
+            }
+          }
+          return next;
+        });
       }, 700 * (index + 1)));
     });
     try {
       const response = await aiService.chat(message, {
         surface: "consumer",
         module: "device_drawer",
+        thread_id: conversationThreadId || undefined,
         estate_id: activeContext.estate_id || user?.estate_id || null,
         home_id: activeContext.home_id || user?.home_id || null,
         device_id: pickDbId(device),
         device_name: pickName(device),
+        room_id: pickRoomId(device),
         room_name: pickRoomName(device),
         control_profile: intelligenceContext.control_profile,
         primary_state: intelligenceContext.primary_state,
@@ -1437,20 +1570,34 @@ function DeviceModalRouter({ device, state, runtime, busy, awareness, recommenda
         conversation_context: intelligenceContext.conversation_context,
       });
       stageTimers.forEach((timer) => window.clearTimeout(timer));
-      setConversationLines([
-        { role: "user", content: message },
-        { role: "assistant", content: String(response.reply || "Done.") },
-      ]);
+      if (response.thread_id) setConversationThreadId(String(response.thread_id));
+      setConversationLines((current) => {
+        const next = [...current];
+        for (let i = next.length - 1; i >= 0; i -= 1) {
+          if (next[i]?.role === "assistant") {
+            next[i] = { role: "assistant", content: String(response.reply || "Done.") };
+            return next;
+          }
+        }
+        next.push({ role: "assistant", content: String(response.reply || "Done.") });
+        return next;
+      });
       setConversationState(response.intent === "error" ? "error" : "done");
-      resetConversationSoon();
+      setSuggestedFollowUps(message);
     } catch {
       stageTimers.forEach((timer) => window.clearTimeout(timer));
-      setConversationLines([
-        { role: "user", content: message },
-        { role: "assistant", content: "I couldn’t complete that right now. Try again in a moment." },
-      ]);
+      setConversationLines((current) => {
+        const next = [...current];
+        for (let i = next.length - 1; i >= 0; i -= 1) {
+          if (next[i]?.role === "assistant") {
+            next[i] = { role: "assistant", content: "I couldn’t complete that right now. Try again in a moment." };
+            return next;
+          }
+        }
+        next.push({ role: "assistant", content: "I couldn’t complete that right now. Try again in a moment." });
+        return next;
+      });
       setConversationState("error");
-      resetConversationSoon();
     }
   }
 
@@ -1490,13 +1637,13 @@ function DeviceModalRouter({ device, state, runtime, busy, awareness, recommenda
           <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4" style={{ WebkitOverflowScrolling: "touch" }}>
             <section className="pb-4">
               <p className="text-[17px] font-semibold tracking-[-0.04em] text-white">
-                {latestAssistantLine || awarenessMessage.headline}
+                {latestAssistantLine ? responseSurface.headline : awarenessMessage.headline}
               </p>
               <p className="mt-1.5 text-sm leading-6 text-white/74">
-                {latestAssistantLine ? latestUserLine || awarenessMessage.body : awarenessMessage.body}
+                {latestAssistantLine ? responseSurface.body || awarenessMessage.body : awarenessMessage.body}
               </p>
               <p className="mt-2 text-xs leading-5 text-white/46">
-                {latestAssistantLine ? "Oyi is using this device context, recent activity, health, and room assignment." : awarenessMessage.support}
+                {latestAssistantLine ? `Device · ${pickName(device)}${latestUserLine ? ` · ${latestUserLine}` : ""}` : awarenessMessage.support}
               </p>
             </section>
             {needsIrProfile ? <IRProfilePicker options={irOptions} onSelect={(profile) => { setSelectedIrProfile(profile); onBindIrAppliance(device, profile); }} /> : null}
@@ -1506,15 +1653,17 @@ function DeviceModalRouter({ device, state, runtime, busy, awareness, recommenda
             {renderer === "ir" && !needsIrProfile ? <IRRenderer device={device} state={state} runtime={runtime} busy={busy} onPower={onPower} onCommand={onCommand} /> : null}
             {renderer === "switch" ? <SwitchRenderer device={device} state={state} runtime={runtime} caps={caps} gangCount={gangCount} values={values} busy={busy} onToggleGang={onToggleGang} /> : null}
             {renderer === "unsupported" ? <UnsupportedDeviceRenderer device={device} runtime={runtime} /> : null}
+            {conversationRestoring ? <p className="mt-3 text-xs text-white/40">Restoring recent device conversation…</p> : null}
             <div className="mt-4 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {[
-                { label: "Show activity", action: () => onTool("activity", device) },
-                { label: "Turn off in 20 mins", action: () => onTool("timer", device) },
+              {(contextualActions.length ? contextualActions : [
+                { label: "Show activity", action: () => void submitDeviceConversation("Show activity for this selected device.") },
+                { label: "Turn off in 20 mins", action: () => void handleQuickTimer() },
+                { label: "Set schedule", action: () => onTool("schedule", device) },
                 { label: "Rename device", action: () => onTool("settings", device) },
-                { label: "Create automation", action: () => onCreateScene(device) },
-                { label: "Check connection", action: () => void submitDeviceConversation("Diagnose this device connection") },
-                { label: "View relationships", action: () => void submitDeviceConversation("Show the scenes, automations, and dependencies for this device") },
-              ].map((item) => (
+                { label: "Create automation", action: () => onCreateAutomation(device) },
+                { label: "Check connection", action: () => void submitDeviceConversation("Diagnose this selected device.") },
+                { label: "View relationships", action: () => void submitDeviceConversation("View relationships for this selected device.") },
+              ]).map((item) => (
                 <button key={item.label} type="button" onClick={item.action} className="shrink-0 rounded-full border border-sky-200/15 bg-sky-400/[0.07] px-3 py-1.5 text-[11px] font-medium text-sky-100/84 transition active:scale-95">
                   {item.label}
                 </button>
@@ -1535,10 +1684,10 @@ function DeviceModalRouter({ device, state, runtime, busy, awareness, recommenda
                     <span className="shrink-0 text-[11px] text-sky-100/74">{voiceSeconds}s</span>
                   </div>
                 ) : null}
-                <button type="button" onClick={startVoiceCapture} className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-white/[0.08] bg-white/[0.05] text-white/78" aria-label={voiceMode === "recording" ? "Stop recording" : "Record voice command"}>
+                <button type="button" onClick={startVoiceCapture} className="grid h-12 w-12 shrink-0 place-items-center rounded-full border border-white/[0.08] bg-white/[0.05] text-white/78" aria-label={voiceMode === "recording" ? "Stop recording" : "Record voice command"}>
                   {voiceMode === "recording" ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
                 </button>
-                <button type="button" disabled={!composerValue.trim() || conversationState === "thinking"} onClick={() => void submitDeviceConversation(composerValue)} className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white text-black disabled:opacity-45" aria-label="Send device question">
+                <button type="button" disabled={!composerValue.trim() || conversationState === "thinking"} onClick={() => void submitDeviceConversation(composerValue)} className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-white text-black disabled:opacity-45" aria-label="Send device question">
                   <ArrowUp className="h-4 w-4" />
                 </button>
               </div>
@@ -1571,24 +1720,29 @@ function IRProfilePicker({ options, onSelect }: { options?: IrProfileOption[]; o
       ? options
           .map((option) => ({ key: String(option.key) as IrProfile, label: String(option.label || option.key) }))
           .filter((option) => option.key)
-      : [
-          { key: "tv", label: "TV" },
-          { key: "ac", label: "AC" },
-          { key: "fan", label: "Fan" },
-          { key: "projector", label: "Projector" },
-        ]
+      : []
   );
   return (
     <div className="rounded-[24px] border border-white/[0.07] bg-white/[0.035] p-4">
       <div className="text-sm font-semibold text-white">Choose remote profile</div>
-      <p className="mt-1 text-xs leading-5 text-white/44">Select the device this IR remote controls.</p>
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        {profiles.map((profile) => (
-          <button key={profile.key} type="button" onClick={() => onSelect(profile.key)} className="rounded-[16px] border border-sky-300/14 bg-sky-400/10 px-3 py-3 text-sm font-semibold text-sky-100 transition active:scale-[0.98]">
-            {profile.label}
-          </button>
-        ))}
-      </div>
+      <p className="mt-1 text-xs leading-5 text-white/44">
+        {profiles.length
+          ? "Select the exact appliance profile the connected provider exposed for this hub."
+          : "The connected provider has not exposed any configured appliance profiles for this hub yet."}
+      </p>
+      {profiles.length ? (
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          {profiles.map((profile) => (
+            <button key={profile.key} type="button" onClick={() => onSelect(profile.key)} className="rounded-[16px] border border-sky-300/14 bg-sky-400/10 px-3 py-3 text-sm font-semibold text-sky-100 transition active:scale-[0.98]">
+              {profile.label}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-3 rounded-[16px] border border-white/[0.08] bg-black/20 px-3 py-3 text-xs leading-5 text-white/52">
+          Sync the configured Smart Life remotes first, then return to import only the supported appliance profiles for this hub.
+        </div>
+      )}
     </div>
   );
 }

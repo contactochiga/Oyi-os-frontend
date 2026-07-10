@@ -86,6 +86,8 @@ export function getDeviceFamily(device: Record<string, any> = {}): DeviceFamily 
   const hasPowerCapability = supportedControls.includes("power") || /\b(switch|switch_\d+|relay|power|plug)\b/.test(text);
   if (explicitFamily === "switch" || controlProfile === "switch") return "switch";
   if (explicitFamily === "plug" || controlProfile === "plug") return "plug";
+  if (hasPowerCapability && ["heater", "climate", "thermostat"].includes(explicitFamily)) return "switch";
+  if (hasPowerCapability && ["climate", "thermostat"].includes(controlProfile)) return "switch";
   if (explicitFamily === "climate" || controlProfile === "climate") return "climate";
   if (explicitFamily === "camera" || controlProfile === "camera") return "camera";
   if (explicitFamily === "lock" || controlProfile === "lock") return "lock";
@@ -100,7 +102,7 @@ export function getDeviceFamily(device: Record<string, any> = {}): DeviceFamily 
   if (/\b(thermostat)\b/.test(text)) return "thermostat";
   if (/\b(ac|a\/c|air conditioner|aircon|hvac|climate|cooling|cooler)\b/.test(text)) return "climate";
   if (/\b(air purifier|purifier|air quality)\b/.test(text)) return "purifier";
-  if (/\b(heater|heat)\b/.test(text)) return "heater";
+  if (!hasPowerCapability && /\b(heater|heat)\b/.test(text)) return "heater";
   if (/\b(fan|ceiling fan|standing fan)\b/.test(text)) return "fan";
   if (/\b(light|bulb|lamp|lighting|downlight|spotlight)\b/.test(text)) return "light";
   if (/\b(door lock|smart lock|lock|gate|access control|door)\b/.test(text)) return "lock";

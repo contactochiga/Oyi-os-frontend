@@ -39,6 +39,27 @@ function getLS(key: string): string | null {
  */
 let memToken: string | null = null;
 
+function runtimeLabel() {
+  if (typeof window === "undefined") return "server";
+  const capacitor = (window as any)?.Capacitor;
+  if (capacitor?.isNativePlatform?.()) {
+    return `native:${String(capacitor.getPlatform?.() || "unknown")}`;
+  }
+  return "web";
+}
+
+function networkMessage(error: any) {
+  const status = Number(error?.response?.status || 0);
+  const code = String(error?.code || "").toLowerCase();
+  const message = String(error?.message || "").toLowerCase();
+  if (status === 401) return "Authentication service unavailable.";
+  if (status >= 500) return "Cannot reach Oyi right now.";
+  if (message.includes("network error")) return "Cannot reach Oyi.";
+  if (code === "econnaborted" || message.includes("timeout")) return "Request timed out.";
+  if (!error?.response) return "Internet connection unavailable.";
+  return String(error?.response?.data?.error || error?.response?.data?.message || error?.message || "Request failed");
+}
+
 /**
  * ✅ One source of truth setter
  */
@@ -73,6 +94,7 @@ const API = axios.create({
  * 3) cookie (web)
  */
 API.interceptors.request.use((config) => {
+  config.baseURL = getBaseURL();
   if (typeof window !== "undefined") {
     const lsToken =
       getLS("oyi_consumer_token_ls") || // ✅ your new key
@@ -89,6 +111,7 @@ API.interceptors.request.use((config) => {
       (config.headers as any)["X-Oyi-Contract-Version"] = "ochiga.tier1.2026-05-16";
     }
   }
+  (config.headers as any)["X-Oyi-Runtime"] = runtimeLabel();
 
   return config;
 });
@@ -106,6 +129,19 @@ API.interceptors.response.use(
       config.__oyiRetried = true;
       return API.request(config);
     }
+    const diagnostics = {
+      method: String(config.method || "get").toUpperCase(),
+      url: config?.url || null,
+      baseURL: config?.baseURL || API.defaults.baseURL || null,
+      runtime: runtimeLabel(),
+      status: error?.response?.status || null,
+      code: error?.code || null,
+      category: !error?.response ? "network" : timedOut ? "timeout" : error?.response?.status >= 500 ? "server" : "request",
+      selectedEnvironment: getBaseURL(),
+    };
+    (error as any).userMessage = networkMessage(error);
+    (error as any).diagnostics = diagnostics;
+    console.error("[consumer.api.request_failed]", diagnostics);
     return Promise.reject(error);
   },
 );

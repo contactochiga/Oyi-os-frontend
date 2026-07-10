@@ -44,6 +44,22 @@ export type OyiChatRequest = {
   message: string;
   thread_id?: string | null;
   context?: Partial<OisContext> | null;
+  device_id?: string | null;
+  device_name?: string | null;
+  room_id?: string | null;
+  room_name?: string | null;
+  control_profile?: string | null;
+  primary_state?: string | null;
+  health_status?: string | null;
+  supported_controls?: string[] | null;
+  channel_definitions?: Array<Record<string, any>> | null;
+  memory_summary?: Record<string, any> | null;
+  relationships?: Record<string, any> | null;
+  predictive_findings?: Array<Record<string, any>> | null;
+  recent_executions?: Array<Record<string, any>> | null;
+  active_scenes?: Array<Record<string, any>> | null;
+  active_automations?: Array<Record<string, any>> | null;
+  conversation_context?: Record<string, any> | null;
 };
 
 export type OyiChatResponse = {
