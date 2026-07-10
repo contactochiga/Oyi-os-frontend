@@ -115,6 +115,15 @@ function asArray<T = any>(value: any): T[] {
   return [];
 }
 
+function devicePanelErrorMessage(error: any) {
+  const code = String(error?.code || "");
+  if (code === "context_unavailable") return "Your home context could not be loaded.";
+  if (code === "forbidden") return "This account does not have access to these devices.";
+  if (code === "backend_unavailable") return "Devices are temporarily unavailable. Try again.";
+  if (code === "not_authenticated") return "Please sign in again to load your devices.";
+  return error?.message || "Device sync unavailable";
+}
+
 function getGreetingPeriod() {
   const hour = new Date().getHours();
   if (hour < 12) return "morning";
@@ -215,10 +224,17 @@ export default function HomePage() {
         deviceService.getAssignedDevices(estateId),
         deviceService.getRegistryDevices(estateId),
       ]);
-      setAssignedDevices(asArray(assigned).filter((device) => String(device?.home_id || "") === String(homeId || "")));
+      setAssignedDevices(asArray(assigned));
       setRegistryDevices(asArray(registry));
     } catch (err: any) {
-      setDevicesErr(err?.message || "Device sync unavailable");
+      console.error("[consumer.home.devices] load_failed", {
+        estateId,
+        homeId,
+        code: err?.code || null,
+        status: err?.status || err?.response?.status || null,
+        technical: err?.technical || err?.response?.data?.error || err?.message || null,
+      });
+      setDevicesErr(devicePanelErrorMessage(err));
     } finally {
       setDevicesBusy(false);
     }

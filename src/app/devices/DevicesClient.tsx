@@ -80,6 +80,15 @@ function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
 }
 
+function deviceListMessage(error: any) {
+  const code = String(error?.code || "");
+  if (code === "context_unavailable") return "Your home context could not be loaded.";
+  if (code === "forbidden") return "This account does not have access to these devices.";
+  if (code === "backend_unavailable") return "Devices are temporarily unavailable. Try again.";
+  if (code === "not_authenticated") return "Please sign in again to load your devices.";
+  return error?.message || "Failed to load devices";
+}
+
 function pickDbId(d: AnyDevice) {
   return d?.id || null;
 }
@@ -477,11 +486,18 @@ export default function DeviceClient() {
     setErr(null);
     try {
       const list = await deviceService.getAssignedDevices(estateId || undefined);
-      const nextList = Array.isArray(list) ? list.filter((device) => String(device?.home_id || "") === String(homeId || "")) : [];
+      const nextList = Array.isArray(list) ? list : [];
       setItems(nextList);
       await hydrateStates(nextList);
     } catch (e: any) {
-      setErr(e?.response?.data?.error || e?.message || "Failed to load devices");
+      console.error("[consumer.devices.list] load_failed", {
+        estateId,
+        homeId,
+        code: e?.code || null,
+        status: e?.status || e?.response?.status || null,
+        technical: e?.technical || e?.response?.data?.error || e?.message || null,
+      });
+      setErr(deviceListMessage(e));
       setItems([]);
     } finally {
       setLoading(false);

@@ -8,6 +8,7 @@ import { loginWithEmail } from "@/services/authService";
 import { decodeToken, isExpired, setCookie } from "@/lib/auth";
 import { useSessionStore } from "@/store/useSessionStore";
 import API, { setApiAuthToken } from "@/services/api";
+import { sanitizeNextHref } from "@/lib/navigationSafety";
 
 function pickUserFromContext(payload: any) {
   return (
@@ -116,8 +117,8 @@ export default function LoginClient() {
         // ok
       }
 
-      const next = searchParams.get("next");
-      router.replace(next || "/home");
+      const next = sanitizeNextHref(searchParams.get("next"), "/home");
+      router.replace(next);
     } catch (e: any) {
       setErr(e?.response?.data?.error || e?.message || "Login failed");
     } finally {

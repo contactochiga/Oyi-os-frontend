@@ -9,6 +9,7 @@ import { signUpWithEmail } from "@/services/authService";
 import { getConsumerApiBaseURL } from "@/services/apiBase";
 import { decodeToken, isExpired, setCookie } from "@/lib/auth";
 import { useSessionStore } from "@/store/useSessionStore";
+import { sanitizeNextHref } from "@/lib/navigationSafety";
 
 type Step = "form" | "otp";
 
@@ -177,7 +178,7 @@ export default function SignupClient() {
   const searchParams = useSearchParams();
   const { setSession, hydrate, token } = useSessionStore();
 
-  const next = useMemo(() => searchParams.get("next") || "/home", [searchParams]);
+  const next = useMemo(() => sanitizeNextHref(searchParams.get("next"), "/home"), [searchParams]);
 
   const [step, setStep] = useState<Step>("form");
 

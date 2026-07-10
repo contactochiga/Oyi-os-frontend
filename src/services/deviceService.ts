@@ -24,6 +24,35 @@ export type IrProfileOption = {
   source?: string;
 };
 
+function normalizeDeviceListError(err: any) {
+  const status = Number(err?.response?.status || 0);
+  const backend = String(err?.response?.data?.error || "").trim();
+  const error = new Error(
+    status === 400
+      ? "Your home context could not be loaded."
+      : status === 401
+      ? "Please sign in again to load your devices."
+      : status === 403
+      ? "This account does not have access to these devices."
+      : status >= 500
+      ? "Devices are temporarily unavailable. Try again."
+      : backend || err?.message || "Failed to load devices",
+  ) as Error & { status?: number; code?: string; technical?: string };
+  error.status = status;
+  error.code =
+    status === 400
+      ? "context_unavailable"
+      : status === 401
+      ? "not_authenticated"
+      : status === 403
+      ? "forbidden"
+      : status >= 500
+      ? "backend_unavailable"
+      : "device_list_failed";
+  error.technical = backend || err?.message || "Failed to load devices";
+  return error;
+}
+
 /**
  * ✅ RULES (keep it simple)
  * - DISCOVERY = /devices/discover  (things Tuya can see, not yet “bound”)
@@ -56,8 +85,8 @@ export const deviceService = {
     try {
       const res = await API.get(`/devices/estate/${encodeURIComponent(estateId)}`);
       return res.data?.devices ?? res.data ?? [];
-    } catch {
-      return [];
+    } catch (err: any) {
+      throw normalizeDeviceListError(err);
     }
   },
 
@@ -72,8 +101,8 @@ export const deviceService = {
         params: { include_unassigned: true },
       });
       return res.data?.devices ?? res.data ?? [];
-    } catch {
-      return [];
+    } catch (err: any) {
+      throw normalizeDeviceListError(err);
     }
   },
 

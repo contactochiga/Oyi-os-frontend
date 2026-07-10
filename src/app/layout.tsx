@@ -8,6 +8,7 @@ import NotificationsBridge from "@/app/components/NotificationsBridge";
 import PresenceBridge from "@/app/components/PresenceBridge";
 import GeoFenceBridge from "@/app/components/GeoFenceBridge";
 import ContextIsolationBridge from "@/app/components/ContextIsolationBridge";
+import RscNavigationGuard from "@/app/components/RscNavigationGuard";
 import type { Metadata, Viewport } from "next";
 
 export const metadata: Metadata = {
@@ -38,6 +39,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body className="min-h-screen bg-black text-white">
         <ViewportKeyboardFix />
+        <RscNavigationGuard />
         <CapacitorBoot />
         <ReactQueryProvider>
           <AuthProvider>
