@@ -2,11 +2,25 @@
 import axios from "axios";
 import { getConsumerApiBaseURL } from "./apiBase";
 
+let lastLoggedBaseURL: string | null = null;
+
 /**
  * Normalize backend URL
  */
 function getBaseURL() {
   return getConsumerApiBaseURL();
+}
+
+function logResolvedBaseURL(reason: string, url: string) {
+  if (typeof window === "undefined") return;
+  if (lastLoggedBaseURL === `${reason}:${url}`) return;
+  lastLoggedBaseURL = `${reason}:${url}`;
+  console.info("[consumer.api.base]", {
+    reason,
+    baseURL: url,
+    runtime: runtimeLabel(),
+    location: window.location.href,
+  });
 }
 
 /**
@@ -79,6 +93,7 @@ export function setApiAuthToken(token: string | null) {
  */
 const API = axios.create({
   baseURL: getBaseURL(),
+  withCredentials: true,
   headers: {
     "Content-Type": "application/json",
     "X-Ochiga-Surface": "consumer",
@@ -95,6 +110,7 @@ const API = axios.create({
  */
 API.interceptors.request.use((config) => {
   config.baseURL = getBaseURL();
+  logResolvedBaseURL("request", String(config.baseURL || ""));
   if (typeof window !== "undefined") {
     const lsToken =
       getLS("oyi_consumer_token_ls") || // ✅ your new key
