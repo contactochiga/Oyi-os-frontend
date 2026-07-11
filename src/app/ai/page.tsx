@@ -8,6 +8,7 @@ import LayoutWrapper from "@/app/components/LayoutWrapper";
 import useAuth from "@/hooks/useAuth";
 import useActiveContext from "@/hooks/useActiveContext";
 import { aiService, type AiChatResponse } from "@/services/aiService";
+import { deriveConsumerOperationalObject, deriveConsumerTarget } from "@/services/operationalObjectContext";
 import { oyiService, type OyiThreadMessage } from "@/services/oyiService";
 import { resolveConsumerOyiTarget } from "@/services/oyiTargetRegistry";
 import type { OyiTarget } from "@/services/oyiService";
@@ -384,22 +385,33 @@ function OyiAiCommandCenterContent() {
   }
 
   const context = useMemo(
-    () => ({
-      surface: "consumer",
-      scope: "home",
-      module: moduleContext,
-      route: pathname || "/ai",
-      page: pathname || "/ai",
-      estate_id: activeContext.estate_id || (user as any)?.estate_id || null,
-      home_id: activeContext.home_id || (user as any)?.home_id || null,
-      room_id: searchParams.get("roomId") || null,
-      device_id: searchParams.get("deviceId") || null,
-      visitor_id: searchParams.get("visitorId") || null,
-      wallet_reference: searchParams.get("transactionId") || null,
-      maintenance_id: searchParams.get("ticketId") || null,
-      notification_id: searchParams.get("notificationId") || null,
-      conversation_id: searchParams.get("threadId") || null,
-    }),
+    () => {
+      const routeContext = {
+        module: moduleContext,
+        pathname: pathname || "/ai",
+        estate_id: activeContext.estate_id || (user as any)?.estate_id || null,
+        home_id: activeContext.home_id || (user as any)?.home_id || null,
+        searchParams,
+      };
+      return {
+        surface: "consumer",
+        scope: "home",
+        module: moduleContext,
+        route: pathname || "/ai",
+        page: pathname || "/ai",
+        estate_id: routeContext.estate_id,
+        home_id: routeContext.home_id,
+        room_id: searchParams.get("roomId") || null,
+        device_id: searchParams.get("deviceId") || null,
+        visitor_id: searchParams.get("visitorId") || null,
+        wallet_reference: searchParams.get("transactionId") || null,
+        maintenance_id: searchParams.get("ticketId") || null,
+        notification_id: searchParams.get("notificationId") || null,
+        conversation_id: searchParams.get("threadId") || null,
+        operational_object: deriveConsumerOperationalObject(routeContext),
+        target: deriveConsumerTarget(routeContext),
+      };
+    },
     [activeContext.estate_id, activeContext.home_id, moduleContext, pathname, searchParams, user],
   );
 
