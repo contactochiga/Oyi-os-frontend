@@ -20,6 +20,78 @@ export type OyiTarget = {
   action?: "inspect" | "approve" | "assign" | "acknowledge" | "verify" | "resolve" | "escalate" | "control" | "pay" | "message";
 };
 
+export type OperationalObjectType =
+  | "estate"
+  | "building"
+  | "floor"
+  | "home"
+  | "room"
+  | "zone"
+  | "device"
+  | "visitor"
+  | "access_pass"
+  | "maintenance_request"
+  | "wallet"
+  | "transaction"
+  | "service_account"
+  | "infrastructure_asset"
+  | "provider"
+  | "camera"
+  | "meter"
+  | "scene"
+  | "automation"
+  | "message_thread"
+  | "community_post"
+  | "notification"
+  | "operational_event"
+  | "twin_node";
+
+export type TruthState =
+  | "confirmed"
+  | "observed"
+  | "inferred"
+  | "predicted"
+  | "pending_confirmation"
+  | "unavailable"
+  | "unsupported"
+  | "permission_restricted";
+
+export type OperationalObject = {
+  object_type: OperationalObjectType;
+  canonical_id: string;
+  label: string;
+  estate_id: string | null;
+  building_id: string | null;
+  home_id: string | null;
+  room_id: string | null;
+  parent_id: string | null;
+  source_module: string | null;
+  capabilities: string[];
+  current_state: string | null;
+  health: string | null;
+  permissions: string[];
+  relationships: Record<string, any>;
+  evidence_references: string[];
+  metadata: Record<string, any>;
+  freshness: string | null;
+};
+
+export type CanonicalTruth = {
+  title: string;
+  body: string;
+  truth_state: TruthState;
+  severity: OyiSeverity;
+  source_event: string | null;
+  confidence: number | null;
+  object: OperationalObject | null;
+  occurred_at: string | null;
+  freshness: string | null;
+  recommended_actions: Array<Record<string, any>>;
+  active_execution: Record<string, any> | null;
+  target: OyiTarget | null;
+  technical_details: Record<string, any> | null;
+};
+
 export type OyiAwareness = {
   headline: string;
   summary?: string;
@@ -60,6 +132,8 @@ export type OyiChatRequest = {
   active_scenes?: Array<Record<string, any>> | null;
   active_automations?: Array<Record<string, any>> | null;
   conversation_context?: Record<string, any> | null;
+  operational_object?: Partial<OperationalObject> | null;
+  target?: OyiTarget | null;
 };
 
 export type OyiChatResponse = {
@@ -76,6 +150,19 @@ export type OyiChatResponse = {
   awareness?: OyiAwareness;
   thread_id?: string;
   warnings?: string[];
+  truth?: CanonicalTruth;
+  operational_object?: OperationalObject | null;
+  context?: {
+    surface: OyiSurface;
+    estate_id: string | null;
+    home_id: string | null;
+    module: string | null;
+    context_source: string;
+    warnings: string[];
+  };
+  confirmations?: Array<Record<string, any>>;
+  approvalRequired?: boolean;
+  requiresConfirmation?: boolean;
 };
 
 export type OyiThread = {
@@ -109,8 +196,56 @@ export const oyiService = {
   },
 
   async chat(input: OyiChatRequest) {
-    const res = await API.post("/oyi/chat", input);
-    return res.data as OyiChatResponse;
+    const res = await API.post("/oyi/runtime/conversation", {
+      message: input.message,
+      surface: input.surface,
+      estate_id: input.context?.estate_id || input.estate_id || null,
+      home_id: input.context?.home_id || input.home_id || null,
+      module: input.module || input.context?.module || null,
+      role: input.role || null,
+      thread_id: input.thread_id || null,
+      context: input.context || null,
+      device_id: input.device_id || null,
+      device_name: input.device_name || null,
+      room_id: input.room_id || null,
+      room_name: input.room_name || null,
+      control_profile: input.control_profile || null,
+      primary_state: input.primary_state || null,
+      health_status: input.health_status || null,
+      supported_controls: input.supported_controls || null,
+      channel_definitions: input.channel_definitions || null,
+      memory_summary: input.memory_summary || null,
+      relationships: input.relationships || null,
+      predictive_findings: input.predictive_findings || null,
+      recent_executions: input.recent_executions || null,
+      active_scenes: input.active_scenes || null,
+      active_automations: input.active_automations || null,
+      conversation_context: input.conversation_context || null,
+      operational_object: input.operational_object || null,
+      target: input.target || null,
+    });
+    const runtime = res.data?.response || {};
+    return {
+      ok: Boolean(res.data?.ok),
+      message: runtime.message || runtime.reply || "",
+      reply: runtime.reply || runtime.message || "",
+      intent: runtime.intent,
+      understood: runtime.understood,
+      execution: runtime.execution,
+      display_mode: runtime.display_mode,
+      cards: Array.isArray(runtime.cards) ? runtime.cards : [],
+      sources: Array.isArray(runtime.sources) ? runtime.sources : [],
+      suggested_actions: Array.isArray(runtime.suggested_actions) ? runtime.suggested_actions : [],
+      awareness: runtime.awareness,
+      thread_id: runtime.thread_id,
+      warnings: Array.isArray(runtime.warnings) ? runtime.warnings : [],
+      truth: runtime.truth || undefined,
+      operational_object: runtime.operational_object || null,
+      context: runtime.context || undefined,
+      confirmations: Array.isArray(runtime.confirmations) ? runtime.confirmations : [],
+      approvalRequired: Boolean(runtime.approvalRequired),
+      requiresConfirmation: Boolean(runtime.requiresConfirmation),
+    } as OyiChatResponse;
   },
 
   async listThreads(input: { surface?: OyiSurface; estate_id?: string | null; home_id?: string | null; limit?: number; context?: OisContext | null }) {

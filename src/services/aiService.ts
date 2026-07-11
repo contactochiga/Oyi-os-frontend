@@ -1,7 +1,6 @@
 // src/services/aiService.ts
 import API from "./api";
 import { oyiService, type OyiAwareness } from "./oyiService";
-import { runOyiCoreConversation } from "./oyiCoreRuntimeService";
 
 export type AiAction =
   | {
@@ -125,42 +124,14 @@ export const aiService = {
         ...(context?.active_scenes ? { active_scenes: context.active_scenes } : {}),
         ...(context?.active_automations ? { active_automations: context.active_automations } : {}),
         ...(context?.conversation_context ? { conversation_context: context.conversation_context } : {}),
+        ...(context?.operational_object ? { operational_object: context.operational_object } : {}),
+        ...(context?.target ? { target: context.target } : {}),
         context: context?.ois_context || context || null,
         message,
       });
       return normalize({ ...unified, reply: unified.reply || unified.message });
-    } catch {
-      // Keep the legacy action-capable route alive as a compatibility fallback.
-    }
-
-    try {
-      const res = await API.post("/ai/chat", { message, context });
-      return normalize(res.data);
     } catch (err) {
       console.warn("aiService.chat error:", err);
-
-      try {
-        const runtime = await runOyiCoreConversation(message, context);
-        if (runtime) {
-          return {
-            reply: String(runtime.answer || runtime.summary || "I reviewed the current operational context."),
-            intent: runtime.intent || "info",
-            confidence:
-              typeof runtime.confidence === "number"
-                ? Math.max(0, Math.min(1, runtime.confidence))
-                : 0.4,
-            actions: [],
-            panel: null,
-            requiresConfirmation: Boolean(runtime.approvalRequired),
-            approvalRequired: Boolean(runtime.approvalRequired),
-            executionSummary: runtime.executionSummary,
-            executionHistory: runtime.executionHistory,
-          };
-        }
-      } catch (runtimeErr) {
-        console.warn("aiService.chat runtime fallback error:", runtimeErr);
-      }
-
       return {
         reply: "I couldn't reach Oyi right now.",
         intent: "error",
