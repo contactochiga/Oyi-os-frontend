@@ -171,6 +171,12 @@ function actionForNotification(item: any, category: ActivityCategory): ActivityA
 }
 
 function normalizeActivityItem(item: any): ActivityEvent {
+  const canonicalTruth = item?.truth && typeof item.truth === "object" ? item.truth : item?.metadata?.truth;
+  const canonicalObject = item?.operational_object && typeof item.operational_object === "object"
+    ? item.operational_object
+    : item?.metadata?.operational_object && typeof item.metadata.operational_object === "object"
+      ? item.metadata.operational_object
+      : null;
   const category = categoryFrom(`${item.category} ${item.source} ${item.type} ${item.title} ${item.summary || item.description}`);
   const severity = severityFrom(`${item.severity} ${item.type} ${item.title}`);
   const rawAction = item.action && typeof item.action === "object" ? item.action : item.metadata?.action;
@@ -219,12 +225,35 @@ function normalizeActivityItem(item: any): ActivityEvent {
     : runtimeAwareness
       ? { href: runtimeAwareness.destination, route: runtimeAwareness.destination, label: runtimeAwareness.actionLabel, entity_id: null }
       : actionForNotification(item, category);
-  const title = runtimeAwareness?.title || humanizeActivityText(item.title || item.type || item.source, "Home activity");
-  const description = runtimeAwareness?.summary || humanizeActivityText(item.summary || item.description || title, "Home activity");
+  const title = canonicalTruth?.title
+    ? cleanRuntimeText(canonicalTruth.title, "Home activity")
+    : runtimeAwareness?.title || humanizeActivityText(item.title || item.type || item.source, "Home activity");
+  const description = canonicalTruth?.body
+    ? cleanRuntimeText(canonicalTruth.body, title)
+    : runtimeAwareness?.summary || humanizeActivityText(item.summary || item.description || title, "Home activity");
+  const objectType = String(canonicalObject?.object_type || "").toLowerCase();
+  const truthState = String(canonicalTruth?.truth_state || "").toLowerCase();
+  const truthSeverity = String(canonicalTruth?.severity || "").toLowerCase();
   return {
     ...item,
-    category: (item.category || runtimeCategory || category) as ActivityCategory,
-    severity: (item.severity || runtimeSeverity || severity) as ActivitySeverity,
+    category: (
+      item.category
+      || (objectType === "wallet" || objectType === "transaction" ? "wallet" : null)
+      || (objectType === "service_account" ? "service" : null)
+      || (objectType === "maintenance_request" ? "maintenance" : null)
+      || (objectType === "message_thread" ? "message" : null)
+      || (objectType === "community_post" ? "community" : null)
+      || (objectType === "visitor" || objectType === "access_pass" ? "visitor" : null)
+      || (objectType === "device" || objectType === "device_channel" ? "device" : null)
+      || runtimeCategory
+      || category
+    ) as ActivityCategory,
+    severity: (
+      item.severity
+      || (/critical/.test(truthSeverity) ? "critical" : /warning|attention/.test(`${truthSeverity} ${truthState}`) ? "warning" : null)
+      || runtimeSeverity
+      || severity
+    ) as ActivitySeverity,
     title,
     description,
     summary: item.summary || description,

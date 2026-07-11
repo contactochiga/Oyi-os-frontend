@@ -47,6 +47,36 @@ function providerLabel(value: any) {
   return raw.replace(/_/g, " ");
 }
 
+function truthItem(raw: Record<string, any>): ConsumerAwarenessItem | null {
+  const truth = record(raw.truth);
+  if (!Object.keys(truth).length) return null;
+  const operationalObject = record(truth.object || raw.operational_object);
+  const title = cleanRuntimeText(text(truth.title, raw.title), "Home status available");
+  const summary = cleanRuntimeText(text(truth.body, raw.summary, raw.description), "No important activity needs your attention.");
+  const truthState = text(truth.truth_state).toLowerCase();
+  const severity = text(truth.severity).toLowerCase();
+  const icon = iconFor(text(operationalObject.object_type, raw.type), title, summary);
+  const urgency: ConsumerAwarenessItem["urgency"] =
+    /critical/.test(severity) ? "critical" : /warning|attention|pending|unavailable|unsupported|permission/.test(`${severity} ${truthState}`) ? "warning" : "normal";
+  const entityId = text(operationalObject.canonical_id);
+  return {
+    id: text(raw.id, truth.source_event, title),
+    title,
+    summary: sentence(summary, "No important activity needs your attention."),
+    actionLabel: actionLabelFor(icon, text(operationalObject.object_type, raw.type), urgency),
+    destination: icon === "device" && entityId
+      ? `/devices?deviceId=${encodeURIComponent(entityId)}`
+      : icon === "visitor" && entityId
+        ? `/visitors?visitorId=${encodeURIComponent(entityId)}`
+        : (icon === "service" || icon === "wallet") && entityId
+          ? `/services?serviceId=${encodeURIComponent(entityId)}`
+          : "/activity",
+    urgency,
+    icon,
+    priority: priorityFor(icon, urgency, text(operationalObject.object_type, raw.type)),
+  };
+}
+
 export function runtimeSourceLabel(value: any) {
   return originLabel(value, "System activity").toLowerCase();
 }
@@ -136,6 +166,8 @@ function deviceName(raw: Record<string, any>) {
 export function awarenessFromRuntimeSignal(rawSignal: Record<string, any> | null | undefined): ConsumerAwarenessItem | null {
   const raw = record(rawSignal);
   if (!Object.keys(raw).length) return null;
+  const canonicalTruth = truthItem(raw);
+  if (canonicalTruth) return canonicalTruth;
   const metadata = record(raw.metadata);
   const context = record(raw.context);
   const entity = record(raw.entity);

@@ -28,6 +28,7 @@ export type OperationalObjectType =
   | "room"
   | "zone"
   | "device"
+  | "device_channel"
   | "visitor"
   | "access_pass"
   | "maintenance_request"
@@ -43,6 +44,7 @@ export type OperationalObjectType =
   | "message_thread"
   | "community_post"
   | "notification"
+  | "operational_incident"
   | "operational_event"
   | "twin_node";
 
