@@ -14,6 +14,20 @@ export type DeviceStateResponse = DeviceRuntimeContract & {
   error?: string;
 };
 
+export type DeviceRuntimeSummary = DeviceRuntimeContract & {
+  device_id: string;
+  name?: string;
+  estate_id?: string | null;
+  home_id?: string | null;
+  room_id?: string | null;
+  parent_device_id?: string | null;
+  is_virtual?: boolean;
+  freshness?: string;
+  stale?: boolean;
+};
+
+export type DeviceStateInclude = "intelligence" | "timeline";
+
 export type IrProfileOption = {
   key: string;
   label?: string;
@@ -128,9 +142,12 @@ export const deviceService = {
    * - If backend returns 404 (device not found in DB / wrong estate), we return { state: {} }
    * - We DO NOT throw
    */
-  async getDeviceState(deviceId: string): Promise<DeviceStateResponse> {
+  async getDeviceState(deviceId: string, options: { include?: DeviceStateInclude[] } = {}): Promise<DeviceStateResponse> {
     try {
-      const res = await API.get(`/devices/${encodeURIComponent(deviceId)}/state`);
+      const include = Array.from(new Set(options.include || [])).join(",");
+      const res = await API.get(`/devices/${encodeURIComponent(deviceId)}/state`, {
+        params: include ? { include } : undefined,
+      });
 
       return {
         deviceId: res.data?.deviceId,
@@ -138,6 +155,7 @@ export const deviceService = {
         normalized_state: res.data?.normalized_state ?? null,
         capabilities: res.data?.capabilities ?? [],
         supported_controls: res.data?.supported_controls ?? [],
+        capability_codes: res.data?.capability_codes ?? [],
         channel_definitions: res.data?.channel_definitions ?? [],
         control_profile: res.data?.control_profile ?? null,
         health_status: res.data?.health_status ?? null,
@@ -167,6 +185,30 @@ export const deviceService = {
         state: {},
         error: err?.response?.data?.error || err?.message || "Failed to load device state",
       };
+    }
+  },
+
+  async getRuntimeDevices(homeId?: string | null): Promise<DeviceRuntimeSummary[]> {
+    try {
+      const res = await API.get("/devices/runtime", {
+        params: homeId ? { home_id: homeId } : undefined,
+      });
+      const rows = Array.isArray(res.data?.devices) ? res.data.devices : [];
+      return rows
+        .filter((row: any) => row?.device_id)
+        .map((row: any) => ({
+          ...row,
+          deviceId: String(row.device_id),
+          state: row?.state ?? {},
+          normalized_state: row?.normalized_state ?? null,
+          capabilities: row?.capabilities ?? [],
+          supported_controls: row?.supported_controls ?? [],
+          capability_codes: row?.capability_codes ?? [],
+          channel_definitions: row?.channel_definitions ?? [],
+          lastSeen: row?.last_refresh ?? row?.runtime_timestamp ?? null,
+        }));
+    } catch (err: any) {
+      throw normalizeDeviceListError(err);
     }
   },
 

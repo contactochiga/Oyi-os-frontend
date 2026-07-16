@@ -600,29 +600,47 @@ export default function DeviceClient() {
   const latestAwareness = useRuntimeIntelligenceStore((state) => state.latestAwareness);
   const latestRecommendations = useRuntimeIntelligenceStore((state) => state.latestRecommendations);
 
-  async function hydrateStates(list: AnyDevice[]) {
-    const jobs = list
-      .map((d) => ({ sid: pickDbId(d) ? String(pickDbId(d)) : null }))
-      .filter((x) => x.sid)
-      .map(async ({ sid }) => {
-        try {
-          const res = await deviceService.getDeviceState(String(sid));
-          return { sid: String(sid), runtime: normalizeRuntimeContract(list.find((d) => String(pickDbId(d) || "") === String(sid)) || {}, res), state: (res as any)?.state ?? res ?? {} };
-        } catch {
-          return null;
-        }
-      });
-    const settled = await Promise.allSettled(jobs);
+  async function hydrateStates(
+    list: AnyDevice[],
+    prefetchedRuntime?: Awaited<ReturnType<typeof deviceService.getRuntimeDevices>>,
+  ) {
     const patch: Record<string, any> = {};
     const runtimePatch: Record<string, DeviceRuntimeContract> = {};
-    settled.forEach((s) => {
-      if (s.status === "fulfilled" && s.value?.sid) {
-        patch[s.value.sid] = s.value.state;
-        runtimePatch[s.value.sid] = s.value.runtime;
-      }
-    });
+    try {
+      const runtimeDevices = prefetchedRuntime || await deviceService.getRuntimeDevices(homeId);
+      const runtimeById = new Map(runtimeDevices.map((runtime) => [String(runtime.device_id), runtime]));
+      list.forEach((device) => {
+        const sid = String(pickDbId(device) || "");
+        const runtime = runtimeById.get(sid);
+        if (!sid || !runtime) return;
+        patch[sid] = runtime.state || {};
+        runtimePatch[sid] = normalizeRuntimeContract(device, runtime);
+      });
+    } catch (error: any) {
+      console.error("[consumer.devices.runtime] batch_load_failed", {
+        estateId,
+        homeId,
+        code: error?.code || null,
+        status: error?.status || error?.response?.status || null,
+        technical: error?.technical || error?.response?.data?.error || error?.message || null,
+      });
+      return;
+    }
     if (Object.keys(patch).length) setStateMap((prev) => ({ ...prev, ...patch }));
     if (Object.keys(runtimePatch).length) setRuntimeMap((prev) => ({ ...prev, ...runtimePatch }));
+  }
+
+  async function hydrateDeviceIntelligence(device: AnyDevice) {
+    const sid = String(pickDbId(device) || "");
+    if (!sid) return;
+    try {
+      const response = await deviceService.getDeviceState(sid, { include: ["intelligence"] });
+      if (response.error) return;
+      setStateMap((current) => ({ ...current, [sid]: response.state || {} }));
+      setRuntimeMap((current) => ({ ...current, [sid]: normalizeRuntimeContract(device, response) }));
+    } catch {
+      // The live runtime remains usable while optional intelligence is unavailable.
+    }
   }
 
   async function load() {
@@ -635,10 +653,13 @@ export default function DeviceClient() {
     setLoading(true);
     setErr(null);
     try {
-      const list = await deviceService.getAssignedDevices(estateId || undefined);
+      const [list, runtimeDevices] = await Promise.all([
+        deviceService.getAssignedDevices(estateId || undefined),
+        deviceService.getRuntimeDevices(homeId).catch(() => []),
+      ]);
       const nextList = Array.isArray(list) ? list : [];
       setItems(nextList);
-      await hydrateStates(nextList);
+      await hydrateStates(nextList, runtimeDevices);
     } catch (e: any) {
       console.error("[consumer.devices.list] load_failed", {
         estateId,
@@ -952,6 +973,7 @@ export default function DeviceClient() {
     setSheetDevice(device);
     setSheetOpen(true);
     void warmState(device);
+    void hydrateDeviceIntelligence(device);
   }
 
   async function assignListedDevice() {

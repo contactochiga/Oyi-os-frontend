@@ -212,15 +212,18 @@ export default function RoomsClient() {
       const targets = selectedDevices.slice(0, 8);
       const updates: Record<string, any> = {};
       const nextOn: Record<string, boolean | null> = {};
-      await Promise.all(targets.map(async (device) => {
+      const runtimeDevices = await deviceService.getRuntimeDevices(homeId).catch(() => []);
+      const runtimeById = new Map(runtimeDevices.map((runtime) => [String(runtime.device_id), runtime]));
+      targets.forEach((device) => {
         const id = pickId(device);
         if (!id) return;
         const sid = String(id);
         if (stateMap[sid]) return;
-        const res = await deviceService.getDeviceState(sid);
-        updates[sid] = res?.state || {};
+        const runtime = runtimeById.get(String(device.id || device.device_id || sid));
+        if (!runtime) return;
+        updates[sid] = runtime.state || {};
         nextOn[sid] = readOnState(device, updates[sid]);
-      }));
+      });
       if (cancelled) return;
       if (Object.keys(updates).length) setStateMap((prev) => ({ ...prev, ...updates }));
       if (Object.keys(nextOn).length) setOnMap((prev) => ({ ...prev, ...nextOn }));

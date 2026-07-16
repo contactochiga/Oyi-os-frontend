@@ -18,7 +18,8 @@
     "cap:open:ios": "npx cap open ios",
     "cap:copy": "npx cap copy",
     "cap:update": "npx cap update",
-    "validate:release": "node scripts/validate-release.mjs"
+    "smoke:device-runtime-batch": "node scripts/device-runtime-batch-smoke.mjs",
+    "validate:release": "node scripts/validate-release.mjs && npm run smoke:device-runtime-batch"
   },
   "dependencies": {
     "@capacitor-community/speech-recognition": "^6.0.0",

@@ -6,6 +6,7 @@ export type DeviceRuntimeContract = {
   normalized_state?: RuntimeStateRecord | null;
   capabilities?: any[];
   supported_controls?: string[];
+  capability_codes?: string[];
   channel_definitions?: Array<{
     index: number;
     code: string;
@@ -140,6 +141,7 @@ export function normalizeRuntimeContract(device: Record<string, any> | null | un
     normalized_state: Object.keys(normalized).length ? normalized : null,
     capabilities: Array.isArray(source.capabilities) ? source.capabilities : Array.isArray(device?.capabilities) ? device.capabilities : [],
     supported_controls: Array.isArray(source.supported_controls) ? source.supported_controls : Array.isArray(device?.supported_controls) ? device.supported_controls : [],
+    capability_codes: Array.isArray(source.capability_codes) ? source.capability_codes : [],
     channel_definitions: Array.isArray(source.channel_definitions) ? source.channel_definitions : [],
     control_profile: profile || null,
     health_status: health || null,
