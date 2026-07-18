@@ -8,15 +8,8 @@ const nextConfig = {
     unoptimized: true,
   },
 
-  // ✅ stop Vercel build from failing at "Linting and checking validity of types..."
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-
-  // ✅ stop Vercel build from failing at TypeScript checking step
   typescript: {
     tsconfigPath: "./tsconfig.next.json",
-    ignoreBuildErrors: true,
   },
 };
 

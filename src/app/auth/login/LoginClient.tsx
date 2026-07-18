@@ -231,6 +231,10 @@ export default function LoginClient() {
                   {loading ? "Signing in…" : "Continue"}
                 </button>
 
+                <Link href="/auth/reset" className="block w-full py-1 text-center text-xs font-medium text-white/42 transition hover:text-white/68">
+                  Forgot password?
+                </Link>
+
                 {process.env.NODE_ENV === "development" ? (
                   <button
                     onClick={() => router.push("/auth/signup")}

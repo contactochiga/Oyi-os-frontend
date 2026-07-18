@@ -55,6 +55,37 @@ export async function loginWithEmail(email: string, password: string) {
   }
 }
 
+export async function requestPasswordReset(email: string) {
+  try {
+    const res = await API.post("/auth/password/forgot", { email });
+    return res.data;
+  } catch (err: any) {
+    return { error: pickError(err, "We could not start password recovery right now.") };
+  }
+}
+
+export async function verifyPasswordReset(email: string, code: string) {
+  try {
+    const res = await API.post("/auth/password/verify-reset", { email, code });
+    return res.data;
+  } catch (err: any) {
+    return { error: pickError(err, "That reset code could not be verified.") };
+  }
+}
+
+export async function completePasswordReset(input: { email: string; resetToken: string; password: string }) {
+  try {
+    const res = await API.post("/auth/password/reset", {
+      email: input.email,
+      resetToken: input.resetToken,
+      password: input.password,
+    });
+    return res.data;
+  } catch (err: any) {
+    return { error: pickError(err, "We could not update your password.") };
+  }
+}
+
 export type InvitePreview = {
   invite_id: string;
   estate: { id: string; name: string };
