@@ -418,8 +418,8 @@ function deviceRendererKind(device: AnyDevice, runtime?: Partial<DeviceRuntimeCo
   const profile = learnedIrTemplate(device);
   const text = `${device?.remote_type || ""} ${device?.remoteType || ""} ${device?.ir_profile || ""} ${device?.device_type || ""} ${device?.product_name || ""} ${device?.productName || ""} ${device?.model || ""} ${device?.category || ""} ${device?.type || ""} ${device?.name || ""} ${device?.metadata?.category || ""} ${device?.metadata?.remoteType || ""} ${device?.metadata?.ir_profile || ""}`.toLowerCase();
   if (["switch", "plug", "light"].includes(family)) return family === "plug" ? "socket" : "switch";
-  if (family === "tv" || /\btv\b|television|decoder|set.top/.test(text)) return "tv";
-  if ((family === "climate" || family === "thermostat") && !canSwitchDevice(device, runtime)) return "ac";
+  if (["tv", "television", "projector", "set_top_box", "speaker"].includes(family) || /\btv\b|television|decoder|set.top/.test(text)) return "tv";
+  if ((["climate", "air_conditioner", "thermostat"].includes(family)) && !canSwitchDevice(device, runtime)) return "ac";
   if (!canSwitchDevice(device, runtime) && /\bac\b|aircon|air.condition|hvac|climate/.test(text)) return "ac";
   if (profile === "tv") return "tv";
   if (profile === "ac") return "ac";
@@ -783,10 +783,26 @@ export default function DeviceClient() {
 
   useEffect(() => {
     if (!items.length) return;
-    const t = window.setInterval(() => void hydrateStates(items), 20000);
-    return () => window.clearInterval(t);
+    let cancelled = false;
+    let timer: number | null = null;
+    const refreshDelay = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return 180_000;
+      return sheetOpen ? 15_000 : 45_000;
+    };
+    const schedule = () => {
+      if (cancelled) return;
+      timer = window.setTimeout(async () => {
+        await hydrateStates(items);
+        schedule();
+      }, refreshDelay());
+    };
+    schedule();
+    return () => {
+      cancelled = true;
+      if (timer != null) window.clearTimeout(timer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items]);
+  }, [items, sheetOpen, activeContext.contextKey]);
 
   useEffect(() => {
     if (!sheetOpen || !sheetDevice) {
@@ -1839,8 +1855,9 @@ function SocketRenderer(props: Parameters<typeof SwitchRenderer>[0]) {
 
 function ACRenderer({ device, state, runtime, busy, onCommand }: { device: AnyDevice; state: any; runtime?: Partial<DeviceRuntimeContract> | null; busy: boolean; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => void }) {
   const temp = readTemperature(state, runtime);
+  const supported = Array.isArray(runtime?.supported_controls) ? runtime.supported_controls.map((item) => String(item).toLowerCase()) : [];
   const powerCode = commandCodeFor(device, [/^power$/, /power_switch/, /power_state/]);
-  const canPower = Boolean(powerCode);
+  const canPower = Boolean(powerCode || supported.includes("power"));
   const tempCode = commandCodeFor(device, [/temp_set/, /temperature/, /^temp$/]);
   const modeCode = commandCodeFor(device, [/^mode$/, /work_mode/]);
   const fanCode = commandCodeFor(device, [/fan/, /wind_speed/, /windspeed/]);
@@ -1848,6 +1865,8 @@ function ACRenderer({ device, state, runtime, busy, onCommand }: { device: AnyDe
   const modes = [["cool", "Cool", Snowflake], ["heat", "Heat", Flame], ["dry", "Dry", Moon], ["fan", "Fan", Fan], ["auto", "Auto", Thermometer]] as const;
   const fanSpeeds = ["low", "medium", "high", "auto"] as const;
   const currentTemp = Number(String(temp || "").replace(/[^\d]/g, "")) || 24;
+  const currentPower = readPowerState(state, runtime);
+  const nextPower = currentPower === null ? true : !currentPower;
   return (
     <div className="space-y-3">
       <div className="rounded-[28px] border border-sky-300/12 bg-[radial-gradient(circle_at_top,#0f3550_0%,rgba(6,12,22,0.74)_48%,rgba(255,255,255,0.035)_100%)] p-4">
@@ -1857,19 +1876,19 @@ function ACRenderer({ device, state, runtime, busy, onCommand }: { device: AnyDe
             <div className="mt-1 text-4xl font-semibold tracking-[-0.08em] text-white">{temp || "—"}<span className="text-lg text-white/42">°C</span></div>
             <div className="mt-1 text-xs text-white/42">Supported range 16°C – 30°C</div>
           </div>
-          {canPower ? <button type="button" disabled={busy || isOnline(device, runtime) === false} onClick={() => powerCode && onCommand(device, { type: "ac_remote", key: "power_toggle", [powerCode]: true }, { [powerCode]: true })} className="grid h-14 w-14 place-items-center rounded-full border border-sky-300/22 bg-sky-400/12 text-sky-100 shadow-[0_0_28px_rgba(56,189,248,0.18)]" aria-label="Power">
+          {canPower ? <button type="button" disabled={busy || isOnline(device, runtime) === false} onClick={() => onCommand(device, { type: "ac_remote", power: nextPower }, { power: nextPower, ...(powerCode ? { [powerCode]: nextPower } : {}) })} className="grid h-14 w-14 place-items-center rounded-full border border-sky-300/22 bg-sky-400/12 text-sky-100 shadow-[0_0_28px_rgba(56,189,248,0.18)]" aria-label="Power">
             <Power className="h-5 w-5" />
           </button> : null}
         </div>
         {tempCode ? <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-          <RemoteKey icon={Minus} label="Temp -" enabled onClick={() => onCommand(device, { [tempCode]: Math.max(16, currentTemp - 1) }, { [tempCode]: Math.max(16, currentTemp - 1), temperature: Math.max(16, currentTemp - 1) })} />
+          <RemoteKey icon={Minus} label="Temp -" enabled onClick={() => onCommand(device, { type: "ac_remote", temperature: Math.max(16, currentTemp - 1) }, { [tempCode]: Math.max(16, currentTemp - 1), temperature: Math.max(16, currentTemp - 1) })} />
           <div className="rounded-full border border-white/[0.06] bg-black/20 px-3 py-2 text-center text-[11px] text-white/46">16°C – 30°C</div>
-          <RemoteKey icon={Plus} label="Temp +" enabled onClick={() => onCommand(device, { [tempCode]: Math.min(30, currentTemp + 1) }, { [tempCode]: Math.min(30, currentTemp + 1), temperature: Math.min(30, currentTemp + 1) })} />
+          <RemoteKey icon={Plus} label="Temp +" enabled onClick={() => onCommand(device, { type: "ac_remote", temperature: Math.min(30, currentTemp + 1) }, { [tempCode]: Math.min(30, currentTemp + 1), temperature: Math.min(30, currentTemp + 1) })} />
         </div> : null}
       </div>
-      {modeCode ? <ControlGroup title="Mode">{modes.map(([key, label, Icon]) => <RemoteKey key={key} icon={Icon} label={label} enabled onClick={() => onCommand(device, { [modeCode]: key }, { [modeCode]: key })} />)}</ControlGroup> : null}
-      {fanCode ? <ControlGroup title="Fan">{fanSpeeds.map((speed) => <RemoteKey key={speed} icon={Wind} label={speed[0].toUpperCase() + speed.slice(1)} enabled onClick={() => onCommand(device, { [fanCode]: speed }, { [fanCode]: speed })} />)}</ControlGroup> : null}
-      {swingCode ? <ControlGroup title="Swing"><RemoteKey icon={ChevronUp} label="Swing" enabled onClick={() => onCommand(device, { [swingCode]: true }, { [swingCode]: true })} /></ControlGroup> : null}
+      {modeCode ? <ControlGroup title="Mode">{modes.map(([key, label, Icon]) => <RemoteKey key={key} icon={Icon} label={label} enabled onClick={() => onCommand(device, { type: "ac_remote", mode: key }, { [modeCode]: key })} />)}</ControlGroup> : null}
+      {fanCode ? <ControlGroup title="Fan">{fanSpeeds.map((speed) => <RemoteKey key={speed} icon={Wind} label={speed[0].toUpperCase() + speed.slice(1)} enabled onClick={() => onCommand(device, { type: "ac_remote", fan_speed: speed }, { [fanCode]: speed, fan_speed: speed })} />)}</ControlGroup> : null}
+      {swingCode ? <ControlGroup title="Swing"><RemoteKey icon={ChevronUp} label="Swing" enabled onClick={() => onCommand(device, { type: "ac_remote", swing: true }, { [swingCode]: true, swing: true })} /></ControlGroup> : null}
     </div>
   );
 }
@@ -1879,10 +1898,9 @@ function TVRenderer({ device, runtime, busy, onPower, onCommand }: { device: Any
   const exposedKeys = new Set(caps.tv);
   const supports = (...keys: string[]) => !exposedKeys.size || keys.some((key) => exposedKeys.has(key));
   const switchPower = canSwitchDevice(device, runtime);
-  const keyCode = commandCodeFor(device, [/ir_code/, /remote_key/, /key_code/, /control/]);
-  const canShow = (key: string, ...aliases: string[]) => !keyCode || supports(key, ...aliases);
-  const canSend = (key: string, ...aliases: string[]) => Boolean(keyCode && supports(key, ...aliases));
-  const sendKey = (key: string) => keyCode ? onCommand(device, { type: "tv_remote", key, command_key: key, [keyCode]: key }) : undefined;
+  const canShow = (key: string, ...aliases: string[]) => supports(key, ...aliases);
+  const canSend = (key: string, ...aliases: string[]) => supports(key, ...aliases);
+  const sendKey = (key: string) => onCommand(device, { type: "tv_remote", key, command_key: key });
   const canPower = switchPower || canShow("power");
   const canSendPower = switchPower || canSend("power");
   const hasNavigation = canShow("up") || canShow("down") || canShow("left") || canShow("right") || canShow("ok", "enter", "select");
@@ -1933,7 +1951,6 @@ function TVRenderer({ device, runtime, busy, onPower, onCommand }: { device: Any
       {hasMedia ? <TvControlGroup title="Media">
         <TvRemoteKey icon={Play} label="Play/Pause" enabled={canSend("play_pause", "play", "pause")} onClick={() => sendKey("play_pause")} />
       </TvControlGroup> : null}
-      {!keyCode ? <div className="rounded-[18px] border border-white/[0.06] bg-white/[0.025] px-3 py-2.5 text-center text-xs leading-5 text-white/42">TV command mapping is being prepared for this device.</div> : null}
     </div>
   );
 }

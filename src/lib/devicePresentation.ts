@@ -20,7 +20,9 @@ import {
 
 export type DeviceFamily =
   | "tv"
+  | "television"
   | "climate"
+  | "air_conditioner"
   | "thermostat"
   | "light"
   | "lock"
@@ -31,10 +33,17 @@ export type DeviceFamily =
   | "switch"
   | "sensor"
   | "remote"
+  | "projector"
+  | "set_top_box"
   | "speaker"
   | "purifier"
   | "heater"
   | "security"
+  | "power_meter"
+  | "energy_meter"
+  | "water_meter"
+  | "internet_service"
+  | "gas_service"
   | "device";
 
 function flatten(value: any): string {
@@ -86,15 +95,17 @@ export function getDeviceFamily(device: Record<string, any> = {}): DeviceFamily 
   const hasPowerCapability = supportedControls.includes("power") || /\b(switch|switch_\d+|relay|power|plug)\b/.test(text);
   if (explicitFamily === "switch" || controlProfile === "switch") return "switch";
   if (explicitFamily === "plug" || controlProfile === "plug") return "plug";
-  if (hasPowerCapability && ["heater", "climate", "thermostat"].includes(explicitFamily)) return "switch";
-  if (hasPowerCapability && ["climate", "thermostat"].includes(controlProfile)) return "switch";
+  if (explicitFamily === "television" || explicitFamily === "tv" || controlProfile === "television" || controlProfile === "tv") return "tv";
+  if (explicitFamily === "air_conditioner" || controlProfile === "air_conditioner") return "climate";
   if (explicitFamily === "climate" || controlProfile === "climate") return "climate";
   if (explicitFamily === "camera" || controlProfile === "camera") return "camera";
   if (explicitFamily === "lock" || controlProfile === "lock") return "lock";
   if (explicitFamily === "curtain" || controlProfile === "curtain") return "curtain";
   if (explicitFamily === "sensor" || controlProfile === "sensor") return "sensor";
-  if (explicitFamily === "tv" || controlProfile === "tv") return "tv";
   if (explicitFamily === "ir_remote" || controlProfile === "ir_remote") return "remote";
+  if (explicitFamily === "set_top_box" || controlProfile === "set_top_box") return "tv";
+  if (explicitFamily === "projector" || controlProfile === "projector") return "tv";
+  if (explicitFamily === "speaker" || controlProfile === "speaker") return "speaker";
   if (hasPowerCapability && /\b(ac|a\/c|air conditioner|aircon|hvac|climate|cooling|cooler)\b/.test(text)) return "switch";
   if (/\b(tv|television|smart tv|android tv|google tv|samsung tv|lg tv|hisense tv|tcl|tcl tv|set top|decoder)\b/.test(text)) return "tv";
   if (/\b(ir remote|smart ir|infrared remote|universal remote|remote control)\b/.test(text)) return "remote";

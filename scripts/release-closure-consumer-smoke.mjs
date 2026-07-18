@@ -20,9 +20,13 @@ const resetPage = read("src/app/auth/reset/ResetPasswordClient.tsx");
 const roomsClient = read("src/app/rooms/RoomsClient.tsx");
 const roomClient = read("src/app/room/RoomClient.tsx");
 const devicesClient = read("src/app/devices/DevicesClient.tsx");
+const devicePresentation = read("src/lib/devicePresentation.ts");
 const deviceService = read("src/services/deviceService.ts");
 const messagesService = read("src/services/messagesService.ts");
 const messagesPage = read("src/app/messages/page.tsx");
+const presenceBridge = read("src/app/components/PresenceBridge.tsx");
+const presenceService = read("src/services/presenceService.ts");
+const contextBridge = read("src/app/components/ContextIsolationBridge.tsx");
 const communityService = read("src/services/communityService.ts");
 const communityPage = read("src/app/community/page.tsx");
 const servicesService = read("src/services/servicesService.ts");
@@ -46,6 +50,16 @@ assert(/activeContextKeyRef/.test(roomClient) && /getRuntimeDevices\(homeId\)/.t
 assert(/resolveGangCode/.test(roomClient) && /GangRingSwitch/.test(roomClient), "RoomClient keeps multi-gang controls tied to canonical channel codes");
 assert(/switchCommandCodes/.test(devicesClient) && /channel_definitions/.test(devicesClient), "DevicesClient derives switch commands from runtime channel definitions");
 assert(/residentItems/.test(devicesClient) && /isTransportHub/.test(devicesClient), "DevicesClient hides configured IR transport hubs from resident presentation lists");
+assert(/type: "tv_remote", key, command_key: key/.test(devicesClient) && !/\[keyCode\]: key/.test(devicesClient), "TV controls send canonical remote commands without provider-specific key-code payloads");
+assert(/type: "ac_remote", power: nextPower/.test(devicesClient) && /fan_speed: speed/.test(devicesClient), "AC controls send canonical air-conditioner commands");
+assert(/\["tv", "television", "projector", "set_top_box", "speaker"\]\.includes\(family\)/.test(devicesClient) && /\["climate", "air_conditioner", "thermostat"\]\.includes\(family\)/.test(devicesClient), "DevicesClient renders canonical television and air-conditioner profiles");
+assert(/controlProfile === "television"/.test(devicePresentation) && /controlProfile === "air_conditioner"/.test(devicePresentation), "device presentation recognizes canonical IR child profiles");
+assert(/document\.visibilityState === "hidden"\) return 180_000/.test(devicesClient) && /sheetOpen \? 15_000 : 45_000/.test(devicesClient), "device runtime polling is adaptive by active and hidden state");
+
+assert(/startPresenceHeartbeat/.test(presenceBridge) && !/messagesService\.pingPresence/.test(presenceBridge), "PresenceBridge delegates to the shared presence manager");
+assert(/let activeCount = 0/.test(presenceService) && /inFlight/.test(presenceService) && /MIN_PING_GAP_MS/.test(presenceService), "presence manager enforces one heartbeat and in-flight ping guard");
+assert(/useQueryClient/.test(contextBridge) && /queryClient\.removeQueries/.test(contextBridge), "context isolation clears React Query scoped data on home changes");
+assert(/resetRuntimeIntelligence/.test(contextBridge) && /clearEvents/.test(contextBridge), "context isolation resets runtime intelligence and event stores");
 
 assert(/throw normalizeDeviceListError/.test(deviceService), "device discovery failures are not returned as empty device lists");
 assert(/return \{ error: pickError\(err,\s*"Failed to load messages"\) \} as any/.test(messagesService), "message inbox failures return typed errors instead of empty lists");
