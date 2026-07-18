@@ -16,12 +16,9 @@ import {
   LoaderCircle,
   Monitor,
   Moon,
-  PanelTop,
   RefreshCw,
   ShieldCheck,
-  Snowflake,
   Thermometer,
-  Tv,
   Utensils,
   Waves,
   X,
@@ -31,9 +28,9 @@ import LayoutWrapper from "@/app/components/LayoutWrapper";
 import HamburgerMenu from "@/app/components/HamburgerMenu";
 import MessagesInboxButton from "@/app/components/MessagesInboxButton";
 import BottomNav from "@/app/components/BottomNav";
-import useAuth from "@/hooks/useAuth";
+import useActiveContext from "@/hooks/useActiveContext";
 import { roomsService, RoomDTO } from "@/services/roomsService";
-import { deviceService } from "@/services/deviceService";
+import { deviceService, type DeviceRuntimeSummary } from "@/services/deviceService";
 import { sceneService, type ConsumerScene } from "@/services/sceneService";
 import { getDeviceFamily, getDeviceIcon } from "@/lib/devicePresentation";
 
@@ -64,15 +61,16 @@ function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
 }
 function pickId(d: AnyDevice) {
-  return d.device_id || d.devId || d.external_id || d.externalId || d.id || d.uuid || null;
+  return d.id || d.device_id || d.devId || d.uuid || d.external_id || d.externalId || null;
 }
 function pickName(d: AnyDevice) {
   return d.name || d.local_name || d.localName || d.alias || "Unnamed Device";
 }
-function pickType(d: AnyDevice) {
-  return String(d.category || d.type || d.device_type || d.product_name || d.name || "device").toLowerCase();
-}
-function isOnline(d: AnyDevice): boolean | null {
+function isOnline(d: AnyDevice, runtime?: Partial<DeviceRuntimeSummary> | null): boolean | null {
+  const normalized = runtime?.normalized_state || d?.normalized_state || {};
+  if (typeof normalized?.online === "boolean") return normalized.online;
+  if (runtime?.primary_state && /offline|unavailable/i.test(String(runtime.primary_state))) return false;
+  if (runtime?.health_status && /offline|unavailable/i.test(String(runtime.health_status))) return false;
   if (typeof d.online === "boolean") return d.online;
   if (typeof d.isOnline === "boolean") return d.isOnline;
   if (typeof d.connected === "boolean") return d.connected;
@@ -85,11 +83,14 @@ function cleanBool(v: any): boolean | null {
   if (String(v).toLowerCase() === "off") return false;
   return null;
 }
-function deviceFamily(device: AnyDevice) {
-  return getDeviceFamily(device);
+function mergedDevice(device: AnyDevice, runtime?: Partial<DeviceRuntimeSummary> | null) {
+  return runtime ? { ...device, ...runtime } : device;
 }
-function iconForDevice(device: AnyDevice) {
-  return getDeviceIcon(device);
+function deviceFamily(device: AnyDevice, runtime?: Partial<DeviceRuntimeSummary> | null) {
+  return getDeviceFamily(mergedDevice(device, runtime));
+}
+function iconForDevice(device: AnyDevice, runtime?: Partial<DeviceRuntimeSummary> | null) {
+  return getDeviceIcon(mergedDevice(device, runtime));
 }
 function roomIcon(name: string, index: number) {
   const text = name.toLowerCase();
@@ -103,20 +104,47 @@ function roomIcon(name: string, index: number) {
 function shortRoomName(name: string) {
   return name.replace(/ room$/i, "").replace(/bedroom/i, "Bedroom").trim() || "Space";
 }
-function normalizeCommand(device: AnyDevice, next: boolean) {
-  if (deviceFamily(device) === "curtain") return { open: next };
-  return { switch: next };
+function switchCodes(device: AnyDevice, runtime: Partial<DeviceRuntimeSummary> | null | undefined, state: any) {
+  const channels = Array.isArray(runtime?.channel_definitions) ? runtime.channel_definitions : Array.isArray(device?.channel_definitions) ? device.channel_definitions : [];
+  const channelCodes = channels.filter((channel: any) => channel?.controllable !== false && channel?.code).map((channel: any) => String(channel.code));
+  if (channelCodes.length) return channelCodes;
+  const codes = [
+    ...(Array.isArray(runtime?.capability_codes) ? runtime.capability_codes : []),
+    ...(Array.isArray(runtime?.supported_controls) ? runtime.supported_controls : []),
+    ...(Array.isArray(device?.capability_codes) ? device.capability_codes : []),
+    ...(Array.isArray(device?.supported_controls) ? device.supported_controls : []),
+    ...Object.keys(state || {}),
+  ].map((code) => String(code));
+  return Array.from(new Set(codes.filter((code) => code === "switch" || code === "power" || /^switch_\d+$/i.test(code))));
+}
+function canPowerControl(device: AnyDevice, runtime: Partial<DeviceRuntimeSummary> | null | undefined, state: any) {
+  const family = deviceFamily(device, runtime);
+  if (family === "curtain") return true;
+  if (!["switch", "plug", "light"].includes(family)) return false;
+  return switchCodes(device, runtime, state).length > 0;
+}
+function normalizeCommand(device: AnyDevice, runtime: Partial<DeviceRuntimeSummary> | null | undefined, next: boolean, state: any) {
+  if (deviceFamily(device, runtime) === "curtain") return { open: next };
+  const codes = switchCodes(device, runtime, state);
+  if (!codes.length) return null;
+  if (codes.length === 1) return { [codes[0]]: next };
+  return Object.fromEntries(codes.map((code) => [code, next]));
 }
 function readOnState(device: AnyDevice, state: any) {
-  return cleanBool(state?.switch) ?? cleanBool(state?.power) ?? cleanBool(state?.on) ?? cleanBool(device?.switch) ?? cleanBool(device?.power) ?? cleanBool(device?.on);
+  const channels = Array.isArray(device?.channel_definitions) ? device.channel_definitions : [];
+  const channelValues = channels.map((channel: any) => cleanBool(channel?.state)).filter((value: boolean | null) => value !== null);
+  if (channelValues.includes(true)) return true;
+  if (channelValues.length) return false;
+  return cleanBool(state?.switch) ?? cleanBool(state?.power) ?? cleanBool(state?.on) ?? cleanBool(state?.switch_1) ?? cleanBool(device?.switch) ?? cleanBool(device?.power) ?? cleanBool(device?.on);
 }
-function deviceSubtitle(device: AnyDevice, state: any) {
-  if (["climate", "thermostat", "fan", "purifier", "heater"].includes(deviceFamily(device))) {
+function deviceSubtitle(device: AnyDevice, state: any, runtime?: Partial<DeviceRuntimeSummary> | null) {
+  if (runtime?.primary_state) return String(runtime.primary_state).replace(/_/g, " ");
+  if (["climate", "thermostat", "fan", "purifier", "heater"].includes(deviceFamily(device, runtime))) {
     const temp = state?.temp_current ?? state?.temperature ?? device?.temperature;
     return temp ? `${temp}°` : "Climate";
   }
-  if (deviceFamily(device) === "curtain") return readOnState(device, state) ? "Open" : "Closed";
-  return isOnline(device) === false ? "Offline" : "Ready";
+  if (deviceFamily(device, runtime) === "curtain") return readOnState(device, state) ? "Open" : "Closed";
+  return isOnline(device, runtime) === false ? "Offline" : "Ready";
 }
 function when(value?: string | null) {
   if (!value) return "Not synced";
@@ -129,11 +157,13 @@ function when(value?: string | null) {
 }
 
 export default function RoomsClient() {
-  const router = useRouter();
-  const { user } = useAuth();
-  const chipRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-  const estateId = useMemo(() => user?.estate_id ?? (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null), [user?.estate_id]);
-  const homeId = useMemo(() => (user as any)?.home_id ?? (typeof window !== "undefined" ? localStorage.getItem("ochiga_home") : null), [user]);
+	  const router = useRouter();
+	  const activeContext = useActiveContext();
+	  const chipRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+	  const activeContextKeyRef = useRef(activeContext.contextKey);
+	  const estateId = activeContext.estate_id;
+	  const homeId = activeContext.home_id;
+	  const contextReady = activeContext.ready;
 
   const [rooms, setRooms] = useState<RoomDTO[]>([]);
   const [selectedId, setSelectedId] = useState("all");
@@ -144,16 +174,19 @@ export default function RoomsClient() {
   const [createOpen, setCreateOpen] = useState(false);
   const [newSpaceName, setNewSpaceName] = useState("");
   const [stateMap, setStateMap] = useState<Record<string, any>>({});
+  const [runtimeMap, setRuntimeMap] = useState<Record<string, DeviceRuntimeSummary>>({});
   const [onMap, setOnMap] = useState<Record<string, boolean | null>>({});
   const [configuredScenes, setConfiguredScenes] = useState<ConsumerScene[]>([]);
 
-  async function loadRooms() {
-    if (!homeId) return;
-    setLoading(true);
-    setErr(null);
-    try {
-      const list = await roomsService.getRooms(homeId);
-      const next = Array.isArray(list) ? list : [];
+	  async function loadRooms() {
+	    if (!contextReady || !homeId) return;
+	    const loadContextKey = activeContext.contextKey;
+	    setLoading(true);
+	    setErr(null);
+	    try {
+	      const list = await roomsService.getRooms(homeId);
+	      if (loadContextKey !== activeContextKeyRef.current) return;
+	      const next = Array.isArray(list) ? list : [];
       setRooms(next);
       setSelectedId((current) => (current !== "all" && !next.some((room) => String(room.id) === current) ? "all" : current));
     } catch (e: any) {
@@ -167,7 +200,16 @@ export default function RoomsClient() {
     if (!homeId) return;
     void loadRooms();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [homeId]);
+  }, [contextReady, activeContext.contextKey]);
+
+	  useEffect(() => {
+	    activeContextKeyRef.current = activeContext.contextKey;
+	    setRooms([]);
+	    setStateMap({});
+    setRuntimeMap({});
+    setOnMap({});
+    setSelectedId("all");
+  }, [activeContext.contextKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -175,7 +217,7 @@ export default function RoomsClient() {
       .then((items) => { if (!cancelled) setConfiguredScenes(items); })
       .catch(() => { if (!cancelled) setConfiguredScenes([]); });
     return () => { cancelled = true; };
-  }, [estateId, homeId]);
+  }, [estateId, homeId, activeContext.contextKey]);
 
   const allDevices = useMemo(() => rooms.flatMap((room) => (Array.isArray(room.devices) ? room.devices.map((device) => ({ ...device, __roomId: room.id, __roomName: room.name })) : [])), [rooms]);
   const selectedRoom = useMemo(() => rooms.find((room) => String(room.id) === selectedId) || null, [rooms, selectedId]);
@@ -186,52 +228,68 @@ export default function RoomsClient() {
 
   const twinRooms = useMemo<TwinRoom[]>(() => rooms.map((room, index) => ({ id: String(room.id), name: room.name || `Space ${index + 1}`, room, Icon: roomIcon(room.name || "", index), ...TWIN_SLOTS[index % TWIN_SLOTS.length] })), [rooms]);
 
-  const summary = useMemo(() => {
-    const devices = selectedDevices;
-    const online = devices.filter((d) => isOnline(d) === true).length;
-    const knownOffline = devices.filter((d) => isOnline(d) === false).length;
-    let active = 0;
-    let lastSync: string | null = null;
-    for (const device of devices) {
-      const id = pickId(device);
-      const sid = id ? String(id) : "";
-      const st = stateMap[sid] || {};
-      if (readOnState(device, st) === true || onMap[sid] === true) active += 1;
-      const candidate = st?.lastSeen || st?.last_seen || device?.last_seen || device?.updated_at;
+	  const summary = useMemo(() => {
+	    const devices = selectedDevices;
+	    const online = devices.filter((d) => {
+	      const id = pickId(d);
+	      return isOnline(d, id ? runtimeMap[String(id)] : null) === true;
+	    }).length;
+	    const knownOffline = devices.filter((d) => {
+	      const id = pickId(d);
+	      return isOnline(d, id ? runtimeMap[String(id)] : null) === false;
+	    }).length;
+	    let active = 0;
+	    let lastSync: string | null = null;
+	    for (const device of devices) {
+	      const id = pickId(device);
+	      const sid = id ? String(id) : "";
+	      const st = stateMap[sid] || {};
+	      const runtime = runtimeMap[sid] || null;
+	      if (readOnState(mergedDevice(device, runtime), st) === true || onMap[sid] === true) active += 1;
+	      const candidate = runtime?.lastSeen || st?.lastSeen || st?.last_seen || device?.last_seen || device?.updated_at;
       if (candidate && (!lastSync || new Date(candidate).getTime() > new Date(lastSync).getTime())) lastSync = candidate;
     }
     const temp = selectedRoom?.ai_profile?.temperature ?? selectedRoom?.ai_profile?.temp ?? null;
     const occupancy = selectedRoom ? (devices.length ? "Responsive" : "No devices") : rooms.length ? `${rooms.length} spaces` : "Not mapped";
     const ambience = active ? "Active" : devices.length ? "Calm" : "Unavailable";
     return { total: devices.length, online, knownOffline, active, temp, occupancy, ambience, lastSync };
-  }, [onMap, rooms.length, selectedDevices, selectedRoom, stateMap]);
+	  }, [onMap, rooms.length, runtimeMap, selectedDevices, selectedRoom, stateMap]);
 
   useEffect(() => {
     let cancelled = false;
     async function hydrate() {
-      const targets = selectedDevices.slice(0, 8);
+      if (!contextReady || !homeId) return;
+      const targets = selectedDevices;
       const updates: Record<string, any> = {};
+      const runtimes: Record<string, DeviceRuntimeSummary> = {};
       const nextOn: Record<string, boolean | null> = {};
-      const runtimeDevices = await deviceService.getRuntimeDevices(homeId).catch(() => []);
+      let runtimeDevices: DeviceRuntimeSummary[] = [];
+      try {
+        runtimeDevices = await deviceService.getRuntimeDevices(homeId);
+      } catch (e: any) {
+        if (!cancelled) setErr(e?.message || "Unable to load live device state for this home.");
+        return;
+      }
       const runtimeById = new Map(runtimeDevices.map((runtime) => [String(runtime.device_id), runtime]));
       targets.forEach((device) => {
         const id = pickId(device);
         if (!id) return;
         const sid = String(id);
-        if (stateMap[sid]) return;
         const runtime = runtimeById.get(String(device.id || device.device_id || sid));
         if (!runtime) return;
+        runtimes[sid] = runtime;
         updates[sid] = runtime.state || {};
         nextOn[sid] = readOnState(device, updates[sid]);
       });
       if (cancelled) return;
+      if (Object.keys(runtimes).length) setRuntimeMap((prev) => ({ ...prev, ...runtimes }));
       if (Object.keys(updates).length) setStateMap((prev) => ({ ...prev, ...updates }));
       if (Object.keys(nextOn).length) setOnMap((prev) => ({ ...prev, ...nextOn }));
     }
     void hydrate();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, selectedDevices.length]);
+  }, [contextReady, activeContext.contextKey, homeId, selectedId, selectedDevices.length]);
 
   function focusSpace(id: string) {
     setSelectedId(id);
@@ -262,18 +320,26 @@ export default function RoomsClient() {
 
   async function toggleDevice(device: AnyDevice, next: boolean) {
     const id = pickId(device);
-    if (!id || isOnline(device) === false) return;
+    if (!id) return;
     const sid = String(id);
+    const runtime = runtimeMap[sid] || null;
+    const currentState = stateMap[sid] || {};
+    if (isOnline(device, runtime) === false) return;
+    const command = normalizeCommand(device, runtime, next, currentState);
+    if (!command) {
+      setErr("This device does not expose a simple power control.");
+      return;
+    }
     setBusyId(sid);
     setErr(null);
-    const command = normalizeCommand(device, next);
     setOnMap((prev) => ({ ...prev, [sid]: next }));
     setStateMap((prev) => ({ ...prev, [sid]: { ...(prev[sid] || {}), ...command } }));
     try {
       await deviceService.commandDevice(sid, command);
       const res = await deviceService.getDeviceState(sid);
-      setStateMap((prev) => ({ ...prev, [sid]: res?.state || prev[sid] || {} }));
-      setOnMap((prev) => ({ ...prev, [sid]: readOnState(device, res?.state || {}) ?? next }));
+	      setStateMap((prev) => ({ ...prev, [sid]: res?.state || prev[sid] || {} }));
+	      if (res) setRuntimeMap((prev) => ({ ...prev, [sid]: { ...(prev[sid] || {}), ...(res as any), device_id: sid } }));
+	      setOnMap((prev) => ({ ...prev, [sid]: readOnState(device, res?.state || {}) ?? next }));
     } catch (e: any) {
       setErr(e?.response?.data?.error || e?.message || "Command failed");
       setOnMap((prev) => ({ ...prev, [sid]: !next }));
@@ -282,7 +348,11 @@ export default function RoomsClient() {
     }
   }
 
-  const favoriteControls = selectedDevices.filter((device) => !["camera", "lock", "security"].includes(deviceFamily(device))).slice(0, 6);
+  const favoriteControls = selectedDevices.filter((device) => {
+    const id = pickId(device);
+    const sid = id ? String(id) : "";
+    return canPowerControl(device, runtimeMap[sid], stateMap[sid] || {});
+  }).slice(0, 6);
   const scenes = useMemo(() => {
     const allow = new Set(selectedDevices.map((device) => String(pickId(device) || "")).filter(Boolean));
     return configuredScenes.filter((scene) => !selectedRoom || !scene.actions?.length || scene.actions.some((action) => allow.has(String(action.device_id))));
@@ -388,15 +458,16 @@ export default function RoomsClient() {
               </div>
               {favoriteControls.length ? (
                 <div className="flex snap-x gap-2.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                  {favoriteControls.map((device) => {
-                    const id = pickId(device);
-                    const sid = id ? String(id) : "";
-                    const state = stateMap[sid] || {};
-                    const on = onMap[sid] ?? readOnState(device, state);
-                    const Icon = iconForDevice(device);
-                    const online = isOnline(device);
-                    return (
-                      <button key={sid || pickName(device)} type="button" disabled={!sid || online === false || busyId === sid} onClick={() => void toggleDevice(device, !(on === true))} className="min-h-[78px] w-[142px] shrink-0 snap-start rounded-[18px] border border-white/[0.065] bg-white/[0.03] p-2.5 text-left transition hover:bg-white/[0.052] disabled:opacity-45">
+	                  {favoriteControls.map((device) => {
+	                    const id = pickId(device);
+	                    const sid = id ? String(id) : "";
+	                    const runtime = runtimeMap[sid] || null;
+	                    const state = stateMap[sid] || {};
+	                    const on = onMap[sid] ?? readOnState(mergedDevice(device, runtime), state);
+	                    const Icon = iconForDevice(device, runtime);
+	                    const online = isOnline(device, runtime);
+	                    return (
+	                      <button key={sid || pickName(device)} type="button" disabled={!sid || online === false || busyId === sid} onClick={() => void toggleDevice(device, !(on === true))} className="min-h-[78px] w-[142px] shrink-0 snap-start rounded-[18px] border border-white/[0.065] bg-white/[0.03] p-2.5 text-left transition hover:bg-white/[0.052] disabled:opacity-45">
                         <div className="flex h-full flex-col justify-between">
                           <div>
                             <span className="grid h-7 w-7 place-items-center rounded-full border border-sky-300/12 bg-sky-400/10 text-sky-200"><Icon className="h-3.5 w-3.5" /></span>
@@ -404,7 +475,7 @@ export default function RoomsClient() {
                             <div className="mt-0.5 text-[10px] text-white/42">{device.__roomName || selectedLabel}</div>
                           </div>
                           <div className="mt-2 flex items-end justify-between gap-2">
-                            <div className={cn("text-[10px] font-semibold", on === true ? "text-emerald-300" : "text-white/52")}>{on === true ? "ON" : deviceSubtitle(device, state)}</div>
+	                            <div className={cn("text-[10px] font-semibold", on === true ? "text-emerald-300" : "text-white/52")}>{on === true ? "ON" : deviceSubtitle(device, state, runtime)}</div>
                             <span className={cn("h-4 w-8 rounded-full p-0.5 transition", on === true ? "bg-blue-500" : "bg-white/18")}><span className={cn("block h-3 w-3 rounded-full bg-white transition", on === true && "translate-x-4")} /></span>
                           </div>
                         </div>

@@ -229,6 +229,7 @@ export default function CommunityPage() {
   const [localReadIds, setLocalReadIds] = useState<Set<string>>(new Set());
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
+  const loadRequestRef = useRef(0);
 
   const canPost = canUseCommunityWrite(user);
   const canBroadcast = canUseCommunityBroadcast(user);
@@ -249,18 +250,29 @@ export default function CommunityPage() {
       setLoading(activeContext.loading || activeContext.switching);
       return;
     }
+    const requestId = ++loadRequestRef.current;
     if (!silent) setLoading(true);
     setErr(null);
     try {
       const rows = await communityService.listByEstate(estateId);
+      if (requestId !== loadRequestRef.current) return;
       setItems(Array.isArray(rows) ? applyLocalReadState(rows) : []);
     } catch (error: any) {
+      if (requestId !== loadRequestRef.current) return;
       setErr(error?.message || "Failed to load community updates");
       setItems([]);
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestRef.current) setLoading(false);
     }
   }
+
+  useEffect(() => {
+    loadRequestRef.current += 1;
+    setItems([]);
+    setComments({});
+    setOpenPost(null);
+    setErr(null);
+  }, [activeContext.contextKey]);
 
   useEffect(() => { void load(); }, [contextReady, activeContext.contextKey]);
   useEffect(() => { markBucketViewed("community"); }, [markBucketViewed]);
@@ -376,6 +388,8 @@ export default function CommunityPage() {
     try {
       const rows = await communityService.listComments(next);
       setComments((prev) => ({ ...prev, [next]: Array.isArray(rows) ? rows : [] }));
+    } catch (error: any) {
+      setErr(error?.message || "Failed to load comments");
     } finally {
       setBusyPost((prev) => ({ ...prev, [next]: false }));
     }

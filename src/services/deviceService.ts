@@ -84,9 +84,7 @@ export const deviceService = {
       const res = await API.get("/devices/discover", { params: { adapter } });
       return res.data?.devices ?? res.data ?? [];
     } catch (err: any) {
-      const status = Number(err?.response?.status || 0);
-      if (status && status < 500) return [];
-      return [];
+      throw normalizeDeviceListError(err);
     }
   },
 

@@ -1,8 +1,9 @@
 // src/app/maintenance/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ConsumerShell from "../components/ConsumerShell";
+import useActiveContext from "@/hooks/useActiveContext";
 import { maintenanceService, type MaintenanceTicket } from "@/services/maintenanceService";
 import { FiCheckCircle, FiChevronRight, FiDroplet, FiTool, FiWind, FiZap } from "react-icons/fi";
 
@@ -229,6 +230,9 @@ function RecentRequestCard({ ticket, onOpen }: { ticket: MaintenanceTicket; onOp
 }
 
 export default function MaintenancePage() {
+  const activeContext = useActiveContext();
+  const contextReady = activeContext.ready;
+  const requestRef = useRef(0);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [tickets, setTickets] = useState<MaintenanceTicket[]>([]);
@@ -277,18 +281,28 @@ export default function MaintenancePage() {
   );
 
   async function load() {
+    if (!contextReady) {
+      setTickets([]);
+      setSelectedTicket(null);
+      setLoading(activeContext.loading || activeContext.switching);
+      return;
+    }
+
+    const requestId = ++requestRef.current;
     setLoading(true);
     setErr(null);
 
     try {
-      const res: any = await maintenanceService.listMyTickets();
+      const res: any = await maintenanceService.listMyTickets({ homeId: activeContext.home_id || undefined });
+      if (requestId !== requestRef.current) return;
       if (res?.error) throw new Error(res.error);
       setTickets(Array.isArray(res) ? res : []);
     } catch (e: any) {
+      if (requestId !== requestRef.current) return;
       setTickets([]);
       setErr(pickErr(e, "Failed to load maintenance"));
     } finally {
-      setLoading(false);
+      if (requestId === requestRef.current) setLoading(false);
     }
   }
 
@@ -300,6 +314,7 @@ export default function MaintenancePage() {
 
     try {
       const created: any = await maintenanceService.createTicket({
+        home_id: activeContext.home_id || undefined,
         title: form.title.trim(),
         description: form.description.trim() || undefined,
         category: form.category,
@@ -328,8 +343,16 @@ export default function MaintenancePage() {
   }
 
   useEffect(() => {
+    requestRef.current += 1;
+    setTickets([]);
+    setSelectedTicket(null);
+    setErr(null);
+  }, [activeContext.contextKey]);
+
+  useEffect(() => {
     load();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contextReady, activeContext.contextKey]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;

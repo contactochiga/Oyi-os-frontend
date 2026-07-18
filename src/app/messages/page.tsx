@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import ConsumerShell from "@/app/components/ConsumerShell";
 import useAuth from "@/hooks/useAuth";
+import useActiveContext from "@/hooks/useActiveContext";
 import messagesService, {
   ChatMessage,
   ChatResident,
@@ -55,6 +56,9 @@ function wasReadByPeer(message: ChatMessage, peerLastReadAt?: string | null) {
 
 export default function MessagesPage() {
   const { user } = useAuth();
+  const activeContext = useActiveContext();
+  const contextReady = activeContext.ready;
+  const activeContextKeyRef = useRef(activeContext.contextKey);
   const myId = useMemo(() => String((user as any)?.id || (user as any)?.user_id || (user as any)?.sub || ""), [user]);
 
   const [threads, setThreads] = useState<InboxThread[]>([]);
@@ -82,12 +86,26 @@ export default function MessagesPage() {
   const latestAwareness = useRuntimeIntelligenceStore((state) => state.latestAwareness);
 
   async function loadInbox() {
+    if (!contextReady) return;
+    const contextKey = activeContext.contextKey;
     const list = await messagesService.listInbox();
+    if (contextKey !== activeContextKeyRef.current) return;
+    if ((list as any)?.error) {
+      setErr(String((list as any).error));
+      return;
+    }
     setThreads(Array.isArray(list) ? list : []);
   }
 
   async function loadResidents(q = "") {
+    if (!contextReady) return;
+    const contextKey = activeContext.contextKey;
     const list = await messagesService.listResidents(q);
+    if (contextKey !== activeContextKeyRef.current) return;
+    if ((list as any)?.error) {
+      setErr(String((list as any).error));
+      return;
+    }
     setResidents(Array.isArray(list) ? list : []);
   }
 
@@ -97,7 +115,13 @@ export default function MessagesPage() {
       setPeerLastReadAt(null);
       return;
     }
+    const contextKey = activeContext.contextKey;
     const res = await messagesService.listMessages(thread.id, undefined, 80);
+    if (contextKey !== activeContextKeyRef.current) return;
+    if ((res as any)?.error) {
+      setErr(String((res as any).error));
+      return;
+    }
     setMessages(Array.isArray(res?.messages) ? res.messages : []);
     setPeerLastReadAt(res?.peer_last_read_at || null);
     await messagesService.markRead(thread.id);
@@ -124,6 +148,15 @@ export default function MessagesPage() {
   }
 
   async function boot() {
+    if (!contextReady) {
+      setThreads([]);
+      setResidents([]);
+      setActiveThread(null);
+      setMessages([]);
+      setPeerLastReadAt(null);
+      setLoading(activeContext.loading || activeContext.switching);
+      return;
+    }
     setLoading(true);
     setErr(null);
     try {
@@ -136,14 +169,30 @@ export default function MessagesPage() {
   }
 
   useEffect(() => {
-    boot();
+    activeContextKeyRef.current = activeContext.contextKey;
+    setThreads([]);
+    setResidents([]);
+    setActiveThread(null);
+    setMessages([]);
+    setPeerLastReadAt(null);
+    setErr(null);
+    setView("list");
+  }, [activeContext.contextKey]);
+
+  useEffect(() => {
+    void boot();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contextReady, activeContext.contextKey]);
+
+  useEffect(() => {
+    if (!contextReady) return;
     const t = window.setInterval(() => {
-      loadInbox();
-      if (activeThread?.id) loadThreadMessages(activeThread);
+      void loadInbox();
+      if (activeThread?.id) void loadThreadMessages(activeThread);
     }, 12000);
     return () => window.clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [contextReady, activeContext.contextKey, activeThread?.id]);
 
   useEffect(() => {
     let alive = true;
@@ -176,7 +225,7 @@ export default function MessagesPage() {
 
   useEffect(() => {
     const socket = getSocket();
-    if (!socket) return;
+    if (!socket || !contextReady) return;
 
     const onDm = (message: ChatMessage) => {
       if (!message?.thread_id) return;
@@ -197,7 +246,8 @@ export default function MessagesPage() {
     return () => {
       socket.off("dm:new", onDm);
     };
-  }, [activeThread?.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contextReady, activeContext.contextKey, activeThread?.id]);
 
   useEffect(() => {
     const node = scrollRef.current;

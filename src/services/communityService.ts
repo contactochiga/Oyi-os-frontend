@@ -118,6 +118,7 @@ function unwrapList(data: any) {
 }
 
 function pickError(err: any, fallback: string) {
+  const status = Number(err?.response?.status || 0);
   const msg =
     err?.response?.data?.error ||
     err?.response?.data?.message ||
@@ -139,7 +140,17 @@ function pickError(err: any, fallback: string) {
     return "Live streaming backend is not deployed yet. Redeploy the backend and try again.";
   }
 
-  return msg;
+  if (status === 401) return "Please sign in again to load community updates.";
+  if (status === 403) return "This account does not have access to these community updates.";
+  if (status >= 500) return "Community updates are temporarily unavailable. Try again.";
+  return String(msg || fallback).length < 180 ? msg : fallback;
+}
+
+function throwCommunityError(err: any, fallback: string): never {
+  const error = new Error(pickError(err, fallback)) as Error & { status?: number; code?: string };
+  error.status = Number(err?.response?.status || 0) || undefined;
+  error.code = String(err?.response?.data?.code || err?.response?.data?.error_code || "community_request_failed");
+  throw error;
 }
 
 export const communityService = {
@@ -150,8 +161,8 @@ export const communityService = {
         `/community/posts/estate/${encodeURIComponent(estateId)}`
       );
       return unwrapList(res.data) as CommunityPost[];
-    } catch {
-      return [];
+    } catch (err: any) {
+      throwCommunityError(err, "Failed to load community updates");
     }
   },
 
@@ -182,8 +193,8 @@ export const communityService = {
         `/community/post/${encodeURIComponent(postId)}/comments`
       );
       return unwrapList(res.data) as CommunityComment[];
-    } catch {
-      return [];
+    } catch (err: any) {
+      throwCommunityError(err, "Failed to load comments");
     }
   },
 

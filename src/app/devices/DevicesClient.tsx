@@ -198,8 +198,27 @@ function readGangValues(gangCount: 1 | 2 | 3, state: any, runtime?: Partial<Devi
   return out;
 }
 
-function normalizeCommandKey(gangCount: 1 | 2 | 3, gangIndex: number) {
-  return gangCount === 1 ? "switch" : `switch_${gangIndex + 1}`;
+function switchCommandCodes(device: AnyDevice, state: any, runtime?: Partial<DeviceRuntimeContract> | null) {
+  const contract = normalizeRuntimeContract(device, runtime);
+  const channels = Array.isArray(contract.channel_definitions) ? contract.channel_definitions : [];
+  const channelCodes = channels
+    .filter((channel: any) => channel?.controllable !== false && channel?.code)
+    .map((channel: any) => String(channel.code));
+  if (channelCodes.length) return channelCodes.slice(0, 3);
+  const codes = [
+    ...(Array.isArray(contract.capability_codes) ? contract.capability_codes : []),
+    ...(Array.isArray(contract.supported_controls) ? contract.supported_controls : []),
+    ...(Array.isArray(device?.capability_codes) ? device.capability_codes : []),
+    ...(Array.isArray(device?.supported_controls) ? device.supported_controls : []),
+    ...Object.keys(state || {}),
+  ].map((code) => String(code));
+  return Array.from(new Set(codes.filter((code) => code === "switch" || code === "power" || /^switch_\d+$/i.test(code)))).slice(0, 3);
+}
+
+function normalizeCommandKey(device: AnyDevice, state: any, runtime: Partial<DeviceRuntimeContract> | null | undefined, gangIndex: number) {
+  const codes = switchCommandCodes(device, state, runtime);
+  if (codes[gangIndex]) return codes[gangIndex];
+  return gangIndex === 0 ? "switch" : `switch_${gangIndex + 1}`;
 }
 
 function readPowerState(state: any, runtime?: Partial<DeviceRuntimeContract> | null): boolean | null {
@@ -795,10 +814,27 @@ export default function DeviceClient() {
 
   const selectedDiscoveryIds = useMemo(() => Object.keys(selectedDiscover).filter((k) => selectedDiscover[k]), [selectedDiscover]);
   const providerDevices = useMemo(() => items.filter((device) => !device?.home_id && String(device?.provider || device?.vendor || device?.adapter || "").toLowerCase() === "tuya"), [items]);
+  const residentItems = useMemo(() => {
+    const parentIds = new Set(
+      items
+        .map((device) => String(device?.parent_device_id || device?.metadata?.ir_appliance?.parent_device_id || "").trim())
+        .filter(Boolean),
+    );
+    return items.filter((device) => {
+      const id = String(pickDbId(device) || "").trim();
+      const runtime = id ? runtimeMap[id] : null;
+      const contract = normalizeRuntimeContract(device, runtime);
+      const isTransportHub =
+        !device?.is_virtual &&
+        String(contract.control_profile || contract.device_family || "").toLowerCase() === "ir_remote" &&
+        parentIds.has(id);
+      return !isTransportHub;
+    });
+  }, [items, runtimeMap]);
 
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();
-    return items.filter((d) => {
+    return residentItems.filter((d) => {
       const deviceCategory = categoryFor(d);
       const family = inferFamily(d);
       const categoryMatch = category === "all" || deviceCategory === category || (category === "lights" && family === "switch");
@@ -810,13 +846,13 @@ export default function DeviceClient() {
         .toLowerCase()
         .includes(term);
     });
-  }, [items, q, category, stateMap]);
+  }, [residentItems, q, category, stateMap, runtimeMap]);
 
-  const favorites = useMemo(() => items.filter((device) => Boolean(device?.home_id) && isFavoriteDevice(device)).slice(0, 8), [items]);
+  const favorites = useMemo(() => residentItems.filter((device) => Boolean(device?.home_id) && isFavoriteDevice(device)).slice(0, 8), [residentItems]);
 
   const roomGroups = useMemo(() => {
     const map = new Map<string, { key: string; roomId: string; name: string; devices: AnyDevice[] }>();
-    items.forEach((device) => {
+    residentItems.forEach((device) => {
       const roomId = pickRoomId(device);
       if (!device?.home_id || !roomId) return;
       const key = pickRoomKey(device);
@@ -826,13 +862,13 @@ export default function DeviceClient() {
       map.set(key, current);
     });
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [items]);
+  }, [residentItems]);
 
   const attentionItems = useMemo(() => {
-    return items
+    return residentItems
       .map((device) => ({ device, reason: attentionReason(device, stateMap[String(pickDbId(device))] || {}, runtimeMap[String(pickDbId(device))] || null) }))
       .filter((item) => Boolean(item.reason));
-  }, [items, stateMap, runtimeMap]);
+  }, [residentItems, stateMap, runtimeMap]);
 
   async function warmState(device: AnyDevice) {
     const dbId = pickDbId(device);
@@ -850,9 +886,9 @@ export default function DeviceClient() {
   function buildPowerCommand(device: AnyDevice, state: any, next: boolean) {
     const runtime = runtimeMap[String(pickDbId(device) || "")] || null;
     const gangCount = guessGangCount(device, state, runtime);
-    if (gangCount === 1) return { switch: next };
+    if (gangCount === 1) return { [normalizeCommandKey(device, state, runtime, 0)]: next };
     const out: Record<string, boolean> = {};
-    for (let i = 1; i <= gangCount; i += 1) out[`switch_${i}`] = next;
+    for (let i = 0; i < gangCount; i += 1) out[normalizeCommandKey(device, state, runtime, i)] = next;
     return out;
   }
 
@@ -867,7 +903,7 @@ export default function DeviceClient() {
       await warmState(device);
       const cached = stateMap[sid] || {};
       const gangCount = guessGangCount(device, cached, runtimeMap[sid] || null);
-      const code = normalizeCommandKey(gangCount, gangIndex);
+      const code = normalizeCommandKey(device, cached, runtimeMap[sid] || null, gangIndex);
       await deviceService.commandDevice(sid, { [code]: next });
       setStateMap((p) => ({ ...p, [sid]: { ...(p[sid] || {}), [code]: next, ...(gangCount === 1 ? { switch: next, power: next, on: next } : {}) } }));
     } catch (e: any) {

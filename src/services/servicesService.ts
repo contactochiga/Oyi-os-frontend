@@ -180,8 +180,8 @@ export const servicesService = {
     try {
       const res = await API.get("/services/payments", { params });
       return (res.data?.payments || []) as ServicePayment[];
-    } catch {
-      return [];
+    } catch (err: any) {
+      return { payments: [] as ServicePayment[], error: pickError(err, "Failed to load service activity") } as any;
     }
   },
 

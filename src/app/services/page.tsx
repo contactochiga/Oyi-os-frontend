@@ -5,7 +5,7 @@ import ConsumerShell from "@/app/components/ConsumerShell";
 import useActiveContext from "@/hooks/useActiveContext";
 import { getSocket } from "@/services/socket";
 import { servicesService, type HomeServiceRegistry, type ServiceAccount, type ServiceConfig, type ServiceKey, type ServicePayment } from "@/services/servicesService";
-import { FiActivity, FiAlertCircle, FiChevronDown, FiChevronUp, FiCreditCard, FiDroplet, FiLayers, FiTool, FiWifi, FiZap } from "react-icons/fi";
+import { FiChevronDown, FiChevronUp, FiCreditCard, FiDroplet, FiTool, FiWifi, FiZap } from "react-icons/fi";
 
 const SERVICE_CARDS: Array<{
   key: string;
@@ -308,6 +308,15 @@ export default function ServicesPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    setRegistry(null);
+    setAccounts([]);
+    setHistory([]);
+    setConfigs({});
+    setMessage(null);
+    setError(null);
+  }, [activeContext.contextKey]);
+
+  useEffect(() => {
     let cancelled = false;
     async function load() {
       if (!contextReady || !estateId) return;
@@ -318,11 +327,20 @@ export default function ServicesPage() {
         servicesService.configs({ estate_id: estateId }),
       ]);
       if (cancelled) return;
+      const errors = [
+        (registryResult as any)?.error,
+        (accountsResult as any)?.error,
+        (historyRows as any)?.error,
+        (configResult as any)?.error,
+      ].filter(Boolean);
       if (!registryResult?.error) setRegistry(registryResult as HomeServiceRegistry);
       if (!accountsResult?.error) setAccounts(accountsResult.accounts || []);
       setHistory(Array.isArray(historyRows) ? historyRows : []);
-      const nextConfigs = Object.fromEntries((configResult.configs || []).map((config: ServiceConfig) => [config.service_key, config])) as Partial<Record<ServiceKey, ServiceConfig>>;
-      setConfigs(nextConfigs);
+      if (!(configResult as any)?.error) {
+        const nextConfigs = Object.fromEntries((configResult.configs || []).map((config: ServiceConfig) => [config.service_key, config])) as Partial<Record<ServiceKey, ServiceConfig>>;
+        setConfigs(nextConfigs);
+      }
+      setError(errors.length ? String(errors[0]) : null);
     }
     void load();
     return () => {
@@ -337,12 +355,15 @@ export default function ServicesPage() {
     const refresh = () => {
       void servicesService.homeRegistry({ estate_id: estateId, home_id: activeContext.home_id || undefined }).then((result: any) => {
         if (!result?.error) setRegistry(result as HomeServiceRegistry);
+        else setError(String(result.error));
       });
       void servicesService.myAccounts({ estate_id: estateId, home_id: activeContext.home_id || undefined }).then((result: any) => {
         if (!result?.error) setAccounts(result.accounts || []);
+        else setError(String(result.error));
       });
       void servicesService.history({ home_id: activeContext.home_id || undefined, limit: 40 }).then((rows: any) => {
         if (Array.isArray(rows)) setHistory(rows);
+        else if (rows?.error) setError(String(rows.error));
       });
     };
     socket.emit("subscribe:estate", estateId);

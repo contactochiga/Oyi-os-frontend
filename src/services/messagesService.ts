@@ -1,12 +1,12 @@
 import API from "./api";
 
 function pickError(err: any, fallback: string) {
-  return (
-    err?.response?.data?.error ||
-    err?.response?.data?.message ||
-    err?.message ||
-    fallback
-  );
+  const status = Number(err?.response?.status || 0);
+  const message = String(err?.response?.data?.error || err?.response?.data?.message || err?.message || "").trim();
+  if (status === 401) return "Please sign in again to load messages.";
+  if (status === 403) return "This account does not have access to these messages.";
+  if (status >= 500) return "Messages are temporarily unavailable. Try again.";
+  return message && message.length < 180 ? message : fallback;
 }
 
 export type ChatResident = {
@@ -62,9 +62,8 @@ export const messagesService = {
     try {
       const res = await API.get("/messages/residents", { params: q ? { q } : undefined });
       return res.data?.residents ?? [];
-    } catch (err) {
-      console.warn("messagesService.listResidents error:", err);
-      return [];
+    } catch (err: any) {
+      return { error: pickError(err, "Failed to load residents") } as any;
     }
   },
 
@@ -72,9 +71,8 @@ export const messagesService = {
     try {
       const res = await API.get("/messages/inbox");
       return res.data?.threads ?? [];
-    } catch (err) {
-      console.warn("messagesService.listInbox error:", err);
-      return [];
+    } catch (err: any) {
+      return { error: pickError(err, "Failed to load messages") } as any;
     }
   },
 
@@ -99,9 +97,8 @@ export const messagesService = {
         messages: res.data?.messages ?? [],
         peer_last_read_at: res.data?.peer_last_read_at ?? null,
       };
-    } catch (err) {
-      console.warn("messagesService.listMessages error:", err);
-      return { messages: [], peer_last_read_at: null };
+    } catch (err: any) {
+      return { messages: [], peer_last_read_at: null, error: pickError(err, "Failed to load thread messages") } as any;
     }
   },
 

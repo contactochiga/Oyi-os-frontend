@@ -1,18 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import ConsumerShell from "@/app/components/ConsumerShell";
-import useAuth from "@/hooks/useAuth";
+import useActiveContext from "@/hooks/useActiveContext";
 import { roomsService, RoomDTO } from "@/services/roomsService";
-import { deviceService } from "@/services/deviceService";
+import { deviceService, type DeviceRuntimeSummary } from "@/services/deviceService";
 import GangRingSwitch from "@/app/components/devices/GangRingSwitch";
-import { getDeviceIcon, getDeviceIconTone } from "@/lib/devicePresentation";
+import { getDeviceFamily, getDeviceIcon } from "@/lib/devicePresentation";
 
 type AnyDevice = Record<string, any>;
 
 function pickId(d: AnyDevice) {
-  return d.device_id || d.devId || d.external_id || d.externalId || d.id || d.uuid || null;
+  return d.id || d.device_id || d.devId || d.uuid || d.external_id || d.externalId || null;
 }
 function pickName(d: AnyDevice) {
   return d.name || d.local_name || d.localName || d.alias || "Unnamed Device";
@@ -20,15 +20,15 @@ function pickName(d: AnyDevice) {
 function pickVendor(d: AnyDevice) {
   return d.vendor || d.adapter || d.protocol || d.brand || "device";
 }
-function isOnline(d: AnyDevice): boolean | null {
+function isOnline(d: AnyDevice, runtime?: Partial<DeviceRuntimeSummary> | null): boolean | null {
+  const normalized = runtime?.normalized_state || d?.normalized_state || {};
+  if (typeof normalized?.online === "boolean") return normalized.online;
+  if (runtime?.primary_state && /offline|unavailable/i.test(String(runtime.primary_state))) return false;
+  if (runtime?.health_status && /offline|unavailable/i.test(String(runtime.health_status))) return false;
   if (typeof d.online === "boolean") return d.online;
   if (typeof d.isOnline === "boolean") return d.isOnline;
   if (typeof d.connected === "boolean") return d.connected;
   return null;
-}
-function statusDot(online: boolean | null) {
-  if (online === null) return "bg-white/20";
-  return online ? "bg-emerald-500" : "bg-white/25";
 }
 function cleanBool(v: any): boolean | null {
   if (typeof v === "boolean") return v;
@@ -38,7 +38,30 @@ function cleanBool(v: any): boolean | null {
   return null;
 }
 
-function guessGangCount(device: AnyDevice, state: any): 1 | 2 | 3 {
+function switchCodes(device: AnyDevice, runtime: Partial<DeviceRuntimeSummary> | null | undefined, state: any) {
+  const channels = Array.isArray(runtime?.channel_definitions) ? runtime.channel_definitions : Array.isArray(device?.channel_definitions) ? device.channel_definitions : [];
+  const channelCodes = channels.filter((channel: any) => channel?.controllable !== false && channel?.code).map((channel: any) => String(channel.code));
+  if (channelCodes.length) return channelCodes.slice(0, 3);
+  const codes = [
+    ...(Array.isArray(runtime?.capability_codes) ? runtime.capability_codes : []),
+    ...(Array.isArray(runtime?.supported_controls) ? runtime.supported_controls : []),
+    ...(Array.isArray(device?.capability_codes) ? device.capability_codes : []),
+    ...(Array.isArray(device?.supported_controls) ? device.supported_controls : []),
+    ...Object.keys(state || {}),
+  ].map((code) => String(code));
+  return Array.from(new Set(codes.filter((code) => code === "switch" || code === "power" || /^switch_\d+$/i.test(code)))).slice(0, 3);
+}
+
+function canPowerControl(device: AnyDevice, runtime: Partial<DeviceRuntimeSummary> | null | undefined, state: any) {
+  const family = getDeviceFamily(runtime ? { ...device, ...runtime } : device);
+  if (!["switch", "plug", "light"].includes(family)) return false;
+  return switchCodes(device, runtime, state).length > 0;
+}
+
+function guessGangCount(device: AnyDevice, state: any, runtime?: Partial<DeviceRuntimeSummary> | null): 1 | 2 | 3 {
+  const runtimeCodes = switchCodes(device, runtime, state).filter((code) => /^switch_\d+$/i.test(code));
+  if (runtimeCodes.length >= 3) return 3;
+  if (runtimeCodes.length === 2) return 2;
   const raw = (device?.metadata?.raw ?? device?.metadata ?? device?.meta ?? {}) as any;
 
   const rawKeys = Object.keys(raw || {});
@@ -77,24 +100,21 @@ function readGangValues(gangCount: 1 | 2 | 3, state: any): Array<boolean | null>
   return out;
 }
 
-// IMPORTANT: same command keys as your working Devices page
-function resolveGangCode(gangCount: 1 | 2 | 3, gangIndex: number) {
-  return gangCount === 1 ? "switch" : `switch_${gangIndex + 1}`;
+function resolveGangCode(device: AnyDevice, runtime: Partial<DeviceRuntimeSummary> | null | undefined, state: any, gangIndex: number) {
+  const codes = switchCodes(device, runtime, state);
+  if (codes[gangIndex]) return codes[gangIndex];
+  return codes[0] || (gangIndex === 0 ? "switch" : `switch_${gangIndex + 1}`);
 }
 
 export default function RoomClient() {
   const router = useRouter();
   const params = useSearchParams();
-  const { user } = useAuth();
+  const activeContext = useActiveContext();
 
   const roomId = useMemo(() => params.get("roomId") || "", [params]);
-
-  const homeId = useMemo(
-    () =>
-      (user as any)?.home_id ??
-      (typeof window !== "undefined" ? localStorage.getItem("ochiga_home") : null),
-    [user]
-  );
+  const homeId = activeContext.home_id;
+  const contextReady = activeContext.ready;
+  const activeContextKeyRef = useRef(activeContext.contextKey);
 
   const [room, setRoom] = useState<RoomDTO | null>(null);
   const [devices, setDevices] = useState<AnyDevice[]>([]);
@@ -103,16 +123,19 @@ export default function RoomClient() {
   const [err, setErr] = useState<string | null>(null);
 
   const [stateMap, setStateMap] = useState<Record<string, any>>({});
+  const [runtimeMap, setRuntimeMap] = useState<Record<string, DeviceRuntimeSummary>>({});
   const [onMap, setOnMap] = useState<Record<string, boolean | null>>({});
 
   async function loadRoom() {
-    if (!roomId || !homeId) return;
+    if (!contextReady || !roomId || !homeId) return;
+    const loadContextKey = activeContext.contextKey;
 
     setLoading(true);
     setErr(null);
 
     try {
       const list = await roomsService.getRooms(homeId);
+      if (loadContextKey !== activeContextKeyRef.current) return;
       const found = (list || []).find((r: any) => String(r?.id) === String(roomId));
 
       if (!found) {
@@ -126,14 +149,33 @@ export default function RoomClient() {
 
       const devs = Array.isArray((found as any).devices) ? (found as any).devices : [];
       setDevices(devs);
+      const runtimeRows = await deviceService.getRuntimeDevices(homeId);
+      if (loadContextKey !== activeContextKeyRef.current) return;
+      const runtimeById = new Map(runtimeRows.map((row) => [String(row.device_id), row]));
 
       const next: Record<string, boolean | null> = {};
+      const runtimeNext: Record<string, DeviceRuntimeSummary> = {};
+      const stateNext: Record<string, any> = {};
       for (const d of devs) {
         const id = pickId(d);
         if (!id) continue;
-        const listOn = cleanBool(d?.on) ?? cleanBool(d?.power) ?? cleanBool(d?.switch);
+        const runtime = runtimeById.get(String((d as any).id || (d as any).device_id || id));
+        const sid = String(id);
+        if (runtime) {
+          runtimeNext[sid] = runtime;
+          stateNext[sid] = runtime.state || {};
+        }
+        const listOn =
+          cleanBool(runtime?.state?.on) ??
+          cleanBool(runtime?.state?.power) ??
+          cleanBool(runtime?.state?.switch) ??
+          cleanBool(d?.on) ??
+          cleanBool(d?.power) ??
+          cleanBool(d?.switch);
         if (listOn !== null) next[String(id)] = listOn;
       }
+      setRuntimeMap(runtimeNext);
+      setStateMap(stateNext);
       if (Object.keys(next).length) setOnMap((p) => ({ ...p, ...next }));
     } catch (e: any) {
       setErr(e?.response?.data?.error || e?.message || "Failed to load room");
@@ -147,7 +189,16 @@ export default function RoomClient() {
   useEffect(() => {
     loadRoom();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomId, homeId]);
+  }, [roomId, contextReady, activeContext.contextKey]);
+
+  useEffect(() => {
+    activeContextKeyRef.current = activeContext.contextKey;
+    setRoom(null);
+    setDevices([]);
+    setStateMap({});
+    setRuntimeMap({});
+    setOnMap({});
+  }, [activeContext.contextKey]);
 
   async function warmState(device: AnyDevice) {
     const id = pickId(device);
@@ -160,6 +211,7 @@ export default function RoomClient() {
       const res = await deviceService.getDeviceState(sid);
       const st = (res as any)?.state ?? {};
       setStateMap((p) => ({ ...p, [sid]: st }));
+      setRuntimeMap((p) => ({ ...p, [sid]: { ...(p[sid] || {}), ...(res as any), device_id: sid } }));
 
       const one = cleanBool(st?.switch) ?? cleanBool(st?.power) ?? cleanBool(st?.on);
       if (one !== null) setOnMap((p) => ({ ...p, [sid]: one }));
@@ -170,14 +222,19 @@ export default function RoomClient() {
     const id = pickId(device);
     if (!id) return;
     const sid = String(id);
+    const runtime = runtimeMap[sid] || null;
+    const cached = stateMap[sid] || {};
+    if (!canPowerControl(device, runtime, cached)) {
+      setErr("This device does not expose a simple power control.");
+      return;
+    }
 
     setBusyId(sid);
     setErr(null);
 
     try {
-      const cached = stateMap[sid] || {};
-      const gangCount = guessGangCount(device, cached);
-      const code = resolveGangCode(gangCount, gangIndex);
+      const gangCount = guessGangCount(device, cached, runtime);
+      const code = resolveGangCode(device, runtime, cached, gangIndex);
 
       // optimistic patch
       setStateMap((p) => {
@@ -207,7 +264,11 @@ export default function RoomClient() {
 
     const list = devices
       .map((d) => ({ d, id: pickId(d) }))
-      .filter((x) => !!x.id) as Array<{ d: AnyDevice; id: string }>;
+      .filter((x) => {
+        if (!x.id) return false;
+        const sid = String(x.id);
+        return canPowerControl(x.d, runtimeMap[sid], stateMap[sid] || {});
+      }) as Array<{ d: AnyDevice; id: string }>;
 
     if (!list.length) return;
 
@@ -217,7 +278,8 @@ export default function RoomClient() {
       for (const { d, id } of list) {
         const sid = String(id);
         const cached = stateMap[sid] || {};
-        const gangCount = guessGangCount(d, cached);
+        const runtime = runtimeMap[sid] || null;
+        const gangCount = guessGangCount(d, cached, runtime);
 
         // optimistic patch
         setStateMap((p) => {
@@ -235,7 +297,7 @@ export default function RoomClient() {
         setOnMap((p) => ({ ...p, [sid]: next }));
 
         const cmd: Record<string, any> = {};
-        for (let gi = 0; gi < gangCount; gi++) cmd[resolveGangCode(gangCount, gi)] = next;
+        for (let gi = 0; gi < gangCount; gi++) cmd[resolveGangCode(d, runtime, cached, gi)] = next;
 
         await deviceService.commandDevice(sid, cmd);
       }
@@ -251,7 +313,8 @@ export default function RoomClient() {
     let offline = 0;
 
     for (const d of devices) {
-      const o = isOnline(d);
+      const id = pickId(d);
+      const o = isOnline(d, id ? runtimeMap[String(id)] : null);
       if (o === true) online++;
       else if (o === false) offline++;
     }
@@ -262,13 +325,23 @@ export default function RoomClient() {
       if (!id) continue;
       const sid = String(id);
       const cached = stateMap[sid] || {};
-      const gangCount = guessGangCount(d, cached);
+      const gangCount = guessGangCount(d, cached, runtimeMap[sid]);
       const vals = Object.keys(cached).length ? readGangValues(gangCount, cached) : [onMap[sid] ?? null];
       if (vals.some((v) => v === true)) anyOn++;
     }
 
     return { online, offline, anyOn, total: devices.length };
-  }, [devices, stateMap, onMap]);
+  }, [devices, runtimeMap, stateMap, onMap]);
+
+  const controllableDevices = useMemo(
+    () =>
+      devices.filter((device) => {
+        const id = pickId(device);
+        const sid = id ? String(id) : "";
+        return canPowerControl(device, runtimeMap[sid], stateMap[sid] || {});
+      }),
+    [devices, runtimeMap, stateMap]
+  );
 
   const title = room?.name ? room.name : "Room";
   const subtitle = "Room command center";
@@ -295,7 +368,7 @@ export default function RoomClient() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => toggleAll(true)}
-            disabled={busyId === "room-all" || loading}
+            disabled={busyId === "room-all" || loading || !controllableDevices.length}
             className="rounded-2xl px-3 py-2 text-sm bg-white text-black hover:opacity-90 disabled:opacity-50 transition"
             type="button"
           >
@@ -304,7 +377,7 @@ export default function RoomClient() {
 
           <button
             onClick={() => toggleAll(false)}
-            disabled={busyId === "room-all" || loading}
+            disabled={busyId === "room-all" || loading || !controllableDevices.length}
             className="rounded-2xl px-3 py-2 text-sm bg-white/10 text-white hover:bg-white/15 border border-white/10 transition disabled:opacity-50"
             type="button"
           >
@@ -349,14 +422,15 @@ export default function RoomClient() {
           {devices.map((d) => {
             const id = pickId(d);
             const sid = id ? String(id) : "";
+            const runtime = runtimeMap[sid] || null;
             const name = pickName(d);
             const vendor = pickVendor(d);
-            const online = isOnline(d);
-            const Icon = getDeviceIcon(d);
-            const tone = getDeviceIconTone(d);
+            const online = isOnline(d, runtime);
+            const Icon = getDeviceIcon(runtime ? { ...d, ...runtime } : d);
 
             const cachedState = sid ? stateMap[sid] : {};
-            const gangCount = guessGangCount(d, cachedState);
+            const gangCount = guessGangCount(d, cachedState, runtime);
+            const controllable = canPowerControl(d, runtime, cachedState);
 
             const isBusy = busyId === sid || busyId === "room-all";
 
@@ -392,14 +466,20 @@ export default function RoomClient() {
                   </div>
 
                   <div className="flex items-center gap-3 shrink-0">
-                    <GangRingSwitch
-                      gangCount={gangCount}
-                      online={online}
-                      values={ringValues}
-                      busy={isBusy}
-                      onToggleGang={(gangIndex, next) => toggleGang(d, gangIndex, next)}
-                      size={64}
-                    />
+                    {controllable ? (
+                      <GangRingSwitch
+                        gangCount={gangCount}
+                        online={online}
+                        values={ringValues}
+                        busy={isBusy}
+                        onToggleGang={(gangIndex, next) => toggleGang(d, gangIndex, next)}
+                        size={64}
+                      />
+                    ) : (
+                      <div className="rounded-full border border-white/10 bg-white/[0.035] px-3 py-2 text-[11px] text-white/45">
+                        View only
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
