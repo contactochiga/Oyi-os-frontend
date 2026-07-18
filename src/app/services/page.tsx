@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ConsumerShell from "@/app/components/ConsumerShell";
 import useActiveContext from "@/hooks/useActiveContext";
 import { getSocket } from "@/services/socket";
@@ -101,7 +101,7 @@ function frontDetailsFor(item: (typeof SERVICE_CARDS)[number], account?: Service
   if (item.key === "power") {
     return {
       primary: identifier ? `Meter ending ${maskIdentifier(identifier)}` : "Meter not linked yet",
-      secondary: "Awaiting facility provisioning",
+      secondary: identifier ? (provider ? `Provider ${provider}` : "Configured by Facility; provider integration pending") : "Awaiting facility provisioning",
       status,
       provider,
     };
@@ -109,8 +109,8 @@ function frontDetailsFor(item: (typeof SERVICE_CARDS)[number], account?: Service
 
   if (item.key === "water") {
     return {
-      primary: provider ? `Provider ${provider}` : "Provider pending",
-      secondary: "Usage feed pending provider integration",
+      primary: identifier ? `Meter ending ${maskIdentifier(identifier)}` : provider ? `Provider ${provider}` : "Provider pending",
+      secondary: identifier ? "Configured by Facility; usage feed pending provider integration" : "Awaiting facility provisioning",
       status,
       provider,
     };
@@ -118,8 +118,8 @@ function frontDetailsFor(item: (typeof SERVICE_CARDS)[number], account?: Service
 
   if (item.key === "internet") {
     return {
-      primary: provider ? `${provider} service` : "Provider pending",
-      secondary: account?.plan || entry?.plan || "Plan pending",
+      primary: identifier ? `Account ending ${maskIdentifier(identifier)}` : provider ? `${provider} service` : "Provider pending",
+      secondary: account?.plan || entry?.plan || (identifier ? "Plan pending provider integration" : "Awaiting facility provisioning"),
       status,
       provider,
     };
@@ -228,7 +228,8 @@ function GroupedServiceCard({
   const Icon = item.icon;
   const entry = compositeRegistryEntry(item.serviceKeys, registry) as any;
   const linked = Boolean(account?.linked ?? entry?.linked);
-  const readiness = account?.vending_readiness || entry?.vending_readiness || account?.status || entry?.status || "Setup pending";
+  const configured = Boolean(account?.identifier || account?.meter_number || account?.account_number || entry?.meter_id || entry?.account_id || linked);
+  const readiness = account?.vending_readiness || entry?.vending_readiness || account?.status || entry?.status || (configured ? "Provider pending" : "Not configured");
   const front = frontDetailsFor(item, account, registry, latestPayment);
   const details = detailFieldsFor(item, account, registry, latestPayment);
 
@@ -306,33 +307,37 @@ export default function ServicesPage() {
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
+  const requestSeqRef = useRef(0);
 
   useEffect(() => {
+    requestSeqRef.current += 1;
     setRegistry(null);
     setAccounts([]);
     setHistory([]);
     setConfigs({});
     setMessage(null);
     setError(null);
+    setErrorCode(null);
   }, [activeContext.contextKey]);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       if (!contextReady || !estateId) return;
+      const requestSeq = requestSeqRef.current;
       const [registryResult, accountsResult, historyRows, configResult] = await Promise.all([
         servicesService.homeRegistry({ estate_id: estateId, home_id: activeContext.home_id || undefined }),
         servicesService.myAccounts({ estate_id: estateId, home_id: activeContext.home_id || undefined }),
         servicesService.history({ home_id: activeContext.home_id || undefined, limit: 40 }),
         servicesService.configs({ estate_id: estateId }),
       ]);
-      if (cancelled) return;
-      const errors = [
+      if (cancelled || requestSeq !== requestSeqRef.current) return;
+      const primaryErrors = [
         (registryResult as any)?.error,
         (accountsResult as any)?.error,
-        (historyRows as any)?.error,
-        (configResult as any)?.error,
       ].filter(Boolean);
+      const secondaryErrors = [(historyRows as any)?.error, (configResult as any)?.error].filter(Boolean);
       if (!registryResult?.error) setRegistry(registryResult as HomeServiceRegistry);
       if (!accountsResult?.error) setAccounts(accountsResult.accounts || []);
       setHistory(Array.isArray(historyRows) ? historyRows : []);
@@ -340,7 +345,13 @@ export default function ServicesPage() {
         const nextConfigs = Object.fromEntries((configResult.configs || []).map((config: ServiceConfig) => [config.service_key, config])) as Partial<Record<ServiceKey, ServiceConfig>>;
         setConfigs(nextConfigs);
       }
-      setError(errors.length ? String(errors[0]) : null);
+      if (primaryErrors.length) {
+        setError("Infrastructure services are temporarily unavailable. Try again.");
+        setErrorCode(String((registryResult as any)?.code || (accountsResult as any)?.code || "service_load_failed"));
+      } else {
+        setError(null);
+        setErrorCode(secondaryErrors.length ? String((historyRows as any)?.code || (configResult as any)?.code || "secondary_service_data_unavailable") : null);
+      }
     }
     void load();
     return () => {
@@ -353,15 +364,19 @@ export default function ServicesPage() {
     const socket = getSocket();
     if (!socket) return;
     const refresh = () => {
+      const requestSeq = requestSeqRef.current;
       void servicesService.homeRegistry({ estate_id: estateId, home_id: activeContext.home_id || undefined }).then((result: any) => {
+        if (requestSeq !== requestSeqRef.current) return;
         if (!result?.error) setRegistry(result as HomeServiceRegistry);
         else setError(String(result.error));
       });
       void servicesService.myAccounts({ estate_id: estateId, home_id: activeContext.home_id || undefined }).then((result: any) => {
+        if (requestSeq !== requestSeqRef.current) return;
         if (!result?.error) setAccounts(result.accounts || []);
         else setError(String(result.error));
       });
       void servicesService.history({ home_id: activeContext.home_id || undefined, limit: 40 }).then((rows: any) => {
+        if (requestSeq !== requestSeqRef.current) return;
         if (Array.isArray(rows)) setHistory(rows);
         else if (rows?.error) setError(String(rows.error));
       });
@@ -387,9 +402,15 @@ export default function ServicesPage() {
     return item.serviceKeys.map((key) => latestByKey.get(key) || null).find(Boolean) || null;
   }, [latestByKey]);
 
+  const isProvisioned = useCallback((item: (typeof SERVICE_CARDS)[number]) => {
+    const account = accountForCard(item);
+    const entry = compositeRegistryEntry(item.serviceKeys, registry) as any;
+    return Boolean(account?.linked || account?.identifier || account?.meter_number || account?.account_number || entry?.linked || entry?.meter_id || entry?.account_id);
+  }, [accountForCard, registry]);
+
   const strip = [
     { label: "Services", value: SERVICE_CARDS.length },
-    { label: "Ready", value: accounts.filter((item) => item.vending_readiness === "ready").length },
+    { label: "Ready", value: SERVICE_CARDS.filter((item) => isProvisioned(item)).length },
     { label: "Pending", value: accounts.filter((item) => /pending|manual_review|unsupported/.test(String(item.last_transaction_status || item.vending_readiness || ""))).length },
     { label: "Wallet", value: registry?.wallet?.balance != null ? toNaira(Number(registry.wallet.balance || 0)) : "Pending" },
   ];
@@ -440,7 +461,12 @@ export default function ServicesPage() {
       strip={strip}
     >
       <div className="space-y-4 pb-8">
-        {error ? <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div> : null}
+        {error ? (
+          <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+            <div>{error}</div>
+            {errorCode ? <div className="mt-1 text-[11px] text-red-100/65">Diagnostic: {errorCode}</div> : null}
+          </div>
+        ) : null}
         {message ? <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">{message}</div> : null}
 
         <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -456,7 +482,11 @@ export default function ServicesPage() {
           ))}
         </div>
 
-        {groupedSections.map((section) => (
+        {error && !registry && !accounts.length ? (
+          <section className="rounded-[24px] border border-white/10 bg-white/[0.03] p-4 text-sm text-white/60">
+            I could not load this home’s provisioned services. Your meter and account details were not treated as missing; they are temporarily unavailable.
+          </section>
+        ) : groupedSections.map((section) => (
           <section key={section.title} className="space-y-3">
             <div className="space-y-3">
               {section.cards.map((item) => (

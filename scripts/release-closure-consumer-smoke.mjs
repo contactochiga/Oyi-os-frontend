@@ -68,5 +68,10 @@ assert(/throwCommunityError/.test(communityService), "community feed failures th
 assert(/loadRequestRef/.test(communityPage) && /setComments\(\{\}\)/.test(communityPage), "community feed clears stale posts and comments on active-home changes");
 assert(/Failed to load service activity/.test(servicesService), "service payment history failures are surfaced");
 assert(/setRegistry\(null\)/.test(servicesPage) && /activeContext\.contextKey/.test(servicesPage), "services clear stale registry and account state on active-home changes");
+assert(/ServiceApiFailure/.test(servicesService) && /diagnostics/.test(servicesService), "service API failures preserve typed diagnostics");
+assert(/Infrastructure services are temporarily unavailable\. Try again\./.test(servicesPage), "services page distinguishes backend failure from unconfigured services");
+assert(/requestSeqRef/.test(servicesPage) && /requestSeq !== requestSeqRef\.current/.test(servicesPage), "services page rejects late responses after active-home changes");
+assert(/Configured by Facility; provider integration pending/.test(servicesPage), "services page shows configured identifiers separately from provider readiness");
+assert(/SERVICE_CARDS\.filter\(\(item\) => isProvisioned\(item\)\)/.test(servicesPage), "services readiness count is based on provisioned home services");
 assert(/maintenanceService\.listMyTickets\(\{ homeId: activeContext\.home_id/.test(maintenancePage), "maintenance list is scoped to active home");
 assert(/requestRef/.test(maintenancePage) && /setSelectedTicket\(null\)/.test(maintenancePage), "maintenance clears stale tickets on active-home changes");

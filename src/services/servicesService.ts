@@ -107,13 +107,30 @@ export type ServiceTransaction = {
   created_at?: string | null;
 };
 
+export type ServiceApiFailure = {
+  error: string;
+  code?: string | null;
+  status?: number | null;
+  diagnostics?: Record<string, any> | null;
+};
+
 function pickError(err: any, fallback: string) {
   return (
+    err?.userMessage ||
     err?.response?.data?.error ||
     err?.response?.data?.message ||
     err?.message ||
     fallback
   );
+}
+
+function failure(err: any, fallback: string): ServiceApiFailure {
+  return {
+    error: pickError(err, fallback),
+    code: err?.response?.data?.code || err?.response?.data?.error_code || err?.code || null,
+    status: Number(err?.response?.status || 0) || null,
+    diagnostics: err?.diagnostics || null,
+  };
 }
 
 export const servicesService = {
@@ -129,7 +146,7 @@ export const servicesService = {
       });
       return res.data as HomeServiceRegistry;
     } catch (err: any) {
-      return { error: pickError(err, "Failed to load home service registry") } as any;
+      return failure(err, "Failed to load home service registry") as any;
     }
   },
   async pay(payload: { service_key: ServiceKey; amount: number; account_ref: string; bundle_name?: string; period_label?: string }) {
@@ -141,7 +158,7 @@ export const servicesService = {
         receipt?: ServicePayment;
       };
     } catch (err: any) {
-      return { error: pickError(err, "Failed to process service payment") } as any;
+      return failure(err, "Failed to process service payment") as any;
     }
   },
 
@@ -155,7 +172,7 @@ export const servicesService = {
       });
       return res.data as { ok?: boolean; accounts: ServiceAccount[] };
     } catch (err: any) {
-      return { accounts: [] as ServiceAccount[], error: pickError(err, "Failed to load resident service accounts") } as any;
+      return { accounts: [] as ServiceAccount[], ...failure(err, "Failed to load resident service accounts") } as any;
     }
   },
 
@@ -172,7 +189,7 @@ export const servicesService = {
       const res = await API.post("/services/transactions", payload);
       return res.data as { ok?: boolean; transaction?: ServiceTransaction; provider?: Record<string, any>; message?: string };
     } catch (err: any) {
-      return { error: pickError(err, "Failed to record service transaction") } as any;
+      return failure(err, "Failed to record service transaction") as any;
     }
   },
 
@@ -181,7 +198,7 @@ export const servicesService = {
       const res = await API.get("/services/payments", { params });
       return (res.data?.payments || []) as ServicePayment[];
     } catch (err: any) {
-      return { payments: [] as ServicePayment[], error: pickError(err, "Failed to load service activity") } as any;
+      return { payments: [] as ServicePayment[], ...failure(err, "Failed to load service activity") } as any;
     }
   },
 
@@ -193,7 +210,7 @@ export const servicesService = {
         using_fallback: Boolean(res.data?.using_fallback),
       };
     } catch (err: any) {
-      return { configs: [] as ServiceConfig[], using_fallback: false, error: pickError(err, "Failed to load service configs") } as any;
+      return { configs: [] as ServiceConfig[], using_fallback: false, ...failure(err, "Failed to load service configs") } as any;
     }
   },
 };
