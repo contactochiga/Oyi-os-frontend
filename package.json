@@ -19,8 +19,9 @@
     "cap:copy": "npx cap copy",
     "cap:update": "npx cap update",
     "smoke:device-runtime-batch": "node scripts/device-runtime-batch-smoke.mjs",
+    "smoke:context-isolation": "node scripts/context-isolation-smoke.mjs",
     "smoke:release-closure": "node scripts/release-closure-consumer-smoke.mjs",
-    "validate:release": "node scripts/validate-release.mjs && npm run smoke:device-runtime-batch && npm run smoke:release-closure"
+    "validate:release": "node scripts/validate-release.mjs && npm run smoke:device-runtime-batch && npm run smoke:context-isolation && npm run smoke:release-closure"
   },
   "dependencies": {
     "@capacitor-community/speech-recognition": "^6.0.0",

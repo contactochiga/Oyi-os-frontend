@@ -1,9 +1,10 @@
 // src/app/wallet/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ConsumerShell from "@/app/components/ConsumerShell";
 import useAuth from "@/hooks/useAuth";
+import useActiveContext from "@/hooks/useActiveContext";
 import { walletService, type WalletDTO, type WalletReceipt } from "@/services/walletService";
 import { servicesService, type ServicePayment } from "@/services/servicesService";
 import { loadOyiCoreExecutionHistory, loadOyiCoreExecutionStatistics } from "@/services/oyiCoreRuntimeService";
@@ -28,7 +29,14 @@ function safeNum(v: any) {
 
 export default function WalletPage() {
   const { user } = useAuth();
+  const activeContext = useActiveContext();
+  const contextReady = activeContext.ready;
+  const contextKeyRef = useRef(activeContext.contextKey);
   const email = useMemo(() => user?.email || "", [user?.email]);
+  const scope = useMemo(
+    () => ({ estate_id: activeContext.estate_id || null, home_id: activeContext.home_id || null }),
+    [activeContext.estate_id, activeContext.home_id],
+  );
 
   const [wallet, setWallet] = useState<WalletDTO | null>(null);
   const [loading, setLoading] = useState(false);
@@ -45,9 +53,17 @@ export default function WalletPage() {
   const latestAwareness = useRuntimeIntelligenceStore((state) => state.latestAwareness);
 
   async function load() {
+    if (!contextReady || !activeContext.home_id) {
+      setWallet(null);
+      setServicePayments([]);
+      setLoading(activeContext.loading || activeContext.switching);
+      return;
+    }
+    const contextKey = activeContext.contextKey;
     setLoading(true);
     try {
-      const res: any = await walletService.getWallet();
+      const res: any = await walletService.getWallet(scope);
+      if (contextKey !== contextKeyRef.current) return;
       if (res?.error) {
         setErr(String(res.error));
         setWallet(null);
@@ -63,9 +79,16 @@ export default function WalletPage() {
   }
 
   useEffect(() => {
+    contextKeyRef.current = activeContext.contextKey;
+    setWallet(null);
+    setServicePayments([]);
+    setSelectedPayment(null);
+    setSelectedReceipt(null);
+    setErr(null);
+    setInfo(null);
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [contextReady, activeContext.contextKey]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -80,8 +103,10 @@ export default function WalletPage() {
     const receiptReference = String(new URLSearchParams(window.location.search).get("receipt") || "").trim();
     if (!receiptReference) return;
     let alive = true;
-    void walletService.getFundingReceipt(receiptReference).then((response: any) => {
+    const contextKey = activeContext.contextKey;
+    void walletService.getFundingReceipt(receiptReference, scope).then((response: any) => {
       if (!alive) return;
+      if (contextKey !== contextKeyRef.current) return;
       if (response?.receipt) {
         setSelectedReceipt(response.receipt);
       } else if (response?.error) {
@@ -91,14 +116,20 @@ export default function WalletPage() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [activeContext.contextKey, scope]);
 
   useEffect(() => {
     (async () => {
-      const rows = await servicesService.history({ limit: 5 });
+      if (!contextReady || !activeContext.home_id) {
+        setServicePayments([]);
+        return;
+      }
+      const contextKey = activeContext.contextKey;
+      const rows = await servicesService.history({ estate_id: activeContext.estate_id || undefined, home_id: activeContext.home_id || undefined, limit: 5 });
+      if (contextKey !== contextKeyRef.current) return;
       setServicePayments(Array.isArray(rows) ? rows : []);
     })();
-  }, []);
+  }, [contextReady, activeContext.contextKey, activeContext.estate_id, activeContext.home_id]);
 
   useEffect(() => {
     let alive = true;
@@ -120,7 +151,8 @@ export default function WalletPage() {
     setInfo(null);
 
     const n = safeNum(amount);
-    if (!email) return setErr("No email found for this account.");
+	    if (!email) return setErr("No email found for this account.");
+	    if (!contextReady || !activeContext.home_id) return setErr("Select a home before funding this wallet.");
     if (!n || n < 100) return setErr("Enter an amount of at least ₦100.");
 
     setFunding(true);
@@ -131,10 +163,12 @@ export default function WalletPage() {
           : undefined;
 
       const res: any = await walletService.initPayment({
-        amount: n,
-        email,
-        callback_url: callbackUrl,
-      });
+	        amount: n,
+	        email,
+	        callback_url: callbackUrl,
+	        estate_id: activeContext.estate_id || null,
+	        home_id: activeContext.home_id || null,
+	      });
 
       if (res?.error) {
         const text = String(res.error || "");

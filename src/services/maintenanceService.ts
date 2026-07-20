@@ -30,9 +30,15 @@ export const maintenanceService = {
    * GET /maintenance?status=open
    * backend returns: { requests: [...] }
    */
-  async listMyTickets(params?: { status?: string; homeId?: string }) {
+  async listMyTickets(params?: { status?: string; homeId?: string; estate_id?: string | null }) {
     try {
-      const res = await API.get("/maintenance", { params });
+      const res = await API.get("/maintenance", {
+        params: {
+          ...(params?.status ? { status: params.status } : {}),
+          ...(params?.homeId ? { home_id: params.homeId } : {}),
+          ...(params?.estate_id ? { estate_id: params.estate_id } : {}),
+        },
+      });
       return (res.data?.requests || []) as MaintenanceTicket[];
     } catch (err: any) {
       return { error: pickError(err, "Failed to load maintenance") } as any;
@@ -59,7 +65,7 @@ export const maintenanceService = {
   },
 
   // aliases (optional)
-  listMyMaintenance(params?: { status?: string; homeId?: string }) {
+  listMyMaintenance(params?: { status?: string; homeId?: string; estate_id?: string | null }) {
     return this.listMyTickets(params);
   },
 

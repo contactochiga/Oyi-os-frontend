@@ -57,39 +57,52 @@ export type UploadedMessageMedia = {
   key?: string;
 };
 
+type ScopeParams = {
+  estate_id?: string | null;
+  home_id?: string | null;
+};
+
+function scopeParams(scope?: ScopeParams | null) {
+  return {
+    ...(scope?.estate_id ? { estate_id: scope.estate_id } : {}),
+    ...(scope?.home_id ? { home_id: scope.home_id } : {}),
+  };
+}
+
 export const messagesService = {
-  async listResidents(q = ""): Promise<ChatResident[]> {
+  async listResidents(q = "", scope?: ScopeParams | null): Promise<ChatResident[]> {
     try {
-      const res = await API.get("/messages/residents", { params: q ? { q } : undefined });
+      const res = await API.get("/messages/residents", { params: { ...scopeParams(scope), ...(q ? { q } : {}) } });
       return res.data?.residents ?? [];
     } catch (err: any) {
       return { error: pickError(err, "Failed to load residents") } as any;
     }
   },
 
-  async listInbox(): Promise<InboxThread[]> {
+  async listInbox(scope?: ScopeParams | null): Promise<InboxThread[]> {
     try {
-      const res = await API.get("/messages/inbox");
+      const res = await API.get("/messages/inbox", { params: scopeParams(scope) });
       return res.data?.threads ?? [];
     } catch (err: any) {
       return { error: pickError(err, "Failed to load messages") } as any;
     }
   },
 
-  async createOrGetDirectThread(peer_user_id: string) {
+  async createOrGetDirectThread(peer_user_id: string, scope?: ScopeParams | null) {
     try {
-      const res = await API.post("/messages/thread/direct", { peer_user_id });
+      const res = await API.post("/messages/thread/direct", { peer_user_id, ...scopeParams(scope) });
       return res.data as { ok?: boolean; thread?: any };
     } catch (err: any) {
       return { error: pickError(err, "Failed to open thread") } as any;
     }
   },
 
-  async listMessages(threadId: string, before?: string, limit = 50): Promise<ThreadMessagesResponse> {
+  async listMessages(threadId: string, before?: string, limit = 50, scope?: ScopeParams | null): Promise<ThreadMessagesResponse> {
     try {
       const res = await API.get(`/messages/thread/${encodeURIComponent(threadId)}/messages`, {
         params: {
           limit,
+          ...scopeParams(scope),
           ...(before ? { before } : {}),
         },
       });
@@ -102,9 +115,9 @@ export const messagesService = {
     }
   },
 
-  async sendMessage(threadId: string, body: string) {
+  async sendMessage(threadId: string, body: string, scope?: ScopeParams | null) {
     try {
-      const res = await API.post(`/messages/thread/${encodeURIComponent(threadId)}/messages`, { body });
+      const res = await API.post(`/messages/thread/${encodeURIComponent(threadId)}/messages`, { body, ...scopeParams(scope) });
       return res.data as { ok?: boolean; message?: ChatMessage };
     } catch (err: any) {
       return { error: pickError(err, "Failed to send message") } as any;
@@ -117,6 +130,8 @@ export const messagesService = {
       body?: string;
       message_type: "image" | "video";
       metadata: Record<string, any>;
+      estate_id?: string | null;
+      home_id?: string | null;
     }
   ) {
     try {
@@ -141,20 +156,21 @@ export const messagesService = {
     }
   },
 
-  async markRead(threadId: string) {
+  async markRead(threadId: string, scope?: ScopeParams | null) {
     try {
-      const res = await API.post(`/messages/thread/${encodeURIComponent(threadId)}/read`);
+      const res = await API.post(`/messages/thread/${encodeURIComponent(threadId)}/read`, scopeParams(scope));
       return res.data as { ok?: boolean };
     } catch (err: any) {
       return { error: pickError(err, "Failed to mark read") } as any;
     }
   },
 
-  async reportMessage(messageId: string, reason: string, details?: string) {
+  async reportMessage(messageId: string, reason: string, details?: string, scope?: ScopeParams | null) {
     try {
       const res = await API.post(`/messages/message/${encodeURIComponent(messageId)}/report`, {
         reason,
         details: details || null,
+        ...scopeParams(scope),
       });
       return res.data as { ok?: boolean };
     } catch (err: any) {
@@ -162,9 +178,9 @@ export const messagesService = {
     }
   },
 
-  async pingPresence() {
+  async pingPresence(scope?: ScopeParams | null) {
     try {
-      const res = await API.post("/messages/presence/ping");
+      const res = await API.post("/messages/presence/ping", scopeParams(scope));
       return res.data as { ok?: boolean; last_seen_at?: string };
     } catch (err: any) {
       return { error: pickError(err, "Failed to update presence") } as any;

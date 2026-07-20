@@ -59,6 +59,10 @@ export default function MessagesPage() {
   const activeContext = useActiveContext();
   const contextReady = activeContext.ready;
   const activeContextKeyRef = useRef(activeContext.contextKey);
+  const scope = useMemo(
+    () => ({ estate_id: activeContext.estate_id || null, home_id: activeContext.home_id || null }),
+    [activeContext.estate_id, activeContext.home_id],
+  );
   const myId = useMemo(() => String((user as any)?.id || (user as any)?.user_id || (user as any)?.sub || ""), [user]);
 
   const [threads, setThreads] = useState<InboxThread[]>([]);
@@ -88,7 +92,7 @@ export default function MessagesPage() {
   async function loadInbox() {
     if (!contextReady) return;
     const contextKey = activeContext.contextKey;
-    const list = await messagesService.listInbox();
+    const list = await messagesService.listInbox(scope);
     if (contextKey !== activeContextKeyRef.current) return;
     if ((list as any)?.error) {
       setErr(String((list as any).error));
@@ -100,7 +104,7 @@ export default function MessagesPage() {
   async function loadResidents(q = "") {
     if (!contextReady) return;
     const contextKey = activeContext.contextKey;
-    const list = await messagesService.listResidents(q);
+    const list = await messagesService.listResidents(q, scope);
     if (contextKey !== activeContextKeyRef.current) return;
     if ((list as any)?.error) {
       setErr(String((list as any).error));
@@ -116,7 +120,7 @@ export default function MessagesPage() {
       return;
     }
     const contextKey = activeContext.contextKey;
-    const res = await messagesService.listMessages(thread.id, undefined, 80);
+    const res = await messagesService.listMessages(thread.id, undefined, 80, scope);
     if (contextKey !== activeContextKeyRef.current) return;
     if ((res as any)?.error) {
       setErr(String((res as any).error));
@@ -124,20 +128,23 @@ export default function MessagesPage() {
     }
     setMessages(Array.isArray(res?.messages) ? res.messages : []);
     setPeerLastReadAt(res?.peer_last_read_at || null);
-    await messagesService.markRead(thread.id);
+    await messagesService.markRead(thread.id, scope);
     await loadInbox();
   }
 
   async function openThreadFromResident(peerId: string) {
     if (!peerId) return;
     setErr(null);
-    const res: any = await messagesService.createOrGetDirectThread(peerId);
+    const contextKey = activeContext.contextKey;
+    const res: any = await messagesService.createOrGetDirectThread(peerId, scope);
+    if (contextKey !== activeContextKeyRef.current) return;
     if (res?.error) {
       setErr(String(res.error));
       return;
     }
     await loadInbox();
-    const inbox = await messagesService.listInbox();
+    const inbox = await messagesService.listInbox(scope);
+    if (contextKey !== activeContextKeyRef.current) return;
     setThreads(Array.isArray(inbox) ? inbox : []);
     const found = (inbox || []).find((t) => String(t.id) === String(res?.thread?.id));
     if (found) {
@@ -235,7 +242,7 @@ export default function MessagesPage() {
           if (prev.some((item) => String(item.id) === String(message.id))) return prev;
           return [...prev, message];
         });
-        void messagesService.markRead(threadId);
+        void messagesService.markRead(threadId, scope);
       }
       void loadInbox();
     };
@@ -245,6 +252,7 @@ export default function MessagesPage() {
 
     return () => {
       socket.off("dm:new", onDm);
+      if (activeThread?.id) socket.emit("unsubscribe:thread", activeThread.id);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contextReady, activeContext.contextKey, activeThread?.id]);
@@ -330,8 +338,9 @@ export default function MessagesPage() {
             filename: pendingAttachment.name || null,
             caption: text || null,
           },
+          ...scope,
         })
-      : await messagesService.sendMessage(activeThread.id, text);
+      : await messagesService.sendMessage(activeThread.id, text, scope);
     setSending(false);
     if (res?.error) {
       setErr(String(res.error));

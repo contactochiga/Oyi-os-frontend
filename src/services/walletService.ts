@@ -4,6 +4,9 @@ import API from "./api";
 export type WalletDTO = {
   id: string;
   user_id: string;
+  estate_id?: string | null;
+  home_id?: string | null;
+  membership_id?: string | null;
   balance: number;
   currency?: string | null;
   created_at?: string;
@@ -22,6 +25,18 @@ export type InitPaymentResponse = {
   authorization_url?: string;
   reference?: string;
 };
+
+type ScopeParams = {
+  estate_id?: string | null;
+  home_id?: string | null;
+};
+
+function scopeParams(scope?: ScopeParams | null) {
+  return {
+    ...(scope?.estate_id ? { estate_id: scope.estate_id } : {}),
+    ...(scope?.home_id ? { home_id: scope.home_id } : {}),
+  };
+}
 
 export type VerifyPaymentResponse = {
   ok?: boolean;
@@ -81,9 +96,9 @@ function pickError(err: any, fallback: string) {
 
 export const walletService = {
   // ✅ GET /wallets
-  async getWallet() {
+  async getWallet(scope?: ScopeParams | null) {
     try {
-      const res = await API.get("/wallets");
+      const res = await API.get("/wallets", { params: scopeParams(scope) });
       return res.data as WalletDTO;
     } catch (err: any) {
       return { error: pickError(err, "Failed to load wallet") } as any;
@@ -91,7 +106,7 @@ export const walletService = {
   },
 
   // ✅ POST /wallets/init
-  async initPayment(payload: { amount: number; email: string; callback_url?: string }) {
+  async initPayment(payload: { amount: number; email: string; callback_url?: string } & ScopeParams) {
     try {
       const res = await API.post("/wallets/init", payload);
       return res.data as InitPaymentResponse;
@@ -101,7 +116,7 @@ export const walletService = {
   },
 
   // ✅ POST /wallets/debit (optional)
-  async debit(payload: { amount: number; reason?: string }) {
+  async debit(payload: { amount: number; reason?: string } & ScopeParams) {
     try {
       const res = await API.post("/wallets/debit", payload);
       return res.data as { balance: number };
@@ -111,37 +126,41 @@ export const walletService = {
   },
 
   // ✅ GET /wallets/verify/:reference (fallback when webhook is delayed)
-  async verifyPayment(reference: string) {
+  async verifyPayment(reference: string, scope?: ScopeParams | null) {
     try {
-      const res = await API.get(`/wallets/verify/${encodeURIComponent(reference)}`);
+      const res = await API.get(`/wallets/verify/${encodeURIComponent(reference)}`, { params: scopeParams(scope) });
       return res.data as VerifyPaymentResponse;
     } catch (err: any) {
       return { error: pickError(err, "Failed to verify payment") } as VerifyPaymentResponse;
     }
   },
 
-  async getFundingStatus(reference: string, options?: { reconcile?: boolean }) {
+  async getFundingStatus(reference: string, options?: { reconcile?: boolean } & ScopeParams) {
     try {
-      const query = options?.reconcile ? "?reconcile=true" : "";
-      const res = await API.get(`/wallets/payment-status/${encodeURIComponent(reference)}${query}`);
+      const res = await API.get(`/wallets/payment-status/${encodeURIComponent(reference)}`, {
+        params: {
+          ...scopeParams(options),
+          ...(options?.reconcile ? { reconcile: "true" } : {}),
+        },
+      });
       return res.data as WalletFundingStatusResponse;
     } catch (err: any) {
       return { error: pickError(err, "Failed to load payment status") } as WalletFundingStatusResponse;
     }
   },
 
-  async getFundingTransaction(reference: string) {
+  async getFundingTransaction(reference: string, scope?: ScopeParams | null) {
     try {
-      const res = await API.get(`/wallets/transactions/${encodeURIComponent(reference)}`);
+      const res = await API.get(`/wallets/transactions/${encodeURIComponent(reference)}`, { params: scopeParams(scope) });
       return res.data as WalletFundingStatusResponse;
     } catch (err: any) {
       return { error: pickError(err, "Failed to load payment details") } as WalletFundingStatusResponse;
     }
   },
 
-  async getFundingReceipt(reference: string) {
+  async getFundingReceipt(reference: string, scope?: ScopeParams | null) {
     try {
-      const res = await API.get(`/wallets/receipts/${encodeURIComponent(reference)}`);
+      const res = await API.get(`/wallets/receipts/${encodeURIComponent(reference)}`, { params: scopeParams(scope) });
       return res.data as { ok?: boolean; receipt?: WalletReceipt | null; error?: string };
     } catch (err: any) {
       return { error: pickError(err, "Failed to load payment receipt") } as { ok?: boolean; receipt?: WalletReceipt | null; error?: string };

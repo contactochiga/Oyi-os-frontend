@@ -193,7 +193,7 @@ export const servicesService = {
     }
   },
 
-  async history(params?: { service_key?: ServiceKey; home_id?: string; limit?: number }) {
+  async history(params?: { service_key?: ServiceKey; estate_id?: string; home_id?: string; limit?: number }) {
     try {
       const res = await API.get("/services/payments", { params });
       return (res.data?.payments || []) as ServicePayment[];

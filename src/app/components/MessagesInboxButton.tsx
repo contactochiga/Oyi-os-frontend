@@ -4,24 +4,28 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Inbox } from "lucide-react";
 import useAuth from "@/hooks/useAuth";
+import useActiveContext from "@/hooks/useActiveContext";
 import messagesService from "@/services/messagesService";
 
 export default function MessagesInboxButton({ className = "" }: { className?: string }) {
   const router = useRouter();
   const { ready, token } = useAuth() as any;
+  const activeContext = useActiveContext();
   const [unread, setUnread] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!ready || !token) {
+    if (!ready || !token || !activeContext.ready || !activeContext.home_id) {
       setUnread(null);
       return;
     }
+    const scope = { estate_id: activeContext.estate_id || null, home_id: activeContext.home_id || null };
+    const contextKey = activeContext.contextKey;
 
     let alive = true;
     async function refresh() {
       try {
-        const inbox = await messagesService.listInbox();
-        if (!alive) return;
+        const inbox = await messagesService.listInbox(scope);
+        if (!alive || contextKey !== activeContext.contextKey) return;
         const total = (Array.isArray(inbox) ? inbox : []).reduce(
           (sum, thread: any) => sum + Number(thread?.unread_count || 0),
           0,
@@ -38,7 +42,7 @@ export default function MessagesInboxButton({ className = "" }: { className?: st
       alive = false;
       window.clearInterval(timer);
     };
-  }, [ready, token]);
+  }, [ready, token, activeContext.ready, activeContext.contextKey, activeContext.estate_id, activeContext.home_id]);
 
   return (
     <button

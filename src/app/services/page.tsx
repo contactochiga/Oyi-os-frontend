@@ -329,7 +329,7 @@ export default function ServicesPage() {
       const [registryResult, accountsResult, historyRows, configResult] = await Promise.all([
         servicesService.homeRegistry({ estate_id: estateId, home_id: activeContext.home_id || undefined }),
         servicesService.myAccounts({ estate_id: estateId, home_id: activeContext.home_id || undefined }),
-        servicesService.history({ home_id: activeContext.home_id || undefined, limit: 40 }),
+        servicesService.history({ estate_id: estateId || undefined, home_id: activeContext.home_id || undefined, limit: 40 }),
         servicesService.configs({ estate_id: estateId }),
       ]);
       if (cancelled || requestSeq !== requestSeqRef.current) return;
@@ -375,7 +375,7 @@ export default function ServicesPage() {
         if (!result?.error) setAccounts(result.accounts || []);
         else setError(String(result.error));
       });
-      void servicesService.history({ home_id: activeContext.home_id || undefined, limit: 40 }).then((rows: any) => {
+      void servicesService.history({ estate_id: estateId || undefined, home_id: activeContext.home_id || undefined, limit: 40 }).then((rows: any) => {
         if (requestSeq !== requestSeqRef.current) return;
         if (Array.isArray(rows)) setHistory(rows);
         else if (rows?.error) setError(String(rows.error));

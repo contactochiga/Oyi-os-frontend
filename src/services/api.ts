@@ -48,6 +48,23 @@ function getLS(key: string): string | null {
   }
 }
 
+function activeScopeFromStorage() {
+  const estateId =
+    getLS("oyi_active_estate_id") ||
+    getLS("oyi_estate_id") ||
+    getLS("ochiga_estate") ||
+    getLS("estate_id");
+  const homeId =
+    getLS("oyi_active_home_id") ||
+    getLS("oyi_home_id") ||
+    getLS("ochiga_home") ||
+    getLS("home_id");
+  const contextKey =
+    getLS("oyi_active_context_key") ||
+    (estateId || homeId ? `${estateId || "estate"}:${homeId || "home"}` : null);
+  return { estateId, homeId, contextKey };
+}
+
 /**
  * In-memory token (works great for iOS WebView)
  */
@@ -111,7 +128,7 @@ const API = axios.create({
 API.interceptors.request.use((config) => {
   config.baseURL = getBaseURL();
   logResolvedBaseURL("request", String(config.baseURL || ""));
-  if (typeof window !== "undefined") {
+	  if (typeof window !== "undefined") {
     const lsToken =
       getLS("oyi_consumer_token_ls") || // ✅ your new key
       getLS("oyi_consumer_token") || // fallback
@@ -121,12 +138,17 @@ API.interceptors.request.use((config) => {
 
     const token = memToken || lsToken || cookieToken;
 
-    if (token) {
-      config.headers = config.headers || {};
-      (config.headers as any).Authorization = `Bearer ${token}`;
-      (config.headers as any)["X-Oyi-Contract-Version"] = "ochiga.tier1.2026-05-16";
-    }
-  }
+	    if (token) {
+	      config.headers = config.headers || {};
+	      (config.headers as any).Authorization = `Bearer ${token}`;
+	      (config.headers as any)["X-Oyi-Contract-Version"] = "ochiga.tier1.2026-05-16";
+	    }
+	    const scope = activeScopeFromStorage();
+	    config.headers = config.headers || {};
+	    if (scope.estateId) (config.headers as any)["X-Oyi-Estate-Id"] = scope.estateId;
+	    if (scope.homeId) (config.headers as any)["X-Oyi-Home-Id"] = scope.homeId;
+	    if (scope.contextKey) (config.headers as any)["X-Oyi-Context-Key"] = scope.contextKey;
+	  }
   (config.headers as any)["X-Oyi-Runtime"] = runtimeLabel();
 
   return config;
