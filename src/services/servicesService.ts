@@ -25,6 +25,7 @@ export type ServiceConfig = {
   unit_cost?: number | null;
   unit_name?: string | null;
   billing_mode?: "wallet_only" | "metered" | "fixed";
+  metadata?: Record<string, any> | null;
   created_at?: string;
   updated_at?: string;
 };
@@ -125,6 +126,36 @@ export type ServiceTransaction = {
   created_at?: string | null;
 };
 
+export type ElectricityQuote = {
+  quote_id: string;
+  service_key: "utility_token";
+  service_title: "Electricity";
+  amount: number;
+  fee: number;
+  tax: number;
+  total_deduction: number;
+  net_service_amount: number;
+  currency: string;
+  units?: number | null;
+  unit_name?: string | null;
+  tariff?: { rate?: number | null; unit_name?: string | null; effective_from?: string | null; issuer_name?: string | null; support_contact?: string | null };
+  meter: { meter_id?: string | null; account_ref?: string | null };
+  wallet: { wallet_account_id?: string | null; balance_before?: number; balance_after?: number; sufficient?: boolean };
+  fulfilment: { method?: string | null; mode?: string | null; test_mode?: boolean };
+  purchase_available?: boolean;
+  unavailable_reason?: string | null;
+};
+
+export type ElectricityPurchaseResult = {
+  ok?: boolean;
+  wallet_charged?: boolean;
+  balance?: number;
+  transaction?: ServiceTransaction;
+  receipt?: ServicePayment & Record<string, any>;
+  quote?: ElectricityQuote;
+  message?: string;
+};
+
 export type ServiceApiFailure = {
   error: string;
   code?: string | null;
@@ -209,6 +240,24 @@ export const servicesService = {
       return res.data as { ok?: boolean; transaction?: ServiceTransaction; provider?: Record<string, any>; message?: string };
     } catch (err: any) {
       return failure(err, "Failed to record service transaction") as any;
+    }
+  },
+
+  async quoteElectricityPurchase(payload: { amount: number; meter_id?: string | null; account_ref?: string | null; estate_id?: string | null; home_id?: string | null }) {
+    try {
+      const res = await API.post("/services/electricity/quote", payload);
+      return res.data as { ok?: boolean; quote?: ElectricityQuote };
+    } catch (err: any) {
+      return failure(err, "Failed to prepare electricity purchase") as any;
+    }
+  },
+
+  async confirmElectricityPurchase(payload: { amount: number; meter_id?: string | null; account_ref?: string | null; estate_id?: string | null; home_id?: string | null; idempotency_key: string }) {
+    try {
+      const res = await API.post("/services/electricity/purchase", payload);
+      return res.data as ElectricityPurchaseResult;
+    } catch (err: any) {
+      return failure(err, "Electricity purchase is temporarily unavailable. Your wallet has not been charged.") as any;
     }
   },
 

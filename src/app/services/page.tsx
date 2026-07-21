@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ConsumerShell from "@/app/components/ConsumerShell";
 import useActiveContext from "@/hooks/useActiveContext";
 import { getSocket } from "@/services/socket";
-import { servicesService, type HomeServiceRegistry, type ServiceAccount, type ServiceConfig, type ServiceKey, type ServicePayment } from "@/services/servicesService";
+import { servicesService, type ElectricityQuote, type HomeServiceRegistry, type ServiceAccount, type ServiceConfig, type ServiceKey, type ServicePayment } from "@/services/servicesService";
 import { FiChevronDown, FiChevronUp, FiCreditCard, FiDroplet, FiTool, FiWifi, FiZap } from "react-icons/fi";
 
 const SERVICE_CARDS: Array<{
@@ -12,22 +12,22 @@ const SERVICE_CARDS: Array<{
   title: string;
   subtitle: string;
   icon: any;
-  domain: "Power" | "Water" | "Internet" | "Gas" | "Estate Fees";
+  domain: "Electricity" | "Water" | "Internet" | "Gas" | "Estate Fees";
   cta: string;
   transactionType?: string;
   serviceKeys: ServiceKey[];
 }> = [
-  { key: "power", title: "Power", subtitle: "", icon: FiZap, domain: "Power", cta: "Buy Electricity", transactionType: "electricity_purchase", serviceKeys: ["utility_token", "generator_recovery", "solar_battery_service"] },
+  { key: "electricity", title: "Electricity", subtitle: "", icon: FiZap, domain: "Electricity", cta: "Buy Electricity", transactionType: "electricity_purchase", serviceKeys: ["utility_token"] },
   { key: "water", title: "Water", subtitle: "", icon: FiDroplet, domain: "Water", cta: "Report Issue", transactionType: "issue_report", serviceKeys: ["water_service"] },
   { key: "internet", title: "Internet", subtitle: "", icon: FiWifi, domain: "Internet", cta: "Renew / Support", transactionType: "internet_renewal", serviceKeys: ["internet_service"] },
   { key: "gas", title: "Gas", subtitle: "", icon: FiTool, domain: "Gas", cta: "Order Gas", transactionType: "gas_order", serviceKeys: ["gas_service"] },
   { key: "estate_fees", title: "Service Fees", subtitle: "", icon: FiCreditCard, domain: "Estate Fees", cta: "Review Fees", transactionType: "estate_fee", serviceKeys: ["service_charge", "other_facility_fees"] },
 ];
 
-const DOMAIN_FILTERS = ["All", "Power", "Water", "Internet", "Gas", "Estate Fees"] as const;
+const DOMAIN_FILTERS = ["All", "Electricity", "Water", "Internet", "Gas", "Estate Fees"] as const;
 const FILTER_LABELS: Record<(typeof DOMAIN_FILTERS)[number], string> = {
   All: "All",
-  Power: "Power",
+  Electricity: "Electricity",
   Water: "Water",
   Internet: "Internet",
   Gas: "Gas",
@@ -107,7 +107,7 @@ function frontDetailsFor(item: (typeof SERVICE_CARDS)[number], account?: Service
   const identifier = account?.identifier || account?.meter_number || account?.account_number || entry?.meter_id || entry?.account_id || null;
   const state = residentState(entry, account);
 
-  if (item.key === "power") {
+  if (item.key === "electricity") {
     return {
       primary: identifier ? `Meter ${maskIdentifier(identifier)}` : "Meter not connected",
       secondary: "",
@@ -157,16 +157,13 @@ function detailFieldsFor(item: (typeof SERVICE_CARDS)[number], account?: Service
   const provider = account?.provider || entry?.provider || "Awaiting provider setup";
   const tariff = account?.tariff_profile || entry?.tariff_profile || "Awaiting tariff setup";
   const billing = account?.billing_profile || entry?.billing_profile || "Awaiting billing setup";
-  const readiness = account?.vending_readiness || entry?.vending_readiness || account?.status || entry?.status || "Pending";
 
-  if (item.key === "power") {
+  if (item.key === "electricity") {
     return [
       { label: "Meter number", value: identifier },
-      { label: "KCT / KCTN", value: [account?.kct || entry?.kct, account?.kctn || entry?.kctn].filter(Boolean).join(" / ") || "Awaiting meter setup" },
-      { label: "Provider", value: provider },
       { label: "Tariff", value: tariff },
-      { label: "Billing", value: billing },
-      { label: "Readiness", value: String(readiness).replace(/_/g, " ") },
+      { label: "Wallet", value: registry?.wallet?.balance != null ? toNaira(Number(registry.wallet.balance || 0)) : "Awaiting source" },
+      { label: "Last purchase", value: dateText(latestPayment?.created_at || account?.last_activity_at) },
     ];
   }
 
@@ -281,7 +278,7 @@ function GroupedServiceCard({
           </div>
           <div className="text-[11px] text-white/42">
             {config?.suggested_amount ? `Suggested amount ${toNaira(Number(config.suggested_amount))}. ` : ""}
-            Account metadata stays available here without forcing technical identifiers into the first service view.
+            Detailed service records are available here without crowding the first service view.
           </div>
         </div>
       ) : null}
@@ -304,6 +301,12 @@ export default function ServicesPage() {
   const [error, setError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [inlineNotice, setInlineNotice] = useState<string | null>(null);
+  const [purchaseOpen, setPurchaseOpen] = useState(false);
+  const [purchaseAmount, setPurchaseAmount] = useState("");
+  const [purchaseQuote, setPurchaseQuote] = useState<ElectricityQuote | null>(null);
+  const [purchaseResult, setPurchaseResult] = useState<any>(null);
+  const [purchaseStep, setPurchaseStep] = useState<"amount" | "review" | "processing" | "success">("amount");
+  const [purchaseError, setPurchaseError] = useState<string | null>(null);
   const requestSeqRef = useRef(0);
 
   useEffect(() => {
@@ -316,6 +319,12 @@ export default function ServicesPage() {
     setError(null);
     setErrorCode(null);
     setInlineNotice(null);
+    setPurchaseOpen(false);
+    setPurchaseAmount("");
+    setPurchaseQuote(null);
+    setPurchaseResult(null);
+    setPurchaseStep("amount");
+    setPurchaseError(null);
   }, [activeContext.contextKey]);
 
   useEffect(() => {
@@ -427,6 +436,16 @@ export default function ServicesPage() {
   }, [activeFilter]);
 
   async function handleCardAction(item: (typeof SERVICE_CARDS)[number]) {
+    if (item.key === "electricity") {
+      const configAmount = configs.utility_token?.suggested_amount;
+      setPurchaseAmount(configAmount ? String(configAmount) : "");
+      setPurchaseQuote(null);
+      setPurchaseResult(null);
+      setPurchaseError(null);
+      setPurchaseStep("amount");
+      setPurchaseOpen(true);
+      return;
+    }
     setBusyKey(item.key);
     setMessage(null);
     setError(null);
@@ -442,7 +461,7 @@ export default function ServicesPage() {
 	        idempotency_key: `${activeContext.contextKey}:${item.key}:${Date.now()}`,
 	      });
 	      if (result?.error) {
-	        setError(item.key === "power" ? "Electricity purchase is temporarily unavailable. Your wallet has not been charged." : String(result.error));
+	        setError(String(result.error));
 	        setErrorCode(result?.code || null);
 	      } else {
         setMessage(result?.message || `${item.title} request recorded.`);
@@ -452,16 +471,66 @@ export default function ServicesPage() {
         }
       }
 	    } catch (err: any) {
-	      setError(item.key === "power" ? "Electricity purchase is temporarily unavailable. Your wallet has not been charged." : err?.message || "Unable to record service action");
+	      setError(err?.message || "Unable to record service action");
 	    } finally {
       setBusyKey(null);
     }
   }
 
+  async function reviewElectricityPurchase() {
+    const account = accountForCard(SERVICE_CARDS[0]);
+    const amount = Number(purchaseAmount);
+    setPurchaseError(null);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setPurchaseError("Enter an amount to buy electricity.");
+      return;
+    }
+    setPurchaseStep("processing");
+    const result: any = await servicesService.quoteElectricityPurchase({
+      amount,
+      meter_id: account?.meter_number || account?.identifier || undefined,
+      account_ref: account?.account_number || account?.identifier || undefined,
+      estate_id: estateId || undefined,
+      home_id: activeContext.home_id || undefined,
+    });
+    if (result?.error || !result?.quote) {
+      setPurchaseError(result?.error || "Electricity purchase is temporarily unavailable.");
+      setPurchaseStep("amount");
+      return;
+    }
+    setPurchaseQuote(result.quote);
+    setPurchaseStep("review");
+  }
+
+  async function confirmElectricityPurchase() {
+    if (!purchaseQuote) return;
+    setPurchaseError(null);
+    setPurchaseStep("processing");
+    const result: any = await servicesService.confirmElectricityPurchase({
+      amount: Number(purchaseQuote.amount),
+      meter_id: purchaseQuote.meter?.meter_id || undefined,
+      account_ref: purchaseQuote.meter?.account_ref || undefined,
+      estate_id: estateId || undefined,
+      home_id: activeContext.home_id || undefined,
+      idempotency_key: `${activeContext.contextKey}:electricity:${purchaseQuote.quote_id}`,
+    });
+    if (result?.error) {
+      setPurchaseError("Electricity purchase is temporarily unavailable. Your wallet has not been charged.");
+      setPurchaseStep("review");
+      return;
+    }
+    setPurchaseResult(result);
+    setPurchaseStep("success");
+    setMessage(result?.message || "Electricity purchase completed.");
+    void servicesService.history({ estate_id: estateId || undefined, home_id: activeContext.home_id || undefined, limit: 40 }).then((rows: any) => {
+      if (Array.isArray(rows)) setHistory(rows);
+    });
+  }
+
   return (
     <ConsumerShell
       title="Infrastructure Services"
-      subtitle="Resident-ready electricity, water, connectivity, fees, and continuity services."
+      subtitle="Electricity, water, internet, gas, and service fees for this home."
       strip={strip}
     >
       <div className="space-y-4 pb-8">
@@ -525,6 +594,97 @@ export default function ServicesPage() {
           </div>
         </section>
       </div>
+      {purchaseOpen ? (
+        <div className="fixed inset-0 z-[160] flex items-end justify-center bg-black/55 px-4 pb-[calc(16px+var(--sab))] backdrop-blur-sm">
+          <button type="button" className="absolute inset-0" aria-label="Close electricity purchase" onClick={() => setPurchaseOpen(false)} />
+          <section className="relative w-full max-w-[420px] rounded-[28px] border border-white/10 bg-[#07111d] p-4 shadow-[0_24px_80px_rgba(0,0,0,0.55)]">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.18em] text-white/38">Electricity</div>
+                <h2 className="mt-1 text-lg font-semibold text-white">Buy Electricity</h2>
+                <p className="mt-1 text-sm text-white/54">
+                  {purchaseQuote?.meter?.meter_id ? `Meter ${maskIdentifier(purchaseQuote.meter.meter_id)}` : frontDetailsFor(SERVICE_CARDS[0], accountForCard(SERVICE_CARDS[0]), registry, latestPaymentForCard(SERVICE_CARDS[0])).primary}
+                </p>
+              </div>
+              <button type="button" onClick={() => setPurchaseOpen(false)} className="rounded-full border border-white/10 px-3 py-1.5 text-xs text-white/62">Close</button>
+            </div>
+
+            {purchaseError ? <div className="mt-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-100">{purchaseError}</div> : null}
+
+            {purchaseStep === "amount" ? (
+              <div className="mt-4 space-y-3">
+                <label className="block">
+                  <span className="text-xs uppercase tracking-[0.16em] text-white/36">Amount</span>
+                  <input
+                    inputMode="decimal"
+                    value={purchaseAmount}
+                    onChange={(event) => setPurchaseAmount(event.target.value)}
+                    placeholder="Enter amount"
+                    className="mt-2 h-12 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 text-base text-white outline-none"
+                  />
+                </label>
+                <button type="button" onClick={() => void reviewElectricityPurchase()} className="h-12 w-full rounded-full bg-white text-sm font-semibold text-black">
+                  Review Purchase
+                </button>
+              </div>
+            ) : null}
+
+            {purchaseStep === "processing" ? (
+              <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-5 text-sm text-white/68">
+                Checking this meter and wallet…
+              </div>
+            ) : null}
+
+            {purchaseStep === "review" && purchaseQuote ? (
+              <div className="mt-4 space-y-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label="Amount" value={toNaira(purchaseQuote.amount)} />
+                  <Field label="Units" value={purchaseQuote.units != null ? `${purchaseQuote.units} ${purchaseQuote.unit_name || "kWh"}` : "Awaiting tariff"} />
+                  <Field label="Fee" value={toNaira(purchaseQuote.fee)} />
+                  <Field label="Tax" value={toNaira(purchaseQuote.tax)} />
+                  <Field label="Wallet after" value={toNaira(purchaseQuote.wallet?.balance_after)} />
+                  <Field label="Tariff" value={purchaseQuote.tariff?.rate ? `${toNaira(Number(purchaseQuote.tariff.rate))}/${purchaseQuote.unit_name || "kWh"}` : "Awaiting tariff"} />
+                </div>
+                {!purchaseQuote.purchase_available ? (
+                  <div className="rounded-2xl border border-amber-300/20 bg-amber-400/10 px-3 py-2 text-sm text-amber-100">
+                    Electricity purchase is not available yet. Your wallet will not be charged.
+                  </div>
+                ) : purchaseQuote.fulfilment?.test_mode ? (
+                  <div className="rounded-2xl border border-sky-300/20 bg-sky-400/10 px-3 py-2 text-sm text-sky-100">
+                    Test vending mode is enabled. Any token generated here is not valid for a live meter.
+                  </div>
+                ) : null}
+                <button
+                  type="button"
+                  disabled={!purchaseQuote.purchase_available || !purchaseQuote.wallet?.sufficient}
+                  onClick={() => void confirmElectricityPurchase()}
+                  className="h-12 w-full rounded-full bg-white text-sm font-semibold text-black disabled:opacity-45"
+                >
+                  Confirm Purchase
+                </button>
+              </div>
+            ) : null}
+
+            {purchaseStep === "success" ? (
+              <div className="mt-4 space-y-3">
+                <div className="rounded-2xl border border-emerald-300/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">
+                  {purchaseResult?.message || "Electricity purchase completed."}
+                </div>
+                {purchaseResult?.receipt?.token_code ? (
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
+                    <div className="text-[10px] uppercase tracking-[0.18em] text-white/36">{purchaseResult.receipt.test_mode ? "Test token" : "Token"}</div>
+                    <div className="mt-1 font-mono text-lg font-semibold tracking-[0.18em] text-white">{purchaseResult.receipt.token_code}</div>
+                    {purchaseResult.receipt.test_mode ? <div className="mt-2 text-xs text-amber-100/72">This is a test token and will not vend a live meter.</div> : null}
+                  </div>
+                ) : null}
+                <button type="button" onClick={() => setPurchaseOpen(false)} className="h-11 w-full rounded-full border border-white/10 bg-white/[0.05] text-sm font-semibold text-white/78">
+                  Done
+                </button>
+              </div>
+            ) : null}
+          </section>
+        </div>
+      ) : null}
     </ConsumerShell>
   );
 }

@@ -36,6 +36,12 @@ assertIncludes("src/app/services/page.tsx", "estate_id: estateId", "services his
 assertIncludes("src/app/services/page.tsx", "Electricity purchase is temporarily unavailable. Your wallet has not been charged.", "electricity purchase failure is wallet-safe");
 assertIncludes("src/app/services/page.tsx", "Meter ${maskIdentifier(identifier)}", "compact provisioned meter display");
 assertIncludes("src/app/services/page.tsx", "transaction_availability", "services page uses canonical transaction availability");
+assertIncludes("src/app/services/page.tsx", "quoteElectricityPurchase", "electricity purchase starts with backend quote");
+assertIncludes("src/app/services/page.tsx", "confirmElectricityPurchase", "electricity purchase confirms through backend purchase endpoint");
+assertIncludes("src/app/services/page.tsx", "Review Purchase", "electricity purchase requires review before confirmation");
+assertIncludes("src/app/services/page.tsx", "Test token", "test tokens are visibly labelled");
+assertIncludes("src/services/servicesService.ts", "/services/electricity/quote", "electricity quote endpoint");
+assertIncludes("src/services/servicesService.ts", "/services/electricity/purchase", "electricity purchase endpoint");
 
 const servicesPage = read("src/app/services/page.tsx");
 for (const forbidden of [
@@ -43,6 +49,8 @@ for (const forbidden of [
   "Provisioned by Facility",
   "Awaiting facility provisioning",
   "usage feed pending provider integration",
+  "KCT / KCTN",
+  "Provider readiness",
 ]) {
   if (servicesPage.includes(forbidden)) {
     throw new Error(`src/app/services/page.tsx still contains collapsed-card technical copy: ${forbidden}`);
