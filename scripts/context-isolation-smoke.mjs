@@ -33,5 +33,20 @@ assertIncludes("src/services/maintenanceService.ts", "home_id: params.homeId", "
 assertIncludes("src/app/home/page.tsx", "walletService.getWallet({ estate_id: estateId, home_id: homeId })", "home dashboard scoped wallet");
 assertIncludes("src/app/home/page.tsx", "messagesService.listInbox({ estate_id: estateId, home_id: homeId })", "home dashboard scoped inbox");
 assertIncludes("src/app/services/page.tsx", "estate_id: estateId", "services history estate scope");
+assertIncludes("src/app/services/page.tsx", "Electricity purchase is temporarily unavailable. Your wallet has not been charged.", "electricity purchase failure is wallet-safe");
+assertIncludes("src/app/services/page.tsx", "Meter ${maskIdentifier(identifier)}", "compact provisioned meter display");
+assertIncludes("src/app/services/page.tsx", "transaction_availability", "services page uses canonical transaction availability");
+
+const servicesPage = read("src/app/services/page.tsx");
+for (const forbidden of [
+  "Electricity vending, backup continuity, and tariff readiness",
+  "Provisioned by Facility",
+  "Awaiting facility provisioning",
+  "usage feed pending provider integration",
+]) {
+  if (servicesPage.includes(forbidden)) {
+    throw new Error(`src/app/services/page.tsx still contains collapsed-card technical copy: ${forbidden}`);
+  }
+}
 
 console.log("context-isolation-smoke: ok");

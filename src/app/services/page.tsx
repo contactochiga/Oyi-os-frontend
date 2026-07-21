@@ -17,11 +17,11 @@ const SERVICE_CARDS: Array<{
   transactionType?: string;
   serviceKeys: ServiceKey[];
 }> = [
-  { key: "power", title: "Power", subtitle: "Electricity vending, backup continuity, and tariff readiness", icon: FiZap, domain: "Power", cta: "Buy Electricity", transactionType: "electricity_purchase", serviceKeys: ["utility_token", "generator_recovery", "solar_battery_service"] },
-  { key: "water", title: "Water", subtitle: "Water billing and service continuity", icon: FiDroplet, domain: "Water", cta: "Report Issue", transactionType: "issue_report", serviceKeys: ["water_service"] },
-  { key: "internet", title: "Internet", subtitle: "Connectivity, plans, and renewal posture", icon: FiWifi, domain: "Internet", cta: "Renew / Support", transactionType: "internet_renewal", serviceKeys: ["internet_service"] },
-  { key: "gas", title: "Gas", subtitle: "Household gas continuity and refill readiness", icon: FiTool, domain: "Gas", cta: "Order Gas", transactionType: "gas_order", serviceKeys: ["gas_service"] },
-  { key: "estate_fees", title: "Estate Fees", subtitle: "Resident charges, facility dues, and partner services", icon: FiCreditCard, domain: "Estate Fees", cta: "Review Fees", transactionType: "estate_fee", serviceKeys: ["service_charge", "other_facility_fees"] },
+  { key: "power", title: "Power", subtitle: "", icon: FiZap, domain: "Power", cta: "Buy Electricity", transactionType: "electricity_purchase", serviceKeys: ["utility_token", "generator_recovery", "solar_battery_service"] },
+  { key: "water", title: "Water", subtitle: "", icon: FiDroplet, domain: "Water", cta: "Report Issue", transactionType: "issue_report", serviceKeys: ["water_service"] },
+  { key: "internet", title: "Internet", subtitle: "", icon: FiWifi, domain: "Internet", cta: "Renew / Support", transactionType: "internet_renewal", serviceKeys: ["internet_service"] },
+  { key: "gas", title: "Gas", subtitle: "", icon: FiTool, domain: "Gas", cta: "Order Gas", transactionType: "gas_order", serviceKeys: ["gas_service"] },
+  { key: "estate_fees", title: "Service Fees", subtitle: "", icon: FiCreditCard, domain: "Estate Fees", cta: "Review Fees", transactionType: "estate_fee", serviceKeys: ["service_charge", "other_facility_fees"] },
 ];
 
 const DOMAIN_FILTERS = ["All", "Power", "Water", "Internet", "Gas", "Estate Fees"] as const;
@@ -78,9 +78,19 @@ function accountMapFor(accounts: ServiceAccount[]) {
 
 function maskIdentifier(value?: string | null) {
   const text = String(value || "").trim();
-  if (!text) return "Meter not linked yet";
+  if (!text) return "";
   if (text.length <= 4) return text;
   return `••••${text.slice(-4)}`;
+}
+
+function residentState(entry: any, account?: ServiceAccount | null) {
+  const provisioned = String(entry?.provisioning_status || "").toLowerCase() === "provisioned" || Boolean(account?.linked || entry?.linked || account?.identifier || account?.meter_number || account?.account_number || entry?.meter_id || entry?.account_id);
+  const available = String(entry?.transaction_availability || "").toLowerCase();
+  const provider = String(entry?.provider_status || "").toLowerCase();
+  if (!provisioned) return { label: "Not connected", tone: "text-white/62 border-white/10 bg-white/[0.05]" };
+  if (available === "available") return { label: "Active", tone: "text-emerald-200 border-emerald-300/20 bg-emerald-400/10" };
+  if (provider === "unavailable" || available === "temporarily_unavailable") return { label: "Connected", tone: "text-sky-200 border-sky-300/20 bg-sky-400/10" };
+  return { label: "Connected", tone: "text-sky-200 border-sky-300/20 bg-sky-400/10" };
 }
 
 function Field({ label, value }: { label: string; value: string }) {
@@ -95,50 +105,49 @@ function Field({ label, value }: { label: string; value: string }) {
 function frontDetailsFor(item: (typeof SERVICE_CARDS)[number], account?: ServiceAccount | null, registry?: HomeServiceRegistry | null, latestPayment?: ServicePayment | null) {
   const entry = compositeRegistryEntry(item.serviceKeys, registry || null) as any;
   const identifier = account?.identifier || account?.meter_number || account?.account_number || entry?.meter_id || entry?.account_id || null;
-  const provider = account?.provider || entry?.provider || null;
-  const status = String(account?.status || entry?.status || account?.vending_readiness || entry?.vending_readiness || "Pending").replace(/_/g, " ");
+  const state = residentState(entry, account);
 
   if (item.key === "power") {
     return {
-      primary: identifier ? `Meter ending ${maskIdentifier(identifier)}` : "Meter not linked yet",
-      secondary: identifier ? (provider ? `Provider ${provider}` : "Configured by Facility; provider integration pending") : "Awaiting facility provisioning",
-      status,
-      provider,
+      primary: identifier ? `Meter ${maskIdentifier(identifier)}` : "Meter not connected",
+      secondary: "",
+      status: state.label,
+      tone: state.tone,
     };
   }
 
   if (item.key === "water") {
     return {
-      primary: identifier ? `Meter ending ${maskIdentifier(identifier)}` : provider ? `Provider ${provider}` : "Provider pending",
-      secondary: identifier ? "Configured by Facility; usage feed pending provider integration" : "Awaiting facility provisioning",
-      status,
-      provider,
+      primary: identifier ? `Meter ${maskIdentifier(identifier)}` : "Account not connected",
+      secondary: "",
+      status: state.label,
+      tone: state.tone,
     };
   }
 
   if (item.key === "internet") {
     return {
-      primary: identifier ? `Account ending ${maskIdentifier(identifier)}` : provider ? `${provider} service` : "Provider pending",
-      secondary: account?.plan || entry?.plan || (identifier ? "Plan pending provider integration" : "Awaiting facility provisioning"),
-      status,
-      provider,
+      primary: identifier ? `Account ${maskIdentifier(identifier)}` : "Account not connected",
+      secondary: account?.plan || entry?.plan || "",
+      status: state.label,
+      tone: state.tone,
     };
   }
 
   if (item.key === "gas") {
     return {
-      primary: provider ? `Provider ${provider}` : "Provider pending",
-      secondary: "Order flow routes through Facility provisioning",
-      status,
-      provider,
+      primary: identifier ? `Account ${maskIdentifier(identifier)}` : "Account not connected",
+      secondary: "",
+      status: state.label,
+      tone: state.tone,
     };
   }
 
   return {
-    primary: provider ? `Provider ${provider}` : "Provider pending",
-    secondary: latestPayment ? `Last activity ${dateText(latestPayment.created_at)}` : "Operational continuity record ready",
-    status,
-    provider,
+    primary: identifier ? `Account ${maskIdentifier(identifier)}` : "No balance due",
+    secondary: latestPayment ? `Last activity ${dateText(latestPayment.created_at)}` : "",
+    status: state.label,
+    tone: state.tone,
   };
 }
 
@@ -167,7 +176,7 @@ function detailFieldsFor(item: (typeof SERVICE_CARDS)[number], account?: Service
       { label: "Provider", value: provider },
       { label: "Billing", value: billing },
       { label: "Status", value: String(account?.status || entry?.status || "Pending").replace(/_/g, " ") },
-      { label: "Usage", value: "Usage feed pending provider integration" },
+      { label: "Usage", value: "Usage details will appear when readings are available" },
       { label: "Last activity", value: dateText(account?.last_activity_at || latestPayment?.created_at) },
     ];
   }
@@ -190,7 +199,7 @@ function detailFieldsFor(item: (typeof SERVICE_CARDS)[number], account?: Service
       { label: "Billing", value: billing },
       { label: "Status", value: String(account?.status || entry?.status || "Pending").replace(/_/g, " ") },
       { label: "Last activity", value: dateText(account?.last_activity_at || latestPayment?.created_at) },
-      { label: "Notes", value: String(account?.metadata?.service_notes || "Awaiting provider-linked ordering.") },
+      { label: "Notes", value: String(account?.metadata?.service_notes || "Ordering is not available yet") },
     ];
   }
 
@@ -226,53 +235,39 @@ function GroupedServiceCard({
   onAction: () => void;
 }) {
   const Icon = item.icon;
-  const entry = compositeRegistryEntry(item.serviceKeys, registry) as any;
-  const linked = Boolean(account?.linked ?? entry?.linked);
-  const configured = Boolean(account?.identifier || account?.meter_number || account?.account_number || entry?.meter_id || entry?.account_id || linked);
-  const readiness = account?.vending_readiness || entry?.vending_readiness || account?.status || entry?.status || (configured ? "Provider pending" : "Not configured");
   const front = frontDetailsFor(item, account, registry, latestPayment);
   const details = detailFieldsFor(item, account, registry, latestPayment);
 
   return (
-    <section className="rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.02))] p-4 shadow-[0_16px_48px_rgba(0,0,0,0.24)]">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-3">
-          <div className="grid h-11 w-11 shrink-0 place-items-center rounded-[16px] border border-white/10 bg-white/[0.04] text-white/80">
-            <Icon className="h-5 w-5" />
+    <section className="rounded-[20px] border border-white/10 bg-white/[0.04] p-3 shadow-[0_12px_34px_rgba(0,0,0,0.18)]">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-[14px] border border-white/10 bg-white/[0.04] text-white/80">
+            <Icon className="h-4 w-4" />
           </div>
           <div className="min-w-0">
             <h2 className="text-[15px] font-semibold tracking-[-0.02em] text-white">{item.title}</h2>
-            <p className="mt-1 text-[12px] leading-5 text-white/48">{item.subtitle}</p>
+            <p className="mt-0.5 truncate text-[12px] text-white/60">{front.primary}</p>
           </div>
         </div>
-        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${toneFor(readiness)}`}>
-          {String(readiness).replace(/_/g, " ")}
+        <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium ${front.tone || toneFor(front.status)}`}>
+          {front.status}
         </span>
       </div>
 
-      <div className="mt-4 space-y-2">
-        <div className="text-[13px] font-medium text-white/88">{front.primary}</div>
-        <div className="text-[12px] text-white/56">{front.secondary}</div>
-        <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/44">
-          <span>{linked ? "Provisioned by Facility" : "Awaiting facility provisioning"}</span>
-          <span>•</span>
-          <span>{dateText(account?.last_activity_at || latestPayment?.created_at)}</span>
-        </div>
-      </div>
-
-      <div className="mt-4 flex flex-wrap items-center gap-2">
+      <div className="mt-3 flex items-center gap-2">
         <button
           type="button"
           onClick={onAction}
           disabled={busy}
-          className="rounded-full border border-white/10 bg-white px-4 py-2 text-xs font-semibold text-black disabled:opacity-50"
+          className="rounded-full border border-white/10 bg-white px-3 py-1.5 text-[11px] font-semibold text-black disabled:opacity-50"
         >
-          {busy ? "Recording..." : item.cta}
+          {busy ? "Working..." : item.cta}
         </button>
         <button
           type="button"
           onClick={onToggle}
-          className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-medium text-white/72"
+          className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] font-medium text-white/72"
         >
           {expanded ? <FiChevronUp className="h-3.5 w-3.5" /> : <FiChevronDown className="h-3.5 w-3.5" />}
           More info
@@ -308,6 +303,7 @@ export default function ServicesPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
+  const [inlineNotice, setInlineNotice] = useState<string | null>(null);
   const requestSeqRef = useRef(0);
 
   useEffect(() => {
@@ -319,6 +315,7 @@ export default function ServicesPage() {
     setMessage(null);
     setError(null);
     setErrorCode(null);
+    setInlineNotice(null);
   }, [activeContext.contextKey]);
 
   useEffect(() => {
@@ -351,6 +348,7 @@ export default function ServicesPage() {
       } else {
         setError(null);
         setErrorCode(secondaryErrors.length ? String((historyRows as any)?.code || (configResult as any)?.code || "secondary_service_data_unavailable") : null);
+        setInlineNotice(secondaryErrors.length ? "Some recent activity could not be loaded. Your service cards are still available." : null);
       }
     }
     void load();
@@ -367,19 +365,23 @@ export default function ServicesPage() {
       const requestSeq = requestSeqRef.current;
       void servicesService.homeRegistry({ estate_id: estateId, home_id: activeContext.home_id || undefined }).then((result: any) => {
         if (requestSeq !== requestSeqRef.current) return;
-        if (!result?.error) setRegistry(result as HomeServiceRegistry);
-        else setError(String(result.error));
-      });
+	        if (!result?.error) setRegistry(result as HomeServiceRegistry);
+	        else setError(String(result.error));
+	      });
       void servicesService.myAccounts({ estate_id: estateId, home_id: activeContext.home_id || undefined }).then((result: any) => {
         if (requestSeq !== requestSeqRef.current) return;
-        if (!result?.error) setAccounts(result.accounts || []);
-        else setError(String(result.error));
-      });
+	        if (!result?.error) setAccounts(result.accounts || []);
+	        else setError(String(result.error));
+	      });
       void servicesService.history({ estate_id: estateId || undefined, home_id: activeContext.home_id || undefined, limit: 40 }).then((rows: any) => {
         if (requestSeq !== requestSeqRef.current) return;
-        if (Array.isArray(rows)) setHistory(rows);
-        else if (rows?.error) setError(String(rows.error));
-      });
+	        if (Array.isArray(rows)) {
+	          setHistory(rows);
+	          setInlineNotice(null);
+	        } else if (rows?.error) {
+	          setInlineNotice("Recent service activity could not be refreshed.");
+	        }
+	      });
     };
     socket.emit("subscribe:estate", estateId);
     socket.emit("subscribe:home", activeContext.home_id);
@@ -430,26 +432,28 @@ export default function ServicesPage() {
     setError(null);
     try {
       const account = accountForCard(item);
-      const result: any = await servicesService.initiateTransaction({
-        service_key: item.serviceKeys[0],
-        account_ref: account?.identifier || undefined,
-        transaction_type: item.transactionType,
-        amount: Number(configs[item.serviceKeys[0]]?.suggested_amount || 0),
-        estate_id: estateId || undefined,
-        home_id: activeContext.home_id || undefined,
-      });
-      if (result?.error) {
-        setError(String(result.error));
-      } else {
+	      const result: any = await servicesService.initiateTransaction({
+	        service_key: item.serviceKeys[0],
+	        account_ref: account?.identifier || undefined,
+	        transaction_type: item.transactionType,
+	        amount: Number(configs[item.serviceKeys[0]]?.suggested_amount || 0),
+	        estate_id: estateId || undefined,
+	        home_id: activeContext.home_id || undefined,
+	        idempotency_key: `${activeContext.contextKey}:${item.key}:${Date.now()}`,
+	      });
+	      if (result?.error) {
+	        setError(item.key === "power" ? "Electricity purchase is temporarily unavailable. Your wallet has not been charged." : String(result.error));
+	        setErrorCode(result?.code || null);
+	      } else {
         setMessage(result?.message || `${item.title} request recorded.`);
         if (result?.transaction) {
           const next = result.transaction;
           setAccounts((prev) => prev.map((row) => item.serviceKeys.includes(row.service_key) ? { ...row, last_activity_at: next.created_at || new Date().toISOString(), last_transaction_status: next.status, last_transaction_type: next.transaction_type } : row));
         }
       }
-    } catch (err: any) {
-      setError(err?.message || "Unable to record service action");
-    } finally {
+	    } catch (err: any) {
+	      setError(item.key === "power" ? "Electricity purchase is temporarily unavailable. Your wallet has not been charged." : err?.message || "Unable to record service action");
+	    } finally {
       setBusyKey(null);
     }
   }
@@ -468,6 +472,7 @@ export default function ServicesPage() {
           </div>
         ) : null}
         {message ? <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">{message}</div> : null}
+        {inlineNotice && !error ? <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-xs text-white/62">{inlineNotice}</div> : null}
 
         <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {DOMAIN_FILTERS.map((filter) => (

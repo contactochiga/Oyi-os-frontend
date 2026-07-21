@@ -36,14 +36,32 @@ export type HomeServiceRegistry = {
   home_id: string;
   using_fallback?: boolean;
   wallet?: { balance?: number; currency?: string };
-  electricity: { enabled: boolean; meter_id?: string | null; provider?: string | null; linked: boolean; status: string; balance?: number | null; last_payment_at?: string | null; tariff_profile?: string | null; billing_profile?: string | null; kct?: string | null; kctn?: string | null; provider_integration_mode?: string | null; vending_readiness?: string | null; provider_health?: string | null };
-  water: { enabled: boolean; meter_id?: string | null; provider?: string | null; linked: boolean; status: string; balance?: number | null; last_payment_at?: string | null; tariff_profile?: string | null; billing_profile?: string | null; vending_readiness?: string | null; provider_health?: string | null };
-  gas?: { enabled: boolean; meter_id?: string | null; account_id?: string | null; provider?: string | null; linked: boolean; status: string; balance?: number | null; last_payment_at?: string | null; tariff_profile?: string | null; billing_profile?: string | null; vending_readiness?: string | null; provider_health?: string | null };
-  internet: { enabled: boolean; provider?: string | null; plan?: string | null; account_id?: string | null; linked: boolean; status: string; expires_at?: string | null; tariff_profile?: string | null; billing_profile?: string | null; vending_readiness?: string | null; provider_health?: string | null };
-  generator_recovery?: { enabled: boolean; provider?: string | null; account_id?: string | null; linked: boolean; status: string; last_payment_at?: string | null; tariff_profile?: string | null; billing_profile?: string | null; vending_readiness?: string | null; provider_health?: string | null };
-  solar_battery?: { enabled: boolean; provider?: string | null; plan?: string | null; account_id?: string | null; linked: boolean; status: string; last_payment_at?: string | null; tariff_profile?: string | null; billing_profile?: string | null; vending_readiness?: string | null; provider_health?: string | null };
+  electricity: ServiceRegistryEntry & { kct?: string | null; kctn?: string | null; provider_integration_mode?: string | null };
+  water: ServiceRegistryEntry;
+  gas?: ServiceRegistryEntry;
+  internet: ServiceRegistryEntry & { plan?: string | null; expires_at?: string | null };
+  generator_recovery?: ServiceRegistryEntry;
+  solar_battery?: ServiceRegistryEntry & { plan?: string | null };
   estate_fees: { enabled: boolean; outstanding?: number | null; status: string; due_date?: string | null; last_payment_at?: string | null };
   facility_services: { enabled: boolean; available_count?: number; status?: string; last_payment_at?: string | null };
+};
+
+export type ServiceRegistryEntry = {
+  enabled: boolean;
+  meter_id?: string | null;
+  account_id?: string | null;
+  provider?: string | null;
+  linked: boolean;
+  status: string;
+  balance?: number | null;
+  last_payment_at?: string | null;
+  tariff_profile?: string | null;
+  billing_profile?: string | null;
+  vending_readiness?: string | null;
+  provider_health?: string | null;
+  provisioning_status?: "not_provisioned" | "provisioned" | string | null;
+  provider_status?: "not_required" | "pending" | "available" | "degraded" | "unavailable" | string | null;
+  transaction_availability?: "available" | "temporarily_unavailable" | "not_supported" | string | null;
 };
 
 export type ServiceAccount = {
@@ -182,9 +200,10 @@ export const servicesService = {
     account_ref?: string;
     transaction_type?: string;
     notes?: string;
-    home_id?: string;
-    estate_id?: string;
-  }) {
+	    home_id?: string;
+	    estate_id?: string;
+	    idempotency_key?: string;
+	  }) {
     try {
       const res = await API.post("/services/transactions", payload);
       return res.data as { ok?: boolean; transaction?: ServiceTransaction; provider?: Record<string, any>; message?: string };
