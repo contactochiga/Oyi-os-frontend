@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import RemotePanel from "./RemotePanel";
+import useActiveContext from "@/hooks/useActiveContext";
 import { maintenanceService, type MaintenanceTicket } from "@/services/maintenanceService";
 
 type Category = "electricity" | "water" | "security" | "device" | "general";
@@ -37,6 +38,8 @@ export default function MaintenancePanel({
   lastUpdated?: number;
   onInteraction?: () => void;
 }) {
+  const activeContext = useActiveContext();
+  const contextKeyRef = useRef(activeContext.contextKey);
   const [tickets, setTickets] = useState<MaintenanceTicket[]>([]);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -50,14 +53,25 @@ export default function MaintenancePanel({
 
   const canSubmit = title.trim().length >= 3;
 
+  useEffect(() => {
+    contextKeyRef.current = activeContext.contextKey;
+  }, [activeContext.contextKey]);
+
   async function loadTickets() {
+    if (!activeContext.ready || !activeContext.home_id) {
+      setTickets([]);
+      return;
+    }
+    const contextKey = activeContext.contextKey;
     setErr(null);
     setLoading(true);
     try {
-      const res: any = await maintenanceService.listMyTickets();
+      const res: any = await maintenanceService.listMyTickets({ estate_id: activeContext.estate_id, homeId: activeContext.home_id });
       if (res?.error) throw new Error(res.error);
+      if (contextKey !== contextKeyRef.current) return;
       setTickets(Array.isArray(res) ? res : []);
     } catch (e: any) {
+      if (contextKey !== contextKeyRef.current) return;
       setTickets([]);
       setErr(pickErr(e, "Failed to load maintenance."));
     } finally {
@@ -66,9 +80,11 @@ export default function MaintenancePanel({
   }
 
   useEffect(() => {
+    setTickets([]);
+    setOpenModal(false);
     loadTickets();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [activeContext.contextKey]);
 
   useEffect(() => {
     if (!lastUpdated) return;
@@ -78,12 +94,17 @@ export default function MaintenancePanel({
 
   async function submit() {
     if (!canSubmit) return;
+    if (!activeContext.ready || !activeContext.home_id) {
+      setErr("Select a home before creating a maintenance request.");
+      return;
+    }
 
     setCreating(true);
     setErr(null);
 
     try {
       const created: any = await maintenanceService.createTicket({
+        home_id: activeContext.home_id || undefined,
         title: title.trim(),
         category,
         priority,

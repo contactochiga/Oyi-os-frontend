@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import RemotePanel from "./RemotePanel";
-import useAuth from "@/hooks/useAuth";
+import useActiveContext from "@/hooks/useActiveContext";
 import { roomsService, RoomDTO } from "@/services/roomsService";
 import { deviceService } from "@/services/deviceService";
 
@@ -32,17 +32,10 @@ export default function RoomsPanel({
   lastUpdated?: number;
   onInteraction?: () => void;
 }) {
-  const { user } = useAuth();
-
-  const estateId = useMemo(
-    () => (user as any)?.estate_id ?? (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null),
-    [user]
-  );
-
-  const homeId = useMemo(
-    () => (user as any)?.home_id ?? (typeof window !== "undefined" ? localStorage.getItem("ochiga_home") : null),
-    [user]
-  );
+  const activeContext = useActiveContext();
+  const contextKeyRef = useRef(activeContext.contextKey);
+  const estateId = activeContext.estate_id;
+  const homeId = activeContext.home_id;
 
   const [rooms, setRooms] = useState<RoomDTO[]>([]);
   const [loading, setLoading] = useState(false);
@@ -56,14 +49,21 @@ export default function RoomsPanel({
     onInteraction?.();
   }
 
+  useEffect(() => {
+    contextKeyRef.current = activeContext.contextKey;
+  }, [activeContext.contextKey]);
+
   async function loadRooms() {
     if (!homeId) return;
+    const contextKey = activeContext.contextKey;
     setLoading(true);
     setErr(null);
     try {
       const list = await roomsService.getRooms(homeId);
+      if (contextKey !== contextKeyRef.current) return;
       setRooms(Array.isArray(list) ? list : []);
     } catch (e: any) {
+      if (contextKey !== contextKeyRef.current) return;
       setErr(e?.response?.data?.error || e?.message || "Failed to load rooms");
     } finally {
       setLoading(false);
@@ -71,10 +71,13 @@ export default function RoomsPanel({
   }
 
   useEffect(() => {
+    setRooms([]);
+    setOpenRoomId(null);
+    setCmdBusy({});
     if (!homeId) return;
     loadRooms();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [homeId]);
+  }, [activeContext.contextKey]);
 
   useEffect(() => {
     if (!lastUpdated) return;

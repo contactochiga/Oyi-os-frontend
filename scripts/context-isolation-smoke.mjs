@@ -31,8 +31,18 @@ assertIncludes("src/app/messages/page.tsx", "unsubscribe:thread", "thread unsubs
 assertIncludes("src/app/components/MessagesInboxButton.tsx", "useActiveContext", "message badge active context");
 
 assertIncludes("src/services/maintenanceService.ts", "home_id: params.homeId", "maintenance maps homeId to home_id");
+assertIncludes("src/app/components/remotes/MaintenancePanel.tsx", "useActiveContext", "maintenance remote panel uses active context");
+assertIncludes("src/app/components/remotes/MaintenancePanel.tsx", "maintenanceService.listMyTickets({ estate_id: activeContext.estate_id, homeId: activeContext.home_id })", "maintenance remote panel loads selected-home tickets");
+assertIncludes("src/app/components/remotes/MaintenancePanel.tsx", "setOpenModal(false)", "maintenance remote panel closes stale dialogs on context switch");
 assertIncludes("src/app/home/page.tsx", "walletService.getWallet({ estate_id: estateId, home_id: homeId })", "home dashboard scoped wallet");
 assertIncludes("src/app/home/page.tsx", "messagesService.listInbox({ estate_id: estateId, home_id: homeId })", "home dashboard scoped inbox");
+assertIncludes("src/app/components/remotes/HomeSummaryPanel.tsx", "useActiveContext", "home summary panel uses active context");
+assertIncludes("src/app/components/remotes/HomeSummaryPanel.tsx", "deviceService.getRuntimeDevices(activeContext.home_id)", "home summary panel counts selected-home runtime devices");
+assertIncludes("src/app/components/remotes/HomeSummaryPanel.tsx", "maintenanceService.listMyTickets({ estate_id: activeContext.estate_id, homeId: activeContext.home_id })", "home summary panel counts selected-home maintenance");
+assertIncludes("src/app/components/remotes/RoomsPanel.tsx", "useActiveContext", "rooms remote panel uses active context");
+assertIncludes("src/app/components/remotes/RoomsPanel.tsx", "setOpenRoomId(null)", "rooms remote panel clears selected room on home changes");
+assertIncludes("src/app/components/remotes/RoomsPanel.tsx", "contextKeyRef.current", "rooms remote panel rejects stale responses");
+assertIncludes("src/app/components/remotes/MaintenancePanel.tsx", "contextKeyRef.current", "maintenance remote panel rejects stale responses");
 assertIncludes("src/app/services/page.tsx", "estate_id: estateId", "services history estate scope");
 assertIncludes("src/app/services/page.tsx", "Electricity purchase is temporarily unavailable. Your wallet has not been charged.", "electricity purchase failure is wallet-safe");
 assertIncludes("src/app/services/page.tsx", "subtitle=\"Utility services for this home\"", "services header uses compact home utility copy");

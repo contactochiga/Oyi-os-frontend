@@ -2,19 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import RemotePanel from "./RemotePanel";
-import useAuth from "@/hooks/useAuth";
+import useActiveContext from "@/hooks/useActiveContext";
 import { deviceService } from "@/services/deviceService";
 import { maintenanceService } from "@/services/maintenanceService";
 import { useNotificationStore } from "@/store/useNotificationStore";
-
-function getApiBase() {
-  return (
-    process.env.NEXT_PUBLIC_API_BASE_URL ||
-    process.env.NEXT_PUBLIC_BACKEND_URL ||
-    process.env.NEXT_PUBLIC_API_URL ||
-    "https://oyi-os.onrender.com"
-  ).replace(/\/$/, "");
-}
 
 function buildHomeLabel(home: any): string | null {
   if (!home) return null;
@@ -41,7 +32,7 @@ export default function HomeSummaryPanel({
 }: {
   lastUpdated?: number;
 }) {
-  const { user, token } = useAuth();
+  const activeContext = useActiveContext();
 
   const unreadCount = useNotificationStore((s) => s.unreadCount);
 
@@ -51,59 +42,22 @@ export default function HomeSummaryPanel({
   const [deviceCount, setDeviceCount] = useState<number | null>(null);
   const [openMaintenance, setOpenMaintenance] = useState<number | null>(null);
 
-  const estateId = useMemo(
-    () =>
-      (user as any)?.estate_id ??
-      (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null),
-    [user]
-  );
-
-  // Context: reuse the same /me/context idea
   useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      setEstateName(null);
-      setHomeLabel(null);
-      if (!token) return;
-
-      try {
-        const api = getApiBase();
-        const res = await fetch(`${api}/me/context`, {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          cache: "no-store",
-        });
-
-        if (!res.ok) return;
-        const data = await res.json();
-        if (cancelled) return;
-
-        const estate = data?.estate || null;
-        const home = data?.home || null;
-
-        setEstateName(estate?.name ? String(estate.name) : null);
-        setHomeLabel(home ? buildHomeLabel(home) : null);
-      } catch {
-        // silent
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [token]);
+    setEstateName(activeContext.estate?.name ? String(activeContext.estate.name) : null);
+    setHomeLabel(activeContext.home ? buildHomeLabel(activeContext.home) : null);
+  }, [activeContext.contextKey, activeContext.estate, activeContext.home]);
 
   // Devices count
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
+      if (!activeContext.ready || !activeContext.home_id) {
+        setDeviceCount(null);
+        return;
+      }
       try {
-        const list = await deviceService.getDevices(estateId ?? undefined);
+        const list = await deviceService.getRuntimeDevices(activeContext.home_id);
         if (cancelled) return;
         setDeviceCount(Array.isArray(list) ? list.length : 0);
       } catch {
@@ -115,15 +69,19 @@ export default function HomeSummaryPanel({
     return () => {
       cancelled = true;
     };
-  }, [estateId]);
+  }, [activeContext.ready, activeContext.contextKey, activeContext.home_id]);
 
   // Maintenance open count (only if service exists)
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
+      if (!activeContext.ready || !activeContext.home_id) {
+        setOpenMaintenance(null);
+        return;
+      }
       try {
-        const res: any = await maintenanceService.listMyTickets();
+        const res: any = await maintenanceService.listMyTickets({ estate_id: activeContext.estate_id, homeId: activeContext.home_id });
         const arr = Array.isArray(res) ? res : [];
         const open = arr.filter((t: any) => String(t.status || "open").toLowerCase() !== "resolved").length;
         if (cancelled) return;
@@ -137,7 +95,7 @@ export default function HomeSummaryPanel({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [activeContext.ready, activeContext.contextKey, activeContext.estate_id, activeContext.home_id]);
 
   const tiles = useMemo(() => {
     const out: Array<{ label: string; value: string }> = [];
