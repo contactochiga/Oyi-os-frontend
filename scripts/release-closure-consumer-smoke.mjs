@@ -69,7 +69,10 @@ assert(/loadRequestRef/.test(communityPage) && /setComments\(\{\}\)/.test(commun
 assert(/Failed to load service activity/.test(servicesService), "service payment history failures are surfaced");
 assert(/setRegistry\(null\)/.test(servicesPage) && /activeContext\.contextKey/.test(servicesPage), "services clear stale registry and account state on active-home changes");
 assert(/ServiceApiFailure/.test(servicesService) && /diagnostics/.test(servicesService), "service API failures preserve typed diagnostics");
+assert(/\/services\/electricity\/quote/.test(servicesService) && /\/services\/electricity\/purchase/.test(servicesService), "electricity API uses canonical quote and purchase endpoints");
 assert(/Infrastructure services are temporarily unavailable\. Try again\./.test(servicesPage), "services page distinguishes backend failure from unconfigured services");
+const electricityHandler = servicesPage.match(/if \(item\.key === "electricity"\) \{[\s\S]*?return;\n    \}/)?.[0] || "";
+assert(/setPurchaseOpen\(true\)/.test(electricityHandler) && !/initiateTransaction|\/services\/transactions/.test(electricityHandler), "electricity card action cannot use legacy service transaction endpoint");
 assert(/requestSeqRef/.test(servicesPage) && /requestSeq !== requestSeqRef\.current/.test(servicesPage), "services page rejects late responses after active-home changes");
 assert(/function residentState/.test(servicesPage) && /return \{ label: "Connected"/.test(servicesPage), "services page shows configured identifiers separately from provider readiness");
 assert(!/Configured by Facility; provider integration pending/.test(servicesPage), "services page no longer exposes provider-readiness copy on resident cards");

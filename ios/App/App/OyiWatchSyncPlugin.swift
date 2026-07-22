@@ -93,6 +93,19 @@ public class OyiWatchSyncPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate 
         var usedSendMessage = false
         var syncError: String?
 
+        guard session.isPaired && session.isWatchAppInstalled else {
+            deliveryState = "not_connected"
+            lastTokenSent = false
+            lastBackendSent = false
+            persistStatus()
+            var result = statusPayload(session: session)
+            result["reason"] = session.isPaired ? "watch_app_not_installed" : "watch_not_paired"
+            result["usedApplicationContext"] = false
+            result["usedTransferUserInfo"] = false
+            result["usedSendMessage"] = false
+            return result
+        }
+
         let sentAt = ISO8601DateFormatter().string(from: Date())
         lastSyncAt = sentAt
         lastTokenSent = !bearerToken.isEmpty
@@ -121,10 +134,8 @@ public class OyiWatchSyncPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate 
             lastSyncError = error.localizedDescription
         }
 
-        if session.isPaired && session.isWatchAppInstalled {
-            session.transferUserInfo(payload)
-            usedTransferUserInfo = true
-        }
+        session.transferUserInfo(payload)
+        usedTransferUserInfo = true
 
         if session.isReachable {
             usedSendMessage = true
@@ -154,6 +165,15 @@ public class OyiWatchSyncPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate 
 
     private func performClear(session: WCSession) -> [String: Any] {
         resetPersistedStatus()
+        guard session.isPaired && session.isWatchAppInstalled else {
+            var result = statusPayload(session: session)
+            result["reason"] = session.isPaired ? "watch_app_not_installed" : "watch_not_paired"
+            result["usedApplicationContext"] = false
+            result["usedTransferUserInfo"] = false
+            result["usedSendMessage"] = false
+            result["cleared"] = true
+            return result
+        }
         let payload: [String: Any] = [
             "type": "oyi.watch.session.clear",
             "clearSession": true,
@@ -168,10 +188,8 @@ public class OyiWatchSyncPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate 
         } catch {
             lastSyncError = error.localizedDescription
         }
-        if session.isPaired && session.isWatchAppInstalled {
-            session.transferUserInfo(payload)
-            usedTransferUserInfo = true
-        }
+        session.transferUserInfo(payload)
+        usedTransferUserInfo = true
         if session.isReachable {
             usedSendMessage = true
             session.sendMessage(payload, replyHandler: nil) { [weak self] error in

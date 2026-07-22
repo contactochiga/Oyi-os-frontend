@@ -12,6 +12,11 @@ import { useNotificationStore } from "@/store/useNotificationStore";
 
 const PUSH_TOKEN_CACHE_KEY = "oyi:push:native-token:v1";
 const OYI_IOS_BUNDLE_ID = "com.ochiga.oyios";
+const PUSH_REGISTER_MIN_GAP_MS = 60_000;
+
+let pushRegisterInFlight: Promise<void> | null = null;
+let lastPushRegisterKey = "";
+let lastPushRegisterAt = 0;
 
 function pushEnvironment() {
   const explicit = String(process.env.NEXT_PUBLIC_PUSH_ENVIRONMENT || process.env.NEXT_PUBLIC_APP_ENV || "").toLowerCase();
@@ -67,6 +72,10 @@ export default function PushNotificationsBridge() {
       async function registerToken(rawToken: string) {
         const cleanToken = String(rawToken || "").trim();
         if (!cleanToken) return;
+        if (typeof navigator !== "undefined" && navigator.onLine === false) {
+          updateStatus("register-skipped-offline", cleanToken.slice(0, 12));
+          return;
+        }
         cacheNativeToken(cleanToken);
         updateStatus("token-sending-to-backend", cleanToken.slice(0, 12));
         let deviceInfo: any = null;
@@ -75,20 +84,38 @@ export default function PushNotificationsBridge() {
         } catch {}
 
         const platform = Capacitor.getPlatform();
-        await API.post("/push/register", {
-          token: cleanToken,
-          platform,
-          provider: platform === "ios" ? "apns" : "fcm",
-          environment: platform === "ios" ? pushEnvironment() : null,
-          app_bundle: platform === "ios" ? OYI_IOS_BUNDLE_ID : null,
-          device_id: deviceInfo?.identifier || deviceInfo?.model || null,
-          app_version: deviceInfo?.appVersion || null,
-        })
+        const deviceId = deviceInfo?.identifier || deviceInfo?.model || null;
+        const registrationKey = `${platform}:${deviceId || "device"}:${cleanToken}`;
+        const now = Date.now();
+        if (pushRegisterInFlight) {
+          updateStatus("register-coalesced", cleanToken.slice(0, 12));
+          await pushRegisterInFlight;
+          return;
+        }
+        if (registrationKey === lastPushRegisterKey && now - lastPushRegisterAt < PUSH_REGISTER_MIN_GAP_MS) {
+          updateStatus("register-suppressed-recent", cleanToken.slice(0, 12));
+          return;
+        }
+        lastPushRegisterKey = registrationKey;
+        lastPushRegisterAt = now;
+        pushRegisterInFlight = API.post("/push/register", {
+            token: cleanToken,
+            platform,
+            provider: platform === "ios" ? "apns" : "fcm",
+            environment: platform === "ios" ? pushEnvironment() : null,
+            app_bundle: platform === "ios" ? OYI_IOS_BUNDLE_ID : null,
+            device_id: deviceId,
+            app_version: deviceInfo?.appVersion || null,
+          })
           .then(() => updateStatus("backend-token-registration-success", cleanToken.slice(0, 12)))
           .catch((err) => {
             const msg = err?.response?.data?.error || err?.message || "Failed to POST /push/register";
             updateStatus("register-api-failed", String(msg));
+          })
+          .finally(() => {
+            pushRegisterInFlight = null;
           });
+        await pushRegisterInFlight;
       }
 
       async function presentForegroundNotification(notification: any) {

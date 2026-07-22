@@ -129,6 +129,100 @@ function emptyState(): ActiveContextState {
   };
 }
 
+const CONTEXT_CACHE_TTL_MS = 15_000;
+const CONTEXT_RETRY_BASE_MS = 1_500;
+const CONTEXT_RETRY_MAX_MS = 30_000;
+
+let sharedContext: ActiveContextState | null = null;
+let sharedContextLoadedAt = 0;
+let sharedContextRequest: Promise<ActiveContextState> | null = null;
+let sharedContextFailureCount = 0;
+let sharedContextRetryAfter = 0;
+
+function hasResolvedContext(state: ActiveContextState | null) {
+  return Boolean(state?.estate_id && state?.home_id);
+}
+
+function isOffline() {
+  return typeof navigator !== "undefined" && navigator.onLine === false;
+}
+
+async function fetchResolvedContextState(): Promise<ActiveContextState> {
+  let resolved: ResolvedContext;
+  try {
+    const res = await API.get("/me/context/resolved", { params: { surface: "consumer" } });
+    const payload = (res as any)?.data?.data ?? (res as any)?.data ?? {};
+    resolved = (payload?.context || payload) as ResolvedContext;
+  } catch (error: any) {
+    // Preserve compatibility only for genuinely older backends; do not turn network failures into a second request.
+    if (Number(error?.response?.status || 0) !== 404) throw error;
+    const legacy = await API.get("/me/context");
+    const payload = (legacy as any)?.data?.data ?? (legacy as any)?.data ?? {};
+    resolved = {
+      estate: payload?.estate ?? null,
+      home: payload?.home ?? null,
+      estate_id: payload?.estate_id ?? payload?.estate?.id ?? null,
+      home_id: payload?.home_id ?? payload?.home?.id ?? null,
+      available_homes: Array.isArray(payload?.available_contexts) ? payload.available_contexts.map((home: any) => ({ id: home.home_id, name: home.home_name, block: home.block, unit: home.unit, estate_id: home.estate_id, electricity_meter: home.electricity_meter, water_meter: home.water_meter, internet_id: home.internet_id, gate_code: home.gate_code })) : [],
+      available_estates: [],
+    };
+  }
+
+  return applyRememberedContext({
+    estate: resolved?.estate ?? null,
+    home: resolved?.home ?? null,
+    estate_id: resolved?.estate_id ?? resolved?.estate?.id ?? null,
+    home_id: resolved?.home_id ?? resolved?.home?.id ?? null,
+    available_contexts: Array.isArray(resolved?.available_homes) ? resolved.available_homes.map((home) => ({
+      estate_id: home.estate_id,
+      estate_name: resolved.available_estates?.find((estate) => estate.id === home.estate_id)?.name || null,
+      home_id: home.id,
+      home_name: home.name || null,
+      block: home.block || null,
+      unit: home.unit || null,
+      electricity_meter: home.electricity_meter || null,
+      water_meter: home.water_meter || null,
+      internet_id: home.internet_id || null,
+      gate_code: home.gate_code || null,
+      is_active: home.id === resolved.home_id,
+    })) : [],
+  });
+}
+
+async function loadSharedContext(force = false): Promise<ActiveContextState> {
+  const now = Date.now();
+  if (!force && sharedContext && now - sharedContextLoadedAt < CONTEXT_CACHE_TTL_MS) {
+    return sharedContext;
+  }
+  if (!force && isOffline()) {
+    if (sharedContext) return sharedContext;
+    throw new Error("offline");
+  }
+  if (!force && sharedContextRetryAfter > now) {
+    if (sharedContext) return sharedContext;
+    throw new Error("context_retry_suppressed");
+  }
+  if (!sharedContextRequest) {
+    sharedContextRequest = fetchResolvedContextState()
+      .then((state) => {
+        sharedContext = state;
+        sharedContextLoadedAt = Date.now();
+        sharedContextFailureCount = 0;
+        sharedContextRetryAfter = 0;
+        return state;
+      })
+      .catch((error) => {
+        sharedContextFailureCount += 1;
+        sharedContextRetryAfter = Date.now() + Math.min(CONTEXT_RETRY_MAX_MS, CONTEXT_RETRY_BASE_MS * 2 ** Math.min(sharedContextFailureCount, 6));
+        throw error;
+      })
+      .finally(() => {
+        sharedContextRequest = null;
+      });
+  }
+  return sharedContextRequest;
+}
+
 export default function useActiveContext() {
   const { token, user } = useAuth();
   const [context, setContext] = useState<ActiveContextState>(emptyState);
@@ -138,53 +232,19 @@ export default function useActiveContext() {
 
   const refresh = useCallback(async () => {
     if (!token) {
+      sharedContext = null;
+      sharedContextLoadedAt = 0;
+      sharedContextRequest = null;
       setContext(emptyState());
       return;
     }
 
     setLoading(true);
     try {
-      let resolved: ResolvedContext;
-      try {
-        const res = await API.get("/me/context/resolved", { params: { surface: "consumer" } });
-        const payload = (res as any)?.data?.data ?? (res as any)?.data ?? {};
-        resolved = (payload?.context || payload) as ResolvedContext;
-      } catch (error: any) {
-        // Preserve existing consumer behavior while older deployed backends roll forward.
-        if (Number(error?.response?.status || 0) !== 404) throw error;
-        const legacy = await API.get("/me/context");
-        const payload = (legacy as any)?.data?.data ?? (legacy as any)?.data ?? {};
-        resolved = {
-          estate: payload?.estate ?? null,
-          home: payload?.home ?? null,
-          estate_id: payload?.estate_id ?? payload?.estate?.id ?? null,
-          home_id: payload?.home_id ?? payload?.home?.id ?? null,
-          available_homes: Array.isArray(payload?.available_contexts) ? payload.available_contexts.map((home: any) => ({ id: home.home_id, name: home.home_name, block: home.block, unit: home.unit, estate_id: home.estate_id, electricity_meter: home.electricity_meter, water_meter: home.water_meter, internet_id: home.internet_id, gate_code: home.gate_code })) : [],
-          available_estates: [],
-        };
-      }
-      const nextState = applyRememberedContext({
-        estate: resolved?.estate ?? null,
-        home: resolved?.home ?? null,
-        estate_id: resolved?.estate_id ?? resolved?.estate?.id ?? null,
-        home_id: resolved?.home_id ?? resolved?.home?.id ?? null,
-        available_contexts: Array.isArray(resolved?.available_homes) ? resolved.available_homes.map((home) => ({
-          estate_id: home.estate_id,
-          estate_name: resolved.available_estates?.find((estate) => estate.id === home.estate_id)?.name || null,
-          home_id: home.id,
-          home_name: home.name || null,
-          block: home.block || null,
-          unit: home.unit || null,
-          electricity_meter: home.electricity_meter || null,
-          water_meter: home.water_meter || null,
-          internet_id: home.internet_id || null,
-          gate_code: home.gate_code || null,
-          is_active: home.id === resolved.home_id,
-        })) : [],
-      });
+      const nextState = await loadSharedContext();
       setContext(nextState);
     } catch {
-      setContext(emptyState());
+      setContext(hasResolvedContext(sharedContext) ? sharedContext as ActiveContextState : emptyState());
     } finally {
       setLoading(false);
     }
@@ -223,7 +283,8 @@ export default function useActiveContext() {
 
       try {
         await API.post("/me/context/select", { home_id: next.home_id });
-        await refresh();
+        sharedContextLoadedAt = 0;
+        await loadSharedContext(true).then(setContext);
         if (typeof window !== "undefined") window.dispatchEvent(new Event("oyi:context-changed"));
         return { ok: true };
       } catch (err: any) {
@@ -234,7 +295,7 @@ export default function useActiveContext() {
         setSwitchingFlag(false);
       }
     },
-    [refresh],
+    [],
   );
 
   useEffect(() => {

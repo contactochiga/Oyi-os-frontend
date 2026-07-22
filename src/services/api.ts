@@ -3,6 +3,7 @@ import axios from "axios";
 import { getConsumerApiBaseURL } from "./apiBase";
 
 let lastLoggedBaseURL: string | null = null;
+let startupDiagnosticLogged = false;
 
 /**
  * Normalize backend URL
@@ -20,6 +21,19 @@ function logResolvedBaseURL(reason: string, url: string) {
     baseURL: url,
     runtime: runtimeLabel(),
     location: window.location.href,
+  });
+}
+
+function logStartupDiagnostic(url: string) {
+  if (typeof window === "undefined" || startupDiagnosticLogged) return;
+  startupDiagnosticLogged = true;
+  console.info("[consumer.startup]", {
+    runtime: runtimeLabel(),
+    frontendOrigin: window.location.origin,
+    apiBase: url,
+    consumerCommit: process.env.NEXT_PUBLIC_COMMIT_SHA || process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA || "local",
+    buildNumber: process.env.NEXT_PUBLIC_APP_BUILD_NUMBER || process.env.NEXT_PUBLIC_BUILD_NUMBER || "dev",
+    buildTimestamp: process.env.NEXT_PUBLIC_BUILD_TIMESTAMP || "unknown",
   });
 }
 
@@ -127,6 +141,7 @@ const API = axios.create({
  */
 API.interceptors.request.use((config) => {
   config.baseURL = getBaseURL();
+  logStartupDiagnostic(String(config.baseURL || ""));
   logResolvedBaseURL("request", String(config.baseURL || ""));
 	  if (typeof window !== "undefined") {
     const lsToken =
