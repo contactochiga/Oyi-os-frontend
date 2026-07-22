@@ -18,10 +18,10 @@ const SERVICE_CARDS: Array<{
   serviceKeys: ServiceKey[];
 }> = [
   { key: "electricity", title: "Electricity", subtitle: "", icon: FiZap, domain: "Electricity", cta: "Buy Electricity", transactionType: "electricity_purchase", serviceKeys: ["utility_token"] },
-  { key: "water", title: "Water", subtitle: "", icon: FiDroplet, domain: "Water", cta: "Report Issue", transactionType: "issue_report", serviceKeys: ["water_service"] },
-  { key: "internet", title: "Internet", subtitle: "", icon: FiWifi, domain: "Internet", cta: "Renew / Support", transactionType: "internet_renewal", serviceKeys: ["internet_service"] },
-  { key: "gas", title: "Gas", subtitle: "", icon: FiTool, domain: "Gas", cta: "Order Gas", transactionType: "gas_order", serviceKeys: ["gas_service"] },
-  { key: "estate_fees", title: "Service Fees", subtitle: "", icon: FiCreditCard, domain: "Estate Fees", cta: "Review Fees", transactionType: "estate_fee", serviceKeys: ["service_charge", "other_facility_fees"] },
+  { key: "water", title: "Water", subtitle: "", icon: FiDroplet, domain: "Water", cta: "View Service", transactionType: "issue_report", serviceKeys: ["water_service"] },
+  { key: "internet", title: "Internet", subtitle: "", icon: FiWifi, domain: "Internet", cta: "View Service", transactionType: "internet_renewal", serviceKeys: ["internet_service"] },
+  { key: "gas", title: "Gas", subtitle: "", icon: FiTool, domain: "Gas", cta: "View Service", transactionType: "gas_order", serviceKeys: ["gas_service"] },
+  { key: "estate_fees", title: "Service Fees", subtitle: "", icon: FiCreditCard, domain: "Estate Fees", cta: "View Bills", transactionType: "estate_fee", serviceKeys: ["service_charge", "other_facility_fees"] },
 ];
 
 const DOMAIN_FILTERS = ["All", "Electricity", "Water", "Internet", "Gas", "Estate Fees"] as const;
@@ -83,6 +83,10 @@ function maskIdentifier(value?: string | null) {
   return `••••${text.slice(-4)}`;
 }
 
+function fullIdentifier(value?: string | null) {
+  return String(value || "").trim();
+}
+
 function residentState(entry: any, account?: ServiceAccount | null) {
   const provisioned = String(entry?.provisioning_status || "").toLowerCase() === "provisioned" || Boolean(account?.linked || entry?.linked || account?.identifier || account?.meter_number || account?.account_number || entry?.meter_id || entry?.account_id);
   const available = String(entry?.transaction_availability || "").toLowerCase();
@@ -106,11 +110,15 @@ function frontDetailsFor(item: (typeof SERVICE_CARDS)[number], account?: Service
   const entry = compositeRegistryEntry(item.serviceKeys, registry || null) as any;
   const identifier = account?.identifier || account?.meter_number || account?.account_number || entry?.meter_id || entry?.account_id || null;
   const state = residentState(entry, account);
+  const latestUnits = latestPayment?.computed_units != null
+    ? ` · ${Number(latestPayment.computed_units).toLocaleString(undefined, { maximumFractionDigits: 2 })} ${latestPayment.unit_name || "kWh"}`
+    : "";
+  const latest = latestPayment ? `Last purchase: ${toNaira(latestPayment.amount)}${latestUnits}` : "";
 
   if (item.key === "electricity") {
     return {
-      primary: identifier ? `Meter ${maskIdentifier(identifier)}` : "Meter not connected",
-      secondary: "",
+      primary: identifier ? fullIdentifier(identifier) : "Meter not connected",
+      secondary: latest,
       status: state.label,
       tone: state.tone,
     };
@@ -173,7 +181,6 @@ function detailFieldsFor(item: (typeof SERVICE_CARDS)[number], account?: Service
       { label: "Provider", value: provider },
       { label: "Billing", value: billing },
       { label: "Status", value: String(account?.status || entry?.status || "Pending").replace(/_/g, " ") },
-      { label: "Usage", value: "Usage details will appear when readings are available" },
       { label: "Last activity", value: dateText(account?.last_activity_at || latestPayment?.created_at) },
     ];
   }
@@ -196,7 +203,6 @@ function detailFieldsFor(item: (typeof SERVICE_CARDS)[number], account?: Service
       { label: "Billing", value: billing },
       { label: "Status", value: String(account?.status || entry?.status || "Pending").replace(/_/g, " ") },
       { label: "Last activity", value: dateText(account?.last_activity_at || latestPayment?.created_at) },
-      { label: "Notes", value: String(account?.metadata?.service_notes || "Ordering is not available yet") },
     ];
   }
 
@@ -234,6 +240,20 @@ function GroupedServiceCard({
   const Icon = item.icon;
   const front = frontDetailsFor(item, account, registry, latestPayment);
   const details = detailFieldsFor(item, account, registry, latestPayment);
+  const state = residentState(compositeRegistryEntry(item.serviceKeys, registry || null) as any, account);
+  const provisioned = state.label !== "Not connected";
+  const canTransact = item.key === "electricity" && state.label === "Active";
+  const canOpenDetails = provisioned && details.some((field) => field.value && !/^(Awaiting|Pending|No recent activity)/i.test(field.value));
+  const actionLabel =
+    item.key === "electricity"
+      ? "Buy Electricity"
+      : item.key === "water"
+        ? provisioned ? "View Service" : "Not available"
+        : item.key === "internet"
+          ? provisioned ? "View Service" : "Not available"
+          : item.key === "gas"
+            ? provisioned ? "View Service" : "Not available"
+            : provisioned ? "View Bills" : "No bill";
 
   return (
     <section className="rounded-[20px] border border-white/10 bg-white/[0.04] p-3 shadow-[0_12px_34px_rgba(0,0,0,0.18)]">
@@ -243,8 +263,9 @@ function GroupedServiceCard({
             <Icon className="h-4 w-4" />
           </div>
           <div className="min-w-0">
-            <h2 className="text-[15px] font-semibold tracking-[-0.02em] text-white">{item.title}</h2>
-            <p className="mt-0.5 truncate text-[12px] text-white/60">{front.primary}</p>
+            <h2 className="text-[12px] font-semibold uppercase tracking-[0.14em] text-white/42">{item.title}</h2>
+            <p className="mt-1 truncate text-[18px] font-semibold tracking-[-0.04em] text-white">{front.primary}</p>
+            {front.secondary ? <p className="mt-0.5 truncate text-[11px] text-white/48">{front.secondary}</p> : null}
           </div>
         </div>
         <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium ${front.tone || toneFor(front.status)}`}>
@@ -256,19 +277,21 @@ function GroupedServiceCard({
         <button
           type="button"
           onClick={onAction}
-          disabled={busy}
+          disabled={busy || (!canTransact && item.key === "electricity") || (!provisioned && item.key !== "estate_fees")}
           className="rounded-full border border-white/10 bg-white px-3 py-1.5 text-[11px] font-semibold text-black disabled:opacity-50"
         >
-          {busy ? "Working..." : item.cta}
+          {busy ? "Working..." : actionLabel}
         </button>
-        <button
-          type="button"
-          onClick={onToggle}
-          className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] font-medium text-white/72"
-        >
-          {expanded ? <FiChevronUp className="h-3.5 w-3.5" /> : <FiChevronDown className="h-3.5 w-3.5" />}
-          More info
-        </button>
+        {canOpenDetails ? (
+          <button
+            type="button"
+            onClick={onToggle}
+            className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] font-medium text-white/72"
+          >
+            {expanded ? <FiChevronUp className="h-3.5 w-3.5" /> : <FiChevronDown className="h-3.5 w-3.5" />}
+            {latestPayment ? "View purchases" : "View details"}
+          </button>
+        ) : null}
       </div>
 
       {expanded ? (
@@ -276,10 +299,7 @@ function GroupedServiceCard({
           <div className="grid gap-2 sm:grid-cols-2">
             {details.map((field) => <Field key={field.label} label={field.label} value={field.value} />)}
           </div>
-          <div className="text-[11px] text-white/42">
-            {config?.suggested_amount ? `Suggested amount ${toNaira(Number(config.suggested_amount))}. ` : ""}
-            Detailed service records are available here without crowding the first service view.
-          </div>
+          {config?.suggested_amount ? <div className="text-[11px] text-white/42">Suggested amount {toNaira(Number(config.suggested_amount))}.</div> : null}
         </div>
       ) : null}
     </section>
@@ -294,7 +314,7 @@ export default function ServicesPage() {
   const [accounts, setAccounts] = useState<ServiceAccount[]>([]);
   const [history, setHistory] = useState<ServicePayment[]>([]);
   const [configs, setConfigs] = useState<Partial<Record<ServiceKey, ServiceConfig>>>({});
-  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [busyKey] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<(typeof DOMAIN_FILTERS)[number]>("All");
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -308,6 +328,7 @@ export default function ServicesPage() {
   const [purchaseStep, setPurchaseStep] = useState<"amount" | "review" | "processing" | "success">("amount");
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
   const requestSeqRef = useRef(0);
+  const amountInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     requestSeqRef.current += 1;
@@ -444,37 +465,12 @@ export default function ServicesPage() {
       setPurchaseError(null);
       setPurchaseStep("amount");
       setPurchaseOpen(true);
+      window.setTimeout(() => amountInputRef.current?.focus({ preventScroll: true }), 120);
       return;
     }
-    setBusyKey(item.key);
     setMessage(null);
     setError(null);
-    try {
-      const account = accountForCard(item);
-	      const result: any = await servicesService.initiateTransaction({
-	        service_key: item.serviceKeys[0],
-	        account_ref: account?.identifier || undefined,
-	        transaction_type: item.transactionType,
-	        amount: Number(configs[item.serviceKeys[0]]?.suggested_amount || 0),
-	        estate_id: estateId || undefined,
-	        home_id: activeContext.home_id || undefined,
-	        idempotency_key: `${activeContext.contextKey}:${item.key}:${Date.now()}`,
-	      });
-	      if (result?.error) {
-	        setError(String(result.error));
-	        setErrorCode(result?.code || null);
-	      } else {
-        setMessage(result?.message || `${item.title} request recorded.`);
-        if (result?.transaction) {
-          const next = result.transaction;
-          setAccounts((prev) => prev.map((row) => item.serviceKeys.includes(row.service_key) ? { ...row, last_activity_at: next.created_at || new Date().toISOString(), last_transaction_status: next.status, last_transaction_type: next.transaction_type } : row));
-        }
-      }
-	    } catch (err: any) {
-	      setError(err?.message || "Unable to record service action");
-	    } finally {
-      setBusyKey(null);
-    }
+    setExpandedKey((current) => current === item.key ? null : item.key);
   }
 
   async function reviewElectricityPurchase() {
@@ -501,6 +497,20 @@ export default function ServicesPage() {
     setPurchaseQuote(result.quote);
     setPurchaseStep("review");
   }
+
+  const electricityConfig = configs.utility_token;
+  const quickAmounts = useMemo(() => {
+    const suggested = Number(electricityConfig?.suggested_amount || 0);
+    const values = [suggested, 1000, 2000, 5000, 10000].filter((value) => Number.isFinite(value) && value > 0);
+    return Array.from(new Set(values)).slice(0, 4);
+  }, [electricityConfig?.suggested_amount]);
+
+  const estimatedUnits = useMemo(() => {
+    const amount = Number(purchaseAmount);
+    const tariff = Number(electricityConfig?.unit_cost || 0);
+    if (!Number.isFinite(amount) || amount <= 0 || !Number.isFinite(tariff) || tariff <= 0) return null;
+    return amount / tariff;
+  }, [purchaseAmount, electricityConfig?.unit_cost]);
 
   async function confirmElectricityPurchase() {
     if (!purchaseQuote) return;
@@ -530,14 +540,15 @@ export default function ServicesPage() {
   return (
     <ConsumerShell
       title="Infrastructure Services"
-      subtitle="Electricity, water, internet, gas, and service fees for this home."
+      subtitle="Utility services for this home"
       strip={strip}
+      stickyHeader
     >
       <div className="space-y-4 pb-8">
         {error ? (
           <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
             <div>{error}</div>
-            {errorCode ? <div className="mt-1 text-[11px] text-red-100/65">Diagnostic: {errorCode}</div> : null}
+            {errorCode ? <div className="mt-1 text-[11px] text-red-100/65">Support code: {errorCode}</div> : null}
           </div>
         ) : null}
         {message ? <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">{message}</div> : null}
@@ -595,9 +606,9 @@ export default function ServicesPage() {
         </section>
       </div>
       {purchaseOpen ? (
-        <div className="fixed inset-0 z-[160] flex items-end justify-center bg-black/55 px-4 pb-[calc(16px+var(--sab))] backdrop-blur-sm">
+        <div className="fixed inset-0 z-[160] grid place-items-center overflow-y-auto bg-black/55 px-4 py-[calc(18px+var(--sat))] pb-[calc(96px+var(--sab)+var(--kb,0px))] backdrop-blur-sm">
           <button type="button" className="absolute inset-0" aria-label="Close electricity purchase" onClick={() => setPurchaseOpen(false)} />
-          <section className="relative w-full max-w-[420px] rounded-[28px] border border-white/10 bg-[#07111d] p-4 shadow-[0_24px_80px_rgba(0,0,0,0.55)]">
+          <section className="relative w-full max-w-[420px] max-h-[min(680px,calc(100dvh-132px-var(--sat)-var(--sab)-var(--kb,0px)))] overflow-y-auto rounded-[28px] border border-white/10 bg-[#07111d] p-4 shadow-[0_24px_80px_rgba(0,0,0,0.55)]">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="text-[11px] uppercase tracking-[0.18em] text-white/38">Electricity</div>
@@ -616,6 +627,7 @@ export default function ServicesPage() {
                 <label className="block">
                   <span className="text-xs uppercase tracking-[0.16em] text-white/36">Amount</span>
                   <input
+                    ref={amountInputRef}
                     inputMode="decimal"
                     value={purchaseAmount}
                     onChange={(event) => setPurchaseAmount(event.target.value)}
@@ -623,8 +635,26 @@ export default function ServicesPage() {
                     className="mt-2 h-12 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 text-base text-white outline-none"
                   />
                 </label>
+                {quickAmounts.length ? (
+                  <div className="grid grid-cols-4 gap-2">
+                    {quickAmounts.map((amount) => (
+                      <button
+                        key={amount}
+                        type="button"
+                        onClick={() => setPurchaseAmount(String(amount))}
+                        className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-2 text-[11px] font-medium text-white/72"
+                      >
+                        {toNaira(amount).replace(".00", "")}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2 text-xs text-white/58">
+                  <div>Tariff: {electricityConfig?.unit_cost ? `${toNaira(Number(electricityConfig.unit_cost))}/${electricityConfig.unit_name || "kWh"}` : "Awaiting tariff"}</div>
+                  <div className="mt-1">Estimated units: {estimatedUnits != null ? `${estimatedUnits.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${electricityConfig?.unit_name || "kWh"}` : "Enter an amount"}</div>
+                </div>
                 <button type="button" onClick={() => void reviewElectricityPurchase()} className="h-12 w-full rounded-full bg-white text-sm font-semibold text-black">
-                  Review Purchase
+                  Continue
                 </button>
               </div>
             ) : null}

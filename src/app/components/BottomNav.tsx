@@ -56,6 +56,12 @@ const NAV_GROUPS: Item[][] = [
   ITEMS.filter((item) => ["visitors", "wallet", "maintenance", "services", "profile"].includes(item.key)),
 ];
 
+const SCROLL_DELTA_THRESHOLD = 10;
+const COLLAPSE_INTENT_THRESHOLD = 56;
+const EXPAND_INTENT_THRESHOLD = -44;
+const TOP_EXPAND_THRESHOLD = 24;
+const VIEWPORT_RESIZE_GUARD_MS = 360;
+
 function pageForKey(key: Item["key"]) {
   const index = NAV_GROUPS.findIndex((group) => group.some((item) => item.key === key));
   return Math.max(0, index);
@@ -98,6 +104,8 @@ export default function BottomNav() {
   const collapsedRef = useRef(false);
   const lastScrollY = useRef(0);
   const lastCollapseChangeAt = useRef(0);
+  const lastViewportHeightRef = useRef(0);
+  const ignoreScrollUntilRef = useRef(0);
   const scrollIntent = useRef(0);
   const notifications = useNotificationStore((state) => state.items);
   const markBucketViewed = useNotificationStore((state) => state.markBucketViewed);
@@ -206,15 +214,30 @@ export default function BottomNav() {
   }, [activeContext.ready, activeContext.contextKey, scope, activeItem?.key]);
 
   useEffect(() => {
-    const onScroll = (event: Event) => {
-      const target = event.target as HTMLElement | Document | null;
-      const element = target && "scrollTop" in target ? (target as HTMLElement) : document.scrollingElement || document.documentElement;
-      const y = Number(element?.scrollTop || window.scrollY || 0);
-      const diff = y - lastScrollY.current;
-      if (Math.abs(diff) < 8) return;
-      if (y < 28) {
+    lastScrollY.current = window.scrollY || document.documentElement.scrollTop || 0;
+    lastViewportHeightRef.current = window.visualViewport?.height || window.innerHeight || 0;
+
+    const onViewportResize = () => {
+      const nextHeight = window.visualViewport?.height || window.innerHeight || 0;
+      if (Math.abs(nextHeight - lastViewportHeightRef.current) > 24) {
+        ignoreScrollUntilRef.current = Date.now() + VIEWPORT_RESIZE_GUARD_MS;
         scrollIntent.current = 0;
-        setCollapsedStable(false);
+      }
+      lastViewportHeightRef.current = nextHeight;
+    };
+
+    const onScroll = (event: Event) => {
+      if (Date.now() < ignoreScrollUntilRef.current) return;
+      if (event.target && event.target !== document && event.target !== window && event.target !== document.scrollingElement) return;
+
+      const element = document.scrollingElement || document.documentElement;
+      const y = Math.max(0, Number(window.scrollY || element?.scrollTop || 0));
+      const maxY = Math.max(0, Number((element?.scrollHeight || 0) - window.innerHeight));
+      const diff = y - lastScrollY.current;
+      if (Math.abs(diff) < SCROLL_DELTA_THRESHOLD) return;
+      if (y < TOP_EXPAND_THRESHOLD || y >= maxY - 2) {
+        scrollIntent.current = 0;
+        if (y < TOP_EXPAND_THRESHOLD) setCollapsedStable(false);
         lastScrollY.current = y;
         return;
       }
@@ -226,26 +249,28 @@ export default function BottomNav() {
 
       if (diff > 0) {
         scrollIntent.current = Math.max(0, scrollIntent.current) + diff;
-        if (scrollIntent.current > 42) {
+        if (scrollIntent.current > COLLAPSE_INTENT_THRESHOLD) {
           setCollapsedStable(true);
           scrollIntent.current = 0;
         }
       } else {
         scrollIntent.current = Math.min(0, scrollIntent.current) + diff;
-        if (scrollIntent.current < -34) {
+        if (scrollIntent.current < EXPAND_INTENT_THRESHOLD) {
           setCollapsedStable(false);
           scrollIntent.current = 0;
         }
       }
       lastScrollY.current = y;
     };
-    window.addEventListener("scroll", onScroll, { passive: true, capture: true });
-    document.addEventListener("scroll", onScroll, { passive: true, capture: true });
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.visualViewport?.addEventListener("resize", onViewportResize);
+    window.addEventListener("resize", onViewportResize);
     return () => {
       if (collapseTimerRef.current) window.clearTimeout(collapseTimerRef.current);
       if (scrollIntentResetRef.current) window.clearTimeout(scrollIntentResetRef.current);
-      window.removeEventListener("scroll", onScroll, { capture: true } as any);
-      document.removeEventListener("scroll", onScroll, { capture: true } as any);
+      window.removeEventListener("scroll", onScroll);
+      window.visualViewport?.removeEventListener("resize", onViewportResize);
+      window.removeEventListener("resize", onViewportResize);
     };
   }, [setCollapsedStable]);
 

@@ -23,6 +23,7 @@ assertIncludes("src/app/wallet/page.tsx", "useActiveContext", "wallet active con
 assertIncludes("src/app/wallet/page.tsx", "contextKeyRef", "wallet late-response guard");
 assertIncludes("src/app/wallet/page.tsx", "walletService.getWallet(scope)", "wallet scoped load");
 assertIncludes("src/app/wallet/page.tsx", "home_id: activeContext.home_id", "wallet funding home scope");
+assertIncludes("src/app/components/remotes/WalletPanel.tsx", "walletService.getWallet(scope)", "wallet remote panel scoped wallet load");
 
 assertIncludes("src/services/messagesService.ts", "scopeParams", "messages scoped params");
 assertIncludes("src/app/messages/page.tsx", "messagesService.listInbox(scope)", "messages scoped inbox");
@@ -34,14 +35,21 @@ assertIncludes("src/app/home/page.tsx", "walletService.getWallet({ estate_id: es
 assertIncludes("src/app/home/page.tsx", "messagesService.listInbox({ estate_id: estateId, home_id: homeId })", "home dashboard scoped inbox");
 assertIncludes("src/app/services/page.tsx", "estate_id: estateId", "services history estate scope");
 assertIncludes("src/app/services/page.tsx", "Electricity purchase is temporarily unavailable. Your wallet has not been charged.", "electricity purchase failure is wallet-safe");
-assertIncludes("src/app/services/page.tsx", "Meter ${maskIdentifier(identifier)}", "compact provisioned meter display");
+assertIncludes("src/app/services/page.tsx", "subtitle=\"Utility services for this home\"", "services header uses compact home utility copy");
+assertIncludes("src/app/services/page.tsx", "identifier ? fullIdentifier(identifier)", "electricity card shows the configured meter number");
+assertIncludes("src/app/services/page.tsx", "place-items-center", "electricity purchase dialog is centered in the viewport");
 assertIncludes("src/app/services/page.tsx", "transaction_availability", "services page uses canonical transaction availability");
 assertIncludes("src/app/services/page.tsx", "quoteElectricityPurchase", "electricity purchase starts with backend quote");
 assertIncludes("src/app/services/page.tsx", "confirmElectricityPurchase", "electricity purchase confirms through backend purchase endpoint");
-assertIncludes("src/app/services/page.tsx", "Review Purchase", "electricity purchase requires review before confirmation");
+assertIncludes("src/app/services/page.tsx", "Confirm Purchase", "electricity purchase requires review before confirmation");
 assertIncludes("src/app/services/page.tsx", "Test token", "test tokens are visibly labelled");
 assertIncludes("src/services/servicesService.ts", "/services/electricity/quote", "electricity quote endpoint");
 assertIncludes("src/services/servicesService.ts", "/services/electricity/purchase", "electricity purchase endpoint");
+assertIncludes("src/services/notificationsService.ts", "home_id: scope?.home_id", "notification API requests include home scope");
+assertIncludes("src/app/components/NotificationsBridge.tsx", "scope: activeContext.home_id ? \"home\" : \"account\"", "notification bridge defaults to current home");
+assertIncludes("src/app/components/BottomNav.tsx", "VIEWPORT_RESIZE_GUARD_MS", "bottom nav ignores viewport resize scroll noise");
+assertIncludes("src/app/components/GeoFenceBridge.tsx", "proximity_monitor_started", "proximity lifecycle diagnostics include monitor start");
+assertIncludes("src/app/components/remotes/DoorPanel.tsx", "Unlock this door?", "door panel asks for unlock confirmation");
 
 const servicesPage = read("src/app/services/page.tsx");
 for (const forbidden of [

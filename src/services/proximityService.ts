@@ -16,6 +16,11 @@ export type ProximitySettings = {
   last_notification_at?: string | null;
 };
 
+export type ProximityScope = {
+  estate_id?: string | null;
+  home_id?: string | null;
+};
+
 export const DEFAULT_PROXIMITY_SETTINGS: ProximitySettings = {
   available: true,
   enabled: false,
@@ -47,13 +52,22 @@ function normalizeSettings(value: any): ProximitySettings {
 }
 
 export const proximityService = {
-  async getSettings() {
-    const response = await API.get("/proximity/settings");
+  async getSettings(scope?: ProximityScope) {
+    const response = await API.get("/proximity/settings", {
+      params: {
+        estate_id: scope?.estate_id || undefined,
+        home_id: scope?.home_id || undefined,
+      },
+    });
     return normalizeSettings(response.data);
   },
 
-  async updateSettings(patch: Partial<ProximitySettings>) {
-    const response = await API.patch("/proximity/settings", patch);
+  async updateSettings(patch: Partial<ProximitySettings>, scope?: ProximityScope) {
+    const response = await API.patch("/proximity/settings", {
+      ...patch,
+      estate_id: patch.estate_id ?? scope?.estate_id ?? undefined,
+      home_id: patch.home_id ?? scope?.home_id ?? undefined,
+    });
     return normalizeSettings(response.data);
   },
 

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import RemotePanel from "./RemotePanel";
 import { signalService } from "@/services/signalService";
-import useAuth from "@/hooks/useAuth";
+import useActiveContext from "@/hooks/useActiveContext";
 import { useDeviceLiveState } from "@/hooks/useDeviceLiveState";
 
 function pickLocked(state: any, keys: string[], fallback: boolean) {
@@ -32,22 +32,26 @@ export default function DoorPanel({
   onInteraction?: () => void;
 }) {
   const router = useRouter();
-  const { user } = useAuth();
-  const estateId = useMemo(
-    () =>
-      user?.estate_id ??
-      (typeof window !== "undefined" ? localStorage.getItem("ochiga_estate") : null),
-    [user?.estate_id]
-  );
+  const activeContext = useActiveContext();
+  const estateId = activeContext.estate_id;
 
-  const { state, loading, refresh } = useDeviceLiveState(deviceId, estateId);
+  const { state, runtime, loading, refresh } = useDeviceLiveState(deviceId, estateId);
 
   const locked = useMemo(
     () => pickLocked(state, ["locked", "lock", "isLocked", "doorLocked", "state"], true),
     [state]
   );
+  const supportsLockControl = useMemo(() => {
+    const controls = new Set((runtime?.supported_controls || []).map((item) => String(item).toLowerCase()));
+    const codes = new Set((runtime?.capability_codes || []).map((item) => String(item).toLowerCase()));
+    const family = String(runtime?.device_family || runtime?.control_profile || "").toLowerCase();
+    if (!runtime) return true;
+    if (/lock|door|access/.test(family)) return true;
+    return ["lock", "unlock", "door", "access_control"].some((item) => controls.has(item) || codes.has(item));
+  }, [runtime]);
 
   const [pending, setPending] = useState(false);
+  const [confirmingUnlock, setConfirmingUnlock] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const pendingTimer = useRef<any>(null);
@@ -81,8 +85,10 @@ export default function DoorPanel({
 
   async function sendLock(nextLocked: boolean) {
     if (!deviceId) return setErr("No door device selected.");
+    if (!supportsLockControl) return setErr("This door device does not support lock control yet.");
 
     setErr(null);
+    setConfirmingUnlock(false);
     touch();
     startPending(nextLocked);
 
@@ -91,13 +97,18 @@ export default function DoorPanel({
         deviceId,
         capability: "lock",
         value: nextLocked ? "locked" : "unlocked",
-        meta: { panel: "door" },
+        estateId: activeContext.estate_id || undefined,
+        homeId: activeContext.home_id || undefined,
+        meta: {
+          panel: "door",
+          idempotency_key: `${activeContext.contextKey}:${deviceId}:lock:${nextLocked ? "locked" : "unlocked"}:${Date.now()}`,
+        },
       });
 
-      if (resp?.status !== "accepted") throw new Error("Command not accepted");
+      if (resp?.status !== "accepted") throw new Error(nextLocked ? "I could not start locking this door." : "I could not start unlocking this door.");
       setTimeout(() => refresh(), 450);
     } catch (e: any) {
-      setErr(e?.response?.data?.error || e?.message || "Command failed");
+      setErr(e?.response?.data?.error || e?.message || "I could not complete that door action.");
       expectedRef.current = null;
       if (pendingTimer.current) clearTimeout(pendingTimer.current);
       setPending(false);
@@ -110,7 +121,8 @@ export default function DoorPanel({
     };
   }, []);
 
-  const disabled = pending || !deviceId;
+  const disabled = pending || !deviceId || !supportsLockControl;
+  const actionLabel = pending ? (expectedRef.current?.locked ? "Locking..." : "Unlocking...") : locked ? "Unlock" : "Lock";
 
   return (
     <RemotePanel title="Door" lastUpdated={lastUpdated}>
@@ -124,11 +136,15 @@ export default function DoorPanel({
         <div className="text-sm text-white/80">
           {locked ? "Locked" : "Unlocked"}
           {(pending || loading) ? <span className="text-xs text-white/40"> • syncing…</span> : null}
+          {!supportsLockControl ? <span className="block text-xs text-white/42">Control is not available for this door yet.</span> : null}
         </div>
 
         <button
           type="button"
-          onClick={() => sendLock(!locked)}
+          onClick={() => {
+            if (locked) setConfirmingUnlock(true);
+            else void sendLock(true);
+          }}
           disabled={disabled}
           className={`px-4 py-2 rounded-full text-sm font-semibold border transition disabled:opacity-50
             ${
@@ -137,9 +153,24 @@ export default function DoorPanel({
                 : "bg-white/5 text-white border-white/10 hover:bg-white/10"
             }`}
         >
-          {locked ? "Unlock" : "Lock"}
+          {actionLabel}
         </button>
       </div>
+
+      {confirmingUnlock ? (
+        <div className="mt-3 rounded-2xl border border-amber-300/20 bg-amber-400/10 p-3 text-xs text-amber-50">
+          <div className="font-medium text-amber-50">Unlock this door?</div>
+          <div className="mt-1 text-amber-50/72">I found the linked lock. Unlocking will allow access to this home.</div>
+          <div className="mt-3 flex gap-2">
+            <button type="button" onClick={() => void sendLock(false)} className="flex-1 rounded-full bg-white px-3 py-2 font-semibold text-black">
+              Unlock now
+            </button>
+            <button type="button" onClick={() => setConfirmingUnlock(false)} className="flex-1 rounded-full border border-white/10 px-3 py-2 text-white/76">
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <div className="mt-4 flex gap-2">
         {hasCamera ? (

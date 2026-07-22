@@ -18,6 +18,7 @@ export default function ConsumerShell({
   strip = [],
   preStripSlot,
   disableContentScroll = false,
+  stickyHeader = false,
 }: {
   children: ReactNode;
   title?: string;
@@ -25,6 +26,7 @@ export default function ConsumerShell({
   strip?: Array<{ label: string; value: string | number }>;
   preStripSlot?: ReactNode;
   disableContentScroll?: boolean;
+  stickyHeader?: boolean;
 }) {
   const pathname = usePathname();
   const activeContext = useActiveContext();
@@ -70,7 +72,13 @@ export default function ConsumerShell({
           }}
         >
           <div className="oyi-living-page oyi-page-fade mx-auto w-full max-w-[860px]">
-            <header className="mb-3.5 px-0.5">
+            <header
+              className={`mb-3.5 px-0.5 ${
+                stickyHeader
+                  ? "sticky top-0 z-30 -mx-4 px-4 pt-[calc(14px+var(--sat))] pb-3 bg-[#03070c]/96 shadow-[0_14px_34px_rgba(3,7,12,0.72)] backdrop-blur-2xl"
+                  : ""
+              }`}
+            >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 items-start gap-2.5">
                   <div className="pt-0.5">

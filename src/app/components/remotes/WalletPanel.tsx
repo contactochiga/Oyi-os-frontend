@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import RemotePanel from "./RemotePanel";
-import useAuth from "@/hooks/useAuth";
-import { walletService } from "@/services/estateOpsService";
+import useActiveContext from "@/hooks/useActiveContext";
+import { walletService } from "@/services/walletService";
 
 type Transaction = {
   id: string;
@@ -18,16 +18,6 @@ function pickErr(e: any) {
   return e?.response?.data?.error || e?.response?.data?.message || e?.message || "Something went wrong";
 }
 
-function extractPaystackUrl(resp: any): string | null {
-  const a =
-    resp?.data?.authorization_url ||
-    resp?.authorization_url ||
-    resp?.data?.data?.authorization_url ||
-    resp?.data?.authorization_url;
-
-  return typeof a === "string" ? a : null;
-}
-
 export default function WalletPanel({
   lastUpdated,
   onInteraction,
@@ -35,8 +25,12 @@ export default function WalletPanel({
   lastUpdated?: number;
   onInteraction?: () => void;
 }) {
-  const { user } = useAuth();
+  const activeContext = useActiveContext();
   const router = useRouter();
+  const scope = useMemo(
+    () => ({ estate_id: activeContext.estate_id || null, home_id: activeContext.home_id || null }),
+    [activeContext.estate_id, activeContext.home_id],
+  );
 
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -48,12 +42,18 @@ export default function WalletPanel({
     onInteraction?.();
   }
 
-  async function load() {
+  const load = useCallback(async () => {
+    if (!activeContext.ready || !activeContext.home_id) {
+      setBalance(0);
+      setTransactions([]);
+      return;
+    }
     setLoading(true);
     setErr(null);
 
     try {
-      const w = await walletService.getWallet();
+      const w: any = await walletService.getWallet(scope);
+      if (w?.error) throw new Error(String(w.error));
       const b = Number(w?.balance ?? 0);
       setBalance(Number.isFinite(b) ? b : 0);
 
@@ -61,17 +61,13 @@ export default function WalletPanel({
       setTransactions([]);
     } catch (e: any) {
       const msg = pickErr(e);
-      if (String(msg).toLowerCase().includes("cannot coerce the result to a single json object")) {
-        setErr("Wallet returned multiple rows for this user. Ensure wallets.user_id is UNIQUE (or query limit 1).");
-      } else {
-        setErr(msg);
-      }
+      setErr(msg);
       setBalance(0);
       setTransactions([]);
     } finally {
       setLoading(false);
     }
-  }
+  }, [activeContext.ready, activeContext.home_id, scope]);
 
   function openWallet() {
     touch();
@@ -79,9 +75,8 @@ export default function WalletPanel({
   }
 
   useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    void load();
+  }, [load, activeContext.contextKey]);
 
   return (
     <RemotePanel

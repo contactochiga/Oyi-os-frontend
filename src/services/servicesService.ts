@@ -225,24 +225,6 @@ export const servicesService = {
     }
   },
 
-  async initiateTransaction(payload: {
-    service_key: ServiceKey;
-    amount?: number;
-    account_ref?: string;
-    transaction_type?: string;
-    notes?: string;
-	    home_id?: string;
-	    estate_id?: string;
-	    idempotency_key?: string;
-	  }) {
-    try {
-      const res = await API.post("/services/transactions", payload);
-      return res.data as { ok?: boolean; transaction?: ServiceTransaction; provider?: Record<string, any>; message?: string };
-    } catch (err: any) {
-      return failure(err, "Failed to record service transaction") as any;
-    }
-  },
-
   async quoteElectricityPurchase(payload: { amount: number; meter_id?: string | null; account_ref?: string | null; estate_id?: string | null; home_id?: string | null }) {
     try {
       const res = await API.post("/services/electricity/quote", payload);

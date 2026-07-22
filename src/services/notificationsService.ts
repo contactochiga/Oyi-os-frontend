@@ -30,12 +30,24 @@ function pickError(err: any, fallback: string) {
   return err?.response?.data?.error || err?.response?.data?.message || err?.message || fallback;
 }
 
+export type NotificationListScope = {
+  estate_id?: string | null;
+  home_id?: string | null;
+  scope?: "home" | "account";
+};
+
 /**
  * GET /notifications
  */
-export async function listMyNotifications() {
+export async function listMyNotifications(scope?: NotificationListScope) {
   try {
-    const res = await API.get("/notifications");
+    const res = await API.get("/notifications", {
+      params: {
+        estate_id: scope?.estate_id || undefined,
+        home_id: scope?.home_id || undefined,
+        scope: scope?.scope || (scope?.home_id ? "home" : undefined),
+      },
+    });
     if (Array.isArray(res.data)) return res.data as AppNotification[];
     if (Array.isArray(res.data?.items)) return res.data.items as AppNotification[];
     return [];

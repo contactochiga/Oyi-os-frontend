@@ -15,7 +15,6 @@ function filterScoped(items: any[], scope: BadgeScope) {
 export default function NotificationsBridge() {
   const { token, user } = useAuth();
   const activeContext = useActiveContext();
-  const upsertMany = useNotificationStore((s) => s.upsertMany);
   const upsert = useNotificationStore((s) => s.upsert);
   const setItems = useNotificationStore((s) => s.setItems);
   const clear = useNotificationStore((s) => s.clear);
@@ -38,7 +37,11 @@ export default function NotificationsBridge() {
     const currentScopeKey = scopeKey;
 
     async function load() {
-      const res: any = await listMyNotifications();
+      const res: any = await listMyNotifications({
+        estate_id: activeContext.estate_id,
+        home_id: activeContext.home_id,
+        scope: activeContext.home_id ? "home" : "account",
+      });
       if (cancelled) return;
       if (Array.isArray(res)) setItems(filterScoped(res, scope), currentScopeKey);
     }
@@ -65,7 +68,7 @@ export default function NotificationsBridge() {
       window.clearInterval(t);
       socket?.off("notification:new", onNotification);
     };
-  }, [token, activeContext.ready, activeContext.contextKey, scopeKey, scope, upsert, upsertMany, setItems, clear]);
+  }, [token, activeContext.ready, activeContext.contextKey, activeContext.estate_id, activeContext.home_id, scopeKey, scope, upsert, setItems, clear]);
 
   return null;
 }
