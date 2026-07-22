@@ -1,11 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type Ref, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ConsumerShell from "@/app/components/ConsumerShell";
 import useActiveContext from "@/hooks/useActiveContext";
 import { getSocket } from "@/services/socket";
 import { servicesService, type ElectricityQuote, type HomeServiceRegistry, type ServiceAccount, type ServiceConfig, type ServiceKey, type ServicePayment } from "@/services/servicesService";
-import { FiChevronDown, FiChevronUp, FiCreditCard, FiDroplet, FiTool, FiWifi, FiZap } from "react-icons/fi";
+import { FiCreditCard, FiDroplet, FiTool, FiWifi, FiZap } from "react-icons/fi";
 
 const SERVICE_CARDS: Array<{
   key: string;
@@ -18,9 +18,9 @@ const SERVICE_CARDS: Array<{
   serviceKeys: ServiceKey[];
 }> = [
   { key: "electricity", title: "Electricity", subtitle: "", icon: FiZap, domain: "Electricity", cta: "Buy Electricity", transactionType: "electricity_purchase", serviceKeys: ["utility_token"] },
-  { key: "water", title: "Water", subtitle: "", icon: FiDroplet, domain: "Water", cta: "View Service", transactionType: "issue_report", serviceKeys: ["water_service"] },
-  { key: "internet", title: "Internet", subtitle: "", icon: FiWifi, domain: "Internet", cta: "View Service", transactionType: "internet_renewal", serviceKeys: ["internet_service"] },
-  { key: "gas", title: "Gas", subtitle: "", icon: FiTool, domain: "Gas", cta: "View Service", transactionType: "gas_order", serviceKeys: ["gas_service"] },
+  { key: "water", title: "Water", subtitle: "", icon: FiDroplet, domain: "Water", cta: "Buy Water", transactionType: "issue_report", serviceKeys: ["water_service"] },
+  { key: "internet", title: "Internet", subtitle: "", icon: FiWifi, domain: "Internet", cta: "Renew Plan", transactionType: "internet_renewal", serviceKeys: ["internet_service"] },
+  { key: "gas", title: "Gas", subtitle: "", icon: FiTool, domain: "Gas", cta: "Buy Gas", transactionType: "gas_order", serviceKeys: ["gas_service"] },
   { key: "estate_fees", title: "Service Fees", subtitle: "", icon: FiCreditCard, domain: "Estate Fees", cta: "View Bills", transactionType: "estate_fee", serviceKeys: ["service_charge", "other_facility_fees"] },
 ];
 
@@ -76,15 +76,13 @@ function accountMapFor(accounts: ServiceAccount[]) {
   return new Map(accounts.map((account) => [account.service_key, account]));
 }
 
-function maskIdentifier(value?: string | null) {
-  const text = String(value || "").trim();
-  if (!text) return "";
-  if (text.length <= 4) return text;
-  return `••••${text.slice(-4)}`;
-}
-
 function fullIdentifier(value?: string | null) {
   return String(value || "").trim();
+}
+
+function looksLikeInternalId(value?: string | null) {
+  const text = String(value || "").trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(text);
 }
 
 function residentState(entry: any, account?: ServiceAccount | null) {
@@ -110,6 +108,7 @@ function frontDetailsFor(item: (typeof SERVICE_CARDS)[number], account?: Service
   const entry = compositeRegistryEntry(item.serviceKeys, registry || null) as any;
   const identifier = account?.identifier || account?.meter_number || account?.account_number || entry?.meter_id || entry?.account_id || null;
   const state = residentState(entry, account);
+  const safeIdentifier = looksLikeInternalId(identifier) ? "" : fullIdentifier(identifier);
   const latestUnits = latestPayment?.computed_units != null
     ? ` · ${Number(latestPayment.computed_units).toLocaleString(undefined, { maximumFractionDigits: 2 })} ${latestPayment.unit_name || "kWh"}`
     : "";
@@ -117,7 +116,7 @@ function frontDetailsFor(item: (typeof SERVICE_CARDS)[number], account?: Service
 
   if (item.key === "electricity") {
     return {
-      primary: identifier ? fullIdentifier(identifier) : "Meter not connected",
+      primary: safeIdentifier || "Meter not connected",
       secondary: latest,
       status: state.label,
       tone: state.tone,
@@ -126,7 +125,7 @@ function frontDetailsFor(item: (typeof SERVICE_CARDS)[number], account?: Service
 
   if (item.key === "water") {
     return {
-      primary: identifier ? `Meter ${maskIdentifier(identifier)}` : "Account not connected",
+      primary: safeIdentifier ? `Meter ${safeIdentifier}` : "Managed by your facility",
       secondary: "",
       status: state.label,
       tone: state.tone,
@@ -135,8 +134,8 @@ function frontDetailsFor(item: (typeof SERVICE_CARDS)[number], account?: Service
 
   if (item.key === "internet") {
     return {
-      primary: identifier ? `Account ${maskIdentifier(identifier)}` : "Account not connected",
-      secondary: account?.plan || entry?.plan || "",
+      primary: account?.plan || entry?.plan || safeIdentifier || "Home internet",
+      secondary: "",
       status: state.label,
       tone: state.tone,
     };
@@ -144,7 +143,7 @@ function frontDetailsFor(item: (typeof SERVICE_CARDS)[number], account?: Service
 
   if (item.key === "gas") {
     return {
-      primary: identifier ? `Account ${maskIdentifier(identifier)}` : "Account not connected",
+      primary: safeIdentifier ? `Account ${safeIdentifier}` : "Account not connected",
       secondary: "",
       status: state.label,
       tone: state.tone,
@@ -152,119 +151,57 @@ function frontDetailsFor(item: (typeof SERVICE_CARDS)[number], account?: Service
   }
 
   return {
-    primary: identifier ? `Account ${maskIdentifier(identifier)}` : "No balance due",
+    primary: registry?.estate_fees?.outstanding ? `Outstanding ${toNaira(Number(registry.estate_fees.outstanding || 0))}` : "No balance due",
     secondary: latestPayment ? `Last activity ${dateText(latestPayment.created_at)}` : "",
     status: state.label,
     tone: state.tone,
   };
 }
 
-function detailFieldsFor(item: (typeof SERVICE_CARDS)[number], account?: ServiceAccount | null, registry?: HomeServiceRegistry | null, latestPayment?: ServicePayment | null) {
-  const entry = compositeRegistryEntry(item.serviceKeys, registry || null) as any;
-  const identifier = account?.identifier || account?.meter_number || account?.account_number || entry?.meter_id || entry?.account_id || "Awaiting meter setup";
-  const provider = account?.provider || entry?.provider || "Awaiting provider setup";
-  const tariff = account?.tariff_profile || entry?.tariff_profile || "Awaiting tariff setup";
-  const billing = account?.billing_profile || entry?.billing_profile || "Awaiting billing setup";
-
-  if (item.key === "electricity") {
-    return [
-      { label: "Meter number", value: identifier },
-      { label: "Tariff", value: tariff },
-      { label: "Wallet", value: registry?.wallet?.balance != null ? toNaira(Number(registry.wallet.balance || 0)) : "Awaiting source" },
-      { label: "Last purchase", value: dateText(latestPayment?.created_at || account?.last_activity_at) },
-    ];
-  }
-
-  if (item.key === "water") {
-    return [
-      { label: "Meter ID", value: identifier },
-      { label: "Provider", value: provider },
-      { label: "Billing", value: billing },
-      { label: "Status", value: String(account?.status || entry?.status || "Pending").replace(/_/g, " ") },
-      { label: "Last activity", value: dateText(account?.last_activity_at || latestPayment?.created_at) },
-    ];
-  }
-
-  if (item.key === "internet") {
-    return [
-      { label: "Internet ID", value: identifier },
-      { label: "Provider", value: provider },
-      { label: "Plan", value: account?.plan || entry?.plan || "Awaiting plan setup" },
-      { label: "Billing", value: billing },
-      { label: "Status", value: String(account?.status || entry?.status || "Pending").replace(/_/g, " ") },
-      { label: "Last activity", value: dateText(account?.last_activity_at || latestPayment?.created_at) },
-    ];
-  }
-
-  if (item.key === "gas") {
-    return [
-      { label: "Gas ID", value: identifier },
-      { label: "Provider", value: provider },
-      { label: "Billing", value: billing },
-      { label: "Status", value: String(account?.status || entry?.status || "Pending").replace(/_/g, " ") },
-      { label: "Last activity", value: dateText(account?.last_activity_at || latestPayment?.created_at) },
-    ];
-  }
-
-  return [
-    { label: "Provider", value: provider },
-    { label: "Identifier", value: identifier },
-    { label: "Billing", value: billing },
-    { label: "Status", value: String(account?.status || entry?.status || "Pending").replace(/_/g, " ") },
-    { label: "Tariff", value: tariff },
-    { label: "Last activity", value: dateText(account?.last_activity_at || latestPayment?.created_at) },
-  ];
-}
-
 function GroupedServiceCard({
   item,
   account,
   registry,
-  config,
   latestPayment,
   busy,
-  expanded,
-  onToggle,
   onAction,
+  actionRef,
 }: {
   item: (typeof SERVICE_CARDS)[number];
   account?: ServiceAccount | null;
   registry: HomeServiceRegistry | null;
-  config?: ServiceConfig | null;
   latestPayment?: ServicePayment | null;
   busy?: boolean;
-  expanded: boolean;
-  onToggle: () => void;
   onAction: () => void;
+  actionRef?: Ref<HTMLButtonElement>;
 }) {
   const Icon = item.icon;
   const front = frontDetailsFor(item, account, registry, latestPayment);
-  const details = detailFieldsFor(item, account, registry, latestPayment);
   const state = residentState(compositeRegistryEntry(item.serviceKeys, registry || null) as any, account);
   const provisioned = state.label !== "Not connected";
   const canTransact = item.key === "electricity" && state.label === "Active";
-  const canOpenDetails = provisioned && details.some((field) => field.value && !/^(Awaiting|Pending|No recent activity)/i.test(field.value));
-  const actionLabel =
-    item.key === "electricity"
-      ? "Buy Electricity"
-      : item.key === "water"
-        ? provisioned ? "View Service" : "Not available"
-        : item.key === "internet"
-          ? provisioned ? "View Service" : "Not available"
-          : item.key === "gas"
-            ? provisioned ? "View Service" : "Not available"
-            : provisioned ? "View Bills" : "No bill";
+  const hasImplementedAction = item.key === "electricity";
+  const actionEnabled = canTransact;
+  const actionLabel = !provisioned && item.key !== "estate_fees"
+    ? "Not available"
+    : hasImplementedAction
+      ? item.cta
+      : item.key === "estate_fees"
+        ? "View Bills"
+      : state.label === "Connected"
+        ? "Managed by facility"
+        : "Not available";
 
   return (
-    <section className="rounded-[20px] border border-white/10 bg-white/[0.04] p-3 shadow-[0_12px_34px_rgba(0,0,0,0.18)]">
-      <div className="flex items-center justify-between gap-3">
+    <section className="rounded-[18px] border border-white/[0.075] bg-white/[0.026] px-3.5 py-3 shadow-[0_8px_22px_rgba(0,0,0,0.12)]">
+      <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-[14px] border border-white/10 bg-white/[0.04] text-white/80">
+          <div className="grid h-8 w-8 shrink-0 place-items-center rounded-[12px] border border-white/[0.08] bg-white/[0.035] text-white/72">
             <Icon className="h-4 w-4" />
           </div>
           <div className="min-w-0">
-            <h2 className="text-[12px] font-semibold uppercase tracking-[0.14em] text-white/42">{item.title}</h2>
-            <p className="mt-1 truncate text-[18px] font-semibold tracking-[-0.04em] text-white">{front.primary}</p>
+            <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/42">{item.title}</h2>
+            <p className="mt-1 truncate text-[17px] font-semibold tracking-[-0.035em] text-white">{front.primary}</p>
             {front.secondary ? <p className="mt-0.5 truncate text-[11px] text-white/48">{front.secondary}</p> : null}
           </div>
         </div>
@@ -275,33 +212,17 @@ function GroupedServiceCard({
 
       <div className="mt-3 flex items-center gap-2">
         <button
+          ref={actionRef}
           type="button"
           onClick={onAction}
-          disabled={busy || (!canTransact && item.key === "electricity") || (!provisioned && item.key !== "estate_fees")}
-          className="rounded-full border border-white/10 bg-white px-3 py-1.5 text-[11px] font-semibold text-black disabled:opacity-50"
+          disabled={busy || !actionEnabled}
+          aria-label={`${actionLabel} for ${item.title}`}
+          title={actionEnabled ? actionLabel : `${item.title} payments are not available in Consumer yet.`}
+          className="min-h-10 rounded-full border border-white/10 bg-white px-4 text-[12px] font-semibold text-black transition active:scale-[0.98] disabled:bg-white/[0.08] disabled:text-white/42 disabled:opacity-100"
         >
           {busy ? "Working..." : actionLabel}
         </button>
-        {canOpenDetails ? (
-          <button
-            type="button"
-            onClick={onToggle}
-            className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] font-medium text-white/72"
-          >
-            {expanded ? <FiChevronUp className="h-3.5 w-3.5" /> : <FiChevronDown className="h-3.5 w-3.5" />}
-            {latestPayment ? "View purchases" : "View details"}
-          </button>
-        ) : null}
       </div>
-
-      {expanded ? (
-        <div className="mt-4 space-y-3 rounded-[20px] border border-white/8 bg-black/20 p-3">
-          <div className="grid gap-2 sm:grid-cols-2">
-            {details.map((field) => <Field key={field.label} label={field.label} value={field.value} />)}
-          </div>
-          {config?.suggested_amount ? <div className="text-[11px] text-white/42">Suggested amount {toNaira(Number(config.suggested_amount))}.</div> : null}
-        </div>
-      ) : null}
     </section>
   );
 }
@@ -316,7 +237,6 @@ export default function ServicesPage() {
   const [configs, setConfigs] = useState<Partial<Record<ServiceKey, ServiceConfig>>>({});
   const [busyKey] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<(typeof DOMAIN_FILTERS)[number]>("All");
-  const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
@@ -329,6 +249,7 @@ export default function ServicesPage() {
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
   const requestSeqRef = useRef(0);
   const amountInputRef = useRef<HTMLInputElement | null>(null);
+  const electricityActionRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     requestSeqRef.current += 1;
@@ -347,6 +268,15 @@ export default function ServicesPage() {
     setPurchaseStep("amount");
     setPurchaseError(null);
   }, [activeContext.contextKey]);
+
+  useEffect(() => {
+    if (typeof document === "undefined" || !purchaseOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [purchaseOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -440,12 +370,7 @@ export default function ServicesPage() {
     return Boolean(account?.linked || account?.identifier || account?.meter_number || account?.account_number || entry?.linked || entry?.meter_id || entry?.account_id);
   }, [accountForCard, registry]);
 
-  const strip = [
-    { label: "Services", value: SERVICE_CARDS.length },
-    { label: "Ready", value: SERVICE_CARDS.filter((item) => isProvisioned(item)).length },
-    { label: "Pending", value: accounts.filter((item) => /pending|manual_review|unsupported/.test(String(item.last_transaction_status || item.vending_readiness || ""))).length },
-    { label: "Wallet", value: registry?.wallet?.balance != null ? toNaira(Number(registry.wallet.balance || 0)) : "Pending" },
-  ];
+  const serviceSummary = `${SERVICE_CARDS.length} services · ${SERVICE_CARDS.filter((item) => isProvisioned(item)).length} available`;
 
   const groupedSections = useMemo(() => {
     return DOMAIN_FILTERS.filter((item) => item !== "All")
@@ -468,9 +393,12 @@ export default function ServicesPage() {
       window.setTimeout(() => amountInputRef.current?.focus({ preventScroll: true }), 120);
       return;
     }
-    setMessage(null);
-    setError(null);
-    setExpandedKey((current) => current === item.key ? null : item.key);
+    setMessage(`${item.title} is managed by your facility for now.`);
+  }
+
+  function closePurchaseDialog() {
+    setPurchaseOpen(false);
+    window.setTimeout(() => electricityActionRef.current?.focus({ preventScroll: true }), 80);
   }
 
   async function reviewElectricityPurchase() {
@@ -541,10 +469,10 @@ export default function ServicesPage() {
     <ConsumerShell
       title="Infrastructure Services"
       subtitle="Utility services for this home"
-      strip={strip}
       stickyHeader
+      hideStrip
     >
-      <div className="space-y-4 pb-8">
+      <div className="space-y-3 pb-8">
         {error ? (
           <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
             <div>{error}</div>
@@ -553,6 +481,7 @@ export default function ServicesPage() {
         ) : null}
         {message ? <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">{message}</div> : null}
         {inlineNotice && !error ? <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-xs text-white/62">{inlineNotice}</div> : null}
+        <div className="px-0.5 text-[12px] font-medium text-white/46">{serviceSummary}</div>
 
         <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {DOMAIN_FILTERS.map((filter) => (
@@ -580,44 +509,47 @@ export default function ServicesPage() {
                   item={item}
                   account={accountForCard(item)}
                   registry={registry}
-                  config={configs[item.serviceKeys[0]] || null}
                   latestPayment={latestPaymentForCard(item)}
                   busy={busyKey === item.key}
-                  expanded={expandedKey === item.key}
-                  onToggle={() => setExpandedKey((current) => current === item.key ? null : item.key)}
                   onAction={() => void handleCardAction(item)}
+                  actionRef={item.key === "electricity" ? electricityActionRef : undefined}
                 />
               ))}
             </div>
           </section>
         ))}
 
-        <section className="rounded-[24px] border border-white/10 bg-white/[0.03] p-4">
+        <section className="rounded-[20px] border border-white/[0.075] bg-white/[0.026] p-3.5">
           <div className="text-[11px] uppercase tracking-[0.18em] text-white/36">Recent service activity</div>
-          <div className="mt-3 space-y-2">
+          <div className="mt-2.5 space-y-2">
             {history.slice(0, 8).map((payment) => (
-              <div key={payment.id} className="rounded-2xl border border-white/8 bg-black/20 px-3 py-2.5">
+              <div key={payment.id} className="rounded-2xl border border-white/8 bg-black/20 px-3 py-2">
                 <div className="text-[13px] text-white/86">{payment.service_title || payment.service_key.replace(/_/g, " ")}</div>
                 <div className="mt-1 text-[12px] text-white/48">{payment.reference} • {toNaira(payment.amount)} • {dateText(payment.created_at)}</div>
               </div>
             ))}
-            {!history.length ? <div className="rounded-2xl border border-dashed border-white/10 px-3 py-4 text-sm text-white/45">No service activity has been recorded for this home yet.</div> : null}
+            {!history.length ? <div className="rounded-2xl border border-dashed border-white/10 px-3 py-3 text-sm text-white/45">No service activity has been recorded for this home yet.</div> : null}
           </div>
         </section>
       </div>
       {purchaseOpen ? (
-        <div className="fixed inset-0 z-[160] grid place-items-center overflow-y-auto bg-black/55 px-4 py-[calc(18px+var(--sat))] pb-[calc(96px+var(--sab)+var(--kb,0px))] backdrop-blur-sm">
-          <button type="button" className="absolute inset-0" aria-label="Close electricity purchase" onClick={() => setPurchaseOpen(false)} />
-          <section className="relative w-full max-w-[420px] max-h-[min(680px,calc(100dvh-132px-var(--sat)-var(--sab)-var(--kb,0px)))] overflow-y-auto rounded-[28px] border border-white/10 bg-[#07111d] p-4 shadow-[0_24px_80px_rgba(0,0,0,0.55)]">
+        <div className="fixed inset-0 z-[160] grid place-items-center overflow-y-auto bg-black/55 px-4 py-[calc(12px+var(--sat))] pb-[calc(84px+var(--sab)+var(--kb,0px))] backdrop-blur-sm">
+          <button type="button" className="absolute inset-0 z-0" aria-label="Close electricity purchase" onClick={closePurchaseDialog} />
+          <section role="dialog" aria-modal="true" aria-labelledby="electricity-purchase-title" className="relative z-10 w-full max-w-[420px] max-h-[min(620px,calc(100dvh-108px-var(--sat)-var(--sab)-var(--kb,0px)))] overflow-y-auto rounded-[26px] border border-white/10 bg-[#07111d] p-4 shadow-[0_24px_80px_rgba(0,0,0,0.55)]">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="text-[11px] uppercase tracking-[0.18em] text-white/38">Electricity</div>
-                <h2 className="mt-1 text-lg font-semibold text-white">Buy Electricity</h2>
+                <h2 id="electricity-purchase-title" className="mt-1 text-lg font-semibold text-white">Buy Electricity</h2>
                 <p className="mt-1 text-sm text-white/54">
-                  {purchaseQuote?.meter?.meter_id ? `Meter ${maskIdentifier(purchaseQuote.meter.meter_id)}` : frontDetailsFor(SERVICE_CARDS[0], accountForCard(SERVICE_CARDS[0]), registry, latestPaymentForCard(SERVICE_CARDS[0])).primary}
+                  {(() => {
+                    const meter = purchaseQuote?.meter?.meter_id
+                      ? fullIdentifier(purchaseQuote.meter.meter_id)
+                      : frontDetailsFor(SERVICE_CARDS[0], accountForCard(SERVICE_CARDS[0]), registry, latestPaymentForCard(SERVICE_CARDS[0])).primary;
+                    return meter === "Meter not connected" ? meter : `Meter ${meter}`;
+                  })()}
                 </p>
               </div>
-              <button type="button" onClick={() => setPurchaseOpen(false)} className="rounded-full border border-white/10 px-3 py-1.5 text-xs text-white/62">Close</button>
+              <button type="button" onClick={closePurchaseDialog} className="rounded-full border border-white/10 px-3 py-1.5 text-xs text-white/62">Close</button>
             </div>
 
             {purchaseError ? <div className="mt-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-100">{purchaseError}</div> : null}
@@ -631,22 +563,25 @@ export default function ServicesPage() {
                     inputMode="decimal"
                     value={purchaseAmount}
                     onChange={(event) => setPurchaseAmount(event.target.value)}
-                    placeholder="Enter amount"
+                    placeholder="₦0"
                     className="mt-2 h-12 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 text-base text-white outline-none"
                   />
                 </label>
                 {quickAmounts.length ? (
-                  <div className="grid grid-cols-4 gap-2">
-                    {quickAmounts.map((amount) => (
-                      <button
-                        key={amount}
-                        type="button"
-                        onClick={() => setPurchaseAmount(String(amount))}
-                        className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-2 text-[11px] font-medium text-white/72"
-                      >
-                        {toNaira(amount).replace(".00", "")}
-                      </button>
-                    ))}
+                  <div>
+                    <div className="mb-2 text-xs uppercase tracking-[0.16em] text-white/36">Quick amounts</div>
+                    <div className="grid grid-cols-4 gap-2">
+                      {quickAmounts.map((amount) => (
+                        <button
+                          key={amount}
+                          type="button"
+                          onClick={() => setPurchaseAmount(String(amount))}
+                          className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-2 text-[11px] font-medium text-white/72"
+                        >
+                          {toNaira(amount).replace(".00", "")}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 ) : null}
                 <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2 text-xs text-white/58">
@@ -707,7 +642,7 @@ export default function ServicesPage() {
                     {purchaseResult.receipt.test_mode ? <div className="mt-2 text-xs text-amber-100/72">This is a test token and will not vend a live meter.</div> : null}
                   </div>
                 ) : null}
-                <button type="button" onClick={() => setPurchaseOpen(false)} className="h-11 w-full rounded-full border border-white/10 bg-white/[0.05] text-sm font-semibold text-white/78">
+                <button type="button" onClick={closePurchaseDialog} className="h-11 w-full rounded-full border border-white/10 bg-white/[0.05] text-sm font-semibold text-white/78">
                   Done
                 </button>
               </div>

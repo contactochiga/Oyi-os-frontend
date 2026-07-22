@@ -17,6 +17,7 @@ export default function ConsumerShell({
   subtitle,
   strip = [],
   preStripSlot,
+  hideStrip = false,
   disableContentScroll = false,
   stickyHeader = false,
 }: {
@@ -25,6 +26,7 @@ export default function ConsumerShell({
   subtitle?: string;
   strip?: Array<{ label: string; value: string | number }>;
   preStripSlot?: ReactNode;
+  hideStrip?: boolean;
   disableContentScroll?: boolean;
   stickyHeader?: boolean;
 }) {
@@ -103,23 +105,25 @@ export default function ConsumerShell({
 
               {preStripSlot ? <div className="mt-3">{preStripSlot}</div> : null}
 
-              <div className="mt-3 overflow-hidden rounded-[20px] border border-white/[0.07] bg-[linear-gradient(145deg,rgba(255,255,255,0.042),rgba(255,255,255,0.012))] px-2.5 py-2 shadow-[0_12px_38px_rgba(0,0,0,0.28)] backdrop-blur-2xl">
-                <div className="flex snap-x snap-mandatory gap-2 overflow-x-auto scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                  {stripItems.slice(0, 6).map((item) => (
-                    <div
-                      key={`${item.label}:${item.value}`}
-                      className="min-w-[118px] shrink-0 snap-start rounded-[16px] border border-white/[0.05] bg-white/[0.028] px-3 py-2"
-                    >
-                      <div className="text-[9px] uppercase tracking-[0.16em] text-white/32">
-                        {item.label}
+              {!hideStrip ? (
+                <div className="mt-3 overflow-hidden rounded-[20px] border border-white/[0.07] bg-[linear-gradient(145deg,rgba(255,255,255,0.042),rgba(255,255,255,0.012))] px-2.5 py-2 shadow-[0_12px_38px_rgba(0,0,0,0.28)] backdrop-blur-2xl">
+                  <div className="flex snap-x snap-mandatory gap-2 overflow-x-auto scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                    {stripItems.slice(0, 6).map((item) => (
+                      <div
+                        key={`${item.label}:${item.value}`}
+                        className="min-w-[118px] shrink-0 snap-start rounded-[16px] border border-white/[0.05] bg-white/[0.028] px-3 py-2"
+                      >
+                        <div className="text-[9px] uppercase tracking-[0.16em] text-white/32">
+                          {item.label}
+                        </div>
+                        <div className="mt-1 text-[13px] font-semibold leading-4 tracking-[-0.03em] text-white/88">
+                          {item.value}
+                        </div>
                       </div>
-                      <div className="mt-1 text-[13px] font-semibold leading-4 tracking-[-0.03em] text-white/88">
-                        {item.value}
-                      </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
+              ) : null}
             </header>
 
             {children}

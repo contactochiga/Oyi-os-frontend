@@ -46,7 +46,7 @@ assertIncludes("src/app/components/remotes/MaintenancePanel.tsx", "contextKeyRef
 assertIncludes("src/app/services/page.tsx", "estate_id: estateId", "services history estate scope");
 assertIncludes("src/app/services/page.tsx", "Electricity purchase is temporarily unavailable. Your wallet has not been charged.", "electricity purchase failure is wallet-safe");
 assertIncludes("src/app/services/page.tsx", "subtitle=\"Utility services for this home\"", "services header uses compact home utility copy");
-assertIncludes("src/app/services/page.tsx", "identifier ? fullIdentifier(identifier)", "electricity card shows the configured meter number");
+assertIncludes("src/app/services/page.tsx", "safeIdentifier || \"Meter not connected\"", "electricity card shows the configured meter number");
 assertIncludes("src/app/services/page.tsx", "place-items-center", "electricity purchase dialog is centered in the viewport");
 assertIncludes("src/app/services/page.tsx", "transaction_availability", "services page uses canonical transaction availability");
 assertIncludes("src/app/services/page.tsx", "quoteElectricityPurchase", "electricity purchase starts with backend quote");
