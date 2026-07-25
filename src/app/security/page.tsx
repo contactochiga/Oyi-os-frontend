@@ -42,7 +42,7 @@ export default function SecurityPage() {
     setErr(null);
     try {
       const [deviceRows, visitorRows] = await Promise.all([
-        deviceService.getAssignedDevices(active.estate_id || undefined),
+        deviceService.getRuntimeDevices(active.home_id || undefined),
         visitorService.listMine(),
       ]);
       setDevices(Array.isArray(deviceRows) ? deviceRows : []);

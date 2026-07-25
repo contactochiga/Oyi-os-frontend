@@ -15,6 +15,7 @@ export type DeviceStateResponse = DeviceRuntimeContract & {
 };
 
 export type DeviceRuntimeSummary = DeviceRuntimeContract & {
+  id?: string;
   device_id: string;
   name?: string;
   estate_id?: string | null;
@@ -22,6 +23,13 @@ export type DeviceRuntimeSummary = DeviceRuntimeContract & {
   room_id?: string | null;
   parent_device_id?: string | null;
   is_virtual?: boolean;
+  external_id?: string | null;
+  provider?: string | null;
+  vendor?: string | null;
+  adapter?: string | null;
+  type?: string | null;
+  category?: string | null;
+  metadata?: Record<string, any>;
   freshness?: string;
   stale?: boolean;
 };

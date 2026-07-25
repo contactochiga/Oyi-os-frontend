@@ -1,5 +1,38 @@
 export type RuntimeStateRecord = Record<string, any>;
 
+export type CanonicalDeviceState = {
+  availability:
+    | "online"
+    | "offline"
+    | "stale"
+    | "unknown"
+    | "provider_disconnected"
+    | "setup_incomplete";
+  lastSeenAt: string | null;
+  lastProviderSyncAt: string | null;
+  staleAfterMs: number | null;
+  primaryState: {
+    key: string;
+    value: string | number | boolean | null;
+    label: string;
+  };
+  secondaryState?: {
+    key: string;
+    value: string | number | boolean | null;
+    label: string;
+  };
+  batteryPercentage?: number | null;
+  batteryLevel?: "normal" | "low" | "critical" | "unknown";
+  alerts: Array<{
+    type: string;
+    severity: "info" | "warning" | "critical";
+    message: string;
+  }>;
+  supportedActions: string[];
+  executableActions: string[];
+  providerEvidence: Record<string, unknown>;
+};
+
 export type DeviceRuntimeContract = {
   deviceId?: string;
   state: RuntimeStateRecord;
@@ -19,6 +52,8 @@ export type DeviceRuntimeContract = {
   health_status?: string | null;
   provider_health?: string | null;
   primary_state?: string | null;
+  canonical_state?: CanonicalDeviceState | null;
+  canonicalState?: CanonicalDeviceState | null;
   telemetry_summary?: RuntimeStateRecord | null;
   last_signal?: string | null;
   activity_summary?: string | null;
@@ -62,6 +97,28 @@ function titleCase(value: string, fallback: string) {
     .split(/\s+/)
     .map((chunk) => chunk.charAt(0).toUpperCase() + chunk.slice(1))
     .join(" ");
+}
+
+function numberValue(value: any): number | null {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+function batteryLevel(value: number | null): CanonicalDeviceState["batteryLevel"] {
+  if (value == null) return "unknown";
+  if (value <= 20) return "critical";
+  if (value <= 35) return "low";
+  return "normal";
+}
+
+function isoTimestamp(...values: any[]) {
+  for (const value of values) {
+    const raw = text(value);
+    if (!raw) continue;
+    const date = new Date(raw);
+    if (Number.isFinite(date.getTime())) return date.toISOString();
+  }
+  return null;
 }
 
 export function statusLabel(value: any, fallback = "Awaiting sync") {
@@ -135,7 +192,7 @@ export function normalizeRuntimeContract(device: Record<string, any> | null | un
     text(device?.status).toLowerCase() ||
     "stable";
 
-  return {
+  const contract = {
     deviceId: text(source.deviceId, source.deviceId, device?.id) || undefined,
     state,
     normalized_state: Object.keys(normalized).length ? normalized : null,
@@ -147,6 +204,8 @@ export function normalizeRuntimeContract(device: Record<string, any> | null | un
     health_status: health || null,
     provider_health: text(source.provider_health, device?.provider_health).toLowerCase() || null,
     primary_state: primary || null,
+    canonical_state: source.canonical_state || source.canonicalState || null,
+    canonicalState: source.canonical_state || source.canonicalState || null,
     telemetry_summary: record(source.telemetry_summary),
     last_signal: text(source.last_signal, device?.last_signal) || null,
     activity_summary: text(source.activity_summary, source.last_signal, device?.activity_summary, device?.last_signal) || null,
@@ -162,10 +221,69 @@ export function normalizeRuntimeContract(device: Record<string, any> | null | un
     lastSeen: text(source.lastSeen, device?.last_seen_at, device?.updated_at) || null,
     error: text(source.error) || undefined,
   } satisfies DeviceRuntimeContract;
+  if (!contract.canonical_state) {
+    contract.canonical_state = deriveCanonicalDeviceState(device, contract);
+    contract.canonicalState = contract.canonical_state;
+  }
+  return contract;
+}
+
+export function deriveCanonicalDeviceState(device: Record<string, any> | null | undefined, runtime?: Partial<DeviceRuntimeContract> | null): CanonicalDeviceState {
+  const source = record(runtime);
+  const state = record(source.state);
+  const normalized = record(source.normalized_state);
+  const family = text(source.device_family, device?.device_family, device?.category, device?.type).toLowerCase();
+  const online = boolValue(normalized.online ?? state.online ?? device?.online ?? device?.connected);
+  const power = boolValue(normalized.power ?? state.switch ?? state.power ?? state.on);
+  const battery = numberValue(normalized.battery ?? state.battery_percentage ?? state.residual_electricity ?? state.battery_value ?? state.battery ?? device?.battery);
+  const health = text(source.health_status, source.provider_health, device?.status).toLowerCase();
+  const providerHealth = text(source.provider_health).toLowerCase();
+  const stale = source.stale === true || text((source as any).freshness).toLowerCase() === "stale" || text((source as any).freshness).toLowerCase() === "expired";
+  const availability: CanonicalDeviceState["availability"] =
+    /authorization|required|permission|expired|disconnected|not_linked/.test(providerHealth) ? "provider_disconnected"
+      : /setup/.test(providerHealth) ? "setup_incomplete"
+        : online === false || /offline|unavailable|lost/.test(health) ? "offline"
+          : stale ? "stale"
+            : online === true || /healthy|stable|online/.test(health) ? "online"
+              : "unknown";
+  const lockState = text(normalized.lock_state ?? state.lock_state ?? state.closed_opened).toLowerCase();
+  const primary =
+    family === "lock" && lockState
+      ? { key: "lock_state", value: lockState.includes("unlock") ? "unlocked" : "locked", label: lockState.includes("unlock") ? "Unlocked" : "Locked" }
+      : power !== null
+        ? { key: "power", value: power, label: power ? "On" : "Off" }
+        : typeof normalized.temperature === "number"
+          ? { key: "temperature", value: normalized.temperature, label: `${Math.round(Number(normalized.temperature))}°C` }
+          : family === "ir_remote"
+            ? { key: "remote", value: "ready", label: "Remote ready" }
+            : { key: "primary_state", value: source.primary_state || null, label: statusLabel(source.primary_state, availability === "unknown" ? "State unknown" : statusLabel(availability)) };
+  const level = batteryLevel(battery);
+  const alerts: CanonicalDeviceState["alerts"] = [];
+  if (availability === "offline") alerts.push({ type: "offline", severity: "warning", message: "Device is offline." });
+  if (availability === "provider_disconnected") alerts.push({ type: "provider_disconnected", severity: "warning", message: "Provider connection needs attention." });
+  if (level === "critical") alerts.push({ type: "battery_critical", severity: "critical", message: "Battery is critically low." });
+  else if (level === "low") alerts.push({ type: "battery_low", severity: "warning", message: "Battery is low." });
+  return {
+    availability,
+    lastSeenAt: isoTimestamp((source as any).lastSeen, (source as any).last_refresh, state?._oyi_runtime?.last_refresh, device?.last_seen_at, device?.updated_at),
+    lastProviderSyncAt: isoTimestamp((source as any).provider_timestamp, state?._oyi_runtime?.provider_timestamp),
+    staleAfterMs: Number((source as any).ttl || state?._oyi_runtime?.ttl || 0) || null,
+    primaryState: primary,
+    secondaryState: battery !== null ? { key: "battery", value: battery, label: `${Math.round(battery)}% battery` } : undefined,
+    batteryPercentage: battery,
+    batteryLevel: level,
+    alerts,
+    supportedActions: Array.isArray(source.supported_controls) ? source.supported_controls : [],
+    executableActions: Array.isArray((source as any).executableActions) ? (source as any).executableActions : [],
+    providerEvidence: record((source as any).providerEvidence),
+  };
 }
 
 export function onlineState(device: Record<string, any> | null | undefined, runtime?: Partial<DeviceRuntimeContract> | null): boolean | null {
   const contract = normalizeRuntimeContract(device, runtime);
+  const availability = contract.canonical_state?.availability;
+  if (availability === "online") return true;
+  if (["offline", "provider_disconnected", "setup_incomplete"].includes(String(availability))) return false;
   const direct = boolValue(contract.normalized_state?.online ?? contract.state?.online ?? device?.online ?? device?.connected);
   if (direct !== null) return direct;
   const status = text(contract.primary_state, contract.health_status, device?.status).toLowerCase();
@@ -189,6 +307,7 @@ export function simplePowerState(device: Record<string, any> | null | undefined,
 export function displayPrimaryState(device: Record<string, any> | null | undefined, runtime?: Partial<DeviceRuntimeContract> | null) {
   const contract = normalizeRuntimeContract(device, runtime);
   const normalized = record(contract.normalized_state);
+  if (contract.canonical_state?.primaryState?.label) return contract.canonical_state.primaryState.label;
   if (contract.primary_state) return statusLabel(contract.primary_state);
   if (normalized.lock_state) return statusLabel(normalized.lock_state);
   if (typeof normalized.temperature === "number") return `${Math.round(Number(normalized.temperature))}°C`;

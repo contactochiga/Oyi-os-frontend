@@ -36,6 +36,7 @@ export default function ScenesPage() {
   useAuth();
   const activeContext = useActiveContext();
   const estateId = activeContext.estate_id || "";
+  const homeId = activeContext.home_id || "";
   const contextReady = activeContext.ready;
   const [tab, setTab] = useState<Tab>("scenes");
   const [scenes, setScenes] = useState<ConsumerScene[]>([]);
@@ -64,7 +65,7 @@ export default function ScenesPage() {
       const [nextScenes, nextAutomations, nextDevices] = await Promise.all([
         sceneService.listScenes(),
         sceneService.listAutomations(),
-        deviceService.getAssignedDevices(estateId),
+        deviceService.getRuntimeDevices(homeId),
       ]);
       setScenes(nextScenes);
       setAutomations(nextAutomations);

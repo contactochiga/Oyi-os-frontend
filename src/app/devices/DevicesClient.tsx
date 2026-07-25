@@ -91,7 +91,7 @@ function deviceListMessage(error: any) {
 }
 
 function pickDbId(d: AnyDevice) {
-  return d?.id || null;
+  return d?.id || d?.device_id || null;
 }
 
 function pickExternalId(d: AnyDevice) {
@@ -156,8 +156,8 @@ function deviceIcon(device: AnyDevice) {
   return getDeviceIcon(device);
 }
 
-function iconTone(device: AnyDevice) {
-  return getDeviceIconTone(device);
+function iconTone(device: AnyDevice, runtime?: Partial<DeviceRuntimeContract> | null) {
+  return getDeviceIconTone(device, runtime);
 }
 
 function guessGangCount(device: AnyDevice, state: any, runtime?: Partial<DeviceRuntimeContract> | null): 1 | 2 | 3 {
@@ -246,7 +246,14 @@ function readLockState(device: AnyDevice, state: any, runtime?: Partial<DeviceRu
 }
 
 function displayState(device: AnyDevice, state: any, runtime?: Partial<DeviceRuntimeContract> | null) {
-  const primary = displayPrimaryState(device, { state, ...(runtime || {}) });
+  const contract = normalizeRuntimeContract(device, { state, ...(runtime || {}) });
+  const canonical = contract.canonical_state;
+  if (canonical?.availability === "offline") return "Offline";
+  if (canonical?.availability === "provider_disconnected") return "Provider disconnected";
+  if (canonical?.availability === "setup_incomplete") return "Setup incomplete";
+  if (canonical?.availability === "stale") return canonical.primaryState?.label ? `${canonical.primaryState.label} · stale` : "Stale";
+  if (canonical?.primaryState?.label) return canonical.primaryState.label;
+  const primary = displayPrimaryState(device, contract);
   if (primary && primary !== "Awaiting sync") return primary;
   const lock = readLockState(device, state, runtime);
   if (lock) return lock;
@@ -278,19 +285,21 @@ function isFavoriteDevice(device: AnyDevice) {
 
 function friendlyStateRows(device: AnyDevice, state: any, runtime?: Partial<DeviceRuntimeContract> | null) {
   const contract = normalizeRuntimeContract(device, { state, ...(runtime || {}) });
+  const canonical = contract.canonical_state;
   const online = isOnline(device, contract);
   const power = readPowerState(state, contract);
   const rows = [
     { label: "State", value: displayState(device, state, contract) },
     { label: "Health", value: healthLabel(contract.health_status, "Unknown") },
-    { label: "Connection", value: online === null ? "Unknown" : online ? "Online" : "Offline" },
+    { label: "Connection", value: canonical?.availability ? canonical.availability.replace(/_/g, " ") : online === null ? "Unknown" : online ? "Online" : "Offline" },
     { label: "Room", value: pickRoomName(device) || "Unassigned" },
     { label: "Device type", value: deviceFamilyLabel(contract.device_family || inferFamily(device), "Device") },
     { label: "Control profile", value: controlProfileLabel(contract.control_profile, "Standard") },
   ];
   if (power !== null && rows[0].value !== (power ? "On" : "Off")) rows.push({ label: "Power", value: power ? "On" : "Off" });
-  const lastSeen = state?.last_seen || state?.lastSeen || device?.last_seen || device?.lastSeen || device?.updated_at;
+  const lastSeen = canonical?.lastSeenAt || state?.last_seen || state?.lastSeen || device?.last_seen || device?.lastSeen || device?.updated_at;
   if (lastSeen) rows.push({ label: "Last active", value: new Date(lastSeen).toLocaleString() });
+  if (canonical?.batteryPercentage != null) rows.push({ label: "Battery", value: `${Math.round(Number(canonical.batteryPercentage))}% · ${canonical.batteryLevel || "unknown"}` });
   const caps = uiCapabilities(device, contract);
   const supported = [
     caps.canSwitch && "Power",
@@ -308,8 +317,11 @@ function friendlyStateRows(device: AnyDevice, state: any, runtime?: Partial<Devi
 }
 
 function attentionReason(device: AnyDevice, state: any, runtime?: Partial<DeviceRuntimeContract> | null) {
-  if (isOnline(device, runtime) === false) return "Connection lost";
-  const battery = Number(state?.battery ?? state?.battery_percentage ?? device?.battery);
+  const contract = normalizeRuntimeContract(device, { state, ...(runtime || {}) });
+  const alert = contract.canonical_state?.alerts?.find((item: { severity?: string }) => item.severity === "critical") || contract.canonical_state?.alerts?.[0];
+  if (alert?.message) return alert.message;
+  if (isOnline(device, contract) === false) return "Connection lost";
+  const battery = Number(contract.canonical_state?.batteryPercentage ?? state?.battery ?? state?.battery_percentage ?? device?.battery);
   if (Number.isFinite(battery) && battery > 0 && battery <= 20) return "Battery low";
   const status = String(runtime?.health_status || device?.status || state?.status || "").toLowerCase();
   if (status.includes("firmware")) return "Firmware update available";
@@ -674,11 +686,8 @@ export default function DeviceClient() {
     setLoading(true);
     setErr(null);
     try {
-      const [list, runtimeDevices] = await Promise.all([
-        deviceService.getAssignedDevices(estateId || undefined),
-        deviceService.getRuntimeDevices(homeId).catch(() => []),
-      ]);
-      const nextList = Array.isArray(list) ? list : [];
+      const runtimeDevices = await deviceService.getRuntimeDevices(homeId);
+      const nextList = Array.isArray(runtimeDevices) ? runtimeDevices : [];
       setItems(nextList);
       await hydrateStates(nextList, runtimeDevices);
     } catch (e: any) {
@@ -1286,7 +1295,7 @@ function FavoriteCard({ device, state, runtime, busy, onOpen, onPower }: { devic
   return (
     <button type="button" onClick={() => onOpen(device)} className="relative min-h-[142px] w-[156px] shrink-0 snap-start overflow-hidden rounded-[26px] border border-white/[0.075] bg-[linear-gradient(145deg,rgba(255,255,255,0.052),rgba(255,255,255,0.014))] p-3.5 text-left shadow-[0_16px_48px_rgba(0,0,0,0.30)] backdrop-blur-2xl transition active:scale-[0.985]">
       <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-sky-400/12 blur-3xl" />
-      <div className={cn("relative grid h-11 w-11 place-items-center rounded-full border", iconTone(device))}><Icon className="h-5 w-5" /></div>
+      <div className={cn("relative grid h-11 w-11 place-items-center rounded-full border", iconTone(device, runtime))}><Icon className="h-5 w-5" /></div>
       <div className="relative mt-5 text-[15px] font-semibold leading-5 tracking-[-0.035em] text-white line-clamp-2">{pickName(device)}</div>
       <div className="relative mt-1 truncate text-xs text-white/46">{pickRoomName(device) || "Unassigned"}</div>
       <div className="relative mt-3 flex items-center justify-between gap-2">
@@ -1318,7 +1327,7 @@ function UnassignedDeviceSheet({ device, room, setRoom, binding, onClose, onAssi
         <section className="mx-auto max-w-[430px] overflow-hidden rounded-[28px] border border-white/[0.08] bg-[#050a12]/96 shadow-[0_24px_80px_rgba(0,0,0,0.62)]">
           <div className="flex items-start justify-between gap-3 border-b border-white/[0.06] px-4 py-4">
             <div className="flex min-w-0 items-center gap-3">
-              <span className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-full border", iconTone(device))}><Icon className="h-5 w-5" /></span>
+              <span className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-full border", iconTone(device, null))}><Icon className="h-5 w-5" /></span>
               <div className="min-w-0"><h2 className="truncate text-base font-semibold text-white">{pickName(device)}</h2><p className="mt-0.5 text-xs capitalize text-white/44">{providerLabel(device)} · {inferFamily(device)}</p></div>
             </div>
             <button type="button" onClick={onClose} className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white/[0.06] text-white/60"><X className="h-4 w-4" /></button>
@@ -1346,13 +1355,15 @@ function DeviceRow({ device, state, runtime, busy, bordered, editingFavorites, o
   const Icon = deviceIcon(device);
   const simple = isSimpleControlDevice(device, state, runtime);
   const stateText = busy ? "Working…" : displayState(device, state, runtime);
+  const contract = normalizeRuntimeContract(device, { state, ...(runtime || {}) });
+  const secondary = contract.canonical_state?.secondaryState?.label || runtimeActivitySummary(device, runtime, pickRoomName(device) || "Unassigned");
   return (
     <div className={cn("flex w-full items-center gap-3 px-3.5 py-3 transition hover:bg-white/[0.035]", bordered && "border-t border-white/[0.055]")}>
       <button type="button" onClick={() => onOpen(device)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-        <span className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-full border", iconTone(device))}><Icon className="h-5 w-5" /></span>
+        <span className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-full border", iconTone(device, runtime))}><Icon className="h-5 w-5" /></span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[14px] font-semibold tracking-[-0.025em] text-white">{pickName(device)}</span>
-          <span className="mt-0.5 block truncate text-xs text-white/44">{runtimeActivitySummary(device, runtime, pickRoomName(device) || "Unassigned")}</span>
+          <span className="mt-0.5 block truncate text-xs text-white/44">{secondary}</span>
         </span>
       </button>
       <span className="shrink-0 text-right text-[13px] font-medium text-white/72">{stateText}</span>

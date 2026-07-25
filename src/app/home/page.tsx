@@ -221,7 +221,7 @@ export default function HomePage() {
     setDevicesErr(null);
     try {
       const [assigned, registry] = await Promise.all([
-        deviceService.getAssignedDevices(estateId),
+        deviceService.getRuntimeDevices(homeId),
         deviceService.getRegistryDevices(estateId),
       ]);
       setAssignedDevices(asArray(assigned));

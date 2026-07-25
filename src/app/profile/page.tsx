@@ -192,7 +192,7 @@ export default function ProfilePage() {
     let cancelled = false;
     async function load() {
       const [deviceRes, memberRes, walletRes, notificationRes, contextRes, proximityRes, notificationPreferenceRes] = await Promise.allSettled([
-        deviceService.getAssignedDevices(active.estate_id || undefined),
+        deviceService.getRuntimeDevices(active.home_id || undefined),
         active.home_id ? homeAccessService.listHomeUsers(active.home_id) : Promise.resolve([]),
         walletService.getWallet(),
         listMyNotifications(),

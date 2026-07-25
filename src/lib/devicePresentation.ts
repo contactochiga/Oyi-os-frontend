@@ -17,6 +17,7 @@ import {
   Waves,
   Wind,
 } from "lucide-react";
+import type { DeviceRuntimeContract } from "@/lib/deviceRuntimeContract";
 
 export type DeviceFamily =
   | "tv"
@@ -148,7 +149,18 @@ export function getDeviceIcon(device: Record<string, any> = {}) {
   return Waves;
 }
 
-export function getDeviceIconTone(device: Record<string, any> = {}) {
+export function getDeviceIconTone(device: Record<string, any> = {}, runtime?: Partial<DeviceRuntimeContract> | null) {
+  const availability = runtime?.canonical_state?.availability || runtime?.canonicalState?.availability;
+  const batteryLevel = runtime?.canonical_state?.batteryLevel || runtime?.canonicalState?.batteryLevel;
+  if (availability === "offline" || availability === "provider_disconnected" || availability === "setup_incomplete") {
+    return "text-white/36 bg-white/[0.035] border-white/[0.08]";
+  }
+  if (availability === "stale") {
+    return "text-amber-100 bg-amber-400/[0.07] border-amber-300/12 shadow-[0_0_18px_rgba(251,191,36,0.10)]";
+  }
+  if (batteryLevel === "critical") {
+    return "text-rose-100 bg-rose-400/[0.10] border-rose-300/16 shadow-[0_0_18px_rgba(251,113,133,0.14)]";
+  }
   const family = getDeviceFamily(device);
   if (["climate", "thermostat", "fan", "purifier"].includes(family)) return "text-sky-200 bg-sky-400/10 border-sky-300/15 shadow-[0_0_20px_rgba(56,189,248,0.14)]";
   if (["lock", "camera", "security"].includes(family)) return "text-emerald-200 bg-emerald-400/10 border-emerald-300/15 shadow-[0_0_20px_rgba(52,211,153,0.14)]";

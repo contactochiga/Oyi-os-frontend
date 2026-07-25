@@ -34,7 +34,7 @@ export default function UtilitiesPage() {
     }
     setLoading(true);
     try {
-      const rows = await deviceService.getAssignedDevices(active.estate_id || undefined);
+      const rows = await deviceService.getRuntimeDevices(active.home_id || undefined);
       setDevices(Array.isArray(rows) ? rows : []);
     } finally {
       setLoading(false);
