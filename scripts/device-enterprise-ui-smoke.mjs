@@ -47,6 +47,21 @@ expect(
   "Device status copy must distinguish provider disconnect, setup incomplete and stale",
 );
 expect(
+  "src/app/components/remotes/DoorPanel.tsx",
+  /LockKeyhole[\s\S]*LockKeyholeOpen[\s\S]*Remote unlock is unavailable through this connection[\s\S]*Check health/,
+  "DoorPanel must show a clean state-first Smart Access surface with unavailable remote control explained",
+);
+expect(
+  "src/app/components/remotes/DoorPanel.tsx",
+  /operation_matrix[\s\S]*provider-declared only/,
+  "DoorPanel health details must summarize the Smart Access operation matrix",
+);
+reject(
+  "src/lib/consumerAwareness.ts",
+  /reported a new device update/,
+  "Consumer awareness should not surface generic provider-update wording",
+);
+expect(
   "src/app/home/page.tsx",
   /deviceService\.getRuntimeDevices\(homeId\)/,
   "Home quick devices must use Runtime V2 for assigned/current devices",

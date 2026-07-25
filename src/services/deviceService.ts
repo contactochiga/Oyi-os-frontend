@@ -103,6 +103,7 @@ export type SmartAccessResponse = {
     };
     evidence?: Record<string, any>;
     confidence?: Record<string, any>;
+    operation_matrix?: Array<Record<string, any>>;
     raw_fingerprint?: string;
   };
   records?: Array<Record<string, any>>;

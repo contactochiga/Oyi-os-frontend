@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Activity, AlertTriangle, Battery, LockKeyhole, LockKeyholeOpen, Settings, ShieldCheck, Wifi } from "lucide-react";
 import RemotePanel from "./RemotePanel";
 import { signalService } from "@/services/signalService";
 import useActiveContext from "@/hooks/useActiveContext";
@@ -37,6 +38,30 @@ function batteryLabel(value: number | null | undefined, level?: string | null) {
   if (typeof value !== "number" || !Number.isFinite(value)) return "Battery unknown";
   const quality = level && level !== "unknown" ? ` · ${level[0]?.toUpperCase()}${level.slice(1)}` : "";
   return `${Math.round(value)}%${quality}`;
+}
+
+function availabilityLabel(value: any) {
+  const raw = String(value || "").toLowerCase();
+  if (raw === "online") return "Online";
+  if (raw === "offline") return "Offline";
+  if (raw === "stale") return "Stale";
+  if (raw === "provider_disconnected") return "Provider disconnected";
+  if (raw === "setup_incomplete") return "Setup incomplete";
+  return "Availability unknown";
+}
+
+function timeAgo(value: any) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return null;
+  const mins = Math.max(0, Math.round((Date.now() - date.getTime()) / 60_000));
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min${mins === 1 ? "" : "s"} ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs} hr${hrs === 1 ? "" : "s"} ago`;
+  const days = Math.round(hrs / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
 }
 
 function capabilityNote(smart: SmartAccessResponse | null, group: string, key: string, labels: { missing?: string; declared?: string; unavailable?: string; verification?: string }) {
@@ -202,11 +227,22 @@ export default function DoorPanel({
   const disabled = pending || !deviceId || !nextControlSupported;
   const actionLabel = pending ? (expectedRef.current?.locked ? "Locking..." : "Unlocking...") : locked ? "Unlock" : "Lock";
   const accessState = smartAccess?.profile?.state;
+  const availability = String((runtime as any)?.canonical_state?.availability || (runtime as any)?.canonicalState?.availability || (accessState?.online === false ? "offline" : accessState?.online === true ? "online" : "unknown"));
+  const lastSeen = (runtime as any)?.canonical_state?.lastSeenAt || (runtime as any)?.canonicalState?.lastSeenAt || (runtime as any)?.lastSeen || null;
   const batteryLow = accessState?.batteryLow === true;
   const battery = accessState?.batteryPercentage;
   const batteryLevel = accessState?.batteryLevel;
   const securityAlert = accessState?.tamperActive || accessState?.wrongAttemptActive;
   const recentRecords = smartAccess?.records || [];
+  const operationMatrix = smartAccess?.profile?.operation_matrix || [];
+  const LockIcon = locked ? LockKeyhole : LockKeyholeOpen;
+  const lockTone = availability === "offline" || availability === "provider_disconnected" || availability === "setup_incomplete"
+    ? "border-white/10 bg-white/[0.04] text-white/38"
+    : batteryLevel === "critical"
+      ? "border-rose-300/20 bg-rose-400/10 text-rose-100"
+      : locked
+        ? "border-emerald-300/18 bg-emerald-400/10 text-emerald-100"
+        : "border-amber-300/20 bg-amber-400/10 text-amber-100";
   const lockUnavailableNote = locked
     ? capabilityNote(smartAccess, "control", "unlock", {
         missing: "Remote unlock is unavailable through this connection.",
@@ -236,48 +272,62 @@ export default function DoorPanel({
   });
 
   return (
-    <RemotePanel title="Door" lastUpdated={lastUpdated}>
+    <RemotePanel title={smartAccess?.device?.name || "Smart Access"} lastUpdated={lastUpdated}>
       {err && (
         <div className="mb-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-200">
           {err}
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-3">
-        <div className="text-sm text-white/80">
-          {controlEvidence.hasLockState ? (locked ? "Locked" : "Unlocked") : "Lock state unknown"}
-          {(pending || loading) ? <span className="text-xs text-white/40"> • syncing…</span> : null}
-          {smartLoading ? <span className="block text-xs text-white/42">Checking access capabilities…</span> : null}
-          {!nextControlSupported ? <span className="block text-xs text-white/42">{lockUnavailableNote || `This lock does not support ${locked ? "remote unlock" : "remote lock"}.`}</span> : null}
+      <section className={`rounded-[28px] border px-4 py-5 text-center ${lockTone}`}>
+        <div className="mx-auto grid h-20 w-20 place-items-center rounded-full border border-current/20 bg-black/18">
+          <LockIcon className="h-9 w-9" />
         </div>
-
-        <button
-          type="button"
-          onClick={() => {
-            if (locked) setConfirmingUnlock(true);
-            else void sendLock(true);
-          }}
-          disabled={disabled}
-          className={`px-4 py-2 rounded-full text-sm font-semibold border transition disabled:opacity-50
-            ${
-              locked
-                ? "bg-white text-black border-white/20"
-                : "bg-white/5 text-white border-white/10 hover:bg-white/10"
+        <div className="mt-4 text-2xl font-semibold tracking-[-0.05em] text-white">
+          {controlEvidence.hasLockState ? (locked ? "Locked" : "Unlocked") : "Lock state unknown"}
+        </div>
+        <div className="mt-1 text-xs text-white/54">
+          {availabilityLabel(availability)}
+          {lastSeen && availability !== "online" ? ` · last seen ${timeAgo(lastSeen)}` : ""}
+          {(pending || loading) ? " · syncing..." : ""}
+        </div>
+        {smartLoading ? <div className="mt-2 text-xs text-white/42">Checking access capabilities...</div> : null}
+        {!nextControlSupported ? (
+          <div className="mx-auto mt-4 max-w-[290px] rounded-2xl border border-white/10 bg-black/18 px-3 py-2 text-xs leading-5 text-white/58">
+            {lockUnavailableNote || `Remote ${locked ? "unlock" : "lock"} is unavailable through this connection.`}
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              if (locked) setConfirmingUnlock(true);
+              else void sendLock(true);
+            }}
+            disabled={disabled}
+            className={`mt-4 h-11 min-w-[150px] rounded-full text-sm font-semibold transition disabled:opacity-50 ${
+              locked ? "bg-white text-black" : "border border-white/10 bg-white/[0.08] text-white hover:bg-white/[0.12]"
             }`}
-        >
-          {actionLabel}
-        </button>
-      </div>
+          >
+            {actionLabel}
+          </button>
+        )}
+      </section>
 
-      <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
-        <div className={`rounded-2xl border px-3 py-2 ${batteryLow ? "border-amber-300/25 bg-amber-400/10 text-amber-50" : "border-white/10 bg-white/5 text-white/72"}`}>
+      <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+        <div className={`rounded-2xl border px-3 py-2 ${batteryLow || batteryLevel === "critical" ? "border-rose-300/22 bg-rose-400/10 text-rose-50" : "border-white/10 bg-white/5 text-white/72"}`}>
+          <Battery className="mb-2 h-4 w-4 opacity-80" />
           <div className="text-white/45">Battery</div>
           <div className="mt-0.5 font-semibold">{batteryLabel(battery, batteryLevel)}</div>
-          {batteryUnavailableNote && typeof battery !== "number" ? <div className="mt-1 text-[11px] text-white/42">{batteryUnavailableNote}</div> : null}
+        </div>
+        <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-white/72">
+          <Wifi className="mb-2 h-4 w-4 opacity-80" />
+          <div className="text-white/45">Connection</div>
+          <div className="mt-0.5 font-semibold">{availabilityLabel(availability)}</div>
         </div>
         <div className={`rounded-2xl border px-3 py-2 ${securityAlert ? "border-red-300/25 bg-red-500/10 text-red-50" : "border-white/10 bg-white/5 text-white/72"}`}>
+          {securityAlert ? <AlertTriangle className="mb-2 h-4 w-4 opacity-90" /> : <ShieldCheck className="mb-2 h-4 w-4 opacity-80" />}
           <div className="text-white/45">Security</div>
-          <div className="mt-0.5 font-semibold">{securityAlert ? "Needs attention" : "No alert reported"}</div>
+          <div className="mt-0.5 font-semibold">{securityAlert ? "Alert" : "Clear"}</div>
         </div>
       </div>
 
@@ -296,7 +346,22 @@ export default function DoorPanel({
         </div>
       ) : null}
 
-      <div className="mt-4 flex gap-2">
+      <div className="mt-4 grid grid-cols-3 gap-2">
+        <button type="button" onClick={() => { touch(); router.push("/activity"); }} className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-3 text-xs text-white/76">
+          <Activity className="mx-auto mb-2 h-4 w-4" />
+          Show activity
+        </button>
+        <button type="button" onClick={() => { touch(); refresh(); }} className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-3 text-xs text-white/76">
+          <ShieldCheck className="mx-auto mb-2 h-4 w-4" />
+          Check health
+        </button>
+        <button type="button" onClick={() => { touch(); router.push("/settings"); }} className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-3 text-xs text-white/76">
+          <Settings className="mx-auto mb-2 h-4 w-4" />
+          Settings
+        </button>
+      </div>
+
+      <div className="mt-3 flex gap-2">
         {(hasCamera && controlEvidence.hasMedia) ? (
           <button
             type="button"
@@ -324,15 +389,22 @@ export default function DoorPanel({
         ) : null}
       </div>
 
-      {(controlEvidence.hasCredentials || controlEvidence.hasMembers || controlEvidence.hasDoorbell || temporaryAccessNote || accessRecordsNote || doorbellNote) ? (
-        <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-white/68">
-          {controlEvidence.hasCredentials ? <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">Temporary access available</div> : null}
-          {temporaryAccessNote && !controlEvidence.hasCredentials ? <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">{temporaryAccessNote}</div> : null}
-          {accessRecordsNote && !controlEvidence.hasHistory ? <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">{accessRecordsNote}</div> : null}
-          {controlEvidence.hasMembers ? <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">Member access available</div> : null}
-          {controlEvidence.hasDoorbell ? <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">Doorbell events active</div> : null}
-          {doorbellNote && !controlEvidence.hasDoorbell ? <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">{doorbellNote}</div> : null}
-        </div>
+          {(temporaryAccessNote || accessRecordsNote || doorbellNote || batteryUnavailableNote || operationMatrix.length) ? (
+        <details className="mt-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-white/62">
+          <summary className="cursor-pointer text-white/76">Check lock health</summary>
+          <div className="mt-2 space-y-1 leading-5">
+            {batteryUnavailableNote && typeof battery !== "number" ? <p>{batteryUnavailableNote}</p> : null}
+            {temporaryAccessNote ? <p>{temporaryAccessNote}</p> : null}
+            {accessRecordsNote ? <p>{accessRecordsNote}</p> : null}
+            {doorbellNote ? <p>{doorbellNote}</p> : null}
+            {operationMatrix.length ? (
+              <p>
+                {operationMatrix.filter((item: any) => item.executable === true).length} executable operation(s),{" "}
+                {operationMatrix.filter((item: any) => item.provider_declared === true && item.executable !== true).length} provider-declared only.
+              </p>
+            ) : null}
+          </div>
+        </details>
       ) : null}
 
       {recentRecords.length ? (

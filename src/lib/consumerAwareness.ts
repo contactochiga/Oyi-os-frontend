@@ -220,7 +220,7 @@ export function awarenessFromRuntimeSignal(rawSignal: Record<string, any> | null
     summary = "The device has resumed reporting normally.";
   } else if (eventType === "device.provider.sync") {
     title = `${name} updated`;
-    summary = stateSummary || `The ${provider} reported a new device update.`;
+    summary = stateSummary || `${name} state refreshed through ${provider}.`;
   } else if (eventType === "device.telemetry.received") {
     title = `${name} updated`;
     summary = stateSummary || "Oyi received a fresh device update.";
