@@ -5,6 +5,7 @@ import {
   Flame,
   Lamp,
   LockKeyhole,
+  LockKeyholeOpen,
   PanelTop,
   Plug,
   Radio,
@@ -130,11 +131,14 @@ export function getDeviceFamily(device: Record<string, any> = {}): DeviceFamily 
 
 export function getDeviceIcon(device: Record<string, any> = {}) {
   const family = getDeviceFamily(device);
+  const primary = device?.canonical_presentation?.primaryState || device?.presentation?.primaryState || device?.canonical_state?.primaryState || device?.canonicalState?.primaryState;
+  const normalized = device?.normalized_state || device?.state || {};
+  const lockState = String(primary?.key === "lock_state" ? primary?.value : normalized?.lock_state ?? normalized?.door_state ?? "").toLowerCase();
   if (family === "tv") return Tv;
   if (family === "climate") return AirVent;
   if (family === "thermostat") return Thermometer;
   if (family === "light") return Lamp;
-  if (family === "lock") return LockKeyhole;
+  if (family === "lock") return lockState.includes("unlock") || lockState === "open" ? LockKeyholeOpen : LockKeyhole;
   if (family === "camera") return Camera;
   if (family === "curtain") return PanelTop;
   if (family === "fan") return Fan;
@@ -150,8 +154,8 @@ export function getDeviceIcon(device: Record<string, any> = {}) {
 }
 
 export function getDeviceIconTone(device: Record<string, any> = {}, runtime?: Partial<DeviceRuntimeContract> | null) {
-  const availability = runtime?.canonical_state?.availability || runtime?.canonicalState?.availability;
-  const batteryLevel = runtime?.canonical_state?.batteryLevel || runtime?.canonicalState?.batteryLevel;
+  const availability = runtime?.canonical_presentation?.availability || runtime?.presentation?.availability || runtime?.canonical_state?.availability || runtime?.canonicalState?.availability;
+  const batteryLevel = runtime?.canonical_presentation?.batteryLevel || runtime?.presentation?.batteryLevel || runtime?.canonical_state?.batteryLevel || runtime?.canonicalState?.batteryLevel;
   if (availability === "offline" || availability === "provider_disconnected" || availability === "setup_incomplete") {
     return "text-white/36 bg-white/[0.035] border-white/[0.08]";
   }

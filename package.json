@@ -26,6 +26,9 @@
     "smoke:smart-access": "node scripts/smart-access-ui-smoke.mjs",
     "smoke:device-enterprise": "node scripts/device-enterprise-ui-smoke.mjs",
     "smoke:device-state-ui": "node scripts/device-enterprise-ui-smoke.mjs",
+    "smoke:door-panel-enterprise": "node scripts/smart-access-ui-smoke.mjs && node scripts/device-enterprise-ui-smoke.mjs",
+    "smoke:device-state-consistency": "node scripts/device-enterprise-ui-smoke.mjs",
+    "smoke:device-icon-live-states": "node scripts/device-enterprise-ui-smoke.mjs",
     "smoke:device-inventory-isolation": "node scripts/context-isolation-smoke.mjs && node scripts/device-enterprise-ui-smoke.mjs",
     "smoke:socket-scope": "node scripts/device-ownership-lock-ui-smoke.mjs",
     "validate:release": "node scripts/validate-release.mjs && npm run smoke:device-runtime-batch && npm run smoke:context-isolation && npm run smoke:release-closure && npm run smoke:device-ownership && npm run smoke:smart-access && npm run smoke:device-enterprise"

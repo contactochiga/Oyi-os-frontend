@@ -108,8 +108,9 @@ function pickName(d: AnyDevice) {
   return d?.name || d?.product_name || d?.productName || d?.model || d?.local_name || d?.localName || d?.alias || "Unnamed Device";
 }
 
-function pickRoomName(d: AnyDevice) {
-  return d?.room_name || d?.room?.name || d?.metadata?.room_name || d?.metadata?.room || null;
+function pickRoomName(d: AnyDevice, runtime?: Partial<DeviceRuntimeContract> | null) {
+  const presentation = runtime?.canonical_presentation || runtime?.presentation || null;
+  return presentation?.assignment?.roomName || d?.room_name || d?.room?.name || d?.metadata?.room_name || d?.metadata?.room || null;
 }
 
 function pickRoomKey(d: AnyDevice) {
@@ -152,8 +153,8 @@ function categoryFor(device: AnyDevice): CategoryKey {
   return "all";
 }
 
-function deviceIcon(device: AnyDevice) {
-  return getDeviceIcon(device);
+function deviceIcon(device: AnyDevice, runtime?: Partial<DeviceRuntimeContract> | null) {
+  return getDeviceIcon({ ...device, ...(runtime || {}) });
 }
 
 function iconTone(device: AnyDevice, runtime?: Partial<DeviceRuntimeContract> | null) {
@@ -247,6 +248,8 @@ function readLockState(device: AnyDevice, state: any, runtime?: Partial<DeviceRu
 
 function displayState(device: AnyDevice, state: any, runtime?: Partial<DeviceRuntimeContract> | null) {
   const contract = normalizeRuntimeContract(device, { state, ...(runtime || {}) });
+  const presentation = contract.canonical_presentation || contract.presentation || null;
+  if (presentation?.primaryState?.label) return presentation.primaryState.label;
   const canonical = contract.canonical_state;
   if (canonical?.availability === "offline") return "Offline";
   if (canonical?.availability === "provider_disconnected") return "Provider disconnected";
@@ -292,7 +295,7 @@ function friendlyStateRows(device: AnyDevice, state: any, runtime?: Partial<Devi
     { label: "State", value: displayState(device, state, contract) },
     { label: "Health", value: healthLabel(contract.health_status, "Unknown") },
     { label: "Connection", value: canonical?.availability ? canonical.availability.replace(/_/g, " ") : online === null ? "Unknown" : online ? "Online" : "Offline" },
-    { label: "Room", value: pickRoomName(device) || "Unassigned" },
+    { label: "Room", value: pickRoomName(device, contract) || "Unassigned" },
     { label: "Device type", value: deviceFamilyLabel(contract.device_family || inferFamily(device), "Device") },
     { label: "Control profile", value: controlProfileLabel(contract.control_profile, "Standard") },
   ];
@@ -1290,14 +1293,14 @@ export default function DeviceClient() {
 }
 
 function FavoriteCard({ device, state, runtime, busy, onOpen, onPower }: { device: AnyDevice; state: any; runtime?: Partial<DeviceRuntimeContract> | null; busy: boolean; onOpen: (device: AnyDevice) => void; onPower: (device: AnyDevice) => void }) {
-  const Icon = deviceIcon(device);
+  const Icon = deviceIcon(device, runtime);
   const stateText = busy ? "Working…" : displayState(device, state, runtime);
   return (
     <button type="button" onClick={() => onOpen(device)} className="relative min-h-[142px] w-[156px] shrink-0 snap-start overflow-hidden rounded-[26px] border border-white/[0.075] bg-[linear-gradient(145deg,rgba(255,255,255,0.052),rgba(255,255,255,0.014))] p-3.5 text-left shadow-[0_16px_48px_rgba(0,0,0,0.30)] backdrop-blur-2xl transition active:scale-[0.985]">
       <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-sky-400/12 blur-3xl" />
       <div className={cn("relative grid h-11 w-11 place-items-center rounded-full border", iconTone(device, runtime))}><Icon className="h-5 w-5" /></div>
       <div className="relative mt-5 text-[15px] font-semibold leading-5 tracking-[-0.035em] text-white line-clamp-2">{pickName(device)}</div>
-      <div className="relative mt-1 truncate text-xs text-white/46">{pickRoomName(device) || "Unassigned"}</div>
+      <div className="relative mt-1 truncate text-xs text-white/46">{pickRoomName(device, runtime) || "Unassigned"}</div>
       <div className="relative mt-3 flex items-center justify-between gap-2">
         <span className={cn("text-[13px] font-semibold", stateText === "On" || stateText === "Online" || stateText === "Locked" ? "text-emerald-300" : "text-white/72")}>{stateText}</span>
         <button type="button" onClick={(e) => { e.stopPropagation(); onPower(device); }} className="grid h-8 w-8 place-items-center rounded-full border border-white/10 bg-white/[0.06] text-white/72" aria-label="Toggle power"><Fan className="h-4 w-4" /></button>
@@ -1352,11 +1355,11 @@ function UnassignedDeviceSheet({ device, room, setRoom, binding, onClose, onAssi
 }
 
 function DeviceRow({ device, state, runtime, busy, bordered, editingFavorites, onOpen, onPower, onFavorite }: { device: AnyDevice; state: any; runtime?: Partial<DeviceRuntimeContract> | null; busy: boolean; bordered: boolean; editingFavorites: boolean; onOpen: (device: AnyDevice) => void; onPower: (device: AnyDevice) => void; onFavorite: (device: AnyDevice) => void }) {
-  const Icon = deviceIcon(device);
+  const Icon = deviceIcon(device, runtime);
   const simple = isSimpleControlDevice(device, state, runtime);
   const stateText = busy ? "Working…" : displayState(device, state, runtime);
   const contract = normalizeRuntimeContract(device, { state, ...(runtime || {}) });
-  const secondary = contract.canonical_state?.secondaryState?.label || runtimeActivitySummary(device, runtime, pickRoomName(device) || "Unassigned");
+  const secondary = runtimeActivitySummary(device, contract, contract.canonical_state?.secondaryState?.label || pickRoomName(device, contract) || "Unassigned");
   return (
     <div className={cn("flex w-full items-center gap-3 px-3.5 py-3 transition hover:bg-white/[0.035]", bordered && "border-t border-white/[0.055]")}>
       <button type="button" onClick={() => onOpen(device)} className="flex min-w-0 flex-1 items-center gap-3 text-left">

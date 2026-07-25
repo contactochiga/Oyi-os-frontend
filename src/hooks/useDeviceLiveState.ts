@@ -91,7 +91,17 @@ export function useDeviceLiveState(deviceId?: string, estateId?: string | null) 
       setData((s) => ({
         ...s,
         state: update.state ?? s.state,
-        runtime: s.runtime ? { ...s.runtime, state: update.state ?? s.state } : s.runtime,
+        runtime: s.runtime
+          ? {
+              ...s.runtime,
+              ...update,
+              state: update.state ?? s.state,
+              canonical_state: update.canonical_state ?? update.canonicalState ?? s.runtime.canonical_state,
+              canonicalState: update.canonical_state ?? update.canonicalState ?? s.runtime.canonicalState,
+              canonical_presentation: update.canonical_presentation ?? update.presentation ?? s.runtime.canonical_presentation,
+              presentation: update.canonical_presentation ?? update.presentation ?? s.runtime.presentation,
+            }
+          : { ...(update as any), state: update.state ?? s.state },
         lastSeen: new Date().toISOString(),
         error: null,
       }));

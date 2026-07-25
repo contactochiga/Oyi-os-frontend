@@ -227,11 +227,19 @@ export default function DoorPanel({
   const disabled = pending || !deviceId || !nextControlSupported;
   const actionLabel = pending ? (expectedRef.current?.locked ? "Locking..." : "Unlocking...") : locked ? "Unlock" : "Lock";
   const accessState = smartAccess?.profile?.state;
-  const availability = String((runtime as any)?.canonical_state?.availability || (runtime as any)?.canonicalState?.availability || (accessState?.online === false ? "offline" : accessState?.online === true ? "online" : "unknown"));
-  const lastSeen = (runtime as any)?.canonical_state?.lastSeenAt || (runtime as any)?.canonicalState?.lastSeenAt || (runtime as any)?.lastSeen || null;
-  const batteryLow = accessState?.batteryLow === true;
-  const battery = accessState?.batteryPercentage;
-  const batteryLevel = accessState?.batteryLevel;
+  const presentation = (runtime as any)?.canonical_presentation || (runtime as any)?.presentation || null;
+  const canonical = (runtime as any)?.canonical_state || (runtime as any)?.canonicalState || null;
+  const availability = String(presentation?.availability || canonical?.availability || (accessState?.online === false ? "offline" : accessState?.online === true ? "online" : "unknown"));
+  const availabilityReason = String(presentation?.availabilityReason || canonical?.availabilityReason || "unknown");
+  const lastSeen = presentation?.lastSeenAt || canonical?.lastSeenAt || (runtime as any)?.lastSeen || null;
+  const lastChecked = presentation?.lastCheckedAt || canonical?.lastProviderSyncAt || (runtime as any)?.last_refresh || null;
+  const lastConfirmed = presentation?.lastConfirmedStateAt || canonical?.lastSeenAt || null;
+  const roomName = presentation?.assignment?.roomName || (runtime as any)?.room_name || (smartAccess?.device as any)?.room_name || "Unassigned";
+  const primaryConfidence = presentation?.primaryState?.confidence || canonical?.primaryState?.confidence || "unknown";
+  const stateSummary = String(presentation?.summary || "").trim();
+  const batteryLow = accessState?.batteryLow === true || presentation?.batteryLevel === "critical";
+  const battery = typeof presentation?.batteryPercentage === "number" ? presentation.batteryPercentage : accessState?.batteryPercentage;
+  const batteryLevel = presentation?.batteryLevel || accessState?.batteryLevel;
   const securityAlert = accessState?.tamperActive || accessState?.wrongAttemptActive;
   const recentRecords = smartAccess?.records || [];
   const operationMatrix = smartAccess?.profile?.operation_matrix || [];
@@ -243,6 +251,23 @@ export default function DoorPanel({
       : locked
         ? "border-emerald-300/18 bg-emerald-400/10 text-emerald-100"
         : "border-amber-300/20 bg-amber-400/10 text-amber-100";
+  const availabilityCopy = availabilityReason === "provider_reports_offline"
+    ? "Provider reports offline"
+    : availabilityLabel(availability);
+  const timingCopy = availabilityReason === "provider_reports_offline"
+    ? (lastChecked ? ` · checked ${timeAgo(lastChecked)}` : "")
+    : availability === "offline"
+      ? (lastSeen ? ` · last seen ${timeAgo(lastSeen)}` : "")
+      : availability === "stale"
+        ? (lastSeen ? ` · last updated ${timeAgo(lastSeen)}` : "")
+        : "";
+  const stateConfidenceCopy = primaryConfidence === "last_confirmed" && lastConfirmed
+    ? `Last confirmed ${timeAgo(lastConfirmed)}`
+    : primaryConfidence === "live"
+      ? "Live state"
+      : primaryConfidence === "unknown"
+        ? "State confidence unknown"
+        : "Inferred state";
   const lockUnavailableNote = locked
     ? capabilityNote(smartAccess, "control", "unlock", {
         missing: "Remote unlock is unavailable through this connection.",
@@ -272,7 +297,7 @@ export default function DoorPanel({
   });
 
   return (
-    <RemotePanel title={smartAccess?.device?.name || "Smart Access"} lastUpdated={lastUpdated}>
+    <RemotePanel title={smartAccess?.device?.name || "Smart Access"} subtitle={`${roomName} · ${availabilityCopy}`} lastUpdated={lastUpdated}>
       {err && (
         <div className="mb-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-200">
           {err}
@@ -287,10 +312,13 @@ export default function DoorPanel({
           {controlEvidence.hasLockState ? (locked ? "Locked" : "Unlocked") : "Lock state unknown"}
         </div>
         <div className="mt-1 text-xs text-white/54">
-          {availabilityLabel(availability)}
-          {lastSeen && availability !== "online" ? ` · last seen ${timeAgo(lastSeen)}` : ""}
+          {stateConfidenceCopy}
+          {" · "}
+          {availabilityCopy}
+          {timingCopy}
           {(pending || loading) ? " · syncing..." : ""}
         </div>
+        {stateSummary ? <div className="mx-auto mt-2 max-w-[280px] text-xs text-white/46">{stateSummary}</div> : null}
         {smartLoading ? <div className="mt-2 text-xs text-white/42">Checking access capabilities...</div> : null}
         {!nextControlSupported ? (
           <div className="mx-auto mt-4 max-w-[290px] rounded-2xl border border-white/10 bg-black/18 px-3 py-2 text-xs leading-5 text-white/58">
@@ -322,7 +350,7 @@ export default function DoorPanel({
         <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-white/72">
           <Wifi className="mb-2 h-4 w-4 opacity-80" />
           <div className="text-white/45">Connection</div>
-          <div className="mt-0.5 font-semibold">{availabilityLabel(availability)}</div>
+          <div className="mt-0.5 font-semibold">{availabilityCopy}</div>
         </div>
         <div className={`rounded-2xl border px-3 py-2 ${securityAlert ? "border-red-300/25 bg-red-500/10 text-red-50" : "border-white/10 bg-white/5 text-white/72"}`}>
           {securityAlert ? <AlertTriangle className="mb-2 h-4 w-4 opacity-90" /> : <ShieldCheck className="mb-2 h-4 w-4 opacity-80" />}
@@ -346,14 +374,10 @@ export default function DoorPanel({
         </div>
       ) : null}
 
-      <div className="mt-4 grid grid-cols-3 gap-2">
+      <div className="mt-4 grid grid-cols-2 gap-2">
         <button type="button" onClick={() => { touch(); router.push("/activity"); }} className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-3 text-xs text-white/76">
           <Activity className="mx-auto mb-2 h-4 w-4" />
           Show activity
-        </button>
-        <button type="button" onClick={() => { touch(); refresh(); }} className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-3 text-xs text-white/76">
-          <ShieldCheck className="mx-auto mb-2 h-4 w-4" />
-          Check health
         </button>
         <button type="button" onClick={() => { touch(); router.push("/settings"); }} className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-3 text-xs text-white/76">
           <Settings className="mx-auto mb-2 h-4 w-4" />
@@ -393,12 +417,13 @@ export default function DoorPanel({
         <details className="mt-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-white/62">
           <summary className="cursor-pointer text-white/76">Check lock health</summary>
           <div className="mt-2 space-y-1 leading-5">
+            <p>Additional lock features detected. Temporary access, access history and doorbell features require additional provider setup when listed below.</p>
             {batteryUnavailableNote && typeof battery !== "number" ? <p>{batteryUnavailableNote}</p> : null}
             {temporaryAccessNote ? <p>{temporaryAccessNote}</p> : null}
             {accessRecordsNote ? <p>{accessRecordsNote}</p> : null}
             {doorbellNote ? <p>{doorbellNote}</p> : null}
             {operationMatrix.length ? (
-              <p>
+              <p className="pt-1 text-white/40">
                 {operationMatrix.filter((item: any) => item.executable === true).length} executable operation(s),{" "}
                 {operationMatrix.filter((item: any) => item.provider_declared === true && item.executable !== true).length} provider-declared only.
               </p>

@@ -23,12 +23,17 @@ expect(
 );
 expect(
   "src/lib/deviceRuntimeContract.ts",
+  /export type CanonicalDevicePresentation[\s\S]*availabilityReason[\s\S]*assignment[\s\S]*roomName[\s\S]*summary/,
+  "Consumer must type and preserve the canonical device presentation contract",
+);
+expect(
+  "src/lib/deviceRuntimeContract.ts",
   /state\.residual_electricity[\s\S]*battery_value/,
   "Consumer fallback normalization must understand Tuya residual_electricity battery values",
 );
 expect(
   "src/lib/devicePresentation.ts",
-  /getDeviceIconTone\(device[\s\S]*runtime[\s\S]*provider_disconnected[\s\S]*batteryLevel === "critical"/,
+  /LockKeyholeOpen[\s\S]*lockState\.includes\("unlock"\)[\s\S]*getDeviceIconTone\(device[\s\S]*provider_disconnected[\s\S]*batteryLevel === "critical"/,
   "Icon tone must respond to canonical availability and critical battery without changing icon families",
 );
 expect(
@@ -48,8 +53,18 @@ expect(
 );
 expect(
   "src/app/components/remotes/DoorPanel.tsx",
-  /LockKeyhole[\s\S]*LockKeyholeOpen[\s\S]*Remote unlock is unavailable through this connection[\s\S]*Check health/,
+  /LockKeyhole[\s\S]*LockKeyholeOpen[\s\S]*Remote unlock is unavailable through this connection[\s\S]*Check lock health/,
   "DoorPanel must show a clean state-first Smart Access surface with unavailable remote control explained",
+);
+expect(
+  "src/app/devices/DevicesClient.tsx",
+  /pickRoomName\(d: AnyDevice, runtime[\s\S]*presentation\?\.assignment\?\.roomName[\s\S]*runtimeActivitySummary\(device, contract/,
+  "Device lists must use presentation assignment and summaries instead of stale local room/status guesses",
+);
+reject(
+  "src/app/components/remotes/DoorPanel.tsx",
+  /Check lock health[\s\S]{0,260}Check lock health/,
+  "DoorPanel must keep one health entry point",
 );
 expect(
   "src/app/components/remotes/DoorPanel.tsx",
@@ -60,6 +75,11 @@ reject(
   "src/lib/consumerAwareness.ts",
   /reported a new device update/,
   "Consumer awareness should not surface generic provider-update wording",
+);
+reject(
+  "src/lib/deviceRuntimeContract.ts",
+  /Device reported a new device update|Device state is available/,
+  "Runtime contract must not surface generic device-update summaries",
 );
 expect(
   "src/app/home/page.tsx",

@@ -33,6 +33,41 @@ export type CanonicalDeviceState = {
   providerEvidence: Record<string, unknown>;
 };
 
+export type CanonicalDevicePresentation = {
+  availability: CanonicalDeviceState["availability"];
+  availabilityReason:
+    | "provider_reports_online"
+    | "provider_reports_offline"
+    | "last_success_too_old"
+    | "provider_connection_missing"
+    | "provider_permission_denied"
+    | "gateway_offline"
+    | "local_only_unreachable"
+    | "setup_incomplete"
+    | "unknown";
+  assignment: {
+    estateId: string | null;
+    buildingId: string | null;
+    homeId: string | null;
+    roomId: string | null;
+    roomName: string | null;
+  };
+  lastSeenAt: string | null;
+  lastCheckedAt: string | null;
+  lastConfirmedStateAt: string | null;
+  staleAfterMs: number | null;
+  primaryState: CanonicalDeviceState["primaryState"] & {
+    confidence: "live" | "last_confirmed" | "inferred" | "unknown";
+  };
+  secondaryState?: CanonicalDeviceState["secondaryState"];
+  batteryPercentage: number | null;
+  batteryLevel: "normal" | "low" | "critical" | "unknown";
+  supportedActions: string[];
+  executableActions: string[];
+  alerts: CanonicalDeviceState["alerts"];
+  summary: string;
+};
+
 export type DeviceRuntimeContract = {
   deviceId?: string;
   state: RuntimeStateRecord;
@@ -54,6 +89,8 @@ export type DeviceRuntimeContract = {
   primary_state?: string | null;
   canonical_state?: CanonicalDeviceState | null;
   canonicalState?: CanonicalDeviceState | null;
+  canonical_presentation?: CanonicalDevicePresentation | null;
+  presentation?: CanonicalDevicePresentation | null;
   telemetry_summary?: RuntimeStateRecord | null;
   last_signal?: string | null;
   activity_summary?: string | null;
@@ -206,6 +243,8 @@ export function normalizeRuntimeContract(device: Record<string, any> | null | un
     primary_state: primary || null,
     canonical_state: source.canonical_state || source.canonicalState || null,
     canonicalState: source.canonical_state || source.canonicalState || null,
+    canonical_presentation: source.canonical_presentation || source.presentation || null,
+    presentation: source.canonical_presentation || source.presentation || null,
     telemetry_summary: record(source.telemetry_summary),
     last_signal: text(source.last_signal, device?.last_signal) || null,
     activity_summary: text(source.activity_summary, source.last_signal, device?.activity_summary, device?.last_signal) || null,
@@ -224,6 +263,36 @@ export function normalizeRuntimeContract(device: Record<string, any> | null | un
   if (!contract.canonical_state) {
     contract.canonical_state = deriveCanonicalDeviceState(device, contract);
     contract.canonicalState = contract.canonical_state;
+  }
+  if (!contract.canonical_presentation) {
+    const canonical = contract.canonical_state;
+    contract.canonical_presentation = {
+      availability: canonical.availability,
+      availabilityReason: (canonical as any).availabilityReason || "unknown",
+      assignment: {
+        estateId: text((source as any).estate_id, device?.estate_id) || null,
+        buildingId: text((source as any).building_id, device?.building_id, device?.metadata?.building_id) || null,
+        homeId: text((source as any).home_id, device?.home_id) || null,
+        roomId: text((source as any).room_id, device?.room_id) || null,
+        roomName: text((source as any).room_name, device?.room_name, device?.room?.name, device?.metadata?.room_name) || null,
+      },
+      lastSeenAt: canonical.lastSeenAt,
+      lastCheckedAt: canonical.lastProviderSyncAt || text((source as any).last_refresh) || null,
+      lastConfirmedStateAt: canonical.primaryState?.value !== null ? canonical.lastSeenAt || canonical.lastProviderSyncAt : null,
+      staleAfterMs: canonical.staleAfterMs,
+      primaryState: {
+        ...canonical.primaryState,
+        confidence: (canonical.primaryState as any).confidence || (canonical.availability === "online" ? "live" : ["offline", "stale"].includes(canonical.availability) ? "last_confirmed" : "unknown"),
+      },
+      secondaryState: canonical.secondaryState,
+      batteryPercentage: typeof canonical.batteryPercentage === "number" ? canonical.batteryPercentage : null,
+      batteryLevel: canonical.batteryLevel || "unknown",
+      supportedActions: canonical.supportedActions || [],
+      executableActions: canonical.executableActions || [],
+      alerts: canonical.alerts || [],
+      summary: text((source as any).activity_summary, canonical.primaryState?.label, canonical.availability) || "State unknown",
+    };
+    contract.presentation = contract.canonical_presentation;
   }
   return contract;
 }
@@ -316,7 +385,7 @@ export function displayPrimaryState(device: Record<string, any> | null | undefin
 
 export function activitySummary(device: Record<string, any> | null | undefined, runtime?: Partial<DeviceRuntimeContract> | null, fallback = "No recent device activity.") {
   const contract = normalizeRuntimeContract(device, runtime);
-  return contract.activity_summary || contract.last_signal || fallback;
+  return contract.canonical_presentation?.summary || contract.presentation?.summary || contract.activity_summary || contract.last_signal || fallback;
 }
 
 export function activityTitle(device: Record<string, any> | null | undefined, runtime?: Partial<DeviceRuntimeContract> | null) {
