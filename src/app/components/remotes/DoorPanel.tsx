@@ -21,17 +21,34 @@ function pickLocked(state: any, keys: string[], fallback: boolean) {
   return fallback;
 }
 
-function capStatus(smart: SmartAccessResponse | null, group: string, key: string) {
-  return smart?.profile?.capabilities?.[group]?.[key]?.status || "unknown";
+function capEvidence(smart: SmartAccessResponse | null, group: string, key: string) {
+  return smart?.profile?.capabilities?.[group]?.[key] || null;
 }
 
-function isSupported(smart: SmartAccessResponse | null, group: string, key: string) {
-  return capStatus(smart, group, key) === "supported";
+function isReadable(smart: SmartAccessResponse | null, group: string, key: string) {
+  return capEvidence(smart, group, key)?.readableByOyi === true;
 }
 
-function batteryLabel(value: number | null | undefined) {
+function isExecutable(smart: SmartAccessResponse | null, group: string, key: string) {
+  return capEvidence(smart, group, key)?.executableByOyi === true;
+}
+
+function batteryLabel(value: number | null | undefined, level?: string | null) {
   if (typeof value !== "number" || !Number.isFinite(value)) return "Battery unknown";
-  return `${Math.round(value)}% battery`;
+  const quality = level && level !== "unknown" ? ` · ${level[0]?.toUpperCase()}${level.slice(1)}` : "";
+  return `${Math.round(value)}%${quality}`;
+}
+
+function capabilityNote(smart: SmartAccessResponse | null, group: string, key: string, labels: { missing?: string; declared?: string; unavailable?: string; verification?: string }) {
+  const evidence = capEvidence(smart, group, key);
+  if (!evidence) return null;
+  if (evidence.status === "mapping_missing") return labels.missing || evidence.reason || "Provider setup is incomplete.";
+  if (evidence.status === "provider_declared_only") return labels.declared || evidence.reason || "Provider capability detected, but not verified.";
+  if (evidence.status === "verification_required") return labels.verification || evidence.reason || "This capability needs live verification before use.";
+  if (["temporarily_unavailable", "permission_denied", "provider_disconnected"].includes(evidence.status)) {
+    return labels.unavailable || evidence.reason || "This capability is temporarily unavailable.";
+  }
+  return null;
 }
 
 function recordDate(value: any) {
@@ -70,21 +87,17 @@ export default function DoorPanel({
     [state, smartAccess]
   );
   const controlEvidence = useMemo(() => {
-    const controls = new Set((runtime?.supported_controls || []).map((item) => String(item).toLowerCase()));
-    const codes = new Set((runtime?.capability_codes || []).map((item) => String(item).toLowerCase()));
     const family = String(runtime?.device_family || runtime?.control_profile || "").toLowerCase();
     const runtimeLooksAccess = /lock|door|access|smart_access/.test(family);
-    const runtimeCanLock = runtimeLooksAccess && (controls.has("lock") || codes.has("lock") || codes.has("remote_lock"));
-    const runtimeCanUnlock = runtimeLooksAccess && (controls.has("unlock") || codes.has("unlock") || codes.has("remote_unlock") || codes.has("remote_no_dp_key"));
     return {
-      canLock: isSupported(smartAccess, "control", "lock") || runtimeCanLock,
-      canUnlock: isSupported(smartAccess, "control", "unlock") || runtimeCanUnlock,
-      hasLockState: isSupported(smartAccess, "state", "lock_state") || runtimeLooksAccess,
-      hasHistory: isSupported(smartAccess, "history", "access_records"),
-      hasCredentials: isSupported(smartAccess, "credentials", "temporary_code"),
-      hasMembers: isSupported(smartAccess, "members", "list"),
-      hasMedia: isSupported(smartAccess, "media", "live_view"),
-      hasDoorbell: isSupported(smartAccess, "doorbell", "events"),
+      canLock: isExecutable(smartAccess, "control", "lock"),
+      canUnlock: isExecutable(smartAccess, "control", "unlock"),
+      hasLockState: isReadable(smartAccess, "state", "lock_state") || runtimeLooksAccess,
+      hasHistory: isReadable(smartAccess, "history", "access_records"),
+      hasCredentials: isExecutable(smartAccess, "credentials", "temporary_code"),
+      hasMembers: isReadable(smartAccess, "members", "list"),
+      hasMedia: isReadable(smartAccess, "media", "live_view") || isExecutable(smartAccess, "media", "live_view"),
+      hasDoorbell: isReadable(smartAccess, "doorbell", "events"),
     };
   }, [runtime, smartAccess]);
 
@@ -191,8 +204,36 @@ export default function DoorPanel({
   const accessState = smartAccess?.profile?.state;
   const batteryLow = accessState?.batteryLow === true;
   const battery = accessState?.batteryPercentage;
+  const batteryLevel = accessState?.batteryLevel;
   const securityAlert = accessState?.tamperActive || accessState?.wrongAttemptActive;
   const recentRecords = smartAccess?.records || [];
+  const lockUnavailableNote = locked
+    ? capabilityNote(smartAccess, "control", "unlock", {
+        missing: "Remote unlock is unavailable through this connection.",
+        declared: "Remote unlock is detected, but provider setup is not verified.",
+        verification: "Remote unlock needs live verification before Oyi enables it.",
+      })
+    : capabilityNote(smartAccess, "control", "lock", {
+        missing: "Remote lock is unavailable through this connection.",
+        declared: "Remote lock is detected, but provider setup is not verified.",
+        verification: "Remote lock needs live verification before Oyi enables it.",
+      });
+  const batteryUnavailableNote = capabilityNote(smartAccess, "state", "battery", {
+    declared: "Battery is detected, but Oyi cannot read it yet.",
+    unavailable: "Battery is unavailable through the current provider connection.",
+  });
+  const temporaryAccessNote = capabilityNote(smartAccess, "credentials", "temporary_code", {
+    declared: "Temporary access detected. Provider setup is required before Oyi can manage codes.",
+    verification: "Temporary access needs live verification before use.",
+  });
+  const accessRecordsNote = capabilityNote(smartAccess, "history", "access_records", {
+    declared: "Access history detected. Event retrieval is not verified yet.",
+    unavailable: "Access history is unavailable through this connection.",
+  });
+  const doorbellNote = capabilityNote(smartAccess, "doorbell", "events", {
+    declared: "Doorbell capability detected. Event connection is not verified.",
+    unavailable: "Doorbell events are unavailable through this connection.",
+  });
 
   return (
     <RemotePanel title="Door" lastUpdated={lastUpdated}>
@@ -207,7 +248,7 @@ export default function DoorPanel({
           {controlEvidence.hasLockState ? (locked ? "Locked" : "Unlocked") : "Lock state unknown"}
           {(pending || loading) ? <span className="text-xs text-white/40"> • syncing…</span> : null}
           {smartLoading ? <span className="block text-xs text-white/42">Checking access capabilities…</span> : null}
-          {!nextControlSupported ? <span className="block text-xs text-white/42">This lock does not support {locked ? "remote unlock" : "remote lock"}.</span> : null}
+          {!nextControlSupported ? <span className="block text-xs text-white/42">{lockUnavailableNote || `This lock does not support ${locked ? "remote unlock" : "remote lock"}.`}</span> : null}
         </div>
 
         <button
@@ -231,7 +272,8 @@ export default function DoorPanel({
       <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
         <div className={`rounded-2xl border px-3 py-2 ${batteryLow ? "border-amber-300/25 bg-amber-400/10 text-amber-50" : "border-white/10 bg-white/5 text-white/72"}`}>
           <div className="text-white/45">Battery</div>
-          <div className="mt-0.5 font-semibold">{batteryLabel(battery)}</div>
+          <div className="mt-0.5 font-semibold">{batteryLabel(battery, batteryLevel)}</div>
+          {batteryUnavailableNote && typeof battery !== "number" ? <div className="mt-1 text-[11px] text-white/42">{batteryUnavailableNote}</div> : null}
         </div>
         <div className={`rounded-2xl border px-3 py-2 ${securityAlert ? "border-red-300/25 bg-red-500/10 text-red-50" : "border-white/10 bg-white/5 text-white/72"}`}>
           <div className="text-white/45">Security</div>
@@ -282,11 +324,14 @@ export default function DoorPanel({
         ) : null}
       </div>
 
-      {(controlEvidence.hasCredentials || controlEvidence.hasMembers || controlEvidence.hasDoorbell) ? (
+      {(controlEvidence.hasCredentials || controlEvidence.hasMembers || controlEvidence.hasDoorbell || temporaryAccessNote || accessRecordsNote || doorbellNote) ? (
         <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-white/68">
-          {controlEvidence.hasCredentials ? <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">Temporary codes supported</div> : null}
-          {controlEvidence.hasMembers ? <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">Members supported</div> : null}
-          {controlEvidence.hasDoorbell ? <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">Doorbell events supported</div> : null}
+          {controlEvidence.hasCredentials ? <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">Temporary access available</div> : null}
+          {temporaryAccessNote && !controlEvidence.hasCredentials ? <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">{temporaryAccessNote}</div> : null}
+          {accessRecordsNote && !controlEvidence.hasHistory ? <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">{accessRecordsNote}</div> : null}
+          {controlEvidence.hasMembers ? <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">Member access available</div> : null}
+          {controlEvidence.hasDoorbell ? <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">Doorbell events active</div> : null}
+          {doorbellNote && !controlEvidence.hasDoorbell ? <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">{doorbellNote}</div> : null}
         </div>
       ) : null}
 

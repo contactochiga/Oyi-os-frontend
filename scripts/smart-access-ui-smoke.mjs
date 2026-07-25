@@ -22,8 +22,13 @@ expect(
 );
 expect(
   "src/services/deviceService.ts",
-  /SmartAccessCapabilityStatus[\s\S]*temporarily_unavailable[\s\S]*setup_incomplete[\s\S]*provider_disconnected/,
-  "Consumer must preserve typed smart-access capability states",
+  /SmartAccessCapabilityStatus[\s\S]*temporarily_unavailable[\s\S]*setup_incomplete[\s\S]*provider_disconnected[\s\S]*provider_declared_only[\s\S]*mapping_missing[\s\S]*verification_required/,
+  "Consumer must preserve typed smart-access capability evidence states",
+);
+expect(
+  "src/services/deviceService.ts",
+  /declaredByProvider[\s\S]*readableByOyi[\s\S]*executableByOyi[\s\S]*liveVerified/,
+  "Consumer must type evidence booleans from the canonical Backend contract",
 );
 expect(
   "src/app/components/remotes/DoorPanel.tsx",
@@ -32,28 +37,48 @@ expect(
 );
 expect(
   "src/app/components/remotes/DoorPanel.tsx",
-  /isSupported\(smartAccess, "media", "live_view"\)/,
-  "DoorPanel must only show media when live-view is supported",
+  /isExecutable\(smartAccess, "control", "unlock"\)/,
+  "DoorPanel must only enable unlock when Backend marks it executable",
 );
 expect(
   "src/app/components/remotes/DoorPanel.tsx",
-  /Remote unlock is not supported by this lock/,
-  "DoorPanel must fail honestly when unlock is unsupported",
+  /Remote unlock is unavailable through this connection/,
+  "DoorPanel must explain mapping-missing unlock without showing a working action",
 );
 expect(
   "src/app/components/remotes/DoorPanel.tsx",
-  /batteryLow[\s\S]*batteryLabel/,
-  "DoorPanel must surface battery-low state",
+  /batteryLevel[\s\S]*batteryLabel\(battery, batteryLevel\)/,
+  "DoorPanel must surface battery percentage and severity",
 );
 expect(
   "src/app/components/remotes/DoorPanel.tsx",
   /unlock_confirmed: !nextLocked/,
   "Unlock commands must include explicit resident confirmation metadata",
 );
+expect(
+  "src/app/components/remotes/DoorPanel.tsx",
+  /Temporary access detected[\s\S]*Provider setup is required/,
+  "DoorPanel must describe declared-only temporary credentials truthfully",
+);
+expect(
+  "src/app/components/remotes/DoorPanel.tsx",
+  /Doorbell capability detected[\s\S]*Event connection is not verified/,
+  "DoorPanel must describe declared-only doorbell events truthfully",
+);
 reject(
   "src/app/components/remotes/DoorPanel.tsx",
   /if \(!runtime\) return true/,
   "DoorPanel must not treat missing runtime as lock-control support",
+);
+reject(
+  "src/app/components/remotes/DoorPanel.tsx",
+  /remote_no_dp_key/,
+  "DoorPanel must not enable unlock from Tuya provider declaration codes",
+);
+reject(
+  "src/app/components/remotes/DoorPanel.tsx",
+  /Temporary codes supported|Doorbell events supported/,
+  "DoorPanel must not show provider-declared-only capabilities as supported",
 );
 
 if (failures.length) {

@@ -45,7 +45,22 @@ export type SmartAccessCapabilityStatus =
   | "temporarily_unavailable"
   | "permission_denied"
   | "setup_incomplete"
-  | "provider_disconnected";
+  | "provider_disconnected"
+  | "provider_declared_only"
+  | "mapping_missing"
+  | "verification_required";
+
+export type SmartAccessCapabilityEvidence = {
+  declaredByProvider?: boolean;
+  readableByOyi?: boolean;
+  executableByOyi?: boolean;
+  liveVerified?: boolean;
+  status: SmartAccessCapabilityStatus;
+  reason?: string;
+  sourceCodes?: string[];
+  provider?: string;
+  verifiedAt?: string;
+};
 
 export type SmartAccessResponse = {
   ok?: boolean;
@@ -64,7 +79,7 @@ export type SmartAccessResponse = {
     is_smart_access?: boolean;
     device_family?: string;
     control_profile?: string;
-    capabilities?: Record<string, Record<string, { status: SmartAccessCapabilityStatus; codes?: string[]; reason?: string }>>;
+    capabilities?: Record<string, Record<string, SmartAccessCapabilityEvidence>>;
     supported_controls?: string[];
     state?: {
       online?: boolean | null;
@@ -72,6 +87,7 @@ export type SmartAccessResponse = {
       lockState?: string | null;
       doorOpen?: boolean | null;
       batteryPercentage?: number | null;
+      batteryLevel?: "normal" | "low" | "critical" | "unknown";
       batteryLow?: boolean;
       tamperActive?: boolean;
       wrongAttemptActive?: boolean;
