@@ -101,6 +101,7 @@ export default function DoorPanel({
         homeId: activeContext.home_id || undefined,
         meta: {
           panel: "door",
+          unlock_confirmed: !nextLocked,
           idempotency_key: `${activeContext.contextKey}:${deviceId}:lock:${nextLocked ? "locked" : "unlocked"}:${Date.now()}`,
         },
       });

@@ -7,6 +7,7 @@ import { useNotificationStore } from "@/store/useNotificationStore";
 import { useDeviceStateStore } from "@/store/useDeviceStateStore";
 import { useRuntimeIntelligenceStore } from "@/store/useRuntimeIntelligenceStore";
 import { useEventStore } from "@/store/useEventStore";
+import { replaceSocketScope } from "@/services/socket";
 
 export default function ContextIsolationBridge() {
   const activeContext = useActiveContext();
@@ -31,6 +32,7 @@ export default function ContextIsolationBridge() {
   }, [clearEvents, clearNotifications, clearDeviceStates, queryClient, resetRuntimeIntelligence]);
 
   useEffect(() => {
+    replaceSocketScope({ estate_id: activeContext.estate_id, home_id: activeContext.home_id });
     if (lastContextKey.current !== activeContext.contextKey) {
       void queryClient.cancelQueries();
       queryClient.removeQueries();
@@ -40,7 +42,7 @@ export default function ContextIsolationBridge() {
       clearEvents();
       lastContextKey.current = activeContext.contextKey;
     }
-  }, [activeContext.contextKey, clearEvents, clearNotifications, clearDeviceStates, queryClient, resetRuntimeIntelligence]);
+  }, [activeContext.contextKey, activeContext.estate_id, activeContext.home_id, clearEvents, clearNotifications, clearDeviceStates, queryClient, resetRuntimeIntelligence]);
 
   return null;
 }

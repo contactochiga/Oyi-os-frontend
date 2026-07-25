@@ -77,3 +77,23 @@ export function getSocket() {
 
   return socket;
 }
+
+let activeSocketScopeKey: string | null = null;
+let pendingScopeConnectHandler: (() => void) | null = null;
+
+export function replaceSocketScope(scope: { estate_id?: string | null; estateId?: string | null; home_id?: string | null; homeId?: string | null }) {
+  const next = {
+    estate_id: scope.estate_id || scope.estateId || null,
+    home_id: scope.home_id || scope.homeId || null,
+  };
+  const key = `${next.estate_id || ""}:${next.home_id || ""}`;
+  const s = getSocket();
+  if (!s || activeSocketScopeKey === key) return;
+  activeSocketScopeKey = key;
+
+  const emitScope = () => s.emit("scope:replace", next);
+  if (s.connected) emitScope();
+  if (pendingScopeConnectHandler) s.off("connect", pendingScopeConnectHandler);
+  pendingScopeConnectHandler = emitScope;
+  s.on("connect", emitScope);
+}

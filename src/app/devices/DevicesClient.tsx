@@ -46,6 +46,7 @@ import { sceneService } from "@/services/sceneService";
 import { getSocket } from "@/services/socket";
 import { useRuntimeIntelligenceStore } from "@/store/useRuntimeIntelligenceStore";
 import GangRingSwitch from "@/app/components/devices/GangRingSwitch";
+import DoorPanel from "@/app/components/remotes/DoorPanel";
 import { getDeviceFamily, getDeviceIcon, getDeviceIconTone, isSimplePowerDevice } from "@/lib/devicePresentation";
 import {
   activitySummary as runtimeActivitySummary,
@@ -401,7 +402,7 @@ function commandCodeFor(device: AnyDevice, patterns: RegExp[]) {
   return candidates.find((code) => patterns.some((pattern) => pattern.test(code))) || null;
 }
 
-type DeviceRendererKind = "switch" | "socket" | "tv" | "ac" | "ir" | "unsupported";
+type DeviceRendererKind = "switch" | "socket" | "tv" | "ac" | "ir" | "lock" | "unsupported";
 
 function learnedIrTemplate(device: AnyDevice): IrProfile | null {
   const raw = `${device?.remote_type || ""} ${device?.remoteType || ""} ${device?.ir_profile || ""} ${device?.irProfile || ""} ${device?.device_type || ""} ${device?.product_name || ""} ${device?.productName || ""} ${device?.model || ""} ${device?.metadata?.remote_type || ""} ${device?.metadata?.remoteType || ""} ${device?.metadata?.ir_profile || ""} ${device?.metadata?.irProfile || ""} ${device?.metadata?.ir_template || ""} ${device?.metadata?.remote_template || ""} ${device?.metadata?.profile || ""} ${device?.metadata?.category || ""} ${device?.category || ""} ${device?.type || ""} ${device?.name || ""}`.toLowerCase();
@@ -417,6 +418,7 @@ function deviceRendererKind(device: AnyDevice, runtime?: Partial<DeviceRuntimeCo
   const family = String(contract.control_profile || contract.device_family || inferFamily(device)).toLowerCase();
   const profile = learnedIrTemplate(device);
   const text = `${device?.remote_type || ""} ${device?.remoteType || ""} ${device?.ir_profile || ""} ${device?.device_type || ""} ${device?.product_name || ""} ${device?.productName || ""} ${device?.model || ""} ${device?.category || ""} ${device?.type || ""} ${device?.name || ""} ${device?.metadata?.category || ""} ${device?.metadata?.remoteType || ""} ${device?.metadata?.ir_profile || ""}`.toLowerCase();
+  if (family === "lock" || /\b(jtmspro|door lock|smart lock|lock|front door|door)\b/.test(text)) return "lock";
   if (["switch", "plug", "light"].includes(family)) return family === "plug" ? "socket" : "switch";
   if (["tv", "television", "projector", "set_top_box", "speaker"].includes(family) || /\btv\b|television|decoder|set.top/.test(text)) return "tv";
   if ((["climate", "air_conditioner", "thermostat"].includes(family)) && !canSwitchDevice(device, runtime)) return "ac";
@@ -1431,6 +1433,7 @@ function DeviceModalRouter({ device, state, runtime, busy, awareness, recommenda
   const learnedProfile = learnedIrTemplate(device);
   const activeIrProfile = learnedProfile || selectedIrProfile;
   const renderer = baseRenderer === "ir" && activeIrProfile === "tv" ? "tv" : baseRenderer === "ir" && activeIrProfile === "ac" ? "ac" : baseRenderer;
+  const isLockRenderer = renderer === "lock";
   const needsIrProfile = baseRenderer === "ir" && !activeIrProfile;
   const awarenessMessage = deriveAwarenessMessage(device, state, runtime, awareness, recommendation);
   const latestAssistantLine = [...conversationLines].reverse().find((line) => line.role === "assistant")?.content || "";
@@ -1741,11 +1744,17 @@ function DeviceModalRouter({ device, state, runtime, busy, awareness, recommenda
             {renderer === "ac" ? <ACRenderer device={device} state={state} runtime={runtime} busy={busy} onCommand={onCommand} /> : null}
             {renderer === "socket" ? <SocketRenderer device={device} state={state} runtime={runtime} caps={caps} gangCount={gangCount} values={values} busy={busy} onToggleGang={onToggleGang} /> : null}
             {renderer === "ir" && !needsIrProfile ? <IRRenderer device={device} state={state} runtime={runtime} busy={busy} onPower={onPower} onCommand={onCommand} /> : null}
+            {renderer === "lock" ? <DoorPanel deviceId={String(pickDbId(device) || "")} lastUpdated={Date.now()} onInteraction={() => {}} /> : null}
             {renderer === "switch" ? <SwitchRenderer device={device} state={state} runtime={runtime} caps={caps} gangCount={gangCount} values={values} busy={busy} onToggleGang={onToggleGang} /> : null}
             {renderer === "unsupported" ? <UnsupportedDeviceRenderer device={device} runtime={runtime} /> : null}
             {conversationRestoring ? <p className="mt-3 text-xs text-white/40">Restoring recent device conversation…</p> : null}
             <div className="mt-4 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {(contextualActions.length ? contextualActions : [
+              {(contextualActions.length ? contextualActions : isLockRenderer ? [
+                { label: "Show activity", action: () => void submitDeviceConversation("Show activity for this selected lock.") },
+                { label: "Check lock health", action: () => void submitDeviceConversation("Check this lock health and battery.") },
+                { label: "View access events", action: () => void submitDeviceConversation("Show access events for this selected lock.") },
+                { label: "View relationships", action: () => void submitDeviceConversation("What controls this lock and where does it belong?") },
+              ] : [
                 { label: "Show activity", action: () => void submitDeviceConversation("Show activity for this selected device.") },
                 { label: "Turn off in 20 mins", action: () => void handleQuickTimer() },
                 { label: "Set schedule", action: () => onTool("schedule", device) },

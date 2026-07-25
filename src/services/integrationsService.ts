@@ -26,6 +26,21 @@ export type TuyaSyncSummary = {
 
 const TUYA_SYNC_STORAGE_KEY = "oyi_tuya_last_sync";
 
+function activeContextStorageSuffix() {
+  try {
+    if (typeof window === "undefined") return "global";
+    const estateId = window.localStorage.getItem("oyi_estate_id") || window.localStorage.getItem("estate_id") || window.localStorage.getItem("ochiga_estate") || "";
+    const homeId = window.localStorage.getItem("oyi_home_id") || window.localStorage.getItem("home_id") || window.localStorage.getItem("ochiga_home") || "";
+    return `${estateId || "estate"}:${homeId || "home"}`;
+  } catch {
+    return "global";
+  }
+}
+
+function tuyaSyncStorageKey() {
+  return `${TUYA_SYNC_STORAGE_KEY}:${activeContextStorageSuffix()}`;
+}
+
 export function formatTuyaSyncSummary(summary?: Partial<TuyaSyncSummary> | null) {
   if (!summary) return "";
   return `Added ${Number(summary.added || 0)} · Updated ${Number(summary.updated || 0)} · Unavailable ${Number(summary.unavailable || 0)}`;
@@ -34,7 +49,7 @@ export function formatTuyaSyncSummary(summary?: Partial<TuyaSyncSummary> | null)
 export function getStoredTuyaSyncSummary(): TuyaSyncSummary | null {
   try {
     if (typeof window === "undefined") return null;
-    const raw = window.localStorage.getItem(TUYA_SYNC_STORAGE_KEY);
+    const raw = window.localStorage.getItem(tuyaSyncStorageKey()) || window.localStorage.getItem(TUYA_SYNC_STORAGE_KEY);
     return raw ? (JSON.parse(raw) as TuyaSyncSummary) : null;
   } catch {
     return null;
@@ -46,7 +61,7 @@ export async function syncTuyaDevices() {
     const res = await API.post("/integrations/tuya/sync");
     const summary = res.data as TuyaSyncSummary;
     if (typeof window !== "undefined") {
-      window.localStorage.setItem(TUYA_SYNC_STORAGE_KEY, JSON.stringify(summary));
+      window.localStorage.setItem(tuyaSyncStorageKey(), JSON.stringify(summary));
       window.dispatchEvent(new CustomEvent("oyi:device-registry-updated", { detail: summary }));
     }
     return summary;
@@ -58,7 +73,7 @@ export async function syncTuyaDevices() {
         const fallback = await API.post("/me/integrations/tuya/sync");
         const summary = fallback.data as TuyaSyncSummary;
         if (typeof window !== "undefined") {
-          window.localStorage.setItem(TUYA_SYNC_STORAGE_KEY, JSON.stringify(summary));
+          window.localStorage.setItem(tuyaSyncStorageKey(), JSON.stringify(summary));
           window.dispatchEvent(new CustomEvent("oyi:device-registry-updated", { detail: summary }));
         }
         return summary;
