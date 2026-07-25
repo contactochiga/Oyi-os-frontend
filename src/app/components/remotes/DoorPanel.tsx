@@ -6,6 +6,7 @@ import RemotePanel from "./RemotePanel";
 import { signalService } from "@/services/signalService";
 import useActiveContext from "@/hooks/useActiveContext";
 import { useDeviceLiveState } from "@/hooks/useDeviceLiveState";
+import { deviceService, type SmartAccessResponse } from "@/services/deviceService";
 
 function pickLocked(state: any, keys: string[], fallback: boolean) {
   for (const k of keys) {
@@ -18,6 +19,27 @@ function pickLocked(state: any, keys: string[], fallback: boolean) {
     if (s === "unlocked" || s === "unlock") return false;
   }
   return fallback;
+}
+
+function capStatus(smart: SmartAccessResponse | null, group: string, key: string) {
+  return smart?.profile?.capabilities?.[group]?.[key]?.status || "unknown";
+}
+
+function isSupported(smart: SmartAccessResponse | null, group: string, key: string) {
+  return capStatus(smart, group, key) === "supported";
+}
+
+function batteryLabel(value: number | null | undefined) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "Battery unknown";
+  return `${Math.round(value)}% battery`;
+}
+
+function recordDate(value: any) {
+  const raw = String(value || "").trim();
+  if (!raw) return "Recently";
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return raw;
+  return date.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 export default function DoorPanel({
@@ -36,19 +58,35 @@ export default function DoorPanel({
   const estateId = activeContext.estate_id;
 
   const { state, runtime, loading, refresh } = useDeviceLiveState(deviceId, estateId);
+  const [smartAccess, setSmartAccess] = useState<SmartAccessResponse | null>(null);
+  const [smartLoading, setSmartLoading] = useState(false);
 
   const locked = useMemo(
-    () => pickLocked(state, ["locked", "lock", "isLocked", "doorLocked", "state"], true),
-    [state]
+    () => {
+      const smartLocked = smartAccess?.profile?.state?.locked;
+      if (typeof smartLocked === "boolean") return smartLocked;
+      return pickLocked(state, ["locked", "lock", "isLocked", "doorLocked", "state"], true);
+    },
+    [state, smartAccess]
   );
-  const supportsLockControl = useMemo(() => {
+  const controlEvidence = useMemo(() => {
     const controls = new Set((runtime?.supported_controls || []).map((item) => String(item).toLowerCase()));
     const codes = new Set((runtime?.capability_codes || []).map((item) => String(item).toLowerCase()));
     const family = String(runtime?.device_family || runtime?.control_profile || "").toLowerCase();
-    if (!runtime) return true;
-    if (/lock|door|access/.test(family)) return true;
-    return ["lock", "unlock", "door", "access_control"].some((item) => controls.has(item) || codes.has(item));
-  }, [runtime]);
+    const runtimeLooksAccess = /lock|door|access|smart_access/.test(family);
+    const runtimeCanLock = runtimeLooksAccess && (controls.has("lock") || codes.has("lock") || codes.has("remote_lock"));
+    const runtimeCanUnlock = runtimeLooksAccess && (controls.has("unlock") || codes.has("unlock") || codes.has("remote_unlock") || codes.has("remote_no_dp_key"));
+    return {
+      canLock: isSupported(smartAccess, "control", "lock") || runtimeCanLock,
+      canUnlock: isSupported(smartAccess, "control", "unlock") || runtimeCanUnlock,
+      hasLockState: isSupported(smartAccess, "state", "lock_state") || runtimeLooksAccess,
+      hasHistory: isSupported(smartAccess, "history", "access_records"),
+      hasCredentials: isSupported(smartAccess, "credentials", "temporary_code"),
+      hasMembers: isSupported(smartAccess, "members", "list"),
+      hasMedia: isSupported(smartAccess, "media", "live_view"),
+      hasDoorbell: isSupported(smartAccess, "doorbell", "events"),
+    };
+  }, [runtime, smartAccess]);
 
   const [pending, setPending] = useState(false);
   const [confirmingUnlock, setConfirmingUnlock] = useState(false);
@@ -56,6 +94,28 @@ export default function DoorPanel({
 
   const pendingTimer = useRef<any>(null);
   const expectedRef = useRef<{ locked: boolean } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!deviceId || !activeContext.home_id) {
+      setSmartAccess(null);
+      return;
+    }
+    setSmartLoading(true);
+    deviceService.getSmartAccess(deviceId)
+      .then((payload) => {
+        if (!cancelled) setSmartAccess(payload);
+      })
+      .catch(() => {
+        if (!cancelled) setSmartAccess(null);
+      })
+      .finally(() => {
+        if (!cancelled) setSmartLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [deviceId, activeContext.contextKey, activeContext.home_id]);
 
   function touch() {
     onInteraction?.();
@@ -85,7 +145,8 @@ export default function DoorPanel({
 
   async function sendLock(nextLocked: boolean) {
     if (!deviceId) return setErr("No door device selected.");
-    if (!supportsLockControl) return setErr("This door device does not support lock control yet.");
+    if (nextLocked && !controlEvidence.canLock) return setErr("This lock does not support remote locking.");
+    if (!nextLocked && !controlEvidence.canUnlock) return setErr("Remote unlock is not supported by this lock.");
 
     setErr(null);
     setConfirmingUnlock(false);
@@ -106,7 +167,9 @@ export default function DoorPanel({
         },
       });
 
-      if (resp?.status !== "accepted") throw new Error(nextLocked ? "I could not start locking this door." : "I could not start unlocking this door.");
+      if (!resp?.ok && !["accepted", "command_accepted"].includes(String(resp?.status || ""))) {
+        throw new Error(nextLocked ? "I could not start locking this door." : "I could not start unlocking this door.");
+      }
       setTimeout(() => refresh(), 450);
     } catch (e: any) {
       setErr(e?.response?.data?.error || e?.message || "I could not complete that door action.");
@@ -122,8 +185,14 @@ export default function DoorPanel({
     };
   }, []);
 
-  const disabled = pending || !deviceId || !supportsLockControl;
+  const nextControlSupported = locked ? controlEvidence.canUnlock : controlEvidence.canLock;
+  const disabled = pending || !deviceId || !nextControlSupported;
   const actionLabel = pending ? (expectedRef.current?.locked ? "Locking..." : "Unlocking...") : locked ? "Unlock" : "Lock";
+  const accessState = smartAccess?.profile?.state;
+  const batteryLow = accessState?.batteryLow === true;
+  const battery = accessState?.batteryPercentage;
+  const securityAlert = accessState?.tamperActive || accessState?.wrongAttemptActive;
+  const recentRecords = smartAccess?.records || [];
 
   return (
     <RemotePanel title="Door" lastUpdated={lastUpdated}>
@@ -135,9 +204,10 @@ export default function DoorPanel({
 
       <div className="flex items-center justify-between gap-3">
         <div className="text-sm text-white/80">
-          {locked ? "Locked" : "Unlocked"}
+          {controlEvidence.hasLockState ? (locked ? "Locked" : "Unlocked") : "Lock state unknown"}
           {(pending || loading) ? <span className="text-xs text-white/40"> • syncing…</span> : null}
-          {!supportsLockControl ? <span className="block text-xs text-white/42">Control is not available for this door yet.</span> : null}
+          {smartLoading ? <span className="block text-xs text-white/42">Checking access capabilities…</span> : null}
+          {!nextControlSupported ? <span className="block text-xs text-white/42">This lock does not support {locked ? "remote unlock" : "remote lock"}.</span> : null}
         </div>
 
         <button
@@ -158,6 +228,17 @@ export default function DoorPanel({
         </button>
       </div>
 
+      <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+        <div className={`rounded-2xl border px-3 py-2 ${batteryLow ? "border-amber-300/25 bg-amber-400/10 text-amber-50" : "border-white/10 bg-white/5 text-white/72"}`}>
+          <div className="text-white/45">Battery</div>
+          <div className="mt-0.5 font-semibold">{batteryLabel(battery)}</div>
+        </div>
+        <div className={`rounded-2xl border px-3 py-2 ${securityAlert ? "border-red-300/25 bg-red-500/10 text-red-50" : "border-white/10 bg-white/5 text-white/72"}`}>
+          <div className="text-white/45">Security</div>
+          <div className="mt-0.5 font-semibold">{securityAlert ? "Needs attention" : "No alert reported"}</div>
+        </div>
+      </div>
+
       {confirmingUnlock ? (
         <div className="mt-3 rounded-2xl border border-amber-300/20 bg-amber-400/10 p-3 text-xs text-amber-50">
           <div className="font-medium text-amber-50">Unlock this door?</div>
@@ -174,7 +255,7 @@ export default function DoorPanel({
       ) : null}
 
       <div className="mt-4 flex gap-2">
-        {hasCamera ? (
+        {(hasCamera && controlEvidence.hasMedia) ? (
           <button
             type="button"
             onClick={() => {
@@ -187,17 +268,41 @@ export default function DoorPanel({
           </button>
         ) : null}
 
-        <button
-          type="button"
-          onClick={() => {
-            touch();
-            router.push("/visitors");
-          }}
-          className="flex-1 py-2.5 rounded-xl bg-white text-black text-sm font-semibold border border-white/20"
-        >
-          Access log
-        </button>
+        {controlEvidence.hasHistory ? (
+          <button
+            type="button"
+            onClick={() => {
+              touch();
+              router.push("/visitors");
+            }}
+            className="flex-1 py-2.5 rounded-xl bg-white text-black text-sm font-semibold border border-white/20"
+          >
+            Access log
+          </button>
+        ) : null}
       </div>
+
+      {(controlEvidence.hasCredentials || controlEvidence.hasMembers || controlEvidence.hasDoorbell) ? (
+        <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-white/68">
+          {controlEvidence.hasCredentials ? <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">Temporary codes supported</div> : null}
+          {controlEvidence.hasMembers ? <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">Members supported</div> : null}
+          {controlEvidence.hasDoorbell ? <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">Doorbell events supported</div> : null}
+        </div>
+      ) : null}
+
+      {recentRecords.length ? (
+        <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 p-3">
+          <div className="mb-2 text-xs font-semibold text-white/70">Latest access</div>
+          <div className="space-y-2">
+            {recentRecords.slice(0, 3).map((record: any) => (
+              <div key={String(record.id || `${record.event_type}-${record.occurred_at}`)} className="flex items-center justify-between gap-3 text-xs text-white/66">
+                <span>{String(record.event_type || "Access event").replace(/_/g, " ")}</span>
+                <span className="text-white/38">{recordDate(record.occurred_at)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {!deviceId && (
         <div className="mt-3 text-[11px] text-white/40">

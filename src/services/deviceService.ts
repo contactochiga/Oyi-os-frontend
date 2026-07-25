@@ -38,6 +38,53 @@ export type IrProfileOption = {
   source?: string;
 };
 
+export type SmartAccessCapabilityStatus =
+  | "supported"
+  | "unsupported"
+  | "unknown"
+  | "temporarily_unavailable"
+  | "permission_denied"
+  | "setup_incomplete"
+  | "provider_disconnected";
+
+export type SmartAccessResponse = {
+  ok?: boolean;
+  device?: {
+    id: string;
+    name?: string | null;
+    estate_id?: string | null;
+    home_id?: string | null;
+    room_id?: string | null;
+    provider?: string | null;
+    provider_category?: string | null;
+    provider_product_id?: string | null;
+    provider_model?: string | null;
+  };
+  profile?: {
+    is_smart_access?: boolean;
+    device_family?: string;
+    control_profile?: string;
+    capabilities?: Record<string, Record<string, { status: SmartAccessCapabilityStatus; codes?: string[]; reason?: string }>>;
+    supported_controls?: string[];
+    state?: {
+      online?: boolean | null;
+      locked?: boolean | null;
+      lockState?: string | null;
+      doorOpen?: boolean | null;
+      batteryPercentage?: number | null;
+      batteryLow?: boolean;
+      tamperActive?: boolean;
+      wrongAttemptActive?: boolean;
+      lastAccessEvent?: any;
+    };
+    evidence?: Record<string, any>;
+    confidence?: Record<string, any>;
+    raw_fingerprint?: string;
+  };
+  records?: Array<Record<string, any>>;
+  credentials?: Array<Record<string, any>>;
+};
+
 function normalizeDeviceListError(err: any) {
   const status = Number(err?.response?.status || 0);
   const backend = String(err?.response?.data?.error || "").trim();
@@ -245,5 +292,22 @@ export const deviceService = {
   async createIrAppliance(deviceId: string, payload: { profile: string; label?: string; brand?: string; model?: string }) {
     const res = await API.post(`/devices/${encodeURIComponent(deviceId)}/ir/appliances`, payload);
     return res.data as { ok?: boolean; appliance?: Record<string, any>; error?: string };
+  },
+
+  async getSmartAccess(deviceId: string, options: { refresh?: boolean } = {}) {
+    const res = await API.get(`/devices/${encodeURIComponent(deviceId)}/smart-access`, {
+      params: options.refresh ? { refresh: true } : undefined,
+    });
+    return res.data as SmartAccessResponse;
+  },
+
+  async getSmartAccessRecords(deviceId: string, limit = 30) {
+    const res = await API.get(`/devices/${encodeURIComponent(deviceId)}/smart-access/records`, { params: { limit } });
+    return res.data as { ok?: boolean; records?: Array<Record<string, any>> };
+  },
+
+  async createSmartAccessCredential(deviceId: string, payload: Record<string, any>) {
+    const res = await API.post(`/devices/${encodeURIComponent(deviceId)}/smart-access/credentials`, payload);
+    return res.data as { ok?: boolean; status?: string; credential?: Record<string, any>; error?: string };
   },
 };
