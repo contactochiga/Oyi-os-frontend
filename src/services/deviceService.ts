@@ -304,8 +304,12 @@ export const deviceService = {
   /**
    * ✅ COMMAND execution
    */
-  async commandDevice(deviceId: string, command: Record<string, any>) {
-    const res = await API.post(`/devices/${encodeURIComponent(deviceId)}/command`, { command });
+  async commandDevice(deviceId: string, command: Record<string, any>, options: { idempotencyKey?: string } = {}) {
+    const res = await API.post(
+      `/devices/${encodeURIComponent(deviceId)}/command`,
+      { command, ...(options.idempotencyKey ? { idempotency_key: options.idempotencyKey } : {}) },
+      options.idempotencyKey ? { headers: { "Idempotency-Key": options.idempotencyKey } } : undefined,
+    );
     return res.data as { ok?: boolean; status?: string; error?: string; details?: string; state?: Record<string, any> };
   },
 

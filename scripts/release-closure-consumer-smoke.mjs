@@ -58,6 +58,7 @@ assert(/resolveGangCode/.test(roomClient) && /GangRingSwitch/.test(roomClient), 
 assert(/switchCommandCodes/.test(devicesClient) && /channel_definitions/.test(devicesClient), "DevicesClient derives switch commands from runtime channel definitions");
 assert(/residentItems/.test(devicesClient) && /isTransportHub/.test(devicesClient), "DevicesClient hides configured IR transport hubs from resident presentation lists");
 assert(/type: "tv_remote", key, command_key: key/.test(devicesClient) && !/\[keyCode\]: key/.test(devicesClient), "TV controls send canonical remote commands without provider-specific key-code payloads");
+assert(/recentRemotePressRef/.test(devicesClient) && /idempotencyKey/.test(devicesClient), "TV remote taps use lightweight duplicate suppression and explicit idempotency keys");
 assert(/type: "ac_remote", power: nextPower/.test(devicesClient) && /fan_speed: speed/.test(devicesClient), "AC controls send canonical air-conditioner commands");
 assert(/\["tv", "television", "projector", "set_top_box", "speaker"\]\.includes\(family\)/.test(devicesClient) && /\["climate", "air_conditioner", "thermostat"\]\.includes\(family\)/.test(devicesClient), "DevicesClient renders canonical television and air-conditioner profiles");
 assert(/controlProfile === "television"/.test(devicePresentation) && /controlProfile === "air_conditioner"/.test(devicePresentation), "device presentation recognizes canonical IR child profiles");

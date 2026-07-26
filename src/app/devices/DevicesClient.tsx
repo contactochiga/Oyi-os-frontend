@@ -633,6 +633,7 @@ export default function DeviceClient() {
   const [editingFavorites, setEditingFavorites] = useState(false);
   const [tool, setTool] = useState<{ kind: DeviceTool; device: AnyDevice } | null>(null);
   const [deviceExecutions, setDeviceExecutions] = useState<Array<Record<string, any>>>([]);
+  const recentRemotePressRef = useRef<Map<string, number>>(new Map());
   const latestAwareness = useRuntimeIntelligenceStore((state) => state.latestAwareness);
   const latestRecommendations = useRuntimeIntelligenceStore((state) => state.latestRecommendations);
 
@@ -971,10 +972,21 @@ export default function DeviceClient() {
     if (!dbId) return setErr("This device is not assigned yet.");
     const sid = String(dbId);
     if (isOnline(device, runtimeMap[sid] || null) === false) return setErr(`${pickName(device)} is offline.`);
+    const commandType = String(command?.type || "").toLowerCase();
+    const isIrRemoteCommand = commandType === "tv_remote" || commandType === "ir_remote" || commandType === "ac_remote";
+    const primaryCommandValue = command?.key || command?.command_key || command?.power || "";
+    const pressKey = `${sid}:${commandType}:${primaryCommandValue}:${command?.temperature ?? ""}:${command?.mode ?? ""}:${command?.fan_speed ?? ""}`;
+    const now = Date.now();
+    if (isIrRemoteCommand) {
+      const lastPress = recentRemotePressRef.current.get(pressKey) || 0;
+      if (now - lastPress < 140) return;
+      recentRemotePressRef.current.set(pressKey, now);
+    }
+    const idempotencyKey = `${activeContext.contextKey || "home"}:${sid}:${commandType || "command"}:${now}:${Math.random().toString(36).slice(2, 8)}`;
     setBusyId(sid);
     setErr(null);
     try {
-      await deviceService.commandDevice(sid, command);
+      await deviceService.commandDevice(sid, command, { idempotencyKey });
       if (optimisticPatch) setStateMap((p) => ({ ...p, [sid]: { ...(p[sid] || {}), ...optimisticPatch } }));
       setTool(null);
     } catch (e: any) {
