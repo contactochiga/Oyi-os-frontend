@@ -57,9 +57,11 @@ assert(/activeContextKeyRef/.test(roomClient) && /getRuntimeDevices\(homeId\)/.t
 assert(/resolveGangCode/.test(roomClient) && /GangRingSwitch/.test(roomClient), "RoomClient keeps multi-gang controls tied to canonical channel codes");
 assert(/switchCommandCodes/.test(devicesClient) && /channel_definitions/.test(devicesClient), "DevicesClient derives switch commands from runtime channel definitions");
 assert(/residentItems/.test(devicesClient) && /isTransportHub/.test(devicesClient), "DevicesClient hides configured IR transport hubs from resident presentation lists");
-assert(/type: "tv_remote", key, command_key: key/.test(devicesClient) && !/\[keyCode\]: key/.test(devicesClient), "TV controls send canonical remote commands without provider-specific key-code payloads");
-assert(/irTapSequenceRef/.test(devicesClient) && /irSubmissionQueuesRef/.test(devicesClient) && /tapSequence/.test(deviceService), "TV remote taps use ordered command submission and explicit tap sequence metadata");
+assert(/tvRemoteButtonMap/.test(devicesClient) && /provider_key:\s*definition\?\.providerKey/.test(devicesClient) && /key_id:\s*definition\?\.keyId/.test(devicesClient), "TV controls use the bound remote key catalogue instead of guessed provider keys");
+assert(/type: "tv_remote"/.test(devicesClient) && /command_key:\s*key/.test(devicesClient) && !/\[keyCode\]: key/.test(devicesClient), "TV controls send canonical command identity with exact provider-key evidence");
+assert(/irTapSequenceRef/.test(devicesClient) && /tapSequence/.test(deviceService) && !/irSubmissionQueuesRef/.test(devicesClient), "TV remote taps submit independently with explicit tap sequence metadata");
 assert(!/recentRemotePressRef/.test(devicesClient), "TV remote taps are not collapsed by identical-command duplicate suppression");
+assert(/IR dispatch/.test(devicesClient) && /remoteStatus === "sending"/.test(devicesClient) && /remoteStatus === "acknowledged"/.test(devicesClient) && /remoteStatus === "rejected"/.test(devicesClient), "TV remote uses a compact dispatch status indicator instead of the power button as global feedback");
 assert(/type: "ac_remote", power: nextPower/.test(devicesClient) && /fan_speed: speed/.test(devicesClient), "AC controls send canonical air-conditioner commands");
 assert(/\["tv", "television", "projector", "set_top_box", "speaker"\]\.includes\(family\)/.test(devicesClient) && /\["climate", "air_conditioner", "thermostat"\]\.includes\(family\)/.test(devicesClient), "DevicesClient renders canonical television and air-conditioner profiles");
 assert(/controlProfile === "television"/.test(devicePresentation) && /controlProfile === "air_conditioner"/.test(devicePresentation), "device presentation recognizes canonical IR child profiles");

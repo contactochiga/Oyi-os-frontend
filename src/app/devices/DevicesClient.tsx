@@ -377,6 +377,64 @@ function uiCapabilities(device: AnyDevice, runtime?: Partial<DeviceRuntimeContra
   };
 }
 
+type IrRemoteButton = {
+  canonical: string;
+  label: string;
+  providerKey: string;
+  keyId?: string | number | null;
+  keyName?: string | null;
+};
+
+function normalizeIrKey(value: unknown) {
+  return String(value || "").trim().toLowerCase().replace(/[\s.-]+/g, "_");
+}
+
+function canonicalTvKey(definition: any) {
+  const normalized = [
+    definition?.key_name,
+    definition?.key,
+    definition?.key_code,
+    definition?.code,
+    definition?.value,
+  ].map(normalizeIrKey).filter(Boolean);
+  if (normalized.some((key) => key === "power" || key === "power_toggle")) return "power";
+  if (normalized.some((key) => key === "ok" || key === "enter" || key === "select")) return "ok";
+  if (normalized.some((key) => key === "navigate_up" || key === "nav_up" || key === "up")) return "up";
+  if (normalized.some((key) => key === "navigate_down" || key === "nav_down" || key === "down")) return "down";
+  if (normalized.some((key) => key === "navigate_left" || key === "nav_left" || key === "left")) return "left";
+  if (normalized.some((key) => key === "navigate_right" || key === "nav_right" || key === "right")) return "right";
+  if (normalized.some((key) => key === "volume_up" || key === "vol_up" || key === "volume+")) return "volume_up";
+  if (normalized.some((key) => key === "volume_down" || key === "vol_down" || key === "volume_")) return "volume_down";
+  if (normalized.some((key) => key === "channel_up" || key === "ch_up" || key === "channel+")) return "channel_up";
+  if (normalized.some((key) => key === "channel_down" || key === "ch_down" || key === "channel_")) return "channel_down";
+  if (normalized.some((key) => key === "mute")) return "mute";
+  if (normalized.some((key) => key === "input" || key === "source")) return "source";
+  if (normalized.some((key) => key === "back" || key === "return")) return "back";
+  if (normalized.some((key) => key === "homepage" || key === "home")) return "home";
+  if (normalized.some((key) => key === "menu")) return "menu";
+  return normalized[0] || "";
+}
+
+function tvRemoteButtonMap(device: AnyDevice) {
+  const supportedKeys = Array.isArray(device?.metadata?.ir_appliance?.supported_keys)
+    ? device.metadata.ir_appliance.supported_keys
+    : [];
+  const map = new Map<string, IrRemoteButton>();
+  for (const definition of supportedKeys) {
+    const canonical = canonicalTvKey(definition);
+    const providerKey = String(definition?.key || definition?.key_code || definition?.code || definition?.value || "").trim();
+    if (!canonical || !providerKey || map.has(canonical)) continue;
+    map.set(canonical, {
+      canonical,
+      label: String(definition?.key_name || definition?.key || canonical).trim(),
+      providerKey,
+      keyId: definition?.key_id ?? definition?.id ?? null,
+      keyName: definition?.key_name || null,
+    });
+  }
+  return map;
+}
+
 function canSwitchDevice(device: AnyDevice, runtime?: Partial<DeviceRuntimeContract> | null) {
   const caps = uiCapabilities(device, runtime);
   return caps.canSwitch && isSimplePowerDevice(device);
@@ -634,7 +692,6 @@ export default function DeviceClient() {
   const [tool, setTool] = useState<{ kind: DeviceTool; device: AnyDevice } | null>(null);
   const [deviceExecutions, setDeviceExecutions] = useState<Array<Record<string, any>>>([]);
   const irTapSequenceRef = useRef(0);
-  const irSubmissionQueuesRef = useRef<Map<string, Promise<void>>>(new Map());
   const latestAwareness = useRuntimeIntelligenceStore((state) => state.latestAwareness);
   const latestRecommendations = useRuntimeIntelligenceStore((state) => state.latestRecommendations);
 
@@ -984,20 +1041,11 @@ export default function DeviceClient() {
     setErr(null);
     try {
       if (isIrRemoteCommand) {
-        const previous = irSubmissionQueuesRef.current.get(sid) || Promise.resolve();
-        const current = previous
-          .catch(() => undefined)
-          .then(async () => {
-            await deviceService.commandDevice(sid, command, {
-              idempotencyKey,
-              tapSequence,
-              clientTapTimestamp: now,
-            });
-          });
-        const stored = current.then(() => undefined, () => undefined);
-        irSubmissionQueuesRef.current.set(sid, stored);
-        await current;
-        if (irSubmissionQueuesRef.current.get(sid) === stored) irSubmissionQueuesRef.current.delete(sid);
+        await deviceService.commandDevice(sid, command, {
+          idempotencyKey,
+          tapSequence,
+          clientTapTimestamp: now,
+        });
       } else {
         await deviceService.commandDevice(sid, command, { idempotencyKey });
       }
@@ -1005,6 +1053,7 @@ export default function DeviceClient() {
       setTool(null);
     } catch (e: any) {
       setErr(e?.response?.data?.error || e?.message || "Command failed");
+      throw e;
     } finally {
       if (!isIrRemoteCommand) setBusyId(null);
     }
@@ -1449,7 +1498,7 @@ function AddDeviceSheet({ tab, setTab, discovering, binding, discovered, provide
   );
 }
 
-function DeviceModalRouter({ device, state, runtime, busy, awareness, recommendation, onClose, onToggleGang, onPower, onCommand, onTool, onCreateScene, onCreateAutomation, onBindIrAppliance }: { device: AnyDevice; state: any; runtime?: Partial<DeviceRuntimeContract> | null; busy: boolean; awareness?: Record<string, any> | null; recommendation?: Record<string, any> | null; onClose: () => void; onToggleGang: (device: AnyDevice, gangIndex: number, next: boolean) => void; onPower: (device: AnyDevice) => void; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => Promise<void> | void; onTool: (kind: DeviceTool, device: AnyDevice) => void; onCreateScene: (device: AnyDevice) => void; onCreateAutomation: (device: AnyDevice) => void; onBindIrAppliance: (device: AnyDevice, profile: IrProfile) => void }) {
+function DeviceModalRouter({ device, state, runtime, busy, awareness, recommendation, onClose, onToggleGang, onPower, onCommand, onTool, onCreateScene, onCreateAutomation, onBindIrAppliance }: { device: AnyDevice; state: any; runtime?: Partial<DeviceRuntimeContract> | null; busy: boolean; awareness?: Record<string, any> | null; recommendation?: Record<string, any> | null; onClose: () => void; onToggleGang: (device: AnyDevice, gangIndex: number, next: boolean) => void; onPower: (device: AnyDevice) => void; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => Promise<void>; onTool: (kind: DeviceTool, device: AnyDevice) => void; onCreateScene: (device: AnyDevice) => void; onCreateAutomation: (device: AnyDevice) => void; onBindIrAppliance: (device: AnyDevice, profile: IrProfile) => void }) {
   const { user } = useAuth();
   const activeContext = useActiveContext();
   const gangCount = guessGangCount(device, state, runtime);
@@ -1902,7 +1951,7 @@ function SocketRenderer(props: Parameters<typeof SwitchRenderer>[0]) {
   return <SwitchRenderer {...props} gangCount={1} />;
 }
 
-function ACRenderer({ device, state, runtime, busy, onCommand }: { device: AnyDevice; state: any; runtime?: Partial<DeviceRuntimeContract> | null; busy: boolean; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => void }) {
+function ACRenderer({ device, state, runtime, busy, onCommand }: { device: AnyDevice; state: any; runtime?: Partial<DeviceRuntimeContract> | null; busy: boolean; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => Promise<void> | void }) {
   const temp = readTemperature(state, runtime);
   const supported = Array.isArray(runtime?.supported_controls) ? runtime.supported_controls.map((item) => String(item).toLowerCase()) : [];
   const powerCode = commandCodeFor(device, [/^power$/, /power_switch/, /power_state/]);
@@ -1916,6 +1965,9 @@ function ACRenderer({ device, state, runtime, busy, onCommand }: { device: AnyDe
   const currentTemp = Number(String(temp || "").replace(/[^\d]/g, "")) || 24;
   const currentPower = readPowerState(state, runtime);
   const nextPower = currentPower === null ? true : !currentPower;
+  const sendAc = (command: Record<string, any>, patch?: Record<string, any>) => {
+    void Promise.resolve(onCommand(device, command, patch)).catch(() => undefined);
+  };
   return (
     <div className="space-y-3">
       <div className="rounded-[28px] border border-sky-300/12 bg-[radial-gradient(circle_at_top,#0f3550_0%,rgba(6,12,22,0.74)_48%,rgba(255,255,255,0.035)_100%)] p-4">
@@ -1925,31 +1977,53 @@ function ACRenderer({ device, state, runtime, busy, onCommand }: { device: AnyDe
             <div className="mt-1 text-4xl font-semibold tracking-[-0.08em] text-white">{temp || "—"}<span className="text-lg text-white/42">°C</span></div>
             <div className="mt-1 text-xs text-white/42">Supported range 16°C – 30°C</div>
           </div>
-          {canPower ? <button type="button" disabled={busy || isOnline(device, runtime) === false} onClick={() => onCommand(device, { type: "ac_remote", power: nextPower }, { power: nextPower, ...(powerCode ? { [powerCode]: nextPower } : {}) })} className="grid h-14 w-14 place-items-center rounded-full border border-sky-300/22 bg-sky-400/12 text-sky-100 shadow-[0_0_28px_rgba(56,189,248,0.18)]" aria-label="Power">
+          {canPower ? <button type="button" disabled={busy || isOnline(device, runtime) === false} onClick={() => sendAc({ type: "ac_remote", power: nextPower }, { power: nextPower, ...(powerCode ? { [powerCode]: nextPower } : {}) })} className="grid h-14 w-14 place-items-center rounded-full border border-sky-300/22 bg-sky-400/12 text-sky-100 shadow-[0_0_28px_rgba(56,189,248,0.18)]" aria-label="Power">
             <Power className="h-5 w-5" />
           </button> : null}
         </div>
         {tempCode ? <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-          <RemoteKey icon={Minus} label="Temp -" enabled onClick={() => onCommand(device, { type: "ac_remote", temperature: Math.max(16, currentTemp - 1) }, { [tempCode]: Math.max(16, currentTemp - 1), temperature: Math.max(16, currentTemp - 1) })} />
+          <RemoteKey icon={Minus} label="Temp -" enabled onClick={() => sendAc({ type: "ac_remote", temperature: Math.max(16, currentTemp - 1) }, { [tempCode]: Math.max(16, currentTemp - 1), temperature: Math.max(16, currentTemp - 1) })} />
           <div className="rounded-full border border-white/[0.06] bg-black/20 px-3 py-2 text-center text-[11px] text-white/46">16°C – 30°C</div>
-          <RemoteKey icon={Plus} label="Temp +" enabled onClick={() => onCommand(device, { type: "ac_remote", temperature: Math.min(30, currentTemp + 1) }, { [tempCode]: Math.min(30, currentTemp + 1), temperature: Math.min(30, currentTemp + 1) })} />
+          <RemoteKey icon={Plus} label="Temp +" enabled onClick={() => sendAc({ type: "ac_remote", temperature: Math.min(30, currentTemp + 1) }, { [tempCode]: Math.min(30, currentTemp + 1), temperature: Math.min(30, currentTemp + 1) })} />
         </div> : null}
       </div>
-      {modeCode ? <ControlGroup title="Mode">{modes.map(([key, label, Icon]) => <RemoteKey key={key} icon={Icon} label={label} enabled onClick={() => onCommand(device, { type: "ac_remote", mode: key }, { [modeCode]: key })} />)}</ControlGroup> : null}
-      {fanCode ? <ControlGroup title="Fan">{fanSpeeds.map((speed) => <RemoteKey key={speed} icon={Wind} label={speed[0].toUpperCase() + speed.slice(1)} enabled onClick={() => onCommand(device, { type: "ac_remote", fan_speed: speed }, { [fanCode]: speed, fan_speed: speed })} />)}</ControlGroup> : null}
-      {swingCode ? <ControlGroup title="Swing"><RemoteKey icon={ChevronUp} label="Swing" enabled onClick={() => onCommand(device, { type: "ac_remote", swing: true }, { [swingCode]: true, swing: true })} /></ControlGroup> : null}
+      {modeCode ? <ControlGroup title="Mode">{modes.map(([key, label, Icon]) => <RemoteKey key={key} icon={Icon} label={label} enabled onClick={() => sendAc({ type: "ac_remote", mode: key }, { [modeCode]: key })} />)}</ControlGroup> : null}
+      {fanCode ? <ControlGroup title="Fan">{fanSpeeds.map((speed) => <RemoteKey key={speed} icon={Wind} label={speed[0].toUpperCase() + speed.slice(1)} enabled onClick={() => sendAc({ type: "ac_remote", fan_speed: speed }, { [fanCode]: speed, fan_speed: speed })} />)}</ControlGroup> : null}
+      {swingCode ? <ControlGroup title="Swing"><RemoteKey icon={ChevronUp} label="Swing" enabled onClick={() => sendAc({ type: "ac_remote", swing: true }, { [swingCode]: true, swing: true })} /></ControlGroup> : null}
     </div>
   );
 }
 
-function TVRenderer({ device, runtime, busy, onPower, onCommand }: { device: AnyDevice; runtime?: Partial<DeviceRuntimeContract> | null; busy: boolean; onPower: (device: AnyDevice) => void; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => void }) {
+function TVRenderer({ device, runtime, onPower, onCommand }: { device: AnyDevice; runtime?: Partial<DeviceRuntimeContract> | null; busy: boolean; onPower: (device: AnyDevice) => void; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => Promise<void> | void }) {
   const caps = uiCapabilities(device, runtime);
+  const providerButtons = tvRemoteButtonMap(device);
   const exposedKeys = new Set(caps.tv);
-  const supports = (...keys: string[]) => !exposedKeys.size || keys.some((key) => exposedKeys.has(key));
+  const supports = (...keys: string[]) => {
+    if (providerButtons.size) return keys.some((key) => providerButtons.has(key));
+    return !exposedKeys.size || keys.some((key) => exposedKeys.has(key));
+  };
   const switchPower = canSwitchDevice(device, runtime);
   const canShow = (key: string, ...aliases: string[]) => supports(key, ...aliases);
   const canSend = (key: string, ...aliases: string[]) => supports(key, ...aliases);
-  const sendKey = (key: string) => onCommand(device, { type: "tv_remote", key, command_key: key });
+  const [remoteStatus, setRemoteStatus] = useState<"idle" | "sending" | "acknowledged" | "rejected">("idle");
+  const sendKey = async (key: string) => {
+    const definition = providerButtons.get(key);
+    setRemoteStatus("sending");
+    try {
+      await Promise.resolve(onCommand(device, {
+        type: "tv_remote",
+        key: definition?.providerKey || key,
+        command_key: key,
+        provider_key: definition?.providerKey || undefined,
+        key_id: definition?.keyId ?? undefined,
+      }));
+      setRemoteStatus("acknowledged");
+    } catch {
+      setRemoteStatus("rejected");
+    } finally {
+      window.setTimeout(() => setRemoteStatus("idle"), 900);
+    }
+  };
   const canPower = switchPower || canShow("power");
   const canSendPower = switchPower || canSend("power");
   const hasNavigation = canShow("up") || canShow("down") || canShow("left") || canShow("right") || canShow("ok", "enter", "select");
@@ -1959,46 +2033,66 @@ function TVRenderer({ device, runtime, busy, onPower, onCommand }: { device: Any
   const hasMedia = canShow("play_pause", "play", "pause");
   const powerClick = () => {
     if (switchPower) onPower(device);
-    else sendKey("power_toggle");
+    else void sendKey("power");
   };
   return (
     <div className="space-y-2">
+      <div className="flex items-center justify-between rounded-full border border-white/[0.06] bg-white/[0.025] px-3 py-2">
+        <span className="text-[11px] text-white/42">IR dispatch</span>
+        <span className={cn(
+          "inline-flex items-center gap-1.5 text-[11px] font-medium",
+          remoteStatus === "sending" && "text-amber-200",
+          remoteStatus === "acknowledged" && "text-emerald-200",
+          remoteStatus === "rejected" && "text-red-200",
+          remoteStatus === "idle" && "text-white/42",
+        )}>
+          <span className={cn(
+            "h-2 w-2 rounded-full",
+            remoteStatus === "sending" && "bg-amber-300",
+            remoteStatus === "acknowledged" && "bg-emerald-300",
+            remoteStatus === "rejected" && "bg-red-300",
+            remoteStatus === "idle" && "bg-white/28",
+          )} />
+          {remoteStatus === "sending" ? "Sending" : remoteStatus === "acknowledged" ? "Provider acknowledged" : remoteStatus === "rejected" ? "Unavailable" : "Idle"}
+        </span>
+      </div>
       <div className="grid grid-cols-2 gap-2">
-        {canPower ? <TvRemoteKey icon={Power} label="Power" enabled={isOnline(device, runtime) !== false && canSendPower} busy={busy} onClick={powerClick} /> : null}
-        {canShow("mute") ? <TvRemoteKey icon={VolumeX} label="Mute" enabled={canSend("mute")} onClick={() => sendKey("mute")} /> : null}
+        {canPower ? <TvRemoteKey icon={Power} label="Power" enabled={isOnline(device, runtime) !== false && canSendPower} onClick={powerClick} /> : null}
+        {canShow("mute") ? <TvRemoteKey icon={VolumeX} label="Mute" enabled={canSend("mute")} onClick={() => void sendKey("mute")} /> : null}
       </div>
       {hasNavigation ? <div className="rounded-[24px] border border-white/[0.07] bg-white/[0.035] p-3">
         <div className="mb-2 text-center text-[11px] uppercase tracking-[0.2em] text-white/34">Navigation</div>
-        <div className="mx-auto grid max-w-[210px] grid-cols-3 gap-1.5">
+        <div className="mx-auto grid max-w-[228px] grid-cols-3 gap-2">
           <span />
-          {canShow("up") ? <TvRemoteKey icon={ChevronUp} label="Up" enabled={canSend("up")} onClick={() => sendKey("nav_up")} /> : <span />}
+          {canShow("up") ? <TvRemoteKey large icon={ChevronUp} label="Up" enabled={canSend("up")} onClick={() => void sendKey("up")} /> : <span />}
           <span />
-          {canShow("left") ? <TvRemoteKey icon={ChevronLeft} label="Left" enabled={canSend("left")} onClick={() => sendKey("nav_left")} /> : <span />}
-          {canShow("ok", "enter", "select") ? <TvRemoteKey icon={Check} label="OK" enabled={canSend("ok", "enter", "select")} onClick={() => sendKey("ok")} /> : <span />}
-          {canShow("right") ? <TvRemoteKey icon={ChevronRight} label="Right" enabled={canSend("right")} onClick={() => sendKey("nav_right")} /> : <span />}
+          {canShow("left") ? <TvRemoteKey large icon={ChevronLeft} label="Left" enabled={canSend("left")} onClick={() => void sendKey("left")} /> : <span />}
+          {canShow("ok", "enter", "select") ? <TvRemoteKey large primary icon={Check} label="OK" enabled={canSend("ok", "enter", "select")} onClick={() => void sendKey("ok")} /> : <span />}
+          {canShow("right") ? <TvRemoteKey large icon={ChevronRight} label="Right" enabled={canSend("right")} onClick={() => void sendKey("right")} /> : <span />}
           <span />
-          {canShow("down") ? <TvRemoteKey icon={ChevronDown} label="Down" enabled={canSend("down")} onClick={() => sendKey("nav_down")} /> : <span />}
+          {canShow("down") ? <TvRemoteKey large icon={ChevronDown} label="Down" enabled={canSend("down")} onClick={() => void sendKey("down")} /> : <span />}
           <span />
         </div>
+        <p className="mt-2 text-center text-[10px] leading-4 text-white/34">Provider acknowledgement confirms dispatch, not physical TV state.</p>
       </div> : null}
       {hasSystem ? <TvControlGroup title="System">
-        {canShow("home") ? <TvRemoteKey icon={Home} label="Home" enabled={canSend("home")} onClick={() => sendKey("home")} /> : null}
-        {canShow("back", "return") ? <TvRemoteKey icon={ChevronLeft} label="Back" enabled={canSend("back", "return")} onClick={() => sendKey("back")} /> : null}
-        {canShow("menu") ? <TvRemoteKey icon={SlidersHorizontal} label="Menu" enabled={canSend("menu")} onClick={() => sendKey("menu")} /> : null}
-        {canShow("source", "input") ? <TvRemoteKey icon={ChevronRight} label="Source" enabled={canSend("source", "input")} onClick={() => sendKey("input")} /> : null}
+        {canShow("home") ? <TvRemoteKey icon={Home} label="Home" enabled={canSend("home")} onClick={() => void sendKey("home")} /> : null}
+        {canShow("back", "return") ? <TvRemoteKey icon={ChevronLeft} label="Back" enabled={canSend("back", "return")} onClick={() => void sendKey("back")} /> : null}
+        {canShow("menu") ? <TvRemoteKey icon={SlidersHorizontal} label="Menu" enabled={canSend("menu")} onClick={() => void sendKey("menu")} /> : null}
+        {canShow("source", "input") ? <TvRemoteKey icon={ChevronRight} label="Source" enabled={canSend("source", "input")} onClick={() => void sendKey("source")} /> : null}
       </TvControlGroup> : null}
       {hasVolume || hasChannel ? <div className="grid grid-cols-2 gap-2">
         {hasVolume ? <TvControlGroup title="Volume">
-          {canShow("volume_up", "vol_up") ? <TvRemoteKey icon={Plus} label="Vol +" enabled={canSend("volume_up", "vol_up")} onClick={() => sendKey("volume_up")} /> : null}
-          {canShow("volume_down", "vol_down") ? <TvRemoteKey icon={Minus} label="Vol -" enabled={canSend("volume_down", "vol_down")} onClick={() => sendKey("volume_down")} /> : null}
+          {canShow("volume_up", "vol_up") ? <TvRemoteKey icon={Plus} label="Vol +" enabled={canSend("volume_up", "vol_up")} onClick={() => void sendKey("volume_up")} /> : null}
+          {canShow("volume_down", "vol_down") ? <TvRemoteKey icon={Minus} label="Vol -" enabled={canSend("volume_down", "vol_down")} onClick={() => void sendKey("volume_down")} /> : null}
         </TvControlGroup> : null}
         {hasChannel ? <TvControlGroup title="Channel">
-          {canShow("channel_up", "ch_up") ? <TvRemoteKey icon={Plus} label="Ch +" enabled={canSend("channel_up", "ch_up")} onClick={() => sendKey("channel_up")} /> : null}
-          {canShow("channel_down", "ch_down") ? <TvRemoteKey icon={Minus} label="Ch -" enabled={canSend("channel_down", "ch_down")} onClick={() => sendKey("channel_down")} /> : null}
+          {canShow("channel_up", "ch_up") ? <TvRemoteKey icon={Plus} label="Ch +" enabled={canSend("channel_up", "ch_up")} onClick={() => void sendKey("channel_up")} /> : null}
+          {canShow("channel_down", "ch_down") ? <TvRemoteKey icon={Minus} label="Ch -" enabled={canSend("channel_down", "ch_down")} onClick={() => void sendKey("channel_down")} /> : null}
         </TvControlGroup> : null}
       </div> : null}
       {hasMedia ? <TvControlGroup title="Media">
-        <TvRemoteKey icon={Play} label="Play/Pause" enabled={canSend("play_pause", "play", "pause")} onClick={() => sendKey("play_pause")} />
+        <TvRemoteKey icon={Play} label="Play/Pause" enabled={canSend("play_pause", "play", "pause")} onClick={() => void sendKey("play_pause")} />
       </TvControlGroup> : null}
     </div>
   );
@@ -2013,7 +2107,7 @@ function TvControlGroup({ title, children }: { title: string; children: ReactNod
   );
 }
 
-function TvRemoteKey({ icon: Icon, label, enabled, busy, onClick }: { icon: any; label: string; enabled: boolean; busy?: boolean; onClick?: () => void }) {
+function TvRemoteKey({ icon: Icon, label, enabled, busy, large, primary, onClick }: { icon: any; label: string; enabled: boolean; busy?: boolean; large?: boolean; primary?: boolean; onClick?: () => void }) {
   const [feedback, setFeedback] = useState<"idle" | "success" | "failure">("idle");
   async function press() {
     if (!enabled || busy || !onClick) return;
@@ -2029,8 +2123,8 @@ function TvRemoteKey({ icon: Icon, label, enabled, busy, onClick }: { icon: any;
     }
   }
   return (
-    <button type="button" disabled={!enabled || busy || !onClick} onClick={press} className={cn("min-h-10 rounded-[14px] border px-2 py-1.5 text-center transition duration-200", enabled && onClick ? "border-sky-300/18 bg-sky-400/10 text-sky-100 shadow-[0_0_0_rgba(56,189,248,0)] active:scale-95 active:shadow-[0_0_22px_rgba(56,189,248,0.34)]" : "border-white/[0.08] bg-white/[0.04] text-white/56", busy && "animate-pulse", feedback === "success" && "border-emerald-300/30 bg-emerald-400/12 text-emerald-100 shadow-[0_0_20px_rgba(52,211,153,0.26)]", feedback === "failure" && "border-red-300/30 bg-red-400/12 text-red-100 shadow-[0_0_20px_rgba(248,113,113,0.24)]")} title={label}>
-      <Icon className={cn("mx-auto h-3.5 w-3.5 transition-transform duration-200", feedback === "success" && "scale-110", busy && "animate-pulse")} />
+    <button type="button" disabled={!enabled || busy || !onClick} onClick={press} className={cn("rounded-[14px] border px-2 text-center transition duration-200", large ? "min-h-[58px] py-2.5" : "min-h-10 py-1.5", enabled && onClick ? "border-sky-300/18 bg-sky-400/10 text-sky-100 shadow-[0_0_0_rgba(56,189,248,0)] active:scale-95 active:shadow-[0_0_22px_rgba(56,189,248,0.34)]" : "border-white/[0.08] bg-white/[0.04] text-white/56", primary && "border-white/18 bg-white text-black shadow-[0_0_24px_rgba(255,255,255,0.16)]", busy && "animate-pulse", feedback === "success" && "border-emerald-300/30 bg-emerald-400/12 text-emerald-100 shadow-[0_0_20px_rgba(52,211,153,0.26)]", feedback === "failure" && "border-red-300/30 bg-red-400/12 text-red-100 shadow-[0_0_20px_rgba(248,113,113,0.24)]")} title={label} aria-label={label}>
+      <Icon className={cn("mx-auto transition-transform duration-200", large ? "h-5 w-5" : "h-3.5 w-3.5", feedback === "success" && "scale-110", busy && "animate-pulse")} />
       <span className="mt-1 block text-[10px]">{label}</span>
     </button>
   );
