@@ -21,6 +21,7 @@
     "smoke:device-runtime-batch": "node scripts/device-runtime-batch-smoke.mjs",
     "smoke:context-isolation": "node scripts/context-isolation-smoke.mjs",
     "smoke:release-closure": "node scripts/release-closure-consumer-smoke.mjs",
+    "smoke:remote-repeated-tap": "node scripts/release-closure-consumer-smoke.mjs",
     "smoke:device-ownership": "node scripts/device-ownership-lock-ui-smoke.mjs",
     "smoke:tuya-locks": "node scripts/device-ownership-lock-ui-smoke.mjs",
     "smoke:smart-access": "node scripts/smart-access-ui-smoke.mjs",

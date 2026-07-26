@@ -304,11 +304,21 @@ export const deviceService = {
   /**
    * ✅ COMMAND execution
    */
-  async commandDevice(deviceId: string, command: Record<string, any>, options: { idempotencyKey?: string } = {}) {
+  async commandDevice(deviceId: string, command: Record<string, any>, options: { idempotencyKey?: string; tapSequence?: number; clientTapTimestamp?: number } = {}) {
     const res = await API.post(
       `/devices/${encodeURIComponent(deviceId)}/command`,
-      { command, ...(options.idempotencyKey ? { idempotency_key: options.idempotencyKey } : {}) },
-      options.idempotencyKey ? { headers: { "Idempotency-Key": options.idempotencyKey } } : undefined,
+      {
+        command,
+        ...(options.idempotencyKey ? { idempotency_key: options.idempotencyKey } : {}),
+        ...(options.tapSequence != null ? { tap_sequence: options.tapSequence } : {}),
+        ...(options.clientTapTimestamp != null ? { client_tap_timestamp: options.clientTapTimestamp } : {}),
+      },
+      options.idempotencyKey || options.tapSequence != null ? {
+        headers: {
+          ...(options.idempotencyKey ? { "Idempotency-Key": options.idempotencyKey } : {}),
+          ...(options.tapSequence != null ? { "X-IR-Tap-Sequence": String(options.tapSequence) } : {}),
+        },
+      } : undefined,
     );
     return res.data as { ok?: boolean; status?: string; error?: string; details?: string; state?: Record<string, any> };
   },

@@ -633,7 +633,8 @@ export default function DeviceClient() {
   const [editingFavorites, setEditingFavorites] = useState(false);
   const [tool, setTool] = useState<{ kind: DeviceTool; device: AnyDevice } | null>(null);
   const [deviceExecutions, setDeviceExecutions] = useState<Array<Record<string, any>>>([]);
-  const recentRemotePressRef = useRef<Map<string, number>>(new Map());
+  const irTapSequenceRef = useRef(0);
+  const irSubmissionQueuesRef = useRef<Map<string, Promise<void>>>(new Map());
   const latestAwareness = useRuntimeIntelligenceStore((state) => state.latestAwareness);
   const latestRecommendations = useRuntimeIntelligenceStore((state) => state.latestRecommendations);
 
@@ -974,25 +975,38 @@ export default function DeviceClient() {
     if (isOnline(device, runtimeMap[sid] || null) === false) return setErr(`${pickName(device)} is offline.`);
     const commandType = String(command?.type || "").toLowerCase();
     const isIrRemoteCommand = commandType === "tv_remote" || commandType === "ir_remote" || commandType === "ac_remote";
-    const primaryCommandValue = command?.key || command?.command_key || command?.power || "";
-    const pressKey = `${sid}:${commandType}:${primaryCommandValue}:${command?.temperature ?? ""}:${command?.mode ?? ""}:${command?.fan_speed ?? ""}`;
     const now = Date.now();
-    if (isIrRemoteCommand) {
-      const lastPress = recentRemotePressRef.current.get(pressKey) || 0;
-      if (now - lastPress < 140) return;
-      recentRemotePressRef.current.set(pressKey, now);
-    }
-    const idempotencyKey = `${activeContext.contextKey || "home"}:${sid}:${commandType || "command"}:${now}:${Math.random().toString(36).slice(2, 8)}`;
-    setBusyId(sid);
+    const tapSequence = isIrRemoteCommand ? ++irTapSequenceRef.current : undefined;
+    const idempotencyKey = isIrRemoteCommand
+      ? `${activeContext.contextKey || "home"}:${sid}:${commandType || "ir"}:${tapSequence}:${now}`
+      : `${activeContext.contextKey || "home"}:${sid}:${commandType || "command"}:${now}:${Math.random().toString(36).slice(2, 8)}`;
+    if (!isIrRemoteCommand) setBusyId(sid);
     setErr(null);
     try {
-      await deviceService.commandDevice(sid, command, { idempotencyKey });
+      if (isIrRemoteCommand) {
+        const previous = irSubmissionQueuesRef.current.get(sid) || Promise.resolve();
+        const current = previous
+          .catch(() => undefined)
+          .then(async () => {
+            await deviceService.commandDevice(sid, command, {
+              idempotencyKey,
+              tapSequence,
+              clientTapTimestamp: now,
+            });
+          });
+        const stored = current.then(() => undefined, () => undefined);
+        irSubmissionQueuesRef.current.set(sid, stored);
+        await current;
+        if (irSubmissionQueuesRef.current.get(sid) === stored) irSubmissionQueuesRef.current.delete(sid);
+      } else {
+        await deviceService.commandDevice(sid, command, { idempotencyKey });
+      }
       if (optimisticPatch) setStateMap((p) => ({ ...p, [sid]: { ...(p[sid] || {}), ...optimisticPatch } }));
       setTool(null);
     } catch (e: any) {
       setErr(e?.response?.data?.error || e?.message || "Command failed");
     } finally {
-      setBusyId(null);
+      if (!isIrRemoteCommand) setBusyId(null);
     }
   }
 
