@@ -65,7 +65,9 @@ assert(/IR dispatch/.test(devicesClient) && /remoteStatus === "sending"/.test(de
 assert(/type: "ac_remote", power: nextPower/.test(devicesClient) && /fan_speed: speed/.test(devicesClient), "AC controls send canonical air-conditioner commands");
 assert(/\["tv", "television", "projector", "set_top_box", "speaker"\]\.includes\(family\)/.test(devicesClient) && /\["climate", "air_conditioner", "thermostat"\]\.includes\(family\)/.test(devicesClient), "DevicesClient renders canonical television and air-conditioner profiles");
 assert(/controlProfile === "television"/.test(devicePresentation) && /controlProfile === "air_conditioner"/.test(devicePresentation), "device presentation recognizes canonical IR child profiles");
-assert(/document\.visibilityState === "hidden"\) return 180_000/.test(devicesClient) && /sheetOpen \? 15_000 : 45_000/.test(devicesClient), "device runtime polling is adaptive by active and hidden state");
+assert(/runtimeDevicesCache/.test(deviceService) && /RUNTIME_DEVICES_DEDUPE_MS/.test(deviceService), "device runtime requests are deduplicated by active home");
+assert(!/sheetOpen \? 15_000 : 45_000/.test(devicesClient) && !/runtime_dashboard_stale/.test(devicesClient), "Devices page does not run sheet-driven runtime polling");
+assert(/getDeviceState\(deviceId, \{ view: "panel" \}/.test(read("src/hooks/useDeviceLiveState.ts")) && /getDeviceState\(sid, \{ include: \["intelligence"\], view: "panel" \}/.test(devicesClient), "opened device panels explicitly acquire one runtime view lease");
 
 assert(/startPresenceHeartbeat/.test(presenceBridge) && !/messagesService\.pingPresence/.test(presenceBridge), "PresenceBridge delegates to the shared presence manager");
 assert(/let activeCount = 0/.test(presenceService) && /inFlight/.test(presenceService) && /MIN_PING_GAP_MS/.test(presenceService), "presence manager enforces one heartbeat and in-flight ping guard");

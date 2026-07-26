@@ -30,27 +30,35 @@ export function useDeviceLiveState(deviceId?: string, estateId?: string | null) 
   const canUse = useMemo(() => !!deviceId, [deviceId]);
 
   const estateJoinedRef = useRef<string | null>(null);
+  const inFlightRefreshRef = useRef<Promise<void> | null>(null);
 
   const refresh = useCallback(async () => {
     if (!deviceId) return;
+    if (inFlightRefreshRef.current) return inFlightRefreshRef.current;
 
     setData((s) => ({ ...s, loading: true, error: null }));
-    try {
-      const resp = await deviceService.getDeviceState(deviceId);
-      setData((s) => ({
-        ...s,
-        state: resp?.state ?? null,
-        runtime: resp ?? null,
-        lastSeen: resp?.lastSeen ?? null,
-        loading: false,
-      }));
-    } catch (e: any) {
-      setData((s) => ({
-        ...s,
-        loading: false,
-        error: e?.message || "Failed to fetch device state",
-      }));
-    }
+    const operation = (async () => {
+      try {
+        const resp = await deviceService.getDeviceState(deviceId, { view: "panel" });
+        setData((s) => ({
+          ...s,
+          state: resp?.state ?? null,
+          runtime: resp ?? null,
+          lastSeen: resp?.lastSeen ?? null,
+          loading: false,
+        }));
+      } catch (e: any) {
+        setData((s) => ({
+          ...s,
+          loading: false,
+          error: e?.message || "Failed to fetch device state",
+        }));
+      } finally {
+        inFlightRefreshRef.current = null;
+      }
+    })();
+    inFlightRefreshRef.current = operation;
+    return operation;
   }, [deviceId]);
 
   // Initial fetch (and when device changes)
@@ -139,9 +147,7 @@ export function useDeviceLiveState(deviceId?: string, estateId?: string | null) 
     }
     if (activeContext.home_id) socket.emit("subscribe:home", activeContext.home_id);
 
-    // optional: pull fresh state once when estate context becomes known
-    refresh();
-  }, [estateId, deviceId, activeContext.home_id, refresh]);
+  }, [estateId, deviceId, activeContext.home_id]);
 
   return { ...data, refresh };
 }

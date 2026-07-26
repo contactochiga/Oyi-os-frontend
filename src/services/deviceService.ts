@@ -11,6 +11,7 @@ export type AssignDevicesPayload = {
 
 export type DeviceStateResponse = DeviceRuntimeContract & {
   deviceId?: string;
+  assignment?: Record<string, any> | null;
   error?: string;
 };
 
@@ -35,6 +36,19 @@ export type DeviceRuntimeSummary = DeviceRuntimeContract & {
 };
 
 export type DeviceStateInclude = "intelligence" | "timeline";
+
+type RuntimeDevicesOptions = {
+  force?: boolean;
+};
+
+type RuntimeDevicesCacheEntry = {
+  createdAt: number;
+  promise: Promise<DeviceRuntimeSummary[]>;
+  value?: DeviceRuntimeSummary[];
+};
+
+const RUNTIME_DEVICES_DEDUPE_MS = 5_000;
+const runtimeDevicesCache = new Map<string, RuntimeDevicesCacheEntry>();
 
 export type IrProfileOption = {
   key: string;
@@ -212,11 +226,14 @@ export const deviceService = {
    * - If backend returns 404 (device not found in DB / wrong estate), we return { state: {} }
    * - We DO NOT throw
    */
-  async getDeviceState(deviceId: string, options: { include?: DeviceStateInclude[] } = {}): Promise<DeviceStateResponse> {
+  async getDeviceState(deviceId: string, options: { include?: DeviceStateInclude[]; view?: "panel" | "device" | "active" } = {}): Promise<DeviceStateResponse> {
     try {
       const include = Array.from(new Set(options.include || [])).join(",");
       const res = await API.get(`/devices/${encodeURIComponent(deviceId)}/state`, {
-        params: include ? { include } : undefined,
+        params: {
+          ...(include ? { include } : {}),
+          ...(options.view ? { view: options.view } : {}),
+        },
       });
 
       return {
@@ -244,6 +261,11 @@ export const deviceService = {
         active_automations: res.data?.active_automations ?? [],
         conversation_context: res.data?.conversation_context ?? null,
         lastSeen: res.data?.lastSeen ?? null,
+        canonical_state: res.data?.canonical_state ?? res.data?.canonicalState ?? null,
+        canonicalState: res.data?.canonical_state ?? res.data?.canonicalState ?? null,
+        canonical_presentation: res.data?.canonical_presentation ?? res.data?.presentation ?? null,
+        presentation: res.data?.canonical_presentation ?? res.data?.presentation ?? null,
+        assignment: res.data?.assignment ?? null,
         error: res.data?.error,
       };
     } catch (err: any) {
@@ -258,11 +280,17 @@ export const deviceService = {
     }
   },
 
-  async getRuntimeDevices(homeId?: string | null): Promise<DeviceRuntimeSummary[]> {
+  async getRuntimeDevices(homeId?: string | null, options: RuntimeDevicesOptions = {}): Promise<DeviceRuntimeSummary[]> {
+    const cacheKey = String(homeId || "active-home");
+    const now = Date.now();
+    const cached = runtimeDevicesCache.get(cacheKey);
+    if (!options.force && cached && now - cached.createdAt <= RUNTIME_DEVICES_DEDUPE_MS) {
+      return cached.value || cached.promise;
+    }
     try {
-      const res = await API.get("/devices/runtime", {
+      const promise = API.get("/devices/runtime", {
         params: homeId ? { home_id: homeId } : undefined,
-      });
+      }).then((res) => {
       const rows = Array.isArray(res.data?.devices) ? res.data.devices : [];
       return rows
         .filter((row: any) => row?.device_id)
@@ -277,7 +305,13 @@ export const deviceService = {
           channel_definitions: row?.channel_definitions ?? [],
           lastSeen: row?.last_refresh ?? row?.runtime_timestamp ?? null,
         }));
+      });
+      runtimeDevicesCache.set(cacheKey, { createdAt: now, promise });
+      const value = await promise;
+      runtimeDevicesCache.set(cacheKey, { createdAt: Date.now(), promise: Promise.resolve(value), value });
+      return value;
     } catch (err: any) {
+      runtimeDevicesCache.delete(cacheKey);
       throw normalizeDeviceListError(err);
     }
   },

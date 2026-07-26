@@ -729,7 +729,7 @@ export default function DeviceClient() {
     const sid = String(pickDbId(device) || "");
     if (!sid) return;
     try {
-      const response = await deviceService.getDeviceState(sid, { include: ["intelligence"] });
+      const response = await deviceService.getDeviceState(sid, { include: ["intelligence"], view: "panel" });
       if (response.error) return;
       setStateMap((current) => ({ ...current, [sid]: response.state || {} }));
       setRuntimeMap((current) => ({ ...current, [sid]: normalizeRuntimeContract(device, response) }));
@@ -853,29 +853,6 @@ export default function DeviceClient() {
     if (target) openDevice(target);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, searchParams]);
-
-  useEffect(() => {
-    if (!items.length) return;
-    let cancelled = false;
-    let timer: number | null = null;
-    const refreshDelay = () => {
-      if (typeof document !== "undefined" && document.visibilityState === "hidden") return 180_000;
-      return sheetOpen ? 15_000 : 45_000;
-    };
-    const schedule = () => {
-      if (cancelled) return;
-      timer = window.setTimeout(async () => {
-        await hydrateStates(items);
-        schedule();
-      }, refreshDelay());
-    };
-    schedule();
-    return () => {
-      cancelled = true;
-      if (timer != null) window.clearTimeout(timer);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, sheetOpen, activeContext.contextKey]);
 
   useEffect(() => {
     if (!sheetOpen || !sheetDevice) {
@@ -1113,7 +1090,6 @@ export default function DeviceClient() {
     }
     setSheetDevice(device);
     setSheetOpen(true);
-    void warmState(device);
     void hydrateDeviceIntelligence(device);
   }
 
