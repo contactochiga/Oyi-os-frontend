@@ -91,10 +91,10 @@ expect(
   /deviceService\.getRuntimeDevices\(active\.home_id/,
   "Security devices must be scoped through Runtime V2",
 );
-expect(
+reject(
   "src/app/utilities/page.tsx",
   /deviceService\.getRuntimeDevices\(active\.home_id/,
-  "Utilities devices must be scoped through Runtime V2",
+  "Utilities must not trigger full Runtime V2 inventory in the background",
 );
 expect(
   "src/app/scenes/page.tsx",

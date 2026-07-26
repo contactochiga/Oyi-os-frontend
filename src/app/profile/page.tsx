@@ -27,7 +27,6 @@ import ActivityMetricsRail from "@/app/components/ActivityMetricsRail";
 import useAuth from "@/hooks/useAuth";
 import useActiveContext from "@/hooks/useActiveContext";
 import { deleteMyAccount, removeMyProfileImage, updateMyProfile, uploadMyProfileImage } from "@/services/authService";
-import { deviceService } from "@/services/deviceService";
 import { homeAccessService, type HomeAccessMember } from "@/services/homeAccessService";
 import { walletService } from "@/services/walletService";
 import { listMyNotifications, type AppNotification } from "@/services/notificationsService";
@@ -115,7 +114,6 @@ export default function ProfilePage() {
   const active = useActiveContext();
   const { notificationsEnabled, voiceEnabled, darkMode } = useSettingsStore();
 
-  const [devices, setDevices] = useState<any[]>([]);
   const [members, setMembers] = useState<HomeAccessMember[]>([]);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("resident");
@@ -191,8 +189,7 @@ export default function ProfilePage() {
     if (!ready || !token || !active.ready) return;
     let cancelled = false;
     async function load() {
-      const [deviceRes, memberRes, walletRes, notificationRes, contextRes, proximityRes, notificationPreferenceRes] = await Promise.allSettled([
-        deviceService.getRuntimeDevices(active.home_id || undefined),
+      const [memberRes, walletRes, notificationRes, contextRes, proximityRes, notificationPreferenceRes] = await Promise.allSettled([
         active.home_id ? homeAccessService.listHomeUsers(active.home_id) : Promise.resolve([]),
         walletService.getWallet(),
         listMyNotifications(),
@@ -201,7 +198,6 @@ export default function ProfilePage() {
         notificationPreferencesService.list(),
       ]);
       if (cancelled) return;
-      if (deviceRes.status === "fulfilled") setDevices(asArray(deviceRes.value));
       if (memberRes.status === "fulfilled") setMembers(asArray<HomeAccessMember>(memberRes.value));
       if (walletRes.status === "fulfilled" && !(walletRes.value as any)?.error) {
         setWalletBalance(Number((walletRes.value as any)?.balance ?? 0));
@@ -222,7 +218,7 @@ export default function ProfilePage() {
 
   const overview = [
     { label: "Current Home", value: currentHome, icon: Home, tint: "text-sky-300" },
-    { label: "Devices", value: String(devices.length), icon: Plug, tint: "text-emerald-300" },
+    { label: "Devices", value: "Manage", icon: Plug, tint: "text-emerald-300" },
     { label: "Members", value: String(members.length), icon: Users, tint: "text-violet-300" },
     { label: "Security", value: securityState, icon: ShieldCheck, tint: "text-amber-300" },
   ];
