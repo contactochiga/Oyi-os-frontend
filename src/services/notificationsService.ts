@@ -36,10 +36,16 @@ export type NotificationListScope = {
   scope?: "home" | "account";
 };
 
+const notificationListInFlight = new Map<string, Promise<AppNotification[]>>();
+
 /**
  * GET /notifications
  */
 export async function listMyNotifications(scope?: NotificationListScope) {
+  const key = `${scope?.scope || (scope?.home_id ? "home" : "default")}:${scope?.estate_id || "account"}:${scope?.home_id || "all"}`;
+  const existing = notificationListInFlight.get(key);
+  if (existing) return existing;
+  const request = (async () => {
   try {
     const res = await API.get("/notifications", {
       params: {
@@ -54,6 +60,11 @@ export async function listMyNotifications(scope?: NotificationListScope) {
   } catch (err: any) {
     return { error: pickError(err, "Failed to load notifications") } as any;
   }
+  })().finally(() => {
+    notificationListInFlight.delete(key);
+  });
+  notificationListInFlight.set(key, request);
+  return request;
 }
 
 /**

@@ -33,6 +33,7 @@ const servicesService = read("src/services/servicesService.ts");
 const servicesPage = read("src/app/services/page.tsx");
 const maintenancePage = read("src/app/maintenance/page.tsx");
 const notificationsService = read("src/services/notificationsService.ts");
+const oyiService = read("src/services/oyiService.ts");
 const notificationsBridge = read("src/app/components/NotificationsBridge.tsx");
 const bottomNav = read("src/app/components/BottomNav.tsx");
 const geoFenceBridge = read("src/app/components/GeoFenceBridge.tsx");
@@ -66,8 +67,10 @@ assert(/type: "ac_remote", power: nextPower/.test(devicesClient) && /fan_speed: 
 assert(/\["tv", "television", "projector", "set_top_box", "speaker"\]\.includes\(family\)/.test(devicesClient) && /\["climate", "air_conditioner", "thermostat"\]\.includes\(family\)/.test(devicesClient), "DevicesClient renders canonical television and air-conditioner profiles");
 assert(/controlProfile === "television"/.test(devicePresentation) && /controlProfile === "air_conditioner"/.test(devicePresentation), "device presentation recognizes canonical IR child profiles");
 assert(/runtimeDevicesCache/.test(deviceService) && /RUNTIME_DEVICES_DEDUPE_MS/.test(deviceService), "device runtime requests are deduplicated by active home");
+assert(/deviceStateInFlight/.test(deviceService) && /inferredView = options\.view \|\| \(includeValues\.includes\("intelligence"\) \? "panel" : undefined\)/.test(deviceService), "panel intelligence state reads are inferred as view=panel and deduplicated");
+assert(/deviceViewReleaseInFlight/.test(deviceService), "device panel view releases are deduplicated to prevent release storms");
 assert(!/sheetOpen \? 15_000 : 45_000/.test(devicesClient) && !/runtime_dashboard_stale/.test(devicesClient), "Devices page does not run sheet-driven runtime polling");
-assert(/getDeviceState\(deviceId, \{ view: "panel" \}/.test(read("src/hooks/useDeviceLiveState.ts")) && /getDeviceState\(sid, \{ include: \["intelligence"\], view: "panel" \}/.test(devicesClient), "opened device panels explicitly acquire one runtime view lease");
+assert(/getDeviceState\(deviceId, \{ view: "panel" \}/.test(read("src/hooks/useDeviceLiveState.ts")) && /getDeviceState\(sid, \{ include: \["intelligence"\], view: "panel" \}/.test(devicesClient) && /getDeviceState\(sid, \{ view: "panel" \}\)/.test(devicesClient), "opened device panels explicitly acquire one runtime view lease");
 
 assert(/startPresenceHeartbeat/.test(presenceBridge) && !/messagesService\.pingPresence/.test(presenceBridge), "PresenceBridge delegates to the shared presence manager");
 assert(/let activeCount = 0/.test(presenceService) && /inFlight/.test(presenceService) && /MIN_PING_GAP_MS/.test(presenceService), "presence manager enforces one heartbeat and in-flight ping guard");
@@ -76,6 +79,7 @@ assert(/resetRuntimeIntelligence/.test(contextBridge) && /clearEvents/.test(cont
 
 assert(/throw normalizeDeviceListError/.test(deviceService), "device discovery failures are not returned as empty device lists");
 assert(/return \{ error: pickError\(err,\s*"Failed to load messages"\) \} as any/.test(messagesService), "message inbox failures return typed errors instead of empty lists");
+assert(/inboxInFlight/.test(messagesService), "message inbox requests are deduplicated by active context scope");
 assert(/activeContextKeyRef/.test(messagesPage) && /setActiveThread\(null\)/.test(messagesPage), "messages clear stale context on active-home changes");
 assert(/throwCommunityError/.test(communityService), "community feed failures throw typed errors instead of empty lists");
 assert(/loadRequestRef/.test(communityPage) && /setComments\(\{\}\)/.test(communityPage), "community feed clears stale posts and comments on active-home changes");
@@ -85,6 +89,8 @@ assert(/ServiceApiFailure/.test(servicesService) && /diagnostics/.test(servicesS
 assert(/\/services\/electricity\/quote/.test(servicesService) && /\/services\/electricity\/purchase/.test(servicesService), "electricity API uses canonical quote and purchase endpoints");
 assert(!/\/services\/transactions/.test(servicesService), "Consumer services client does not expose the obsolete generic electricity transaction route");
 assert(/listMyNotifications\(scope/.test(notificationsService) && /home_id: scope\?\.home_id/.test(notificationsService), "notifications service sends active-home scope to the backend");
+assert(/notificationListInFlight/.test(notificationsService), "notification list requests are deduplicated by active context scope");
+assert(/threadListInFlight/.test(oyiService), "Oyi thread list requests are deduplicated by surface and active context scope");
 assert(/listMyNotifications\(\{\s*estate_id: activeContext\.estate_id,\s*home_id: activeContext\.home_id/.test(notificationsBridge), "notifications bridge loads notifications for the active home");
 assert(/Infrastructure services are temporarily unavailable\. Try again\./.test(servicesPage), "services page distinguishes backend failure from unconfigured services");
 const electricityHandler = servicesPage.match(/if \(item\.key === "electricity"\) \{[\s\S]*?return;\n    \}/)?.[0] || "";

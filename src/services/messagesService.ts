@@ -69,6 +69,8 @@ function scopeParams(scope?: ScopeParams | null) {
   };
 }
 
+const inboxInFlight = new Map<string, Promise<InboxThread[]>>();
+
 export const messagesService = {
   async listResidents(q = "", scope?: ScopeParams | null): Promise<ChatResident[]> {
     try {
@@ -80,12 +82,21 @@ export const messagesService = {
   },
 
   async listInbox(scope?: ScopeParams | null): Promise<InboxThread[]> {
+    const key = `${scope?.estate_id || "account"}:${scope?.home_id || "all"}`;
+    const existing = inboxInFlight.get(key);
+    if (existing) return existing;
+    const request = (async () => {
     try {
       const res = await API.get("/messages/inbox", { params: scopeParams(scope) });
       return res.data?.threads ?? [];
     } catch (err: any) {
       return { error: pickError(err, "Failed to load messages") } as any;
     }
+    })().finally(() => {
+      inboxInFlight.delete(key);
+    });
+    inboxInFlight.set(key, request);
+    return request;
   },
 
   async createOrGetDirectThread(peer_user_id: string, scope?: ScopeParams | null) {

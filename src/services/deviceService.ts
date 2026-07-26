@@ -49,6 +49,8 @@ type RuntimeDevicesCacheEntry = {
 
 const RUNTIME_DEVICES_DEDUPE_MS = 5_000;
 const runtimeDevicesCache = new Map<string, RuntimeDevicesCacheEntry>();
+const deviceStateInFlight = new Map<string, Promise<DeviceStateResponse>>();
+const deviceViewReleaseInFlight = new Map<string, Promise<void>>();
 
 export type IrProfileOption = {
   key: string;
@@ -227,12 +229,18 @@ export const deviceService = {
    * - We DO NOT throw
    */
   async getDeviceState(deviceId: string, options: { include?: DeviceStateInclude[]; view?: "panel" | "device" | "active" } = {}): Promise<DeviceStateResponse> {
+    const includeValues = Array.from(new Set(options.include || []));
+    const include = includeValues.join(",");
+    const inferredView = options.view || (includeValues.includes("intelligence") ? "panel" : undefined);
+    const requestKey = `${deviceId}:${inferredView || "inventory"}:${include || "core"}`;
+    const existing = deviceStateInFlight.get(requestKey);
+    if (existing) return existing;
+    const request = (async () => {
     try {
-      const include = Array.from(new Set(options.include || [])).join(",");
       const res = await API.get(`/devices/${encodeURIComponent(deviceId)}/state`, {
         params: {
           ...(include ? { include } : {}),
-          ...(options.view ? { view: options.view } : {}),
+          ...(inferredView ? { view: inferredView } : {}),
         },
       });
 
@@ -278,15 +286,28 @@ export const deviceService = {
         error: err?.response?.data?.error || err?.message || "Failed to load device state",
       };
     }
+    })().finally(() => {
+      deviceStateInFlight.delete(requestKey);
+    });
+    deviceStateInFlight.set(requestKey, request);
+    return request;
   },
 
   async releaseDeviceView(deviceId: string): Promise<void> {
     if (!deviceId) return;
+    const existing = deviceViewReleaseInFlight.get(deviceId);
+    if (existing) return existing;
+    const release = (async () => {
     try {
       await API.post(`/devices/${encodeURIComponent(deviceId)}/state/view/release`);
     } catch {
       // Lease TTL remains the crash/navigation fallback; release is best-effort.
     }
+    })().finally(() => {
+      deviceViewReleaseInFlight.delete(deviceId);
+    });
+    deviceViewReleaseInFlight.set(deviceId, release);
+    return release;
   },
 
   async getRuntimeDevices(homeId?: string | null, options: RuntimeDevicesOptions = {}): Promise<DeviceRuntimeSummary[]> {

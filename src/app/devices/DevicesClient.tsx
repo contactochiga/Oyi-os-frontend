@@ -679,6 +679,7 @@ export default function DeviceClient() {
   const [stateTitle, setStateTitle] = useState("Device");
   const [stateMeta, setStateMeta] = useState<{ rows?: Array<{ label: string; value: string }> } | null>(null);
   const [stateLoading, setStateLoading] = useState(false);
+  const [statePanelDeviceId, setStatePanelDeviceId] = useState<string | null>(null);
   const [addDeviceOpen, setAddDeviceOpen] = useState(false);
   const [addDeviceTab, setAddDeviceTab] = useState<AddDeviceTab>("nearby");
   const [discovering, setDiscovering] = useState(false);
@@ -878,6 +879,17 @@ export default function DeviceClient() {
       if (deviceId) void deviceService.releaseDeviceView(deviceId);
     };
   }, [sheetOpen, sheetDevice]);
+
+  useEffect(() => {
+    if (!stateOpen && statePanelDeviceId) {
+      const deviceId = statePanelDeviceId;
+      setStatePanelDeviceId(null);
+      void deviceService.releaseDeviceView(deviceId);
+    }
+    return () => {
+      if (statePanelDeviceId) void deviceService.releaseDeviceView(statePanelDeviceId);
+    };
+  }, [stateOpen, statePanelDeviceId]);
 
   const selectedDiscoveryIds = useMemo(() => Object.keys(selectedDiscover).filter((k) => selectedDiscover[k]), [selectedDiscover]);
   const providerDevices = useMemo(() => items.filter((device) => !device?.home_id && String(device?.provider || device?.vendor || device?.adapter || "").toLowerCase() === "tuya"), [items]);
@@ -1151,10 +1163,11 @@ export default function DeviceClient() {
     const sid = String(dbId);
     setStateTitle(pickName(device));
       setStateMeta({ rows: friendlyStateRows(device, stateMap[sid] || {}, runtimeMap[sid] || null) });
+    setStatePanelDeviceId(sid);
     setStateOpen(true);
     setStateLoading(true);
     try {
-      const res = await deviceService.getDeviceState(sid);
+      const res = await deviceService.getDeviceState(sid, { view: "panel" });
       const state = (res as any)?.state ?? res ?? {};
       setStateMap((p) => ({ ...p, [sid]: state }));
       setRuntimeMap((p) => ({ ...p, [sid]: normalizeRuntimeContract(device, res) }));

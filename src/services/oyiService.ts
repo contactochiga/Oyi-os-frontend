@@ -191,6 +191,8 @@ export type OyiThreadMessage = {
   created_at?: string;
 };
 
+const threadListInFlight = new Map<string, Promise<{ ok?: boolean; threads?: OyiThread[] }>>();
+
 export const oyiService = {
   async awareness(input: { surface?: OyiSurface; estate_id?: string | null; home_id?: string | null; context?: OisContext | null }) {
     const res = await API.get("/oyi/awareness", { params: { surface: input.surface, estate_id: input.context?.estate_id || input.estate_id, home_id: input.context?.home_id || input.home_id } });
@@ -251,8 +253,20 @@ export const oyiService = {
   },
 
   async listThreads(input: { surface?: OyiSurface; estate_id?: string | null; home_id?: string | null; limit?: number; context?: OisContext | null }) {
-    const res = await API.get("/oyi/threads", { params: { surface: input.surface, estate_id: input.context?.estate_id || input.estate_id, home_id: input.context?.home_id || input.home_id, limit: input.limit } });
-    return res.data as { ok?: boolean; threads?: OyiThread[] };
+    const estateId = input.context?.estate_id || input.estate_id || "";
+    const homeId = input.context?.home_id || input.home_id || "";
+    const key = `${input.surface || "default"}:${estateId || "account"}:${homeId || "all"}:${input.limit || "default"}`;
+    const existing = threadListInFlight.get(key);
+    if (existing) return existing;
+    const request = API.get("/oyi/threads", {
+      params: { surface: input.surface, estate_id: estateId, home_id: homeId, limit: input.limit },
+    })
+      .then((res) => res.data as { ok?: boolean; threads?: OyiThread[] })
+      .finally(() => {
+        threadListInFlight.delete(key);
+      });
+    threadListInFlight.set(key, request);
+    return request;
   },
 
   async getThreadMessages(threadId: string) {
