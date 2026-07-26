@@ -9,19 +9,6 @@ import useActiveContext from "@/hooks/useActiveContext";
 import { useDeviceLiveState } from "@/hooks/useDeviceLiveState";
 import { deviceService, type SmartAccessResponse } from "@/services/deviceService";
 
-function pickLocked(state: any, keys: string[], fallback: boolean) {
-  for (const k of keys) {
-    const v = state?.[k];
-    if (typeof v === "boolean") return v;
-    if (v === 1 || v === 0) return !!v;
-
-    const s = String(v ?? "").toLowerCase();
-    if (s === "locked" || s === "lock") return true;
-    if (s === "unlocked" || s === "unlock") return false;
-  }
-  return fallback;
-}
-
 function capEvidence(smart: SmartAccessResponse | null, group: string, key: string) {
   return smart?.profile?.capabilities?.[group]?.[key] || null;
 }
@@ -40,6 +27,16 @@ function batteryLabel(value: number | null | undefined, level?: string | null) {
   return `${Math.round(value)}%${quality}`;
 }
 
+function batteryTruthLabel(value: number | null | undefined, level?: string | null, confirmedAt?: string | null, freshness?: string | null, providerState?: string | null) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "Battery unavailable";
+  const quality = level && level !== "unknown" ? ` · ${level[0]?.toUpperCase()}${level.slice(1)}` : "";
+  const when = timeAgo(confirmedAt);
+  const label = `${Math.round(value)}%${quality}`;
+  if (!when) return label;
+  if (freshness === "fresh" && providerState === "connected") return `${label} · Updated ${when}`;
+  return `${label} · Last reported ${when}`;
+}
+
 function availabilityLabel(value: any) {
   const raw = String(value || "").toLowerCase();
   if (raw === "online") return "Online";
@@ -48,6 +45,27 @@ function availabilityLabel(value: any) {
   if (raw === "provider_disconnected") return "Provider disconnected";
   if (raw === "setup_incomplete") return "Setup incomplete";
   return "Availability unknown";
+}
+
+function smartAccessAvailabilityCopy(providerState: string, reachability: string, availability: string, availabilityReason: string) {
+  if (providerState === "reconnect_required" || providerState === "disconnected") return "Connection unavailable";
+  if (providerState === "connected" && reachability === "unknown") return "Connection online";
+  if (availabilityReason === "provider_reports_offline") return "Provider reports offline";
+  return availabilityLabel(availability);
+}
+
+function smartAccessStateConfidenceCopy(input: {
+  primaryConfidence: string;
+  providerUnavailable: boolean;
+  lastConfirmed?: string | null;
+  lockFreshness: string;
+}) {
+  if (input.primaryConfidence === "live") return "Live state";
+  if (input.providerUnavailable && input.lastConfirmed) return `Last known state · updated ${timeAgo(input.lastConfirmed)}`;
+  if (input.lockFreshness === "expired") return "Last report is too old to rely on";
+  if (input.primaryConfidence === "last_confirmed" && input.lastConfirmed) return `Last confirmed ${timeAgo(input.lastConfirmed)}`;
+  if (input.primaryConfidence === "unknown") return "State confidence unknown";
+  return "Inferred state";
 }
 
 function timeAgo(value: any) {
@@ -99,17 +117,20 @@ export default function DoorPanel({
   const activeContext = useActiveContext();
   const estateId = activeContext.estate_id;
 
-  const { state, runtime, loading, refresh } = useDeviceLiveState(deviceId, estateId);
+  const { runtime, loading, refresh } = useDeviceLiveState(deviceId, estateId);
   const [smartAccess, setSmartAccess] = useState<SmartAccessResponse | null>(null);
   const [smartLoading, setSmartLoading] = useState(false);
 
+  const truth = smartAccess?.profile?.truth;
+  const accessState = smartAccess?.profile?.state;
+  const truthLockState = truth?.lock_state || (accessState?.lockState === "locked" || accessState?.lockState === "unlocked" ? accessState.lockState : "unknown");
   const locked = useMemo(
     () => {
-      const smartLocked = smartAccess?.profile?.state?.locked;
-      if (typeof smartLocked === "boolean") return smartLocked;
-      return pickLocked(state, ["locked", "lock", "isLocked", "doorLocked", "state"], true);
+      if (truthLockState === "locked") return true;
+      if (truthLockState === "unlocked") return false;
+      return null;
     },
-    [state, smartAccess]
+    [truthLockState]
   );
   const controlEvidence = useMemo(() => {
     const family = String(runtime?.device_family || runtime?.control_profile || "").toLowerCase();
@@ -117,14 +138,14 @@ export default function DoorPanel({
     return {
       canLock: isExecutable(smartAccess, "control", "lock"),
       canUnlock: isExecutable(smartAccess, "control", "unlock"),
-      hasLockState: isReadable(smartAccess, "state", "lock_state") || runtimeLooksAccess,
+      hasLockState: truthLockState === "locked" || truthLockState === "unlocked" || isReadable(smartAccess, "state", "lock_state") || runtimeLooksAccess,
       hasHistory: isReadable(smartAccess, "history", "access_records"),
       hasCredentials: isExecutable(smartAccess, "credentials", "temporary_code"),
       hasMembers: isReadable(smartAccess, "members", "list"),
       hasMedia: isReadable(smartAccess, "media", "live_view") || isExecutable(smartAccess, "media", "live_view"),
       hasDoorbell: isReadable(smartAccess, "doorbell", "events"),
     };
-  }, [runtime, smartAccess]);
+  }, [runtime, smartAccess, truthLockState]);
 
   const [pending, setPending] = useState(false);
   const [confirmingUnlock, setConfirmingUnlock] = useState(false);
@@ -223,37 +244,42 @@ export default function DoorPanel({
     };
   }, []);
 
-  const nextControlSupported = locked ? controlEvidence.canUnlock : controlEvidence.canLock;
+  const nextControlSupported = locked === true ? controlEvidence.canUnlock : locked === false ? controlEvidence.canLock : false;
   const disabled = pending || !deviceId || !nextControlSupported;
-  const actionLabel = pending ? (expectedRef.current?.locked ? "Locking..." : "Unlocking...") : locked ? "Unlock" : "Lock";
-  const accessState = smartAccess?.profile?.state;
+  const actionLabel = pending ? (expectedRef.current?.locked ? "Locking..." : "Unlocking...") : locked === true ? "Unlock" : "Lock";
   const presentation = (runtime as any)?.canonical_presentation || (runtime as any)?.presentation || null;
   const canonical = (runtime as any)?.canonical_state || (runtime as any)?.canonicalState || null;
-  const availability = String(presentation?.availability || canonical?.availability || (accessState?.online === false ? "offline" : accessState?.online === true ? "online" : "unknown"));
+  const providerConnectionState = truth?.provider_connection_state || accessState?.provider_connection_state || "unknown";
+  const deviceReachability = truth?.device_reachability || accessState?.device_reachability || "unknown";
+  const lockFreshness = truth?.lock_state_freshness || accessState?.lock_state_freshness || "unknown";
+  const lockConfirmedAt = truth?.lock_state_confirmed_at || accessState?.lock_state_confirmed_at || null;
+  const batteryFreshness = truth?.battery_freshness || accessState?.battery_freshness || "unknown";
+  const batteryConfirmedAt = truth?.battery_confirmed_at || accessState?.battery_confirmed_at || null;
+  const providerUnavailable = providerConnectionState === "disconnected" || providerConnectionState === "reconnect_required";
+  const availability = String(providerUnavailable ? "offline" : deviceReachability === "online" ? "online" : deviceReachability === "offline" ? "offline" : presentation?.availability || canonical?.availability || "unknown");
   const availabilityReason = String(presentation?.availabilityReason || canonical?.availabilityReason || "unknown");
-  const lastSeen = presentation?.lastSeenAt || canonical?.lastSeenAt || (runtime as any)?.lastSeen || null;
+  const lastSeen = lockConfirmedAt || presentation?.lastSeenAt || canonical?.lastSeenAt || (runtime as any)?.lastSeen || null;
   const lastChecked = presentation?.lastCheckedAt || canonical?.lastProviderSyncAt || (runtime as any)?.last_refresh || null;
-  const lastConfirmed = presentation?.lastConfirmedStateAt || canonical?.lastSeenAt || null;
+  const lastConfirmed = lockConfirmedAt || presentation?.lastConfirmedStateAt || canonical?.lastSeenAt || null;
   const roomName = presentation?.assignment?.roomName || (runtime as any)?.room_name || (smartAccess?.device as any)?.room_name || "Unassigned";
-  const primaryConfidence = presentation?.primaryState?.confidence || canonical?.primaryState?.confidence || "unknown";
+  const lockLive = providerConnectionState === "connected" && deviceReachability === "online" && lockFreshness === "fresh" && locked !== null;
+  const primaryConfidence = lockLive ? "live" : lockFreshness === "fresh" || lockFreshness === "stale" ? "last_confirmed" : "unknown";
   const stateSummary = String(presentation?.summary || "").trim();
-  const batteryLow = accessState?.batteryLow === true || presentation?.batteryLevel === "critical";
-  const battery = typeof presentation?.batteryPercentage === "number" ? presentation.batteryPercentage : accessState?.batteryPercentage;
-  const batteryLevel = presentation?.batteryLevel || accessState?.batteryLevel;
+  const battery = typeof truth?.battery_level === "number" ? truth.battery_level : typeof presentation?.batteryPercentage === "number" ? presentation.batteryPercentage : accessState?.batteryPercentage;
+  const batteryLevel = typeof battery === "number" ? (battery <= 20 ? "critical" : battery <= 35 ? "low" : "normal") : presentation?.batteryLevel || accessState?.batteryLevel;
+  const batteryLow = accessState?.batteryLow === true || batteryLevel === "critical";
   const securityAlert = accessState?.tamperActive || accessState?.wrongAttemptActive;
   const recentRecords = smartAccess?.records || [];
   const operationMatrix = smartAccess?.profile?.operation_matrix || [];
-  const LockIcon = locked ? LockKeyhole : LockKeyholeOpen;
+  const LockIcon = locked === false ? LockKeyholeOpen : LockKeyhole;
   const lockTone = availability === "offline" || availability === "provider_disconnected" || availability === "setup_incomplete"
     ? "border-white/10 bg-white/[0.04] text-white/38"
     : batteryLevel === "critical"
       ? "border-rose-300/20 bg-rose-400/10 text-rose-100"
-      : locked
+      : locked !== false
         ? "border-emerald-300/18 bg-emerald-400/10 text-emerald-100"
         : "border-amber-300/20 bg-amber-400/10 text-amber-100";
-  const availabilityCopy = availabilityReason === "provider_reports_offline"
-    ? "Provider reports offline"
-    : availabilityLabel(availability);
+  const availabilityCopy = smartAccessAvailabilityCopy(providerConnectionState, deviceReachability, availability, availabilityReason);
   const timingCopy = availabilityReason === "provider_reports_offline"
     ? (lastChecked ? ` · checked ${timeAgo(lastChecked)}` : "")
     : availability === "offline"
@@ -261,17 +287,23 @@ export default function DoorPanel({
       : availability === "stale"
         ? (lastSeen ? ` · last updated ${timeAgo(lastSeen)}` : "")
         : "";
-  const stateConfidenceCopy = primaryConfidence === "last_confirmed" && lastConfirmed
-    ? `Last confirmed ${timeAgo(lastConfirmed)}`
-    : primaryConfidence === "live"
-      ? "Live state"
-      : primaryConfidence === "unknown"
-        ? "State confidence unknown"
-        : "Inferred state";
-  const lockUnavailableNote = locked
+  const stateConfidenceCopy = smartAccessStateConfidenceCopy({
+    primaryConfidence,
+    providerUnavailable,
+    lastConfirmed,
+    lockFreshness,
+  });
+  const lockTitle = providerUnavailable && locked !== null
+    ? `Last known: ${locked ? "Locked" : "Unlocked"}`
+    : lockFreshness === "expired"
+      ? "Status unavailable"
+      : locked === null
+        ? "Lock position unavailable"
+        : locked ? "Locked" : "Unlocked";
+  const lockUnavailableNote = locked !== false
     ? capabilityNote(smartAccess, "control", "unlock", {
-        missing: "Remote unlock is unavailable through this connection.",
-        declared: "Remote unlock is detected, but provider setup is not verified.",
+        missing: truth?.remote_unlock_unavailable_reason || "Remote unlock is unavailable through this connection.",
+        declared: truth?.remote_unlock_unavailable_reason || "Remote unlock is detected, but provider setup is not verified.",
         verification: "Remote unlock needs live verification before Oyi enables it.",
       })
     : capabilityNote(smartAccess, "control", "lock", {
@@ -309,7 +341,7 @@ export default function DoorPanel({
           <LockIcon className="h-9 w-9" />
         </div>
         <div className="mt-4 text-2xl font-semibold tracking-[-0.05em] text-white">
-          {controlEvidence.hasLockState ? (locked ? "Locked" : "Unlocked") : "Lock state unknown"}
+          {lockTitle}
         </div>
         <div className="mt-1 text-xs text-white/54">
           {stateConfidenceCopy}
@@ -322,7 +354,7 @@ export default function DoorPanel({
         {smartLoading ? <div className="mt-2 text-xs text-white/42">Checking access capabilities...</div> : null}
         {!nextControlSupported ? (
           <div className="mx-auto mt-4 max-w-[290px] rounded-2xl border border-white/10 bg-black/18 px-3 py-2 text-xs leading-5 text-white/58">
-            {lockUnavailableNote || `Remote ${locked ? "unlock" : "lock"} is unavailable through this connection.`}
+            {lockUnavailableNote || truth?.remote_unlock_unavailable_reason || `Remote ${locked !== false ? "unlock" : "lock"} is unavailable through this connection.`}
           </div>
         ) : (
           <button
@@ -345,7 +377,7 @@ export default function DoorPanel({
         <div className={`rounded-2xl border px-3 py-2 ${batteryLow || batteryLevel === "critical" ? "border-rose-300/22 bg-rose-400/10 text-rose-50" : "border-white/10 bg-white/5 text-white/72"}`}>
           <Battery className="mb-2 h-4 w-4 opacity-80" />
           <div className="text-white/45">Battery</div>
-          <div className="mt-0.5 font-semibold">{batteryLabel(battery, batteryLevel)}</div>
+          <div className="mt-0.5 font-semibold">{batteryTruthLabel(battery, batteryLevel, batteryConfirmedAt, batteryFreshness, providerConnectionState) || batteryLabel(battery, batteryLevel)}</div>
         </div>
         <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-white/72">
           <Wifi className="mb-2 h-4 w-4 opacity-80" />

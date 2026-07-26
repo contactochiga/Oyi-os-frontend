@@ -1103,7 +1103,9 @@ export default function DeviceClient() {
     }
     setSheetDevice(device);
     setSheetOpen(true);
-    void hydrateDeviceIntelligence(device);
+    const sid = String(pickDbId(device) || "");
+    const renderer = deviceRendererKind(device, sid ? runtimeMap[sid] : null);
+    if (renderer !== "lock") void hydrateDeviceIntelligence(device);
   }
 
   async function assignListedDevice() {

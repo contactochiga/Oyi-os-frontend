@@ -51,9 +51,39 @@ expect(
   "DoorPanel must surface battery percentage and severity",
 );
 expect(
+  "src/services/deviceService.ts",
+  /provider_connection_state[\s\S]*device_reachability[\s\S]*lock_state_freshness[\s\S]*lock_state_confirmed_at[\s\S]*remote_unlock_unavailable_reason/,
+  "Consumer smart-access types must preserve the separated Backend lock truth contract",
+);
+expect(
+  "src/app/components/remotes/DoorPanel.tsx",
+  /providerConnectionState[\s\S]*deviceReachability[\s\S]*lockFreshness[\s\S]*lockLive/,
+  "DoorPanel must derive live lock presentation from connection, reachability and freshness together",
+);
+expect(
+  "src/app/components/remotes/DoorPanel.tsx",
+  /Last known state[\s\S]*Last report is too old to rely on[\s\S]*Lock position unavailable/,
+  "DoorPanel must not label disconnected, expired or unavailable lock position as live",
+);
+expect(
+  "src/app/components/remotes/DoorPanel.tsx",
+  /batteryTruthLabel[\s\S]*Battery unavailable[\s\S]*Last reported/,
+  "DoorPanel must render battery freshness separately from lock state freshness",
+);
+expect(
+  "src/app/devices/DevicesClient.tsx",
+  /renderer !== "lock"[\s\S]*hydrateDeviceIntelligence\(device\)/,
+  "Opening a Smart Access panel must avoid the duplicate optional intelligence panel fetch",
+);
+expect(
   "src/app/components/remotes/DoorPanel.tsx",
   /unlock_confirmed: !nextLocked/,
   "Unlock commands must include explicit resident confirmation metadata",
+);
+reject(
+  "src/app/components/remotes/DoorPanel.tsx",
+  /pickLocked/,
+  "DoorPanel must not default unknown cached lock data to locked/live",
 );
 expect(
   "src/app/components/remotes/DoorPanel.tsx",
