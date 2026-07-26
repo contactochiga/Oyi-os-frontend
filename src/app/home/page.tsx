@@ -220,12 +220,9 @@ export default function HomePage() {
     setDevicesBusy(true);
     setDevicesErr(null);
     try {
-      const [assigned, registry] = await Promise.all([
-        deviceService.getRuntimeDevices(homeId),
-        deviceService.getRegistryDevices(estateId),
-      ]);
+      const assigned = await deviceService.getRuntimeDevices(homeId);
       setAssignedDevices(asArray(assigned));
-      setRegistryDevices(asArray(registry));
+      setRegistryDevices([]);
     } catch (err: any) {
       console.error("[consumer.home.devices] load_failed", {
         estateId,

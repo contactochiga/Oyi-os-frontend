@@ -875,6 +875,7 @@ export default function DeviceClient() {
       });
     return () => {
       alive = false;
+      if (deviceId) void deviceService.releaseDeviceView(deviceId);
     };
   }, [sheetOpen, sheetDevice]);
 

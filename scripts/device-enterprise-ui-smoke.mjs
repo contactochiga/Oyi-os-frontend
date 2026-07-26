@@ -86,6 +86,21 @@ expect(
   /deviceService\.getRuntimeDevices\(homeId\)/,
   "Home quick devices must use Runtime V2 for assigned/current devices",
 );
+reject(
+  "src/app/home/page.tsx",
+  /getRegistryDevices\(estateId/,
+  "Home quick devices must not fetch broad estate registry inventory",
+);
+expect(
+  "src/services/deviceService.ts",
+  /releaseDeviceView[\s\S]*state\/view\/release/,
+  "Consumer must release explicit Runtime V2 panel leases on close/unmount",
+);
+expect(
+  "src/hooks/useDeviceLiveState.ts",
+  /releaseDeviceView\(deviceId\)/,
+  "Device live-state hook must release panel leases during cleanup",
+);
 expect(
   "src/app/security/page.tsx",
   /deviceService\.getRuntimeDevices\(active\.home_id/,

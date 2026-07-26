@@ -280,6 +280,15 @@ export const deviceService = {
     }
   },
 
+  async releaseDeviceView(deviceId: string): Promise<void> {
+    if (!deviceId) return;
+    try {
+      await API.post(`/devices/${encodeURIComponent(deviceId)}/state/view/release`);
+    } catch {
+      // Lease TTL remains the crash/navigation fallback; release is best-effort.
+    }
+  },
+
   async getRuntimeDevices(homeId?: string | null, options: RuntimeDevicesOptions = {}): Promise<DeviceRuntimeSummary[]> {
     const cacheKey = String(homeId || "active-home");
     const now = Date.now();
@@ -298,7 +307,7 @@ export const deviceService = {
           ...row,
           deviceId: String(row.device_id),
           state: row?.state ?? {},
-          normalized_state: row?.normalized_state ?? null,
+          normalized_state: row?.normalized_state ?? row?.state?.normalized_state ?? null,
           capabilities: row?.capabilities ?? [],
           supported_controls: row?.supported_controls ?? [],
           capability_codes: row?.capability_codes ?? [],

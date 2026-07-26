@@ -65,7 +65,10 @@ export function useDeviceLiveState(deviceId?: string, estateId?: string | null) 
   useEffect(() => {
     if (!canUse) return;
     refresh();
-  }, [canUse, refresh]);
+    return () => {
+      if (deviceId) void deviceService.releaseDeviceView(deviceId);
+    };
+  }, [canUse, deviceId, refresh]);
 
   // Live updates via Socket.IO
   useEffect(() => {
