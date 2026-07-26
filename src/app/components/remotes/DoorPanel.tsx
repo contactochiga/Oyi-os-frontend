@@ -351,6 +351,11 @@ export default function DoorPanel({
           {(pending || loading) ? " · syncing..." : ""}
         </div>
         {stateSummary ? <div className="mx-auto mt-2 max-w-[280px] text-xs text-white/46">{stateSummary}</div> : null}
+        {providerUnavailable ? (
+          <div className="mx-auto mt-2 max-w-[280px] text-xs text-white/50">
+            Reconnect provider to resume live updates.
+          </div>
+        ) : null}
         {smartLoading ? <div className="mt-2 text-xs text-white/42">Checking access capabilities...</div> : null}
         {!nextControlSupported ? (
           <div className="mx-auto mt-4 max-w-[290px] rounded-2xl border border-white/10 bg-black/18 px-3 py-2 text-xs leading-5 text-white/58">

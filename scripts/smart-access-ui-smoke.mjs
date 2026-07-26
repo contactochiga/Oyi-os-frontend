@@ -62,7 +62,7 @@ expect(
 );
 expect(
   "src/app/components/remotes/DoorPanel.tsx",
-  /Last known state[\s\S]*Last report is too old to rely on[\s\S]*Lock position unavailable/,
+  /Last known state[\s\S]*Last report is too old to rely on[\s\S]*Lock position unavailable[\s\S]*Reconnect provider to resume live updates/,
   "DoorPanel must not label disconnected, expired or unavailable lock position as live",
 );
 expect(
