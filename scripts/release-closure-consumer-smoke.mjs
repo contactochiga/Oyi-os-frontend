@@ -69,6 +69,9 @@ assert(/tvRemoteButtonMap/.test(devicesClient) && /provider_key:\s*definition\?\
 assert(/type: "tv_remote"/.test(devicesClient) && /command_key:\s*key/.test(devicesClient) && !/\[keyCode\]: key/.test(devicesClient), "TV controls send canonical command identity with exact provider-key evidence");
 assert(/irTapSequenceRef/.test(devicesClient) && /tapSequence/.test(deviceService) && !/irSubmissionQueuesRef/.test(devicesClient), "TV remote taps submit independently with explicit tap sequence metadata");
 assert(!/recentRemotePressRef/.test(devicesClient), "TV remote taps are not collapsed by identical-command duplicate suppression");
+assert(/commandTransport\?: "ir" \| "standard"/.test(deviceService) && /const isIrCommand = options\.commandTransport === "ir"/.test(deviceService), "custom tap headers are explicitly limited to IR commands");
+assert(!/"X-Command-Key"/.test(deviceService) && /command_key: options\.commandKey/.test(deviceService), "switch command identity stays in the JSON body instead of a non-CORS custom header");
+assert(/commandTransport: "ir"/.test(devicesClient), "TV remote calls opt into the verified IR tap headers");
 assert(/IR dispatch/.test(devicesClient) && /remoteStatus === "sending"/.test(devicesClient) && /remoteStatus === "acknowledged"/.test(devicesClient) && /remoteStatus === "rejected"/.test(devicesClient), "TV remote uses a compact dispatch status indicator instead of the power button as global feedback");
 assert(/type: "ac_remote", power: nextPower/.test(devicesClient) && /fan_speed: speed/.test(devicesClient), "AC controls send canonical air-conditioner commands");
 assert(/\["tv", "television", "projector", "set_top_box", "speaker"\]\.includes\(family\)/.test(devicesClient) && /\["climate", "air_conditioner", "thermostat"\]\.includes\(family\)/.test(devicesClient), "DevicesClient renders canonical television and air-conditioner profiles");

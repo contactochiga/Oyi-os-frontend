@@ -1207,6 +1207,7 @@ export default function DeviceClient() {
           idempotencyKey,
           tapSequence,
           clientTapTimestamp: now,
+          commandTransport: "ir",
         });
       } else {
         await deviceService.commandDevice(sid, command, { idempotencyKey });
