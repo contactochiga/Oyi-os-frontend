@@ -6,6 +6,8 @@ type Props = {
   gangCount: 1 | 2 | 3;
   online: boolean | null;
   values: Array<boolean | null>; // length >= gangCount (on/off/unknown per gang)
+  desiredValues?: Array<boolean | null | undefined>;
+  pendingKeys?: Record<number, boolean>;
   busy?: boolean;
   onToggleGang?: (gangIndex: number, next: boolean) => void;
   size?: number; // px
@@ -36,6 +38,8 @@ export default function GangRingSwitch({
   gangCount,
   online,
   values,
+  desiredValues,
+  pendingKeys,
   busy,
   onToggleGang,
   size = 56,
@@ -48,9 +52,11 @@ export default function GangRingSwitch({
   return (
     <div className="flex items-center gap-3">
       {gangs.map((i) => {
-        const v = values?.[i] ?? null;
-        const cls = ringClass({ online, value: v, busy });
-        const disabled = busy || online === false || typeof onToggleGang !== "function";
+        const confirmed = values?.[i] ?? null;
+        const pending = Boolean(pendingKeys?.[i]);
+        const v = pending && desiredValues?.[i] !== undefined ? desiredValues?.[i] ?? null : confirmed;
+        const cls = ringClass({ online, value: v, busy: busy || pending });
+        const disabled = online === false || typeof onToggleGang !== "function";
 
         return (
           <button
@@ -60,7 +66,7 @@ export default function GangRingSwitch({
             onClick={() => onToggleGang?.(i, !(v === true))}
             className={`relative rounded-full border border-white/10 bg-black/20 hover:bg-white/5 transition disabled:opacity-50 ${cls}`}
             style={{ width: size, height: size }}
-            aria-label={`Gang ${i + 1} ${v === true ? "On" : "Off"}`}
+            aria-label={`Gang ${i + 1} ${pending ? "confirming" : "confirmed"} ${v === true ? "On" : "Off"}`}
           >
             {/* inner glass */}
             <span className="absolute inset-[10px] rounded-full bg-black/40" />

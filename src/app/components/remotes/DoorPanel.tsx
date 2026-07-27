@@ -153,6 +153,7 @@ export default function DoorPanel({
 
   const pendingTimer = useRef<any>(null);
   const expectedRef = useRef<{ locked: boolean } | null>(null);
+  const smartAccessRefreshKeyRef = useRef<string>("");
 
   useEffect(() => {
     let cancelled = false;
@@ -160,6 +161,9 @@ export default function DoorPanel({
       setSmartAccess(null);
       return;
     }
+    const refreshKey = `${deviceId}:${activeContext.contextKey}:${lastUpdated || "initial"}`;
+    if (smartAccessRefreshKeyRef.current === refreshKey) return;
+    smartAccessRefreshKeyRef.current = refreshKey;
     setSmartLoading(true);
     deviceService.getSmartAccess(deviceId)
       .then((payload) => {
@@ -174,7 +178,7 @@ export default function DoorPanel({
     return () => {
       cancelled = true;
     };
-  }, [deviceId, activeContext.contextKey, activeContext.home_id]);
+  }, [deviceId, activeContext.contextKey, activeContext.home_id, lastUpdated]);
 
   function touch() {
     onInteraction?.();

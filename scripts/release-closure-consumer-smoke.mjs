@@ -40,6 +40,7 @@ const geoFenceBridge = read("src/app/components/GeoFenceBridge.tsx");
 const proximityService = read("src/services/proximityService.ts");
 const doorPanel = read("src/app/components/remotes/DoorPanel.tsx");
 const walletPanel = read("src/app/components/remotes/WalletPanel.tsx");
+const toggleGangBody = devicesClient.match(/async function toggleGang[\s\S]*?\n  async function toggleMasterPower/)?.[0] || "";
 
 assert(!/ignoreDuringBuilds\s*:\s*true/.test(nextConfig), "Next build does not ignore ESLint failures");
 assert(!/ignoreBuildErrors\s*:\s*true/.test(nextConfig), "Next build does not ignore TypeScript failures");
@@ -57,6 +58,12 @@ assert(/canPowerControl/.test(roomsClient) && /This device does not expose a sim
 assert(/activeContextKeyRef/.test(roomClient) && /getRuntimeDevices\(homeId\)/.test(roomClient), "RoomClient guards context switches and hydrates Runtime V2 summaries");
 assert(/resolveGangCode/.test(roomClient) && /GangRingSwitch/.test(roomClient), "RoomClient keeps multi-gang controls tied to canonical channel codes");
 assert(/switchCommandCodes/.test(devicesClient) && /channel_definitions/.test(devicesClient), "DevicesClient derives switch commands from runtime channel definitions");
+assert(/type SwitchChannelCommandState/.test(devicesClient) && /confirmed_state/.test(devicesClient) && /desired_state/.test(devicesClient) && /command_execution_id/.test(devicesClient), "DevicesClient tracks switch interaction state per channel");
+assert(/nextSwitchTapSequence/.test(devicesClient) && /commandKey = `\$\{activeContext\.contextKey/.test(devicesClient) && /clientTapTimestamp = Date\.now\(\)/.test(devicesClient), "switch commands send stable command identity, monotonic tap sequence and client timestamp");
+assert(/deviceService\.commandDevice\(sid, \{ \[code\]: next \}, \{[\s\S]*commandKey,[\s\S]*tapSequence,[\s\S]*clientTapTimestamp/.test(devicesClient), "single-gang switch taps include command identity metadata");
+assert(toggleGangBody && !/setBusyId\(sid\)/.test(toggleGangBody), "per-gang switch taps do not use panel-wide busy state");
+assert(/settleSwitchCommandsFromPatch/.test(devicesClient) && /device\.status\.updated/.test(devicesClient), "switch commands settle from canonical socket/runtime state updates");
+assert(/desiredValues=\{desiredValues\}/.test(devicesClient) && /pendingKeys=\{pendingKeys\}/.test(devicesClient), "switch renderer passes per-channel desired and pending state to the ring UI");
 assert(/residentItems/.test(devicesClient) && /isTransportHub/.test(devicesClient), "DevicesClient hides configured IR transport hubs from resident presentation lists");
 assert(/tvRemoteButtonMap/.test(devicesClient) && /provider_key:\s*definition\?\.providerKey/.test(devicesClient) && /key_id:\s*definition\?\.keyId/.test(devicesClient), "TV controls use the bound remote key catalogue instead of guessed provider keys");
 assert(/type: "tv_remote"/.test(devicesClient) && /command_key:\s*key/.test(devicesClient) && !/\[keyCode\]: key/.test(devicesClient), "TV controls send canonical command identity with exact provider-key evidence");
@@ -110,6 +117,7 @@ assert(!/document\.addEventListener\("scroll"/.test(bottomNav) && /VIEWPORT_RESI
 assert(/proximityDiagnostic/.test(geoFenceBridge) && /proximity_monitor_started/.test(geoFenceBridge) && /proximity_event_suppressed/.test(geoFenceBridge), "proximity bridge exposes scoped diagnostic lifecycle events");
 assert(/getSettings\(scope/.test(proximityService), "proximity settings requests include active context scope");
 assert(/useActiveContext/.test(doorPanel) && !/localStorage\.getItem\("ochiga_estate"\)/.test(doorPanel), "door panel uses active context instead of legacy local storage");
+assert(/lastUpdated/.test(doorPanel) && /smartAccessRefreshKeyRef/.test(doorPanel) && /deviceService\.getSmartAccess\(deviceId\)/.test(doorPanel), "door panel refreshes read-only Smart Access details when runtime state updates");
 assert(/confirmingUnlock/.test(doorPanel) && /Unlock this door\?/.test(doorPanel), "door unlock requires contextual resident confirmation");
 assert(/useActiveContext/.test(walletPanel) && /walletService\.getWallet\(scope\)/.test(walletPanel) && !/estateOpsService/.test(walletPanel), "wallet panel reads the active-home wallet");
 assert(/maintenanceService\.listMyTickets\(\{ homeId: activeContext\.home_id/.test(maintenancePage), "maintenance list is scoped to active home");

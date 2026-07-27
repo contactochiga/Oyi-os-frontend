@@ -67,6 +67,22 @@ type AddDeviceTab = "nearby" | "provider" | "manual";
 type CategoryKey = "all" | "lights" | "climate" | "security" | "entertainment" | "sensors";
 type DeviceTool = "timer" | "schedule" | "settings" | "activity";
 type IrProfile = "tv" | "ac" | "fan" | "projector";
+type SwitchCommandStatus = "pending" | "confirmed" | "failed" | "timeout";
+type SwitchChannelCommandState = {
+  confirmed_state: boolean | null;
+  desired_state: boolean;
+  command_status: SwitchCommandStatus;
+  command_execution_id: string | null;
+  command_key: string;
+  command_code: string;
+  tap_sequence: number;
+  client_tap_timestamp: number;
+  error?: string | null;
+};
+
+function switchStateKey(deviceId: string, commandCode: string) {
+  return `${deviceId}:${commandCode}`;
+}
 
 const CATEGORIES: Array<{ key: CategoryKey; label: string }> = [
   { key: "all", label: "All" },
@@ -518,6 +534,26 @@ function relativeTimeLabel(value?: string | number | null) {
   return `${days} day${days === 1 ? "" : "s"} ago`;
 }
 
+function runtimeLastUpdatedAt(runtime?: Partial<DeviceRuntimeContract> | null) {
+  const presentation = runtime?.canonical_presentation || runtime?.presentation || null;
+  const canonical = runtime?.canonical_state || runtime?.canonicalState || null;
+  const candidates = [
+    presentation?.lastConfirmedStateAt,
+    presentation?.lastCheckedAt,
+    presentation?.lastSeenAt,
+    canonical?.lastProviderSyncAt,
+    canonical?.lastSeenAt,
+    runtime?.lastSeen,
+    (runtime as any)?.last_refresh,
+    (runtime as any)?.updated_at,
+  ];
+  for (const value of candidates) {
+    const timestamp = value ? new Date(value as any).getTime() : NaN;
+    if (Number.isFinite(timestamp)) return timestamp;
+  }
+  return null;
+}
+
 function telemetryContextLine(device: AnyDevice, runtime?: Partial<DeviceRuntimeContract> | null) {
   const contract = normalizeRuntimeContract(device, runtime);
   const summary = runtimeActivitySummary(device, runtime, "");
@@ -693,8 +729,57 @@ export default function DeviceClient() {
   const [tool, setTool] = useState<{ kind: DeviceTool; device: AnyDevice } | null>(null);
   const [deviceExecutions, setDeviceExecutions] = useState<Array<Record<string, any>>>([]);
   const irTapSequenceRef = useRef(0);
+  const switchTapSequenceRef = useRef<Record<string, number>>({});
+  const switchTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const [switchCommands, setSwitchCommands] = useState<Record<string, SwitchChannelCommandState>>({});
   const latestAwareness = useRuntimeIntelligenceStore((state) => state.latestAwareness);
   const latestRecommendations = useRuntimeIntelligenceStore((state) => state.latestRecommendations);
+
+  function nextSwitchTapSequence(deviceId: string, commandCode: string) {
+    const key = switchStateKey(deviceId, commandCode);
+    const next = (switchTapSequenceRef.current[key] || 0) + 1;
+    switchTapSequenceRef.current[key] = next;
+    return next;
+  }
+
+  function clearSwitchTimeout(key: string) {
+    if (switchTimeoutsRef.current[key]) clearTimeout(switchTimeoutsRef.current[key]);
+    delete switchTimeoutsRef.current[key];
+  }
+
+  function scheduleSwitchTimeout(key: string, label: string) {
+    clearSwitchTimeout(key);
+    switchTimeoutsRef.current[key] = setTimeout(() => {
+      setSwitchCommands((current) => {
+        const pending = current[key];
+        if (!pending || pending.command_status !== "pending") return current;
+        return {
+          ...current,
+          [key]: {
+            ...pending,
+            command_status: "timeout",
+            error: `${label} did not confirm in time.`,
+          },
+        };
+      });
+    }, 12_000);
+  }
+
+  function settleSwitchCommandsFromPatch(deviceId: string, patch: Record<string, any>) {
+    setSwitchCommands((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const [key, pending] of Object.entries(current)) {
+        if (!key.startsWith(`${deviceId}:`)) continue;
+        const raw = patch?.[pending.command_code];
+        if (typeof raw !== "boolean" || raw !== pending.desired_state) continue;
+        clearSwitchTimeout(key);
+        delete next[key];
+        changed = true;
+      }
+      return changed ? next : current;
+    });
+  }
 
   async function hydrateStates(
     list: AnyDevice[],
@@ -722,7 +807,10 @@ export default function DeviceClient() {
       });
       return;
     }
-    if (Object.keys(patch).length) setStateMap((prev) => ({ ...prev, ...patch }));
+    if (Object.keys(patch).length) {
+      setStateMap((prev) => ({ ...prev, ...patch }));
+      Object.entries(patch).forEach(([sid, state]) => settleSwitchCommandsFromPatch(sid, state as Record<string, any>));
+    }
     if (Object.keys(runtimePatch).length) setRuntimeMap((prev) => ({ ...prev, ...runtimePatch }));
   }
 
@@ -774,6 +862,16 @@ export default function DeviceClient() {
   }, [contextReady, activeContext.contextKey]);
 
   useEffect(() => {
+    const timeouts = switchTimeoutsRef.current;
+    return () => {
+      Object.keys(timeouts).forEach((key) => {
+        if (timeouts[key]) clearTimeout(timeouts[key]);
+        delete timeouts[key];
+      });
+    };
+  }, []);
+
+  useEffect(() => {
     if (!contextReady || !estateId || !homeId) return;
     const socket = getSocket();
     if (!socket) return;
@@ -802,17 +900,19 @@ export default function DeviceClient() {
       if (!target) return;
       const sid = String(pickDbId(target) || "");
       if (!sid) return;
+      const statePatch = payload?.state || {};
       setStateMap((prev) => ({
         ...prev,
-        [sid]: { ...(prev[sid] || {}), ...(payload?.state || {}) },
+        [sid]: { ...(prev[sid] || {}), ...statePatch },
       }));
       setRuntimeMap((prev) => ({
         ...prev,
         [sid]: normalizeRuntimeContract(target, {
           ...(prev[sid] || { state: {} }),
-          state: { ...((prev[sid] as any)?.state || {}), ...(payload?.state || {}) },
+          state: { ...((prev[sid] as any)?.state || {}), ...statePatch },
         }),
       }));
+      settleSwitchCommandsFromPatch(sid, statePatch);
     };
 
     socket.on("connect", subscribe);
@@ -825,6 +925,7 @@ export default function DeviceClient() {
       socket.off("device:update", onUpdate);
       socket.off("device.status.updated", onUpdate);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contextReady, activeContext.contextKey, estateId, homeId, items]);
 
   useEffect(() => {
@@ -976,19 +1077,82 @@ export default function DeviceClient() {
     if (!dbId) return setErr("This device is not assigned yet.");
     const sid = String(dbId);
     if (!canSwitchDevice(device, runtimeMap[sid] || null)) return setErr(`${pickName(device)} does not expose a supported power command.`);
-    setBusyId(sid);
     setErr(null);
+    const label = pickName(device);
+    let stateKey = "";
+    let commandCode = "";
+    let confirmedState: boolean | null = null;
     try {
       await warmState(device);
       const cached = stateMap[sid] || {};
-      const gangCount = guessGangCount(device, cached, runtimeMap[sid] || null);
-      const code = normalizeCommandKey(device, cached, runtimeMap[sid] || null, gangIndex);
-      await deviceService.commandDevice(sid, { [code]: next });
+      const runtime = runtimeMap[sid] || null;
+      const gangCount = guessGangCount(device, cached, runtime);
+      const code = normalizeCommandKey(device, cached, runtime, gangIndex);
+      commandCode = code;
+      const existing = switchCommands[switchStateKey(sid, code)];
+      if (existing?.command_status === "pending" && existing.desired_state === next) return;
+      const values = readGangValues(gangCount, cached, runtime);
+      confirmedState = existing?.confirmed_state ?? values[gangIndex] ?? null;
+      const tapSequence = nextSwitchTapSequence(sid, code);
+      const clientTapTimestamp = Date.now();
+      const commandKey = `${activeContext.contextKey || "home"}:${sid}:${code}:${tapSequence}`;
+      stateKey = switchStateKey(sid, code);
+      setSwitchCommands((current) => ({
+        ...current,
+        [stateKey]: {
+          confirmed_state: confirmedState,
+          desired_state: next,
+          command_status: "pending",
+          command_execution_id: null,
+          command_key: commandKey,
+          command_code: code,
+          tap_sequence: tapSequence,
+          client_tap_timestamp: clientTapTimestamp,
+          error: null,
+        },
+      }));
+      scheduleSwitchTimeout(stateKey, label);
       setStateMap((p) => ({ ...p, [sid]: { ...(p[sid] || {}), [code]: next, ...(gangCount === 1 ? { switch: next, power: next, on: next } : {}) } }));
+      const response = await deviceService.commandDevice(sid, { [code]: next }, {
+        idempotencyKey: commandKey,
+        commandKey,
+        tapSequence,
+        clientTapTimestamp,
+      });
+      setSwitchCommands((current) => {
+        const pending = current[stateKey];
+        if (!pending || pending.command_key !== commandKey) return current;
+        return {
+          ...current,
+          [stateKey]: {
+            ...pending,
+            command_execution_id: response?.command_execution_id || pending.command_execution_id,
+          },
+        };
+      });
     } catch (e: any) {
-      setErr(e?.response?.data?.error || e?.message || "Command failed");
-    } finally {
-      setBusyId(null);
+      const message = e?.response?.data?.error || e?.message || "Command failed";
+      if (stateKey) {
+        clearSwitchTimeout(stateKey);
+        setSwitchCommands((current) => {
+          const pending = current[stateKey];
+          if (!pending) return current;
+          return {
+            ...current,
+            [stateKey]: {
+              ...pending,
+              command_status: "failed",
+              error: message,
+            },
+          };
+        });
+      }
+      setStateMap((p) => {
+        const cached = p[sid] || {};
+        if (!commandCode || confirmedState === null) return p;
+        return { ...p, [sid]: { ...cached, [commandCode]: confirmedState } };
+      });
+      setErr(message);
     }
   }
 
@@ -1006,7 +1170,15 @@ export default function DeviceClient() {
       const nowOn = readPowerState(cached, runtimeMap[sid] || null);
       const next = nowOn === null ? true : !nowOn;
       const command = buildPowerCommand(device, cached, next);
-      await deviceService.commandDevice(sid, command);
+      const tapSequence = nextSwitchTapSequence(sid, "master");
+      const clientTapTimestamp = Date.now();
+      const commandKey = `${activeContext.contextKey || "home"}:${sid}:master:${tapSequence}`;
+      await deviceService.commandDevice(sid, command, {
+        idempotencyKey: commandKey,
+        commandKey,
+        tapSequence,
+        clientTapTimestamp,
+      });
       setStateMap((p) => ({ ...p, [sid]: { ...(p[sid] || {}), ...command, switch: next, power: next, on: next } }));
     } catch (e: any) {
       setErr(e?.response?.data?.error || e?.message || "Command failed");
@@ -1335,7 +1507,7 @@ export default function DeviceClient() {
 
         {addDeviceOpen ? <AddDeviceSheet tab={addDeviceTab} setTab={setAddDeviceTab} discovering={discovering} binding={binding} discovered={discovered} providerDevices={providerDevices} selectedDiscover={selectedDiscover} selectedCount={selectedDiscoveryIds.length} bindRoom={bindRoom} setBindRoom={setBindRoom} setSelectedDiscover={setSelectedDiscover} onClose={() => setAddDeviceOpen(false)} onScan={refreshDiscovery} onBind={bindSelectedDevices} /> : null}
         {assignDevice ? <UnassignedDeviceSheet device={assignDevice} room={assignRoom} setRoom={setAssignRoom} binding={binding} onClose={() => setAssignDevice(null)} onAssign={assignListedDevice} /> : null}
-        {sheetOpen && sheetDevice ? <DeviceModalRouter device={sheetDevice} state={stateMap[String(pickDbId(sheetDevice))] || {}} runtime={runtimeMap[String(pickDbId(sheetDevice))] || null} busy={busyId === String(pickDbId(sheetDevice))} awareness={latestAwareness} recommendation={latestRecommendations[0] || null} onClose={() => setSheetOpen(false)} onToggleGang={toggleGang} onPower={toggleMasterPower} onCommand={sendDeviceCommand} onTool={(kind, device) => setTool({ kind, device })} onCreateScene={(device) => router.push(`/scenes?create=scene&deviceId=${encodeURIComponent(String(pickDbId(device) || ""))}`)} onCreateAutomation={(device) => router.push(`/scenes?tab=automations&deviceId=${encodeURIComponent(String(pickDbId(device) || ""))}`)} onBindIrAppliance={bindIrAppliance} /> : null}
+        {sheetOpen && sheetDevice ? <DeviceModalRouter device={sheetDevice} state={stateMap[String(pickDbId(sheetDevice))] || {}} runtime={runtimeMap[String(pickDbId(sheetDevice))] || null} switchCommands={switchCommands} busy={busyId === String(pickDbId(sheetDevice))} awareness={latestAwareness} recommendation={latestRecommendations[0] || null} onClose={() => setSheetOpen(false)} onToggleGang={toggleGang} onPower={toggleMasterPower} onCommand={sendDeviceCommand} onTool={(kind, device) => setTool({ kind, device })} onCreateScene={(device) => router.push(`/scenes?create=scene&deviceId=${encodeURIComponent(String(pickDbId(device) || ""))}`)} onCreateAutomation={(device) => router.push(`/scenes?tab=automations&deviceId=${encodeURIComponent(String(pickDbId(device) || ""))}`)} onBindIrAppliance={bindIrAppliance} /> : null}
         {tool ? <DeviceToolSheet kind={tool.kind} device={tool.device} runtime={runtimeMap[String(pickDbId(tool.device))] || null} executionHistory={deviceExecutions} busy={busyId === String(pickDbId(tool.device))} onClose={() => setTool(null)} onTimer={(command, patch) => sendDeviceCommand(tool.device, command, patch)} onSchedule={(input) => saveDeviceSchedule(tool.device, input)} onSettings={async ({ favorite, room }) => {
           const id = String(pickDbId(tool.device) || "");
           if (!id) return;
@@ -1490,7 +1662,7 @@ function AddDeviceSheet({ tab, setTab, discovering, binding, discovered, provide
   );
 }
 
-function DeviceModalRouter({ device, state, runtime, busy, awareness, recommendation, onClose, onToggleGang, onPower, onCommand, onTool, onCreateScene, onCreateAutomation, onBindIrAppliance }: { device: AnyDevice; state: any; runtime?: Partial<DeviceRuntimeContract> | null; busy: boolean; awareness?: Record<string, any> | null; recommendation?: Record<string, any> | null; onClose: () => void; onToggleGang: (device: AnyDevice, gangIndex: number, next: boolean) => void; onPower: (device: AnyDevice) => void; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => Promise<void>; onTool: (kind: DeviceTool, device: AnyDevice) => void; onCreateScene: (device: AnyDevice) => void; onCreateAutomation: (device: AnyDevice) => void; onBindIrAppliance: (device: AnyDevice, profile: IrProfile) => void }) {
+function DeviceModalRouter({ device, state, runtime, switchCommands, busy, awareness, recommendation, onClose, onToggleGang, onPower, onCommand, onTool, onCreateScene, onCreateAutomation, onBindIrAppliance }: { device: AnyDevice; state: any; runtime?: Partial<DeviceRuntimeContract> | null; switchCommands?: Record<string, SwitchChannelCommandState>; busy: boolean; awareness?: Record<string, any> | null; recommendation?: Record<string, any> | null; onClose: () => void; onToggleGang: (device: AnyDevice, gangIndex: number, next: boolean) => void; onPower: (device: AnyDevice) => void; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => Promise<void>; onTool: (kind: DeviceTool, device: AnyDevice) => void; onCreateScene: (device: AnyDevice) => void; onCreateAutomation: (device: AnyDevice) => void; onBindIrAppliance: (device: AnyDevice, profile: IrProfile) => void }) {
   const { user } = useAuth();
   const activeContext = useActiveContext();
   const gangCount = guessGangCount(device, state, runtime);
@@ -1823,10 +1995,10 @@ function DeviceModalRouter({ device, state, runtime, busy, awareness, recommenda
             {needsIrProfile ? <IRProfilePicker options={irOptions} onSelect={(profile) => { setSelectedIrProfile(profile); onBindIrAppliance(device, profile); }} /> : null}
             {renderer === "tv" ? <TVRenderer device={device} runtime={runtime} busy={busy} onPower={onPower} onCommand={onCommand} /> : null}
             {renderer === "ac" ? <ACRenderer device={device} state={state} runtime={runtime} busy={busy} onCommand={onCommand} /> : null}
-            {renderer === "socket" ? <SocketRenderer device={device} state={state} runtime={runtime} caps={caps} gangCount={gangCount} values={values} busy={busy} onToggleGang={onToggleGang} /> : null}
+            {renderer === "socket" ? <SocketRenderer device={device} state={state} runtime={runtime} caps={caps} gangCount={gangCount} values={values} switchCommands={switchCommands} busy={busy} onToggleGang={onToggleGang} /> : null}
             {renderer === "ir" && !needsIrProfile ? <IRRenderer device={device} state={state} runtime={runtime} busy={busy} onPower={onPower} onCommand={onCommand} /> : null}
-            {renderer === "lock" ? <DoorPanel deviceId={String(pickDbId(device) || "")} lastUpdated={Date.now()} onInteraction={() => {}} /> : null}
-            {renderer === "switch" ? <SwitchRenderer device={device} state={state} runtime={runtime} caps={caps} gangCount={gangCount} values={values} busy={busy} onToggleGang={onToggleGang} /> : null}
+            {renderer === "lock" ? <DoorPanel deviceId={String(pickDbId(device) || "")} lastUpdated={runtimeLastUpdatedAt(runtime) || undefined} onInteraction={() => {}} /> : null}
+            {renderer === "switch" ? <SwitchRenderer device={device} state={state} runtime={runtime} caps={caps} gangCount={gangCount} values={values} switchCommands={switchCommands} busy={busy} onToggleGang={onToggleGang} /> : null}
             {renderer === "unsupported" ? <UnsupportedDeviceRenderer device={device} runtime={runtime} /> : null}
             {conversationRestoring ? <p className="mt-3 text-xs text-white/40">Restoring recent device conversation…</p> : null}
             <div className="mt-4 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -1927,13 +2099,26 @@ function IRProfilePicker({ options, onSelect }: { options?: IrProfileOption[]; o
   );
 }
 
-function SwitchRenderer({ device, runtime, caps, gangCount, values, busy, onToggleGang }: { device: AnyDevice; state: any; runtime?: Partial<DeviceRuntimeContract> | null; caps: ReturnType<typeof uiCapabilities>; gangCount: number; values: Array<boolean | null>; busy: boolean; onToggleGang: (device: AnyDevice, gangIndex: number, next: boolean) => void }) {
+function SwitchRenderer({ device, state, runtime, caps, gangCount, values, switchCommands, busy, onToggleGang }: { device: AnyDevice; state: any; runtime?: Partial<DeviceRuntimeContract> | null; caps: ReturnType<typeof uiCapabilities>; gangCount: number; values: Array<boolean | null>; switchCommands?: Record<string, SwitchChannelCommandState>; busy: boolean; onToggleGang: (device: AnyDevice, gangIndex: number, next: boolean) => void }) {
   const safeGangCount = Math.min(3, Math.max(1, gangCount)) as 1 | 2 | 3;
+  const sid = String(pickDbId(device) || "");
+  const desiredValues: Array<boolean | null | undefined> = [];
+  const pendingKeys: Record<number, boolean> = {};
+  for (let i = 0; i < safeGangCount; i += 1) {
+    const code = normalizeCommandKey(device, state, runtime, i);
+    const pending = sid ? switchCommands?.[switchStateKey(sid, code)] : null;
+    if (pending && pending.command_status === "pending") {
+      desiredValues[i] = pending.desired_state;
+      pendingKeys[i] = true;
+    } else if (pending && (pending.command_status === "failed" || pending.command_status === "timeout")) {
+      desiredValues[i] = pending.confirmed_state;
+    }
+  }
   return (
     <div className="space-y-3">
       <div className="rounded-[24px] border border-white/[0.07] bg-white/[0.035] p-4">
         <div className="mb-4 text-sm font-semibold text-white">Controls</div>
-        {caps.canSwitch ? <GangRingSwitch gangCount={safeGangCount} online={isOnline(device, runtime)} values={values} busy={busy} onToggleGang={(gangIndex, next) => onToggleGang(device, gangIndex, next)} size={safeGangCount === 1 ? 88 : 70} /> : null}
+        {caps.canSwitch ? <GangRingSwitch gangCount={safeGangCount} online={isOnline(device, runtime)} values={values} desiredValues={desiredValues} pendingKeys={pendingKeys} busy={busy} onToggleGang={(gangIndex, next) => onToggleGang(device, gangIndex, next)} size={safeGangCount === 1 ? 88 : 70} /> : null}
       </div>
     </div>
   );
