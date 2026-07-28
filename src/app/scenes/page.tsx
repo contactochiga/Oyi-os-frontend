@@ -272,6 +272,12 @@ export default function ScenesPage() {
     }
   }
 
+  async function refreshRuntimeDevicesForSceneSave() {
+    const nextDevices = await deviceService.getRuntimeDevices(homeId, { force: true });
+    setDevices(nextDevices);
+    return nextDevices;
+  }
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
@@ -439,6 +445,7 @@ export default function ScenesPage() {
             mode={presentation}
             devices={devices}
             onCancel={returnToList}
+            refreshDevices={refreshRuntimeDevicesForSceneSave}
             onSave={async (input) => {
               const current = presentation;
               const editing = current.mode === "editor" ? current.scene : null;
@@ -503,13 +510,15 @@ function Empty({ title, body }: { title: string; body: string }) {
   );
 }
 
-function SceneEditor({ mode, devices, onCancel, onSave }: { mode: Extract<ScenePresentation, { mode: "editor" | "saving" }>; devices: AnyDevice[]; onCancel: () => void; onSave: (input: { tab: Tab; name: string; description: string; trigger: string; actions: SceneAction[] }) => Promise<void> }) {
+function SceneEditor({ mode, devices, onCancel, onSave, refreshDevices }: { mode: Extract<ScenePresentation, { mode: "editor" | "saving" }>; devices: AnyDevice[]; onCancel: () => void; onSave: (input: { tab: Tab; name: string; description: string; trigger: string; actions: SceneAction[] }) => Promise<void>; refreshDevices: () => Promise<AnyDevice[]> }) {
   const initial = mode.mode === "editor" ? mode.scene : null;
   const template = mode.mode === "editor" ? mode.template : null;
   const initialDeviceId = mode.mode === "editor" ? mode.initialDeviceId : "";
   const validationIssue = mode.mode === "editor" ? mode.validationIssue : null;
   const tab = mode.tab;
   const saving = mode.mode === "saving";
+  const [checkingCapabilities, setCheckingCapabilities] = useState(false);
+  const [editorDevices, setEditorDevices] = useState<AnyDevice[]>(devices);
   const [name, setName] = useState(initial?.name || template?.name || "");
   const [description, setDescription] = useState((initial as ConsumerScene | null)?.description || template?.description || "");
   const [trigger, setTrigger] = useState(String((initial as ConsumerAutomation | null)?.trigger?.type || template?.trigger || "time"));
@@ -553,6 +562,9 @@ function SceneEditor({ mode, devices, onCancel, onSave }: { mode: Extract<SceneP
     }
     return next;
   });
+  useEffect(() => {
+    setEditorDevices(devices);
+  }, [devices]);
 
   const initialSignature = useMemo(() => JSON.stringify({ name: initial?.name || template?.name || "", description: (initial as ConsumerScene | null)?.description || template?.description || "", trigger: (initial as ConsumerAutomation | null)?.trigger?.type || template?.trigger || "time", actions: initial?.actions || [] }), [initial, template]);
   const actions = useMemo(() => Object.values(actionSelections).map((selection) => ({
@@ -565,12 +577,12 @@ function SceneEditor({ mode, devices, onCancel, onSave }: { mode: Extract<SceneP
   })), [actionSelections]);
   const currentSignature = JSON.stringify({ name, description, trigger, actions });
   const dirty = currentSignature !== initialSignature;
-  const deviceModels = useMemo<DeviceSceneModel[]>(() => devices.map((device) => ({
+  const deviceModels = useMemo<DeviceSceneModel[]>(() => editorDevices.map((device) => ({
     device,
     id: deviceId(device),
     room: roomName(device),
     support: sceneActionOptions(device),
-  })).filter((item) => item.id), [devices]);
+  })).filter((item) => item.id), [editorDevices]);
   const groupedDevices = useMemo(() => {
     const groups = new Map<string, DeviceSceneModel[]>();
     for (const item of deviceModels.filter((entry) => entry.support.supported)) {
@@ -581,10 +593,10 @@ function SceneEditor({ mode, devices, onCancel, onSave }: { mode: Extract<SceneP
   const unavailableDevices = useMemo(() => deviceModels.filter((entry) => !entry.support.supported), [deviceModels]);
   const [unavailableOpen, setUnavailableOpen] = useState(false);
   const modelById = useMemo(() => new Map(deviceModels.map((item) => [item.id, item])), [deviceModels]);
-  const invalidSelections = useMemo(() => {
+  const invalidSelectionsFor = useCallback((selections: Record<string, ActionSelection>, models: Map<string, DeviceSceneModel>, issue?: SceneValidationIssue | null) => {
     const invalid = new Map<string, string>();
-    for (const selection of Object.values(actionSelections)) {
-      const model = modelById.get(selection.device_id);
+    for (const selection of Object.values(selections)) {
+      const model = models.get(selection.device_id);
       const option = model?.support.options.find((item) => item.code.toLowerCase() === selection.command_code.toLowerCase());
       if (!model) {
         invalid.set(selectionKey(selection.device_id, selection.command_code), "This device is no longer available in this home.");
@@ -596,16 +608,17 @@ function SceneEditor({ mode, devices, onCancel, onSave }: { mode: Extract<SceneP
         invalid.set(selectionKey(selection.device_id, selection.command_code), "This action needs reconfiguration.");
       }
     }
-    if (validationIssue?.canonical_device_id && validationIssue?.command_key) {
-      const issueKey = selectionKey(String(validationIssue.canonical_device_id), String(validationIssue.command_key));
-      if (actionSelections[issueKey]) {
-        invalid.set(issueKey, validationIssue.message || validationIssue.error || "This selected action is no longer available.");
+    if (issue?.canonical_device_id && issue?.command_key) {
+      const issueKey = selectionKey(String(issue.canonical_device_id), String(issue.command_key));
+      if (selections[issueKey]) {
+        invalid.set(issueKey, issue.message || issue.error || "This selected action is no longer available.");
       }
     }
     return invalid;
-  }, [actionSelections, modelById, validationIssue]);
+  }, []);
+  const invalidSelections = useMemo(() => invalidSelectionsFor(actionSelections, modelById, validationIssue), [actionSelections, invalidSelectionsFor, modelById, validationIssue]);
   const invalidSaveReason = Array.from(invalidSelections.values())[0] || "";
-  const canSave = Boolean(name.trim() && actions.length && !saving && invalidSelections.size === 0);
+  const canSave = Boolean(name.trim() && actions.length && !saving && !checkingCapabilities && invalidSelections.size === 0);
   const saveReason = !name.trim() ? "Add a scene name." : !actions.length ? "Select at least one device action." : invalidSaveReason;
 
   const selectedActionCount = actions.length;
@@ -660,6 +673,26 @@ function SceneEditor({ mode, devices, onCancel, onSave }: { mode: Extract<SceneP
       };
       return next;
     });
+  }
+
+  async function submitSave() {
+    if (!name.trim() || !actions.length || saving || checkingCapabilities) return;
+    setCheckingCapabilities(true);
+    try {
+      const latestDevices = await refreshDevices();
+      setEditorDevices(latestDevices);
+      const latestModels = new Map(latestDevices.map((device) => ({
+        device,
+        id: deviceId(device),
+        room: roomName(device),
+        support: sceneActionOptions(device),
+      })).filter((item) => item.id).map((item) => [item.id, item]));
+      const latestInvalid = invalidSelectionsFor(actionSelections, latestModels, null);
+      if (latestInvalid.size) return;
+      await onSave({ tab, name: name.trim(), description: description.trim(), trigger, actions });
+    } finally {
+      setCheckingCapabilities(false);
+    }
   }
 
   return (
@@ -783,7 +816,7 @@ function SceneEditor({ mode, devices, onCancel, onSave }: { mode: Extract<SceneP
       </main>
       <footer className="relative z-10 shrink-0 border-t border-white/[0.055] bg-[#02060b]/92 px-5 pt-3 backdrop-blur-xl" style={{ paddingBottom: "max(env(safe-area-inset-bottom), 14px)" }}>
         <div className="mx-auto max-w-[430px]">
-          <button type="button" disabled={!canSave} onClick={() => void onSave({ tab, name: name.trim(), description: description.trim(), trigger, actions })} className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-white px-4 py-3 text-sm font-semibold text-black disabled:opacity-40"><Zap className="h-4 w-4" /> {saving ? "Saving..." : "Save"}</button>
+          <button type="button" disabled={!canSave} onClick={() => void submitSave()} className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-white px-4 py-3 text-sm font-semibold text-black disabled:opacity-40"><Zap className="h-4 w-4" /> {saving ? "Saving..." : checkingCapabilities ? "Checking actions..." : "Save"}</button>
           {!canSave && saveReason ? <p className="mt-2 text-center text-[11px] text-white/42">{saveReason}</p> : null}
         </div>
       </footer>

@@ -41,6 +41,9 @@ const requiredPage = [
   ["backend validation issue highlighting", "validationIssue"],
   ["chip focuses selected device", "focusSelection"],
   ["duplicate device-channel key", "selectionKey(device_id, command_code)"],
+  ["pre-save capability refresh", "refreshDevices"],
+  ["forced runtime refresh before save", "getRuntimeDevices(homeId, { force: true })"],
+  ["capability checking save state", "Checking actions..."],
 ];
 
 const requiredService = [
@@ -48,6 +51,10 @@ const requiredService = [
   ["scene run endpoint", "/run"],
   ["scene run history endpoint", "/runs"],
   ["action labels", "action_label"],
+  ["sanitized create payload log", "scene_create_request_payload"],
+  ["structured create rejection log", "scene_create_rejected_response"],
+  ["validation exposed channel keys", "exposed_channel_keys"],
+  ["validation runtime freshness", "runtime_freshness"],
 ];
 
 const missing = [

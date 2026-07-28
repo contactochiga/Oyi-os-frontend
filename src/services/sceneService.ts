@@ -35,7 +35,27 @@ export type SceneValidationIssue = {
   action_index?: number | null;
   canonical_device_id?: string | null;
   command_key?: string | null;
+  exposed_channel_keys?: string[] | null;
+  runtime_freshness?: string | null;
 };
+
+function sanitizedScenePayload(input: { name?: string; actions?: SceneAction[] }) {
+  return {
+    has_name: Boolean(String(input?.name || "").trim()),
+    action_count: Array.isArray(input?.actions) ? input.actions.length : 0,
+    actions: (input?.actions || []).map((action, index) => {
+      const entry = Object.entries(action.command || {}).find(([key]) => !["source", "metadata", "meta", "idempotency_key", "command_key"].includes(String(key).toLowerCase()));
+      return {
+        action_index: index,
+        canonical_device_id: action.device_id,
+        device_name: action.device_name || null,
+        command_key: entry ? String(entry[0]) : null,
+        value_type: entry ? typeof entry[1] : "undefined",
+        value: entry && (typeof entry[1] === "boolean" || typeof entry[1] === "number" || typeof entry[1] === "string") ? entry[1] : null,
+      };
+    }),
+  };
+}
 
 export const sceneService = {
   async listScenes(): Promise<ConsumerScene[]> {
@@ -43,12 +63,30 @@ export const sceneService = {
     return Array.isArray(res.data?.scenes) ? res.data.scenes : [];
   },
   async createScene(input: { name: string; description?: string; icon?: string; mood?: string; actions: SceneAction[] }) {
-    const res = await API.post("/scenes", input);
-    return res.data as ConsumerScene;
+    try {
+      console.info("scene_create_request_payload", sanitizedScenePayload(input));
+      const res = await API.post("/scenes", input);
+      return res.data as ConsumerScene;
+    } catch (error: any) {
+      console.warn("scene_create_rejected_response", {
+        status: error?.response?.status || null,
+        data: error?.response?.data || null,
+      });
+      throw error;
+    }
   },
   async updateScene(id: string, input: Partial<{ name: string; description?: string; icon?: string; mood?: string; actions: SceneAction[] }>) {
-    const res = await API.patch(`/scenes/${encodeURIComponent(id)}`, input);
-    return res.data as ConsumerScene;
+    try {
+      if (input.actions) console.info("scene_update_request_payload", sanitizedScenePayload({ name: input.name, actions: input.actions }));
+      const res = await API.patch(`/scenes/${encodeURIComponent(id)}`, input);
+      return res.data as ConsumerScene;
+    } catch (error: any) {
+      console.warn("scene_update_rejected_response", {
+        status: error?.response?.status || null,
+        data: error?.response?.data || null,
+      });
+      throw error;
+    }
   },
   async deleteScene(id: string) {
     const res = await API.delete(`/scenes/${encodeURIComponent(id)}`);
