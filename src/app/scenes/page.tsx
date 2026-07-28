@@ -20,12 +20,15 @@ type ActionOption = { code: string; label: string; valueType: "boolean" | "numbe
 type ActionSupport = { supported: boolean; disabledReason?: string; options: ActionOption[] };
 type ActionSelection = { device_id: string; command_code: string; value: boolean; label: string; device_name?: string; device_room?: string };
 type DeviceSceneModel = { device: AnyDevice; id: string; room: string; support: ActionSupport };
+type AutomationSchedule = { type: "schedule"; schedule_type: "daily" | "weekdays" | "once"; local_time?: string; weekdays?: number[]; local_datetime?: string; timezone: string };
 type ScenePresentation =
   | { mode: "list" }
   | { mode: "editor"; tab: Tab; scene?: ConsumerScene | ConsumerAutomation | null; template?: SceneTemplate | null; initialDeviceId?: string; error?: string; validationIssue?: SceneValidationIssue | null }
   | { mode: "saving"; tab: Tab; sceneId?: string }
   | { mode: "running"; sceneId: string }
-  | { mode: "result"; sceneId: string; result: SceneRunResult; canRunAgain?: ConsumerScene };
+  | { mode: "testing"; automationId: string }
+  | { mode: "history"; automation: ConsumerAutomation; runs: SceneRunResult[] }
+  | { mode: "result"; sceneId: string; result: SceneRunResult; canRunAgain?: ConsumerScene; resultKind?: "scene" | "automation_test" };
 
 const SCENE_TEMPLATES: SceneTemplate[] = [
   { name: "Good Morning", icon: SunMedium, description: "Wake the home gently with selected lights and devices.", power: "on" },
@@ -141,6 +144,19 @@ function describeAction(action: SceneAction) {
 
 function sceneActionLabel(deviceLabel: string, channelLabel: string, value: boolean) {
   return `${deviceLabel} · ${channelLabel} → ${value ? "On" : "Off"}`;
+}
+
+function normalizeAutomationSchedule(value: any): AutomationSchedule {
+  if (value?.type === "schedule" && value?.schedule_type === "weekdays") return { type: "schedule", schedule_type: "weekdays", local_time: String(value.local_time || "07:30"), weekdays: Array.isArray(value.weekdays) ? value.weekdays : [1, 2, 3, 4, 5], timezone: String(value.timezone || "Africa/Lagos") };
+  if (value?.type === "schedule" && value?.schedule_type === "once") return { type: "schedule", schedule_type: "once", local_datetime: String(value.local_datetime || new Date(Date.now() + 86400000).toISOString().slice(0, 16)), timezone: String(value.timezone || "Africa/Lagos") };
+  return { type: "schedule", schedule_type: "daily", local_time: String(value?.local_time || "07:30"), timezone: String(value?.timezone || "Africa/Lagos") };
+}
+
+function scheduleSummary(trigger: any) {
+  const schedule = normalizeAutomationSchedule(trigger);
+  if (schedule.schedule_type === "daily") return `Daily at ${schedule.local_time}`;
+  if (schedule.schedule_type === "weekdays") return `Selected days at ${schedule.local_time}`;
+  return `Once at ${String(schedule.local_datetime || "").replace("T", " ")}`;
 }
 
 function statusCopy(status: string) {
@@ -326,6 +342,31 @@ export default function ScenesPage() {
     }
   }
 
+  async function testAutomation(automation: ConsumerAutomation) {
+    if (presentation.mode === "testing" && presentation.automationId === automation.id) return;
+    setPresentation({ mode: "testing", automationId: automation.id });
+    setError("");
+    try {
+      const result = await sceneService.testAutomation(automation.id);
+      await refresh();
+      setPresentation({ mode: "result", sceneId: automation.id, result: { ...result, scene_name: automation.name }, resultKind: "automation_test" });
+    } catch (err: any) {
+      const payload = err?.response?.data;
+      const message = payload?.error || err?.message || "Automation test could not complete.";
+      setPresentation({ mode: "result", sceneId: automation.id, result: normalizeRunResult({ ...automation, description: null } as any, payload, "failed", message), resultKind: "automation_test" });
+    }
+  }
+
+  async function openAutomationHistory(automation: ConsumerAutomation) {
+    setError("");
+    try {
+      const runs = await sceneService.listAutomationRuns(automation.id);
+      setPresentation({ mode: "history", automation, runs });
+    } catch (err: any) {
+      setError(err?.response?.data?.error || err?.message || "Automation history could not load.");
+    }
+  }
+
   async function deleteItem(item: ConsumerScene | ConsumerAutomation) {
     setError("");
     try {
@@ -380,22 +421,35 @@ export default function ScenesPage() {
                 <div className="mt-3 space-y-3">
                   {items.map((item) => {
                     const running = presentation.mode === "running" && presentation.sceneId === item.id;
+                    const testing = presentation.mode === "testing" && presentation.automationId === item.id;
+                    const automation = item as ConsumerAutomation;
                     return (
                       <div key={item.id} className="rounded-[24px] border border-white/[0.075] bg-white/[0.035] p-4 shadow-[0_16px_48px_rgba(0,0,0,0.24)] backdrop-blur-xl">
                         <div className="flex items-center gap-3">
                           <span className="grid h-12 w-12 shrink-0 place-items-center rounded-[18px] border border-sky-300/14 bg-sky-400/10 text-sky-200">{tab === "scenes" ? <Moon className="h-5 w-5" /> : <Clock3 className="h-5 w-5" />}</span>
                           <span className="min-w-0 flex-1">
                             <span className="block truncate text-[15px] font-semibold tracking-[-0.025em]">{item.name}</span>
-                            <span className="mt-1 block text-xs text-white/42">{item.actions?.length || 0} controlled action{item.actions?.length === 1 ? "" : "s"}</span>
+                            <span className="mt-1 block text-xs text-white/42">{tab === "automations" ? scheduleSummary(automation.trigger) : `${item.actions?.length || 0} controlled action${item.actions?.length === 1 ? "" : "s"}`}</span>
                           </span>
-                          <span className="text-[11px] text-sky-200/72">{running ? "Running..." : tab === "scenes" ? "Ready" : (item as ConsumerAutomation).enabled ? "Enabled" : "Paused"}</span>
+                          <span className="text-[11px] text-sky-200/72">{running || testing ? "Running..." : tab === "scenes" ? "Ready" : automation.enabled ? "Enabled" : "Paused"}</span>
                         </div>
+                        {tab === "automations" ? (
+                          <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-white/40">
+                            <span>Timezone: {automation.timezone || automation.trigger?.timezone || "Africa/Lagos"}</span>
+                            <span>Next: {automation.next_run_at ? new Date(automation.next_run_at).toLocaleString() : "Not scheduled"}</span>
+                            <span>Last: {automation.last_run_status || "No runs yet"}</span>
+                          </div>
+                        ) : null}
                         {item.actions?.length ? <div className="mt-3 flex flex-wrap gap-1.5">{item.actions.slice(0, 3).map((action, index) => <span key={`${item.id}:${index}`} className="rounded-full border border-white/[0.06] bg-white/[0.025] px-2 py-1 text-[10px] text-white/42">{describeAction(action)}</span>)}</div> : null}
                         <div className="mt-3 flex gap-2">
                           {tab === "scenes" ? (
                             <button type="button" onClick={() => void runScene(item as ConsumerScene)} disabled={presentation.mode === "running"} className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-black disabled:opacity-45">{running ? "Running..." : "Run"}</button>
                           ) : (
-                            <button type="button" onClick={() => void toggleAutomation(item as ConsumerAutomation)} className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-black">{(item as ConsumerAutomation).enabled ? "Pause" : "Resume"}</button>
+                            <>
+                              <button type="button" onClick={() => void toggleAutomation(automation)} className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-black">{automation.enabled ? "Pause" : "Resume"}</button>
+                              <button type="button" onClick={() => void testAutomation(automation)} disabled={presentation.mode === "testing"} className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white/68 disabled:opacity-45">{testing ? "Testing..." : "Test"}</button>
+                              <button type="button" onClick={() => void openAutomationHistory(automation)} className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white/68">History</button>
+                            </>
                           )}
                           <button type="button" onClick={() => setPresentation({ mode: "editor", tab, scene: item as any, template: null })} className="inline-flex items-center gap-1 rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white/68"><Pencil className="h-3.5 w-3.5" /> Edit</button>
                           <button type="button" onClick={() => setDeletingItem(item as any)} className="ml-auto inline-flex items-center gap-1 rounded-full border border-red-300/15 bg-red-500/[0.06] px-3 py-2 text-xs text-red-100/75"><Trash2 className="h-3.5 w-3.5" /> Delete</button>
@@ -455,8 +509,8 @@ export default function ScenesPage() {
                   if (editing?.id) await sceneService.updateScene(editing.id, { name: input.name, description: input.description, actions: input.actions });
                   else await sceneService.createScene({ name: input.name, description: input.description, actions: input.actions });
                 } else {
-                  if (editing?.id) await sceneService.updateAutomation(editing.id, { name: input.name, trigger: { type: input.trigger }, condition: {}, actions: input.actions });
-                  else await sceneService.createAutomation({ name: input.name, trigger: { type: input.trigger }, condition: {}, actions: input.actions, enabled: true });
+                  if (editing?.id) await sceneService.updateAutomation(editing.id, { name: input.name, trigger: input.trigger, condition: {}, actions: input.actions });
+                  else await sceneService.createAutomation({ name: input.name, trigger: input.trigger, condition: {}, actions: input.actions, enabled: true });
                 }
                 await refresh();
                 returnToList();
@@ -479,7 +533,11 @@ export default function ScenesPage() {
             result={presentation.result}
             onClose={returnToList}
             onRunAgain={presentation.canRunAgain ? () => void runScene(presentation.canRunAgain!) : undefined}
+            kind={presentation.resultKind}
           />
+        ) : null}
+        {presentation.mode === "history" ? (
+          <AutomationHistorySurface automation={presentation.automation} runs={presentation.runs} onClose={returnToList} />
         ) : null}
         {deletingItem ? (
           <div className="fixed inset-0 z-[150] flex items-end justify-center bg-black/55 px-4 pb-[calc(16px+var(--sab))] backdrop-blur-md">
@@ -510,7 +568,7 @@ function Empty({ title, body }: { title: string; body: string }) {
   );
 }
 
-function SceneEditor({ mode, devices, onCancel, onSave, refreshDevices }: { mode: Extract<ScenePresentation, { mode: "editor" | "saving" }>; devices: AnyDevice[]; onCancel: () => void; onSave: (input: { tab: Tab; name: string; description: string; trigger: string; actions: SceneAction[] }) => Promise<void>; refreshDevices: () => Promise<AnyDevice[]> }) {
+function SceneEditor({ mode, devices, onCancel, onSave, refreshDevices }: { mode: Extract<ScenePresentation, { mode: "editor" | "saving" }>; devices: AnyDevice[]; onCancel: () => void; onSave: (input: { tab: Tab; name: string; description: string; trigger: Record<string, any>; actions: SceneAction[] }) => Promise<void>; refreshDevices: () => Promise<AnyDevice[]> }) {
   const initial = mode.mode === "editor" ? mode.scene : null;
   const template = mode.mode === "editor" ? mode.template : null;
   const initialDeviceId = mode.mode === "editor" ? mode.initialDeviceId : "";
@@ -521,7 +579,7 @@ function SceneEditor({ mode, devices, onCancel, onSave, refreshDevices }: { mode
   const [editorDevices, setEditorDevices] = useState<AnyDevice[]>(devices);
   const [name, setName] = useState(initial?.name || template?.name || "");
   const [description, setDescription] = useState((initial as ConsumerScene | null)?.description || template?.description || "");
-  const [trigger, setTrigger] = useState(String((initial as ConsumerAutomation | null)?.trigger?.type || template?.trigger || "time"));
+  const [trigger, setTrigger] = useState<AutomationSchedule>(() => normalizeAutomationSchedule((initial as ConsumerAutomation | null)?.trigger || null));
   const [expandedDeviceId, setExpandedDeviceId] = useState<string>("");
   const [actionSelections, setActionSelections] = useState<Record<string, ActionSelection>>(() => {
     const next: Record<string, ActionSelection> = {};
@@ -566,7 +624,7 @@ function SceneEditor({ mode, devices, onCancel, onSave, refreshDevices }: { mode
     setEditorDevices(devices);
   }, [devices]);
 
-  const initialSignature = useMemo(() => JSON.stringify({ name: initial?.name || template?.name || "", description: (initial as ConsumerScene | null)?.description || template?.description || "", trigger: (initial as ConsumerAutomation | null)?.trigger?.type || template?.trigger || "time", actions: initial?.actions || [] }), [initial, template]);
+  const initialSignature = useMemo(() => JSON.stringify({ name: initial?.name || template?.name || "", description: (initial as ConsumerScene | null)?.description || template?.description || "", trigger: normalizeAutomationSchedule((initial as ConsumerAutomation | null)?.trigger || null), actions: initial?.actions || [] }), [initial, template]);
   const actions = useMemo(() => Object.values(actionSelections).map((selection) => ({
     device_id: selection.device_id,
     command: { [selection.command_code]: selection.value },
@@ -716,14 +774,37 @@ function SceneEditor({ mode, devices, onCancel, onSave, refreshDevices }: { mode
             <input id="scene-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Scene name" className="mt-1.5 h-10 w-full rounded-[14px] border border-white/[0.08] bg-white/[0.035] px-3 text-sm outline-none" />
             {tab === "scenes" ? <textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Optional description" rows={2} className="mt-2 w-full resize-none rounded-[14px] border border-white/[0.08] bg-white/[0.035] px-3 py-2 text-sm outline-none" /> : null}
             {tab === "automations" ? (
-              <select value={trigger} onChange={(event) => setTrigger(event.target.value)} className="mt-2 h-10 w-full rounded-[14px] border border-white/[0.08] bg-[#07101c] px-3 text-sm">
-                <option value="time">Time schedule</option>
-                <option value="sunrise">Sunrise</option>
-                <option value="sunset">Sunset</option>
-                <option value="device">Device state</option>
-                <option value="presence">Presence</option>
-                <option value="manual">Manual trigger</option>
-              </select>
+              <div className="mt-2 space-y-2">
+                <label className="text-[11px] font-medium uppercase tracking-[0.16em] text-white/36" htmlFor="automation-schedule-type">Schedule</label>
+                <select id="automation-schedule-type" value={trigger.schedule_type} onChange={(event) => setTrigger((current) => {
+                  const schedule_type = event.target.value as AutomationSchedule["schedule_type"];
+                  if (schedule_type === "once") return { type: "schedule", schedule_type, local_datetime: current.local_datetime || new Date(Date.now() + 86400000).toISOString().slice(0, 16), timezone: current.timezone || "Africa/Lagos" };
+                  if (schedule_type === "weekdays") return { type: "schedule", schedule_type, local_time: current.local_time || "07:30", weekdays: current.weekdays || [1, 2, 3, 4, 5], timezone: current.timezone || "Africa/Lagos" };
+                  return { type: "schedule", schedule_type: "daily", local_time: current.local_time || "07:30", timezone: current.timezone || "Africa/Lagos" };
+                })} className="h-10 w-full rounded-[14px] border border-white/[0.08] bg-[#07101c] px-3 text-sm">
+                  <option value="daily">Daily</option>
+                  <option value="weekdays">Selected days</option>
+                  <option value="once">One time</option>
+                </select>
+                {trigger.schedule_type === "once" ? (
+                  <input type="datetime-local" value={trigger.local_datetime || ""} onChange={(event) => setTrigger((current) => ({ ...current, local_datetime: event.target.value }))} className="h-10 w-full rounded-[14px] border border-white/[0.08] bg-white/[0.035] px-3 text-sm outline-none" />
+                ) : (
+                  <input type="time" value={trigger.local_time || "07:30"} onChange={(event) => setTrigger((current) => ({ ...current, local_time: event.target.value }))} className="h-10 w-full rounded-[14px] border border-white/[0.08] bg-white/[0.035] px-3 text-sm outline-none" />
+                )}
+                {trigger.schedule_type === "weekdays" ? (
+                  <div className="grid grid-cols-7 gap-1">
+                    {["S", "M", "T", "W", "T", "F", "S"].map((label, index) => {
+                      const selected = (trigger.weekdays || []).includes(index);
+                      return <button key={`${label}-${index}`} type="button" onClick={() => setTrigger((current) => {
+                        const days = new Set(current.weekdays || []);
+                        if (days.has(index)) days.delete(index); else days.add(index);
+                        return { ...current, weekdays: Array.from(days).sort() };
+                      })} className={`rounded-full px-2 py-2 text-[11px] ${selected ? "bg-white text-black" : "bg-white/[0.04] text-white/48"}`}>{label}</button>;
+                    })}
+                  </div>
+                ) : null}
+                <div className="rounded-[14px] border border-white/[0.06] bg-white/[0.025] px-3 py-2 text-xs text-white/46">Timezone: Africa/Lagos</div>
+              </div>
             ) : null}
           </section>
           {actions.length ? (
@@ -789,7 +870,7 @@ function SceneEditor({ mode, devices, onCancel, onSave, refreshDevices }: { mode
               <section className="rounded-[18px] border border-white/[0.055] bg-white/[0.022]">
                 <button type="button" onClick={() => setUnavailableOpen((value) => !value)} className="flex w-full items-center justify-between px-3 py-3 text-left" aria-expanded={unavailableOpen}>
                   <span>
-                    <span className="block text-sm font-semibold text-white/72">Unavailable in scenes ({unavailableDevices.length})</span>
+                    <span className="block text-sm font-semibold text-white/72">Unavailable in {tab === "automations" ? "automations" : "scenes"} ({unavailableDevices.length})</span>
                     <span className="mt-0.5 block text-[11px] text-white/38">Locks, TV and unsupported devices stay disabled.</span>
                   </span>
                   {unavailableOpen ? <ChevronDown className="h-4 w-4 text-white/40" /> : <ChevronRight className="h-4 w-4 text-white/40" />}
@@ -811,7 +892,7 @@ function SceneEditor({ mode, devices, onCancel, onSave, refreshDevices }: { mode
               </section>
             ) : null}
           </div>
-          {tab === "automations" ? <p className="mt-4 text-xs leading-5 text-amber-100/58">Saved automations are compatible with Runtime V2 actions. Automatic execution is not enabled yet.</p> : null}
+          {tab === "automations" ? <p className="mt-4 text-xs leading-5 text-emerald-100/58">Scheduled automations use Runtime V2 and can be tested manually before the next run.</p> : null}
         </div>
       </main>
       <footer className="relative z-10 shrink-0 border-t border-white/[0.055] bg-[#02060b]/92 px-5 pt-3 backdrop-blur-xl" style={{ paddingBottom: "max(env(safe-area-inset-bottom), 14px)" }}>
@@ -824,7 +905,7 @@ function SceneEditor({ mode, devices, onCancel, onSave, refreshDevices }: { mode
   );
 }
 
-function SceneResultSurface({ result, onClose, onRunAgain }: { result: SceneRunResult; onClose: () => void; onRunAgain?: () => void }) {
+function SceneResultSurface({ result, onClose, onRunAgain, kind }: { result: SceneRunResult; onClose: () => void; onRunAgain?: () => void; kind?: "scene" | "automation_test" }) {
   const successStatuses = ["completed", "accepted", "pending_confirmation"];
   const successful = result.actions.filter((action) => successStatuses.includes(action.status)).length;
   const pending = result.actions.filter((action) => action.status === "accepted" || action.status === "pending_confirmation").length;
@@ -841,7 +922,7 @@ function SceneResultSurface({ result, onClose, onRunAgain }: { result: SceneRunR
         <div className="mx-auto flex max-w-[430px] items-center justify-between gap-3">
           <button type="button" onClick={onClose} className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white/72">Back</button>
           <div className="min-w-0 flex-1 text-center">
-            <h2 id="scene-result-title" className="truncate text-[16px] font-semibold tracking-[-0.03em]">Scene result</h2>
+            <h2 id="scene-result-title" className="truncate text-[16px] font-semibold tracking-[-0.03em]">{kind === "automation_test" ? "Automation test" : "Scene result"}</h2>
             <p id="scene-result-description" className="mt-0.5 text-[11px] text-white/38">{statusCopy(result.status)}</p>
           </div>
           <button type="button" onClick={onClose} className="grid h-9 w-9 place-items-center rounded-full bg-white/[0.06]" aria-label="Close scene result"><X className="h-4 w-4" /></button>
@@ -888,4 +969,46 @@ function SceneResultSurface({ result, onClose, onRunAgain }: { result: SceneRunR
 function Metric({ label, value, tone }: { label: string; value: number; tone: "emerald" | "amber" | "red" }) {
   const colors = tone === "emerald" ? "text-emerald-100 bg-emerald-400/10" : tone === "amber" ? "text-amber-100 bg-amber-400/10" : "text-red-100 bg-red-500/10";
   return <div className={`rounded-[16px] p-3 text-center ${colors}`}><div className="text-lg font-semibold">{value}</div><div className="text-[10px] uppercase tracking-[0.14em] opacity-70">{label}</div></div>;
+}
+
+function AutomationHistorySurface({ automation, runs, onClose }: { automation: ConsumerAutomation; runs: SceneRunResult[]; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[150] flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-[#02060b] text-white" role="dialog" aria-modal="true" aria-labelledby="automation-history-title">
+      <div className="oyi-ambient-bg" />
+      <header className="relative z-10 shrink-0 border-b border-white/[0.055] bg-[#02060b]/90 px-5 pb-3 backdrop-blur-xl" style={{ paddingTop: "max(env(safe-area-inset-top), 16px)" }}>
+        <div className="mx-auto flex max-w-[430px] items-center justify-between gap-3">
+          <button type="button" onClick={onClose} className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white/72">Back</button>
+          <div className="min-w-0 flex-1 text-center">
+            <h2 id="automation-history-title" className="truncate text-[16px] font-semibold tracking-[-0.03em]">Automation history</h2>
+            <p className="mt-0.5 text-[11px] text-white/38">{automation.name}</p>
+          </div>
+          <button type="button" onClick={onClose} className="grid h-9 w-9 place-items-center rounded-full bg-white/[0.06]" aria-label="Close automation history"><X className="h-4 w-4" /></button>
+        </div>
+      </header>
+      <main className="relative z-10 min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-3 [-webkit-overflow-scrolling:touch]">
+        <div className="mx-auto max-w-[430px] space-y-3">
+          {runs.length ? runs.map((run) => (
+            <section key={run.scene_run_id} className="rounded-[20px] border border-white/[0.07] bg-white/[0.035] p-3">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm font-semibold">{statusCopy(run.status)}</span>
+                <span className="text-[11px] text-white/38">{run.requested_at ? new Date(run.requested_at).toLocaleString() : "Unknown time"}</span>
+              </div>
+              <div className="mt-2 text-xs text-white/42">{run.counts?.completed || 0} completed · {run.counts?.failed || 0} failed</div>
+              <div className="mt-2 space-y-1.5">
+                {(run.actions || []).slice(0, 4).map((action, index) => (
+                  <div key={`${run.scene_run_id}:${index}`} className="flex justify-between gap-2 rounded-[12px] bg-white/[0.025] px-2 py-1.5 text-[11px]">
+                    <span className="truncate">{action.device_name || "Device"} · {action.action_label || "Automation action"}</span>
+                    <span className="shrink-0 text-white/42">{statusCopy(action.status)}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )) : <Empty title="No automation runs yet." body="Test this automation or wait for its next scheduled run." />}
+        </div>
+      </main>
+      <footer className="relative z-10 shrink-0 border-t border-white/[0.055] bg-[#02060b]/92 px-5 pt-3 backdrop-blur-xl" style={{ paddingBottom: "max(env(safe-area-inset-bottom), 14px)" }}>
+        <div className="mx-auto max-w-[430px]"><button type="button" onClick={onClose} className="w-full rounded-full bg-white px-4 py-3 text-sm font-semibold text-black">Done</button></div>
+      </footer>
+    </div>
+  );
 }

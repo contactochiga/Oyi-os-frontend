@@ -9,7 +9,18 @@ export type SceneAction = {
   command_code?: string | null;
 };
 export type ConsumerScene = { id: string; name: string; description?: string | null; icon?: string; mood?: string; actions: SceneAction[]; enabled?: boolean };
-export type ConsumerAutomation = { id: string; name: string; trigger: Record<string, any>; condition?: Record<string, any>; actions: SceneAction[]; enabled: boolean };
+export type ConsumerAutomation = {
+  id: string;
+  name: string;
+  trigger: Record<string, any>;
+  condition?: Record<string, any>;
+  actions: SceneAction[];
+  enabled: boolean;
+  next_run_at?: string | null;
+  last_run_at?: string | null;
+  last_run_status?: string | null;
+  timezone?: string | null;
+};
 export type SceneRunActionResult = {
   device_id: string | null;
   device_name: string;
@@ -123,5 +134,23 @@ export const sceneService = {
   async deleteAutomation(id: string) {
     const res = await API.delete(`/scenes/automations/${encodeURIComponent(id)}`);
     return res.data;
+  },
+  async testAutomation(id: string): Promise<SceneRunResult> {
+    const res = await API.post(`/scenes/automations/${encodeURIComponent(id)}/test`);
+    return res.data as SceneRunResult;
+  },
+  async listAutomationRuns(id: string): Promise<SceneRunResult[]> {
+    const res = await API.get(`/scenes/automations/${encodeURIComponent(id)}/runs`);
+    return Array.isArray(res.data?.runs) ? res.data.runs.map((run: any) => ({
+      ok: ["succeeded", "partially_succeeded"].includes(String(run.status)),
+      scene_run_id: run.id,
+      scene_id: run.automation_id,
+      scene_name: "Automation",
+      status: run.status,
+      requested_at: run.started_at || run.created_at,
+      completed_at: run.completed_at,
+      counts: run.counts || { total: 0, completed: 0, failed: 0 },
+      actions: Array.isArray(run.actions) ? run.actions : [],
+    })) : [];
   },
 };
