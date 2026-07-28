@@ -36,6 +36,7 @@ import LayoutWrapper from "@/app/components/LayoutWrapper";
 import HamburgerMenu from "@/app/components/HamburgerMenu";
 import MessagesInboxButton from "@/app/components/MessagesInboxButton";
 import BottomNav from "@/app/components/BottomNav";
+import ContextualOyiButton from "@/app/components/ContextualOyiButton";
 import useAuth from "@/hooks/useAuth";
 import useActiveContext from "@/hooks/useActiveContext";
 import { deviceService, type IrProfileOption } from "@/services/deviceService";
@@ -1430,6 +1431,9 @@ export default function DeviceClient() {
               <div>
                 <h1 className="text-[30px] font-semibold leading-none tracking-[-0.055em] text-white">Devices</h1>
                 <p className="mt-2 text-[13px] leading-5 text-white/56">Control your connected home.</p>
+                <div className="mt-3">
+                  <ContextualOyiButton label="Ask Oyi about devices" />
+                </div>
               </div>
               <div className="flex items-center gap-1.5">
                 <button type="button" onClick={() => router.push("/scenes?create=scene")} className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-2 text-xs font-medium text-white/68 active:scale-[0.98]"><Moon className="h-3.5 w-3.5" /> Scenes</button>

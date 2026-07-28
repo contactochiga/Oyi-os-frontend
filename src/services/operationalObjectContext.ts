@@ -21,6 +21,9 @@ function candidateLabel(objectType: OperationalObject["object_type"], module: st
     transaction: "Transaction",
     wallet: "Wallet",
     service_account: "Service",
+    scene: "Scene",
+    automation: "Automation",
+    device_channel: "Device channel",
     message_thread: "Message thread",
     community_post: "Community post",
     notification: "Notification",
@@ -31,10 +34,13 @@ function candidateLabel(objectType: OperationalObject["object_type"], module: st
 export function deriveConsumerOperationalObject(input: RouteContextInput): Partial<OperationalObject> | null {
   const routeCandidates: Array<{ object_type: OperationalObject["object_type"]; id: string; source_module: string }> = [
     { object_type: "device", id: text(input.searchParams.get("deviceId")), source_module: "devices" },
+    { object_type: "device_channel", id: text(input.searchParams.get("deviceId") && input.searchParams.get("channel") ? `${input.searchParams.get("deviceId")}:${input.searchParams.get("channel")}` : ""), source_module: "devices" },
     { object_type: "room", id: text(input.searchParams.get("roomId")), source_module: "rooms" },
+    { object_type: "scene", id: text(input.searchParams.get("sceneId")), source_module: "scenes" },
+    { object_type: "automation", id: text(input.searchParams.get("automationId")), source_module: "automations" },
     { object_type: "visitor", id: text(input.searchParams.get("visitorId")), source_module: "visitors" },
     { object_type: "maintenance_request", id: text(input.searchParams.get("requestId") || input.searchParams.get("ticketId")), source_module: "maintenance" },
-    { object_type: "transaction", id: text(input.searchParams.get("transactionId")), source_module: "wallet" },
+    { object_type: "transaction", id: text(input.searchParams.get("transactionId") || input.searchParams.get("receipt")), source_module: "wallet" },
     { object_type: "notification", id: text(input.searchParams.get("notificationId")), source_module: "notifications" },
     { object_type: "message_thread", id: text(input.searchParams.get("threadId")), source_module: "messages" },
     { object_type: "community_post", id: text(input.searchParams.get("postId")), source_module: "community" },
@@ -54,6 +60,8 @@ export function deriveConsumerOperationalObject(input: RouteContextInput): Parti
       route: input.pathname,
       module: input.module,
       source: "consumer_route_context",
+      channel_code: selected.object_type === "device_channel" ? text(input.searchParams.get("channel")) : null,
+      device_id: selected.object_type === "device_channel" ? text(input.searchParams.get("deviceId")) : null,
     },
   };
 }
@@ -63,11 +71,14 @@ export function deriveConsumerTarget(input: RouteContextInput): OyiTarget | null
   if (!object?.object_type || !object.canonical_id) return null;
   const targetTypeMap: Partial<Record<OperationalObject["object_type"], OyiTarget["target_type"]>> = {
     device: "device",
+    device_channel: "device",
     visitor: "visitor",
     maintenance_request: "maintenance",
     wallet: "wallet",
     transaction: "wallet",
     service_account: "service",
+    scene: "workflow",
+    automation: "workflow",
     message_thread: "message",
     community_post: "community",
     notification: "message",

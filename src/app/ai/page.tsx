@@ -57,6 +57,15 @@ const DEFAULT_SUGGESTIONS: Suggestion[] = [
   { label: "Scenes", href: "/scenes", tone: "violet" },
 ];
 
+function contextualSuggestions(module: string, starter?: string | null): Suggestion[] {
+  const first = starter ? [{ label: starter, prompt: starter, tone: "green" as const }] : [];
+  if (module === "device") return [...first, { label: "Is this device working?", prompt: "Is this device working?", tone: "blue" }, { label: "What changed recently?", prompt: "What changed recently?", tone: "violet" }, { label: "Scenes or automations?", prompt: "Is it used by a scene or automation?", tone: "amber" }];
+  if (module === "automations") return [...first, { label: "Why didn’t this run?", prompt: "Why didn’t this run?", tone: "amber" }, { label: "What happens next?", prompt: "What happens next?", tone: "blue" }, { label: "Show last run", prompt: "Show the last run.", tone: "green" }];
+  if (module === "wallet") return [...first, { label: "Explain transaction", prompt: "Explain this transaction.", tone: "violet" }, { label: "Why did it fail?", prompt: "Why did it fail?", tone: "amber" }, { label: "Show receipt", prompt: "Show the receipt.", tone: "green" }];
+  if (module === "maintenance") return [...first, { label: "What happened?", prompt: "What happened?", tone: "blue" }, { label: "Who owns this?", prompt: "Who owns this?", tone: "green" }, { label: "Is it overdue?", prompt: "Is it overdue?", tone: "amber" }];
+  return first;
+}
+
 const USAGE_KEY = "oyi_ai_shortcut_usage_v1";
 const CONVERSATIONS_KEY = "oyi_ai_conversations_v1";
 const FEEDBACK_KEY = "oyi_ai_helpful_feedback_v1";
@@ -421,9 +430,10 @@ function OyiAiCommandCenterContent() {
       .sort((a, b) => b[1] - a[1])
       .map(([label]) => byLabel.get(label))
       .filter(Boolean) as Suggestion[];
-    const filled = [...ranked, ...DEFAULT_SUGGESTIONS.filter((item) => !ranked.some((rankedItem) => rankedItem.label === item.label))];
+    const contextual = contextualSuggestions(moduleContext, searchParams.get("starter"));
+    const filled = [...contextual, ...ranked, ...DEFAULT_SUGGESTIONS.filter((item) => !ranked.some((rankedItem) => rankedItem.label === item.label) && !contextual.some((ctx) => ctx.label === item.label))];
     return filled.slice(0, 5);
-  }, [usage]);
+  }, [moduleContext, searchParams, usage]);
 
   const chatMode = messages.length > 0;
   const recording = voiceMode === "recording";

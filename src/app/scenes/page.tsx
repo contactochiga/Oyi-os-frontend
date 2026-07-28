@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BatteryCharging, Check, ChevronDown, ChevronRight, Clock3, Film, Home, Lock, Moon, Pencil, Plane, Plus, ShieldCheck, Sparkles, SunMedium, Trash2, X, Zap } from "lucide-react";
 
 import BottomNav from "@/app/components/BottomNav";
+import ContextualOyiButton from "@/app/components/ContextualOyiButton";
 import HamburgerMenu from "@/app/components/HamburgerMenu";
 import LayoutWrapper from "@/app/components/LayoutWrapper";
 import MessagesInboxButton from "@/app/components/MessagesInboxButton";
@@ -402,6 +403,9 @@ export default function ScenesPage() {
             <header>
               <h1 className="text-[29px] font-semibold leading-none tracking-[-0.05em]">Scenes</h1>
               <p className="mt-2 max-w-[330px] text-[13px] leading-5 text-white/52">Run safe, home-scoped device actions together without opening every device.</p>
+              <div className="mt-3">
+                <ContextualOyiButton label={`Ask Oyi about ${tab === "automations" ? "automations" : "scenes"}`} />
+              </div>
             </header>
             <div className="mt-5 flex gap-2">
               {(["scenes", "automations"] as Tab[]).map((key) => (

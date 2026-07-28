@@ -8,6 +8,7 @@ import InviteSuggestionBridge from "./InviteSuggestionBridge";
 import HamburgerMenu from "./HamburgerMenu";
 import MessagesInboxButton from "./MessagesInboxButton";
 import BottomNav from "./BottomNav";
+import ContextualOyiButton from "./ContextualOyiButton";
 import useActiveContext from "@/hooks/useActiveContext";
 import { useRuntimeIntelligenceStore } from "@/store/useRuntimeIntelligenceStore";
 
@@ -96,6 +97,9 @@ export default function ConsumerShell({
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
+                  <div className="hidden sm:block">
+                    <ContextualOyiButton />
+                  </div>
                   <MessagesInboxButton />
                   <div className="hidden h-10 w-10 sm:block">
                     <div className="oyi-orb h-10 w-10" aria-hidden="true" />
@@ -104,6 +108,9 @@ export default function ConsumerShell({
               </div>
 
               {preStripSlot ? <div className="mt-3">{preStripSlot}</div> : null}
+              <div className="mt-3 sm:hidden">
+                <ContextualOyiButton />
+              </div>
 
               {!hideStrip ? (
                 <div className="mt-3 overflow-hidden rounded-[20px] border border-white/[0.07] bg-[linear-gradient(145deg,rgba(255,255,255,0.042),rgba(255,255,255,0.012))] px-2.5 py-2 shadow-[0_12px_38px_rgba(0,0,0,0.28)] backdrop-blur-2xl">
