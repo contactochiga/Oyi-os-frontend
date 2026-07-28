@@ -28,6 +28,14 @@ export type SceneRunResult = {
   counts: { total: number; completed: number; failed: number };
   actions: SceneRunActionResult[];
 };
+export type SceneValidationIssue = {
+  code?: string | null;
+  message?: string | null;
+  error?: string | null;
+  action_index?: number | null;
+  canonical_device_id?: string | null;
+  command_key?: string | null;
+};
 
 export const sceneService = {
   async listScenes(): Promise<ConsumerScene[]> {

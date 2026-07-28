@@ -36,6 +36,11 @@ const requiredPage = [
   ["secondary scene ideas", "Scene ideas"],
   ["disabled save name reason", "Add a scene name."],
   ["disabled save action reason", "Select at least one device action."],
+  ["device name in selected action labels", "sceneActionLabel"],
+  ["selected action stale validation", "invalidSelections"],
+  ["backend validation issue highlighting", "validationIssue"],
+  ["chip focuses selected device", "focusSelection"],
+  ["duplicate device-channel key", "selectionKey(device_id, command_code)"],
 ];
 
 const requiredService = [

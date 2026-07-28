@@ -11,18 +11,18 @@ import useAuth from "@/hooks/useAuth";
 import useActiveContext from "@/hooks/useActiveContext";
 import { normalizeRuntimeContract } from "@/lib/deviceRuntimeContract";
 import { deviceService } from "@/services/deviceService";
-import { sceneService, type ConsumerAutomation, type ConsumerScene, type SceneAction, type SceneRunResult } from "@/services/sceneService";
+import { sceneService, type ConsumerAutomation, type ConsumerScene, type SceneAction, type SceneRunResult, type SceneValidationIssue } from "@/services/sceneService";
 
 type Tab = "scenes" | "automations";
 type AnyDevice = Record<string, any>;
 type SceneTemplate = { name: string; icon: any; description: string; power: "on" | "off"; trigger?: string };
 type ActionOption = { code: string; label: string; valueType: "boolean" | "number" | "string" };
 type ActionSupport = { supported: boolean; disabledReason?: string; options: ActionOption[] };
-type ActionSelection = { device_id: string; command_code: string; value: boolean; label: string };
+type ActionSelection = { device_id: string; command_code: string; value: boolean; label: string; device_name?: string; device_room?: string };
 type DeviceSceneModel = { device: AnyDevice; id: string; room: string; support: ActionSupport };
 type ScenePresentation =
   | { mode: "list" }
-  | { mode: "editor"; tab: Tab; scene?: ConsumerScene | ConsumerAutomation | null; template?: SceneTemplate | null; initialDeviceId?: string; error?: string }
+  | { mode: "editor"; tab: Tab; scene?: ConsumerScene | ConsumerAutomation | null; template?: SceneTemplate | null; initialDeviceId?: string; error?: string; validationIssue?: SceneValidationIssue | null }
   | { mode: "saving"; tab: Tab; sceneId?: string }
   | { mode: "running"; sceneId: string }
   | { mode: "result"; sceneId: string; result: SceneRunResult; canRunAgain?: ConsumerScene };
@@ -137,6 +137,10 @@ function selectionKey(deviceIdValue: string, commandCode: string) {
 function describeAction(action: SceneAction) {
   const [code, value] = commandEntries(action.command)[0] || ["switch", true];
   return action.action_label || action.label || `${titleCase(String(code), "Power")} -> ${value ? "On" : "Off"}`;
+}
+
+function sceneActionLabel(deviceLabel: string, channelLabel: string, value: boolean) {
+  return `${deviceLabel} · ${channelLabel} → ${value ? "On" : "Off"}`;
 }
 
 function statusCopy(status: string) {
@@ -450,7 +454,15 @@ export default function ScenesPage() {
                 await refresh();
                 returnToList();
               } catch (err: any) {
-                setPresentation({ mode: "editor", tab: input.tab, scene: editing, template: current.mode === "editor" ? current.template : null, error: err?.response?.data?.error || err?.message || "Could not save scene." });
+                const payload = err?.response?.data || {};
+                setPresentation({
+                  mode: "editor",
+                  tab: input.tab,
+                  scene: editing,
+                  template: current.mode === "editor" ? current.template : null,
+                  error: payload?.message || payload?.error || err?.message || "Could not save scene.",
+                  validationIssue: payload?.canonical_device_id || payload?.command_key || Number.isInteger(payload?.action_index) ? payload : null,
+                });
               }
             }}
           />
@@ -495,6 +507,7 @@ function SceneEditor({ mode, devices, onCancel, onSave }: { mode: Extract<SceneP
   const initial = mode.mode === "editor" ? mode.scene : null;
   const template = mode.mode === "editor" ? mode.template : null;
   const initialDeviceId = mode.mode === "editor" ? mode.initialDeviceId : "";
+  const validationIssue = mode.mode === "editor" ? mode.validationIssue : null;
   const tab = mode.tab;
   const saving = mode.mode === "saving";
   const [name, setName] = useState(initial?.name || template?.name || "");
@@ -508,7 +521,20 @@ function SceneEditor({ mode, devices, onCancel, onSave }: { mode: Extract<SceneP
       const id = String(action.device_id || "");
       const [code, value] = commandEntries(action.command)[0] || [];
       if (!id || !code || typeof value !== "boolean") continue;
-      next[selectionKey(id, String(code))] = { device_id: id, command_code: String(code), value, label: describeAction(action) };
+      const device = devices.find((item) => deviceId(item) === id);
+      const support = device ? sceneActionOptions(device) : null;
+      const option = support?.options.find((item) => item.code.toLowerCase() === String(code).toLowerCase());
+      const deviceLabel = text(action.device_name, device ? deviceName(device) : "", "Device");
+      const channelLabel = option?.label || titleCase(String(code), "Power");
+      const existingLabel = text(action.action_label, action.label);
+      next[selectionKey(id, String(code))] = {
+        device_id: id,
+        command_code: String(code),
+        value,
+        label: existingLabel && existingLabel.includes(deviceLabel) ? existingLabel : sceneActionLabel(deviceLabel, channelLabel, value),
+        device_name: deviceLabel,
+        device_room: device ? roomName(device) : "",
+      };
     }
     if (!Object.keys(next).length && initialDeviceId) {
       const device = devices.find((item) => deviceId(item) === initialDeviceId);
@@ -519,7 +545,9 @@ function SceneEditor({ mode, devices, onCancel, onSave }: { mode: Extract<SceneP
           device_id: id,
           command_code: option.code,
           value: (template?.power || "on") === "on",
-          label: `${option.label} -> ${(template?.power || "on") === "on" ? "On" : "Off"}`,
+          label: sceneActionLabel(deviceName(device), option.label, (template?.power || "on") === "on"),
+          device_name: deviceName(device),
+          device_room: roomName(device),
         };
       }
     }
@@ -532,11 +560,11 @@ function SceneEditor({ mode, devices, onCancel, onSave }: { mode: Extract<SceneP
     command: { [selection.command_code]: selection.value },
     label: selection.label,
     action_label: selection.label,
+    device_name: selection.device_name || null,
+    command_code: selection.command_code,
   })), [actionSelections]);
   const currentSignature = JSON.stringify({ name, description, trigger, actions });
   const dirty = currentSignature !== initialSignature;
-  const canSave = Boolean(name.trim() && actions.length && !saving);
-  const saveReason = !name.trim() ? "Add a scene name." : !actions.length ? "Select at least one device action." : "";
   const deviceModels = useMemo<DeviceSceneModel[]>(() => devices.map((device) => ({
     device,
     id: deviceId(device),
@@ -552,6 +580,33 @@ function SceneEditor({ mode, devices, onCancel, onSave }: { mode: Extract<SceneP
   }, [deviceModels]);
   const unavailableDevices = useMemo(() => deviceModels.filter((entry) => !entry.support.supported), [deviceModels]);
   const [unavailableOpen, setUnavailableOpen] = useState(false);
+  const modelById = useMemo(() => new Map(deviceModels.map((item) => [item.id, item])), [deviceModels]);
+  const invalidSelections = useMemo(() => {
+    const invalid = new Map<string, string>();
+    for (const selection of Object.values(actionSelections)) {
+      const model = modelById.get(selection.device_id);
+      const option = model?.support.options.find((item) => item.code.toLowerCase() === selection.command_code.toLowerCase());
+      if (!model) {
+        invalid.set(selectionKey(selection.device_id, selection.command_code), "This device is no longer available in this home.");
+      } else if (!model.support.supported) {
+        invalid.set(selectionKey(selection.device_id, selection.command_code), model.support.disabledReason || "Scene actions are not available for this device yet.");
+      } else if (!option) {
+        invalid.set(selectionKey(selection.device_id, selection.command_code), "This channel is no longer exposed by the device.");
+      } else if (option.valueType !== "boolean") {
+        invalid.set(selectionKey(selection.device_id, selection.command_code), "This action needs reconfiguration.");
+      }
+    }
+    if (validationIssue?.canonical_device_id && validationIssue?.command_key) {
+      const issueKey = selectionKey(String(validationIssue.canonical_device_id), String(validationIssue.command_key));
+      if (actionSelections[issueKey]) {
+        invalid.set(issueKey, validationIssue.message || validationIssue.error || "This selected action is no longer available.");
+      }
+    }
+    return invalid;
+  }, [actionSelections, modelById, validationIssue]);
+  const invalidSaveReason = Array.from(invalidSelections.values())[0] || "";
+  const canSave = Boolean(name.trim() && actions.length && !saving && invalidSelections.size === 0);
+  const saveReason = !name.trim() ? "Add a scene name." : !actions.length ? "Select at least one device action." : invalidSaveReason;
 
   const selectedActionCount = actions.length;
   const selectedByDevice = useMemo(() => {
@@ -572,8 +627,17 @@ function SceneEditor({ mode, devices, onCancel, onSave }: { mode: Extract<SceneP
 
   const actionChips = useMemo(() => actions.map((action, index) => {
     const [code] = commandEntries(action.command)[0] || [];
-    return { action, code: String(code || ""), index };
-  }), [actions]);
+    const key = selectionKey(action.device_id, String(code || ""));
+    return { action, code: String(code || ""), index, invalidReason: invalidSelections.get(key) || "" };
+  }), [actions, invalidSelections]);
+
+  function focusSelection(device_id: string, command_code: string) {
+    setExpandedDeviceId(device_id);
+    window.setTimeout(() => {
+      document.getElementById(`scene-device-${device_id}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+      document.getElementById(`scene-channel-${device_id}-${command_code}`)?.focus({ preventScroll: true });
+    }, 80);
+  }
 
   function requestClose() {
     if (dirty && !window.confirm("Discard changes to this scene?")) return;
@@ -586,7 +650,14 @@ function SceneEditor({ mode, devices, onCancel, onSave }: { mode: Extract<SceneP
     setActionSelections((current) => {
       const next = { ...current };
       if (value === null) delete next[key];
-      else next[key] = { device_id: id, command_code: option.code, value, label: `${option.label} -> ${value ? "On" : "Off"}` };
+      else next[key] = {
+        device_id: id,
+        command_code: option.code,
+        value,
+        label: sceneActionLabel(deviceName(device), option.label, value),
+        device_name: deviceName(device),
+        device_room: roomName(device),
+      };
       return next;
     });
   }
@@ -626,13 +697,14 @@ function SceneEditor({ mode, devices, onCancel, onSave }: { mode: Extract<SceneP
             <section className="mt-3">
               <div className="mb-2 text-[11px] uppercase tracking-[0.18em] text-white/34">Selected actions</div>
               <div className="flex flex-wrap gap-1.5">
-                {actionChips.map(({ action, code, index }) => (
-                  <button key={`${action.device_id}:${code}:${index}`} type="button" onClick={() => removeSelection(action.device_id, code)} className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-sky-300/16 bg-sky-400/8 px-2.5 py-1.5 text-[11px] text-sky-100/72" aria-label={`Remove ${describeAction(action)}`}>
-                    <span className="truncate">{describeAction(action)}</span>
-                    <X className="h-3 w-3 shrink-0" />
-                  </button>
+                {actionChips.map(({ action, code, index, invalidReason }) => (
+                  <span key={`${action.device_id}:${code}:${index}`} className={`inline-flex max-w-full items-center gap-1.5 rounded-full border px-1.5 py-1 text-[11px] ${invalidReason ? "border-amber-200/25 bg-amber-400/10 text-amber-100" : "border-sky-300/16 bg-sky-400/8 text-sky-100/72"}`}>
+                    <button type="button" onClick={() => focusSelection(action.device_id, code)} className="min-w-0 truncate px-1" aria-label={`${invalidReason ? "Review" : "Edit"} ${describeAction(action)}`}>{describeAction(action)}</button>
+                    <button type="button" onClick={() => removeSelection(action.device_id, code)} className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-white/10" aria-label={`Remove ${describeAction(action)}`}><X className="h-3 w-3" /></button>
+                  </span>
                 ))}
               </div>
+              {invalidSaveReason ? <p className="mt-2 text-xs leading-5 text-amber-100/70">{invalidSaveReason}</p> : null}
             </section>
           ) : <p className="mt-3 text-xs text-white/42">Select a device and choose what it should do.</p>}
           <div className="mt-4 space-y-4">
@@ -644,7 +716,7 @@ function SceneEditor({ mode, devices, onCancel, onSave }: { mode: Extract<SceneP
                     const expanded = expandedDeviceId === id;
                     const selectedForDevice = selectedByDevice.get(id) || [];
                     return (
-                      <div key={id} className="rounded-[18px] border border-white/[0.065] bg-white/[0.028]">
+                      <div id={`scene-device-${id}`} key={id} className={`rounded-[18px] border bg-white/[0.028] ${selectedForDevice.some((item) => invalidSelections.has(selectionKey(id, item.command_code))) ? "border-amber-200/25" : "border-white/[0.065]"}`}>
                         <button type="button" onClick={() => setExpandedDeviceId(expanded ? "" : id)} className="flex w-full items-center gap-3 px-3 py-3 text-left" aria-expanded={expanded}>
                           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-sky-300/18 bg-sky-400/10 text-sky-200"><Zap className="h-4 w-4" /></span>
                           <span className="min-w-0 flex-1">
@@ -662,7 +734,7 @@ function SceneEditor({ mode, devices, onCancel, onSave }: { mode: Extract<SceneP
                                   <div key={option.code} className="rounded-[14px] bg-black/10 p-2">
                                     <div className="mb-2 truncate text-xs font-medium text-white/72">{option.label}</div>
                                     {option.valueType === "boolean" ? (
-                                      <div className="grid min-w-0 grid-cols-3 rounded-full border border-white/[0.07] bg-white/[0.025] p-0.5" role="group" aria-label={`${deviceName(device)} ${option.label}`}>
+                                      <div id={`scene-channel-${id}-${option.code}`} tabIndex={-1} className="grid min-w-0 grid-cols-3 rounded-full border border-white/[0.07] bg-white/[0.025] p-0.5 outline-none focus:ring-2 focus:ring-sky-200/30" role="group" aria-label={`${deviceName(device)} ${option.label}`}>
                                         <button type="button" onClick={() => selectChannel(device, option, null)} className={`min-w-0 rounded-full px-1.5 py-1.5 text-[10px] font-medium ${!selected ? "bg-white text-black" : "text-white/45"}`}>Not included</button>
                                         <button type="button" onClick={() => selectChannel(device, option, true)} className={`min-w-0 rounded-full px-1.5 py-1.5 text-[10px] font-medium ${selected?.value === true ? "bg-emerald-300 text-emerald-950" : "text-white/45"}`}>On</button>
                                         <button type="button" onClick={() => selectChannel(device, option, false)} className={`min-w-0 rounded-full px-1.5 py-1.5 text-[10px] font-medium ${selected?.value === false ? "bg-red-200 text-red-950" : "text-white/45"}`}>Off</button>
