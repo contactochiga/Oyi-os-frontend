@@ -35,7 +35,9 @@
     "smoke:device-inventory-isolation": "node scripts/context-isolation-smoke.mjs && node scripts/device-enterprise-ui-smoke.mjs",
     "smoke:socket-scope": "node scripts/device-ownership-lock-ui-smoke.mjs",
     "validate:release": "node scripts/validate-release.mjs && npm run smoke:device-runtime-batch && npm run smoke:context-isolation && npm run smoke:release-closure && npm run smoke:scene-runtime-v2 && npm run smoke:device-ownership && npm run smoke:smart-access && npm run smoke:device-enterprise",
-    "smoke:automation-runtime-v2": "node scripts/automation-runtime-v2-ui-smoke.mjs"
+    "smoke:automation-runtime-v2": "node scripts/automation-runtime-v2-ui-smoke.mjs",
+    "smoke:contextual-intelligence": "node scripts/contextual-intelligence-smoke.mjs",
+    "smoke:intelligence-target-switch": "node scripts/contextual-intelligence-smoke.mjs"
   },
   "dependencies": {
     "@capacitor-community/speech-recognition": "^6.0.0",
