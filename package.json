@@ -39,7 +39,12 @@
     "smoke:contextual-intelligence": "node scripts/contextual-intelligence-smoke.mjs",
     "smoke:intelligence-target-switch": "node scripts/contextual-intelligence-smoke.mjs",
     "smoke:device-visible-state-context": "node scripts/device-visible-state-context-smoke.mjs",
-    "smoke:context-visible-state-sanitization": "node scripts/device-visible-state-context-smoke.mjs"
+    "smoke:context-visible-state-sanitization": "node scripts/device-visible-state-context-smoke.mjs",
+    "smoke:pending-command-presentation": "node scripts/command-truth-ui-smoke.mjs",
+    "smoke:command-failure-rollback": "node scripts/command-truth-ui-smoke.mjs",
+    "smoke:multi-gang-confirmed-aggregate": "node scripts/command-truth-ui-smoke.mjs",
+    "smoke:command-status-reconnect": "node scripts/command-truth-ui-smoke.mjs",
+    "smoke:read-only-chat-safety": "node scripts/command-truth-ui-smoke.mjs"
   },
   "dependencies": {
     "@capacitor-community/speech-recognition": "^6.0.0",

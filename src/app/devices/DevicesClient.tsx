@@ -783,6 +783,60 @@ export default function DeviceClient() {
     });
   }
 
+  function applyCommandExecutionUpdate(update: Record<string, any>) {
+    const deviceId = String(update?.canonical_device_id || update?.device_id || "");
+    const channelCode = String(update?.channel_code || "");
+    const executionId = String(update?.command_execution_id || update?.executionId || "");
+    if (!deviceId || !channelCode) return;
+    const stateKey = switchStateKey(deviceId, channelCode);
+    const finalStatus = String(update?.final_status || update?.confirmation_status || update?.provider_status || "").toLowerCase();
+    const safeMessage = String(update?.safe_error_message || update?.error || "").trim();
+    setSwitchCommands((current) => {
+      const pending = current[stateKey];
+      if (!pending) return current;
+      if (executionId && pending.command_execution_id && executionId !== pending.command_execution_id) return current;
+      if (["state_confirmed", "confirmed", "executed"].includes(finalStatus)) {
+        clearSwitchTimeout(stateKey);
+        const next = { ...current };
+        delete next[stateKey];
+        return next;
+      }
+      if (["provider_rejected", "state_mismatch", "confirmation_timed_out", "failed", "rejected"].includes(finalStatus)) {
+        clearSwitchTimeout(stateKey);
+        return {
+          ...current,
+          [stateKey]: {
+            ...pending,
+            command_status: finalStatus === "confirmation_timed_out" ? "timeout" : "failed",
+            error: safeMessage || `${pending.command_code} command did not complete.`,
+          },
+        };
+      }
+      return current;
+    });
+  }
+
+  function pollCommandExecution(commandExecutionId: string, deviceId: string, commandCode: string, attempts = 8) {
+    let remaining = attempts;
+    const tick = async () => {
+      if (remaining <= 0) return;
+      remaining -= 1;
+      try {
+        const result = await deviceService.getCommandExecution(commandExecutionId);
+        const execution = result?.execution || null;
+        if (execution) {
+          applyCommandExecutionUpdate({ ...execution, canonical_device_id: execution.canonical_device_id || deviceId, channel_code: execution.channel_code || commandCode });
+          const finalStatus = String(execution.final_status || execution.confirmation_status || "").toLowerCase();
+          if (["state_confirmed", "provider_rejected", "state_mismatch", "confirmation_timed_out", "failed"].includes(finalStatus)) return;
+        }
+      } catch {
+        // Socket/runtime updates remain authoritative; polling is only recovery.
+      }
+      window.setTimeout(tick, remaining > 4 ? 1200 : 2200);
+    };
+    window.setTimeout(tick, 1000);
+  }
+
   async function hydrateStates(
     list: AnyDevice[],
     prefetchedRuntime?: Awaited<ReturnType<typeof deviceService.getRuntimeDevices>>,
@@ -920,12 +974,14 @@ export default function DeviceClient() {
     socket.on("connect", subscribe);
     socket.on("device:update", onUpdate);
     socket.on("device.status.updated", onUpdate);
+    socket.on("command.execution.updated", applyCommandExecutionUpdate);
     if (socket.connected) subscribe();
 
     return () => {
       socket.off("connect", subscribe);
       socket.off("device:update", onUpdate);
       socket.off("device.status.updated", onUpdate);
+      socket.off("command.execution.updated", applyCommandExecutionUpdate);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contextReady, activeContext.contextKey, estateId, homeId, items]);
@@ -1114,7 +1170,6 @@ export default function DeviceClient() {
         },
       }));
       scheduleSwitchTimeout(stateKey, label);
-      setStateMap((p) => ({ ...p, [sid]: { ...(p[sid] || {}), [code]: next, ...(gangCount === 1 ? { switch: next, power: next, on: next } : {}) } }));
       const response = await deviceService.commandDevice(sid, { [code]: next }, {
         idempotencyKey: commandKey,
         commandKey,
@@ -1132,8 +1187,12 @@ export default function DeviceClient() {
           },
         };
       });
+      if (response?.command_execution_id) pollCommandExecution(String(response.command_execution_id), sid, code);
     } catch (e: any) {
-      const message = e?.response?.data?.error || e?.message || "Command failed";
+      const body = e?.response?.data || {};
+      const channelLabel = `Channel ${gangIndex + 1}`;
+      const message = body?.safe_error_message || body?.details || body?.error || e?.message || `${channelLabel} command failed.`;
+      const scopedMessage = `${channelLabel} command failed. ${message}`;
       if (stateKey) {
         clearSwitchTimeout(stateKey);
         setSwitchCommands((current) => {
@@ -1144,7 +1203,7 @@ export default function DeviceClient() {
             [stateKey]: {
               ...pending,
               command_status: "failed",
-              error: message,
+              error: scopedMessage,
             },
           };
         });
@@ -1154,7 +1213,7 @@ export default function DeviceClient() {
         if (!commandCode || confirmedState === null) return p;
         return { ...p, [sid]: { ...cached, [commandCode]: confirmedState } };
       });
-      setErr(message);
+      setErr(`${label}: ${scopedMessage}`);
     }
   }
 
@@ -2272,6 +2331,7 @@ function SwitchRenderer({ device, state, runtime, caps, gangCount, values, switc
   const sid = String(pickDbId(device) || "");
   const desiredValues: Array<boolean | null | undefined> = [];
   const pendingKeys: Record<number, boolean> = {};
+  const issues: string[] = [];
   for (let i = 0; i < safeGangCount; i += 1) {
     const code = normalizeCommandKey(device, state, runtime, i);
     const pending = sid ? switchCommands?.[switchStateKey(sid, code)] : null;
@@ -2280,6 +2340,7 @@ function SwitchRenderer({ device, state, runtime, caps, gangCount, values, switc
       pendingKeys[i] = true;
     } else if (pending && (pending.command_status === "failed" || pending.command_status === "timeout")) {
       desiredValues[i] = pending.confirmed_state;
+      issues.push(`Channel ${i + 1}: ${pending.error || (pending.command_status === "timeout" ? "confirmation timed out" : "command failed")}`);
     }
   }
   return (
@@ -2287,6 +2348,12 @@ function SwitchRenderer({ device, state, runtime, caps, gangCount, values, switc
       <div className="rounded-[24px] border border-white/[0.07] bg-white/[0.035] p-4">
         <div className="mb-4 text-sm font-semibold text-white">Controls</div>
         {caps.canSwitch ? <GangRingSwitch gangCount={safeGangCount} online={isOnline(device, runtime)} values={values} desiredValues={desiredValues} pendingKeys={pendingKeys} busy={busy} onToggleGang={(gangIndex, next) => onToggleGang(device, gangIndex, next)} size={safeGangCount === 1 ? 88 : 70} /> : null}
+        {Object.keys(pendingKeys).length ? <p className="mt-3 text-xs text-amber-100/75">Changing… waiting for provider/state confirmation.</p> : null}
+        {issues.length ? (
+          <div className="mt-3 rounded-2xl border border-rose-300/20 bg-rose-500/10 px-3 py-2 text-xs leading-5 text-rose-100/85">
+            {issues.map((issue) => <p key={issue}>{issue}</p>)}
+          </div>
+        ) : null}
       </div>
     </div>
   );

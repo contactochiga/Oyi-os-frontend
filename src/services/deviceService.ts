@@ -408,7 +408,32 @@ export const deviceService = {
         },
       } : undefined,
     );
-    return res.data as { ok?: boolean; status?: string; error?: string; details?: string; state?: Record<string, any>; command_execution_id?: string; command_key?: string; tap_sequence?: number | string | null; client_tap_timestamp?: number | string | null };
+    return res.data as {
+      ok?: boolean;
+      accepted?: boolean;
+      final?: boolean;
+      status?: string;
+      request_status?: string;
+      provider_status?: string;
+      confirmation_status?: string;
+      physical_effect_status?: string;
+      final_status?: string;
+      truth_state?: string;
+      safe_error_message?: string | null;
+      retryable?: boolean | null;
+      error?: string;
+      details?: string;
+      state?: Record<string, any>;
+      command_execution_id?: string;
+      command_key?: string;
+      tap_sequence?: number | string | null;
+      client_tap_timestamp?: number | string | null;
+    };
+  },
+
+  async getCommandExecution(commandExecutionId: string) {
+    const res = await API.get(`/oyi/runtime/executions/${encodeURIComponent(commandExecutionId)}`);
+    return res.data as { ok?: boolean; execution?: Record<string, any>; error?: string };
   },
 
   async getIrProfiles(deviceId: string) {
