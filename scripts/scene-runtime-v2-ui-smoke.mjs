@@ -27,6 +27,15 @@ const requiredPage = [
   ["per-action result surface", "SceneResultSurface"],
   ["result Done action", "Done"],
   ["automation scheduler warning", "Automatic execution is not enabled yet."],
+  ["mobile flex viewport root", "flex h-[100dvh] min-h-0 flex-col overflow-hidden"],
+  ["safe area top fallback", "max(env(safe-area-inset-top), 16px)"],
+  ["safe area bottom fallback", "max(env(safe-area-inset-bottom), 14px)"],
+  ["scrollable middle region", "min-h-0 flex-1 overflow-y-auto overscroll-contain"],
+  ["iOS momentum scrolling", "[-webkit-overflow-scrolling:touch]"],
+  ["collapsed unavailable devices", "Unavailable in scenes"],
+  ["secondary scene ideas", "Scene ideas"],
+  ["disabled save name reason", "Add a scene name."],
+  ["disabled save action reason", "Select at least one device action."],
 ];
 
 const requiredService = [
@@ -44,6 +53,35 @@ const missing = [
 if (missing.length) {
   console.error("Scene Runtime V2 UI smoke failed. Missing invariants:");
   for (const item of missing) console.error(`- ${item}`);
+  process.exit(1);
+}
+
+if (scenePage.includes("h-[calc(100dvh-var(--sat))]") || scenePage.includes("fixed inset-x-0 bottom-0")) {
+  console.error("Scene Runtime V2 UI smoke failed: mobile scene surfaces still use calculated scroll height or fixed bottom footer.");
+  process.exit(1);
+}
+
+const editorIndex = scenePage.indexOf("function SceneEditor");
+const resultIndex = scenePage.indexOf("function SceneResultSurface");
+for (const [label, start, end] of [
+  ["editor", editorIndex, resultIndex],
+  ["result", resultIndex, scenePage.indexOf("function Metric")],
+]) {
+  const source = start >= 0 && end > start ? scenePage.slice(start, end) : "";
+  if (!source.includes("<header") || !source.includes("<main") || !source.includes("<footer")) {
+    console.error(`Scene Runtime V2 UI smoke failed: ${label} surface does not use header/main/footer flex siblings.`);
+    process.exit(1);
+  }
+  if (source.includes("fixed inset-x-0 bottom-0") || source.includes("h-[calc(100dvh")) {
+    console.error(`Scene Runtime V2 UI smoke failed: ${label} surface regressed to overlay footer/manual height.`);
+    process.exit(1);
+  }
+}
+
+const itemsIndex = scenePage.indexOf("items.map");
+const ideasIndex = scenePage.indexOf("Scene ideas");
+if (itemsIndex < 0 || ideasIndex < 0 || ideasIndex < itemsIndex) {
+  console.error("Scene Runtime V2 UI smoke failed: scene ideas/templates must render after the user's existing scenes.");
   process.exit(1);
 }
 

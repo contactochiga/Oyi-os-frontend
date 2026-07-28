@@ -19,6 +19,7 @@ type SceneTemplate = { name: string; icon: any; description: string; power: "on"
 type ActionOption = { code: string; label: string; valueType: "boolean" | "number" | "string" };
 type ActionSupport = { supported: boolean; disabledReason?: string; options: ActionOption[] };
 type ActionSelection = { device_id: string; command_code: string; value: boolean; label: string };
+type DeviceSceneModel = { device: AnyDevice; id: string; room: string; support: ActionSupport };
 type ScenePresentation =
   | { mode: "list" }
   | { mode: "editor"; tab: Tab; scene?: ConsumerScene | ConsumerAutomation | null; template?: SceneTemplate | null; initialDeviceId?: string; error?: string }
@@ -239,6 +240,7 @@ export default function ScenesPage() {
   const [error, setError] = useState("");
   const [presentation, setPresentation] = useState<ScenePresentation>({ mode: "list" });
   const [deletingItem, setDeletingItem] = useState<ConsumerScene | ConsumerAutomation | null>(null);
+  const [ideasOpen, setIdeasOpen] = useState(false);
 
   async function refresh() {
     if (!contextReady || !estateId) {
@@ -281,6 +283,9 @@ export default function ScenesPage() {
   useEffect(() => { void refresh(); }, [contextReady, activeContext.contextKey]);
 
   const returnToList = useCallback(() => {
+    if (typeof window !== "undefined" && window.history.state?.oyiSceneSurface) {
+      window.history.back();
+    }
     setPresentation({ mode: "list" });
     setDeletingItem(null);
   }, []);
@@ -320,7 +325,7 @@ export default function ScenesPage() {
     } catch (err: any) {
       setError(err?.response?.data?.error || err?.message || "Could not delete item.");
     } finally {
-      setDeletingItem(null);
+      returnToList();
     }
   }
 
@@ -352,34 +357,15 @@ export default function ScenesPage() {
                 <button key={key} type="button" onClick={() => setTab(key)} className={`rounded-full border px-3.5 py-2 text-xs font-medium capitalize ${tab === key ? "border-sky-300/55 bg-sky-400/12 text-sky-100" : "border-white/[0.07] bg-white/[0.025] text-white/52"}`}>{key}</button>
               ))}
             </div>
+            <button type="button" onClick={() => setPresentation({ mode: "editor", tab, scene: null, template: null })} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full bg-white px-4 py-3 text-sm font-semibold text-black shadow-[0_16px_40px_rgba(255,255,255,0.1)] active:scale-[0.99]">
+              <Plus className="h-4 w-4" /> Create {tab === "scenes" ? "scene" : "automation"}
+            </button>
             <section className="mt-5">
               <div className="flex items-center justify-between">
-                <h2 className="text-[17px] font-semibold tracking-[-0.04em]">{tab === "scenes" ? "Scene dashboard" : "Automations"}</h2>
-                <button type="button" onClick={() => setPresentation({ mode: "editor", tab, scene: null, template: null })} className="inline-flex items-center gap-1.5 rounded-full border border-sky-300/25 bg-sky-400/10 px-3 py-2 text-xs text-sky-100"><Plus className="h-3.5 w-3.5" /> Create {tab === "scenes" ? "scene" : "automation"}</button>
+                <h2 className="text-[17px] font-semibold tracking-[-0.04em]">{tab === "scenes" ? "Your scenes" : "Automations"}</h2>
+                <span className="text-[11px] text-white/34">{items.length} saved</span>
               </div>
               {error ? <p className="mt-3 rounded-[18px] border border-red-300/14 bg-red-500/[0.06] p-3 text-xs text-red-100">{error}</p> : null}
-              {tab === "scenes" ? (
-                <div className="mt-3">
-                  <div className="mb-2 flex items-center justify-between">
-                    <h3 className="text-[12px] font-semibold uppercase tracking-[0.18em] text-white/42">Scene blueprints</h3>
-                    <span className="text-[11px] text-white/34">Pick then configure</span>
-                  </div>
-                  {sceneBlueprints.length ? (
-                    <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                      {sceneBlueprints.map((template) => {
-                        const Icon = template.icon;
-                        return (
-                          <button key={template.name} type="button" onClick={() => setPresentation({ mode: "editor", tab: "scenes", scene: null, template })} className="w-[156px] shrink-0 rounded-[20px] border border-white/[0.07] bg-white/[0.032] p-3 text-left transition active:scale-[0.99]">
-                            <span className="grid h-9 w-9 place-items-center rounded-full bg-sky-400/10 text-sky-200"><Icon className="h-4 w-4" /></span>
-                            <span className="mt-2 block truncate text-[13px] font-semibold text-white">{template.name}</span>
-                            <span className="mt-1 line-clamp-2 text-[11px] leading-4 text-white/42">{template.description}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : <div className="rounded-[20px] border border-white/[0.06] bg-white/[0.025] p-3 text-xs text-white/42">All blueprints shown here are already configured as scenes.</div>}
-                </div>
-              ) : null}
               {loading ? <Empty title="Loading..." body="Syncing your living environment." /> : items.length ? (
                 <div className="mt-3 space-y-3">
                   {items.map((item) => {
@@ -409,6 +395,37 @@ export default function ScenesPage() {
                   })}
                 </div>
               ) : <Empty title={tab === "scenes" ? "No scenes yet." : "No automations yet."} body={tab === "scenes" ? "Create a scene to control multiple devices at once." : "Create an automation when you want your home to respond automatically."} />}
+              {tab === "scenes" ? (
+                <div className="mt-5 rounded-[22px] border border-white/[0.06] bg-white/[0.025]">
+                  <button type="button" onClick={() => setIdeasOpen((value) => !value)} className="flex w-full items-center justify-between px-4 py-3 text-left" aria-expanded={ideasOpen}>
+                    <span>
+                      <span className="block text-sm font-semibold tracking-[-0.02em]">Scene ideas</span>
+                      <span className="mt-0.5 block text-[11px] text-white/38">{sceneBlueprints.length ? "Optional templates to configure later" : "All templates are already configured"}</span>
+                    </span>
+                    {ideasOpen ? <ChevronDown className="h-4 w-4 text-white/40" /> : <ChevronRight className="h-4 w-4 text-white/40" />}
+                  </button>
+                  {ideasOpen ? (
+                    <div className="border-t border-white/[0.045] p-3">
+                      {sceneBlueprints.length ? (
+                        <div className="grid gap-2">
+                          {sceneBlueprints.map((template) => {
+                            const Icon = template.icon;
+                            return (
+                              <button key={template.name} type="button" onClick={() => setPresentation({ mode: "editor", tab: "scenes", scene: null, template })} className="flex items-center gap-3 rounded-[16px] border border-white/[0.055] bg-white/[0.025] p-3 text-left transition active:scale-[0.99]">
+                                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-sky-400/10 text-sky-200"><Icon className="h-4 w-4" /></span>
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate text-[13px] font-semibold text-white">{template.name}</span>
+                                  <span className="mt-0.5 line-clamp-1 text-[11px] text-white/42">{template.description}</span>
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : <div className="text-xs text-white/42">No unused scene ideas remain.</div>}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </section>
           </div>
         </div>
@@ -447,13 +464,13 @@ export default function ScenesPage() {
         ) : null}
         {deletingItem ? (
           <div className="fixed inset-0 z-[150] flex items-end justify-center bg-black/55 px-4 pb-[calc(16px+var(--sab))] backdrop-blur-md">
-            <button className="absolute inset-0" onClick={() => setDeletingItem(null)} aria-label="Cancel delete" />
+            <button className="absolute inset-0" onClick={returnToList} aria-label="Cancel delete" />
             <section className="relative w-full max-w-[390px] rounded-[26px] border border-red-300/14 bg-[#050a12]/96 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.58)]">
               <div className="text-[10px] uppercase tracking-[0.2em] text-red-100/48">Remove {tab === "scenes" ? "scene" : "automation"}</div>
               <h2 className="mt-1 text-lg font-semibold tracking-[-0.04em]">Delete &quot;{deletingItem.name}&quot;?</h2>
               <p className="mt-2 text-sm leading-5 text-white/48">This removes it from this home. No device command will run.</p>
               <div className="mt-4 grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => setDeletingItem(null)} className="rounded-full border border-white/[0.08] bg-white/[0.04] px-4 py-2.5 text-sm text-white/68">Cancel</button>
+                <button type="button" onClick={returnToList} className="rounded-full border border-white/[0.08] bg-white/[0.04] px-4 py-2.5 text-sm text-white/68">Cancel</button>
                 <button type="button" onClick={() => void deleteItem(deletingItem)} className="rounded-full bg-red-200 px-4 py-2.5 text-sm font-semibold text-red-950">Delete</button>
               </div>
             </section>
@@ -519,14 +536,44 @@ function SceneEditor({ mode, devices, onCancel, onSave }: { mode: Extract<SceneP
   const currentSignature = JSON.stringify({ name, description, trigger, actions });
   const dirty = currentSignature !== initialSignature;
   const canSave = Boolean(name.trim() && actions.length && !saving);
+  const saveReason = !name.trim() ? "Add a scene name." : !actions.length ? "Select at least one device action." : "";
+  const deviceModels = useMemo<DeviceSceneModel[]>(() => devices.map((device) => ({
+    device,
+    id: deviceId(device),
+    room: roomName(device),
+    support: sceneActionOptions(device),
+  })).filter((item) => item.id), [devices]);
   const groupedDevices = useMemo(() => {
-    const groups = new Map<string, AnyDevice[]>();
-    for (const device of devices) {
-      const room = roomName(device);
-      groups.set(room, [...(groups.get(room) || []), device]);
+    const groups = new Map<string, DeviceSceneModel[]>();
+    for (const item of deviceModels.filter((entry) => entry.support.supported)) {
+      groups.set(item.room, [...(groups.get(item.room) || []), item]);
     }
     return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
-  }, [devices]);
+  }, [deviceModels]);
+  const unavailableDevices = useMemo(() => deviceModels.filter((entry) => !entry.support.supported), [deviceModels]);
+  const [unavailableOpen, setUnavailableOpen] = useState(false);
+
+  const selectedActionCount = actions.length;
+  const selectedByDevice = useMemo(() => {
+    const groups = new Map<string, ActionSelection[]>();
+    for (const selection of Object.values(actionSelections)) {
+      groups.set(selection.device_id, [...(groups.get(selection.device_id) || []), selection]);
+    }
+    return groups;
+  }, [actionSelections]);
+
+  function removeSelection(device_id: string, command_code: string) {
+    setActionSelections((current) => {
+      const next = { ...current };
+      delete next[selectionKey(device_id, command_code)];
+      return next;
+    });
+  }
+
+  const actionChips = useMemo(() => actions.map((action, index) => {
+    const [code] = commandEntries(action.command)[0] || [];
+    return { action, code: String(code || ""), index };
+  }), [actions]);
 
   function requestClose() {
     if (dirty && !window.confirm("Discard changes to this scene?")) return;
@@ -545,78 +592,86 @@ function SceneEditor({ mode, devices, onCancel, onSave }: { mode: Extract<SceneP
   }
 
   return (
-    <div className="fixed inset-0 z-[150] bg-[#02060b] text-white" role="dialog" aria-modal="true" aria-labelledby="scene-editor-title" aria-describedby="scene-editor-description">
+    <div className="fixed inset-0 z-[150] flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-[#02060b] text-white" role="dialog" aria-modal="true" aria-labelledby="scene-editor-title" aria-describedby="scene-editor-description">
       <div className="oyi-ambient-bg" />
-      <header className="relative z-10 border-b border-white/[0.055] bg-[#02060b]/90 px-5 pb-3 pt-[calc(12px+var(--sat))] backdrop-blur-xl">
+      <header className="relative z-10 shrink-0 border-b border-white/[0.055] bg-[#02060b]/90 px-5 pb-3 backdrop-blur-xl" style={{ paddingTop: "max(env(safe-area-inset-top), 16px)" }}>
         <div className="mx-auto flex max-w-[430px] items-center justify-between gap-3">
           <button type="button" onClick={requestClose} className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white/72">Back</button>
           <div className="min-w-0 flex-1 text-center">
             <h2 id="scene-editor-title" className="truncate text-[16px] font-semibold tracking-[-0.03em]">{initial ? "Edit" : "Create"} {tab === "scenes" ? "scene" : "automation"}</h2>
-            <p id="scene-editor-description" className="mt-0.5 text-[11px] text-white/38">{actions.length} selected action{actions.length === 1 ? "" : "s"}</p>
+            <p id="scene-editor-description" className="mt-0.5 text-[11px] text-white/38">{selectedActionCount} selected action{selectedActionCount === 1 ? "" : "s"}</p>
           </div>
           <button type="button" onClick={requestClose} className="grid h-9 w-9 place-items-center rounded-full bg-white/[0.06]" aria-label="Close scene editor"><X className="h-4 w-4" /></button>
         </div>
       </header>
-      <div className="relative z-10 h-[calc(100dvh-var(--sat))] overflow-y-auto px-5 pb-[calc(96px+var(--sab))] pt-4">
+      <main className="relative z-10 min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-3 [-webkit-overflow-scrolling:touch]">
         <div className="mx-auto max-w-[430px]">
           {mode.mode === "editor" && mode.error ? <p className="mb-3 rounded-[18px] border border-red-300/14 bg-red-500/[0.06] p-3 text-xs text-red-100">{mode.error}</p> : null}
-          <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Scene name" className="h-11 w-full rounded-[16px] border border-white/[0.08] bg-white/[0.035] px-3 text-sm outline-none" />
-          {tab === "scenes" ? <textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Description" rows={2} className="mt-2 w-full resize-none rounded-[16px] border border-white/[0.08] bg-white/[0.035] px-3 py-2.5 text-sm outline-none" /> : null}
-          {tab === "automations" ? (
-            <select value={trigger} onChange={(event) => setTrigger(event.target.value)} className="mt-2 h-11 w-full rounded-[16px] border border-white/[0.08] bg-[#07101c] px-3 text-sm">
-              <option value="time">Time schedule</option>
-              <option value="sunrise">Sunrise</option>
-              <option value="sunset">Sunset</option>
-              <option value="device">Device state</option>
-              <option value="presence">Presence</option>
-              <option value="manual">Manual trigger</option>
-            </select>
-          ) : null}
-          <div className="mt-4 rounded-[20px] border border-white/[0.065] bg-white/[0.028] p-3">
-            <div className="text-[11px] uppercase tracking-[0.18em] text-white/34">Selected actions</div>
-            {actions.length ? <div className="mt-2 flex flex-wrap gap-1.5">{actions.map((action, index) => <span key={`${action.device_id}:${index}`} className="rounded-full border border-sky-300/16 bg-sky-400/8 px-2.5 py-1.5 text-[11px] text-sky-100/72">{describeAction(action)}</span>)}</div> : <p className="mt-2 text-xs text-white/42">Choose a device below, then set each channel to Not included, On, or Off.</p>}
-          </div>
+          <section className="rounded-[20px] border border-white/[0.055] bg-white/[0.026] p-3">
+            <label className="text-[11px] font-medium uppercase tracking-[0.16em] text-white/36" htmlFor="scene-name">Scene name</label>
+            <input id="scene-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Scene name" className="mt-1.5 h-10 w-full rounded-[14px] border border-white/[0.08] bg-white/[0.035] px-3 text-sm outline-none" />
+            {tab === "scenes" ? <textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Optional description" rows={2} className="mt-2 w-full resize-none rounded-[14px] border border-white/[0.08] bg-white/[0.035] px-3 py-2 text-sm outline-none" /> : null}
+            {tab === "automations" ? (
+              <select value={trigger} onChange={(event) => setTrigger(event.target.value)} className="mt-2 h-10 w-full rounded-[14px] border border-white/[0.08] bg-[#07101c] px-3 text-sm">
+                <option value="time">Time schedule</option>
+                <option value="sunrise">Sunrise</option>
+                <option value="sunset">Sunset</option>
+                <option value="device">Device state</option>
+                <option value="presence">Presence</option>
+                <option value="manual">Manual trigger</option>
+              </select>
+            ) : null}
+          </section>
+          {actions.length ? (
+            <section className="mt-3">
+              <div className="mb-2 text-[11px] uppercase tracking-[0.18em] text-white/34">Selected actions</div>
+              <div className="flex flex-wrap gap-1.5">
+                {actionChips.map(({ action, code, index }) => (
+                  <button key={`${action.device_id}:${code}:${index}`} type="button" onClick={() => removeSelection(action.device_id, code)} className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-sky-300/16 bg-sky-400/8 px-2.5 py-1.5 text-[11px] text-sky-100/72" aria-label={`Remove ${describeAction(action)}`}>
+                    <span className="truncate">{describeAction(action)}</span>
+                    <X className="h-3 w-3 shrink-0" />
+                  </button>
+                ))}
+              </div>
+            </section>
+          ) : <p className="mt-3 text-xs text-white/42">Select a device and choose what it should do.</p>}
           <div className="mt-4 space-y-4">
             {groupedDevices.map(([room, roomDevices]) => (
               <section key={room}>
                 <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/34">{room}</h3>
                 <div className="space-y-2">
-                  {roomDevices.map((device) => {
-                    const id = deviceId(device);
-                    const support = sceneActionOptions(device);
+                  {roomDevices.map(({ device, id, support }) => {
                     const expanded = expandedDeviceId === id;
-                    const selectedForDevice = Object.values(actionSelections).filter((selection) => selection.device_id === id);
+                    const selectedForDevice = selectedByDevice.get(id) || [];
                     return (
                       <div key={id} className="rounded-[18px] border border-white/[0.065] bg-white/[0.028]">
                         <button type="button" onClick={() => setExpandedDeviceId(expanded ? "" : id)} className="flex w-full items-center gap-3 px-3 py-3 text-left" aria-expanded={expanded}>
-                          <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full border ${support.supported ? "border-sky-300/18 bg-sky-400/10 text-sky-200" : "border-white/[0.06] bg-white/[0.025] text-white/30"}`}><Zap className="h-4 w-4" /></span>
+                          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-sky-300/18 bg-sky-400/10 text-sky-200"><Zap className="h-4 w-4" /></span>
                           <span className="min-w-0 flex-1">
                             <span className="block truncate text-sm font-semibold">{deviceName(device)}</span>
-                            <span className="mt-0.5 block truncate text-[11px] text-white/38">{selectedForDevice.length ? selectedForDevice.map((item) => item.label).join(", ") : support.supported ? room : support.disabledReason}</span>
+                            <span className="mt-0.5 block truncate text-[11px] text-white/38">{selectedForDevice.length ? selectedForDevice.map((item) => item.label).join(", ") : room}</span>
                           </span>
                           {expanded ? <ChevronDown className="h-4 w-4 text-white/40" /> : <ChevronRight className="h-4 w-4 text-white/40" />}
                         </button>
                         {expanded ? (
                           <div className="border-t border-white/[0.045] px-3 py-3">
-                            {support.supported ? (
-                              <div className="space-y-2">
-                                {support.options.map((option) => {
-                                  const selected = actionSelections[selectionKey(id, option.code)];
-                                  return (
-                                    <div key={option.code} className="flex items-center gap-2 rounded-[14px] bg-black/10 p-2">
-                                      <span className="min-w-0 flex-1 truncate text-xs font-medium text-white/72">{option.label}</span>
-                                      {option.valueType === "boolean" ? (
-                                        <div className="grid shrink-0 grid-cols-3 rounded-full border border-white/[0.07] bg-white/[0.025] p-0.5" role="group" aria-label={`${deviceName(device)} ${option.label}`}>
-                                          <button type="button" onClick={() => selectChannel(device, option, null)} className={`rounded-full px-2.5 py-1.5 text-[11px] ${!selected ? "bg-white text-black" : "text-white/45"}`}>Not included</button>
-                                          <button type="button" onClick={() => selectChannel(device, option, true)} className={`rounded-full px-2.5 py-1.5 text-[11px] ${selected?.value === true ? "bg-emerald-300 text-emerald-950" : "text-white/45"}`}>On</button>
-                                          <button type="button" onClick={() => selectChannel(device, option, false)} className={`rounded-full px-2.5 py-1.5 text-[11px] ${selected?.value === false ? "bg-red-200 text-red-950" : "text-white/45"}`}>Off</button>
-                                        </div>
-                                      ) : <span className="text-[11px] text-amber-100/58">Value editing later</span>}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            ) : <p className="text-xs leading-5 text-white/42">{support.disabledReason}</p>}
+                            <div className="space-y-2">
+                              {support.options.map((option) => {
+                                const selected = actionSelections[selectionKey(id, option.code)];
+                                return (
+                                  <div key={option.code} className="rounded-[14px] bg-black/10 p-2">
+                                    <div className="mb-2 truncate text-xs font-medium text-white/72">{option.label}</div>
+                                    {option.valueType === "boolean" ? (
+                                      <div className="grid min-w-0 grid-cols-3 rounded-full border border-white/[0.07] bg-white/[0.025] p-0.5" role="group" aria-label={`${deviceName(device)} ${option.label}`}>
+                                        <button type="button" onClick={() => selectChannel(device, option, null)} className={`min-w-0 rounded-full px-1.5 py-1.5 text-[10px] font-medium ${!selected ? "bg-white text-black" : "text-white/45"}`}>Not included</button>
+                                        <button type="button" onClick={() => selectChannel(device, option, true)} className={`min-w-0 rounded-full px-1.5 py-1.5 text-[10px] font-medium ${selected?.value === true ? "bg-emerald-300 text-emerald-950" : "text-white/45"}`}>On</button>
+                                        <button type="button" onClick={() => selectChannel(device, option, false)} className={`min-w-0 rounded-full px-1.5 py-1.5 text-[10px] font-medium ${selected?.value === false ? "bg-red-200 text-red-950" : "text-white/45"}`}>Off</button>
+                                      </div>
+                                    ) : <span className="text-[11px] text-amber-100/58">Value editing later</span>}
+                                  </div>
+                                );
+                              })}
+                            </div>
                           </div>
                         ) : null}
                       </div>
@@ -625,15 +680,41 @@ function SceneEditor({ mode, devices, onCancel, onSave }: { mode: Extract<SceneP
                 </div>
               </section>
             ))}
+            {unavailableDevices.length ? (
+              <section className="rounded-[18px] border border-white/[0.055] bg-white/[0.022]">
+                <button type="button" onClick={() => setUnavailableOpen((value) => !value)} className="flex w-full items-center justify-between px-3 py-3 text-left" aria-expanded={unavailableOpen}>
+                  <span>
+                    <span className="block text-sm font-semibold text-white/72">Unavailable in scenes ({unavailableDevices.length})</span>
+                    <span className="mt-0.5 block text-[11px] text-white/38">Locks, TV and unsupported devices stay disabled.</span>
+                  </span>
+                  {unavailableOpen ? <ChevronDown className="h-4 w-4 text-white/40" /> : <ChevronRight className="h-4 w-4 text-white/40" />}
+                </button>
+                {unavailableOpen ? (
+                  <div className="border-t border-white/[0.045] p-2">
+                    {unavailableDevices.map(({ device, id, room, support }) => (
+                      <div key={id} className="flex items-center gap-3 rounded-[14px] px-2 py-2">
+                        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-white/[0.06] bg-white/[0.025] text-white/30"><Zap className="h-3.5 w-3.5" /></span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium text-white/72">{deviceName(device)}</span>
+                          <span className="mt-0.5 block truncate text-[11px] text-white/36">{room}</span>
+                        </span>
+                        <span className="max-w-[150px] text-right text-[11px] leading-4 text-white/36">{support.disabledReason || "Scene actions are not available for this device yet."}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
           </div>
           {tab === "automations" ? <p className="mt-4 text-xs leading-5 text-amber-100/58">Saved automations are compatible with Runtime V2 actions. Automatic execution is not enabled yet.</p> : null}
         </div>
-      </div>
-      <div className="fixed inset-x-0 bottom-0 z-[151] border-t border-white/[0.055] bg-[#02060b]/92 px-5 pb-[calc(14px+var(--sab))] pt-3 backdrop-blur-xl">
+      </main>
+      <footer className="relative z-10 shrink-0 border-t border-white/[0.055] bg-[#02060b]/92 px-5 pt-3 backdrop-blur-xl" style={{ paddingBottom: "max(env(safe-area-inset-bottom), 14px)" }}>
         <div className="mx-auto max-w-[430px]">
           <button type="button" disabled={!canSave} onClick={() => void onSave({ tab, name: name.trim(), description: description.trim(), trigger, actions })} className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-white px-4 py-3 text-sm font-semibold text-black disabled:opacity-40"><Zap className="h-4 w-4" /> {saving ? "Saving..." : "Save"}</button>
+          {!canSave && saveReason ? <p className="mt-2 text-center text-[11px] text-white/42">{saveReason}</p> : null}
         </div>
-      </div>
+      </footer>
     </div>
   );
 }
@@ -649,9 +730,9 @@ function SceneResultSurface({ result, onClose, onRunAgain }: { result: SceneRunR
       ? `${successful} actions completed. ${failed} device${failed === 1 ? "" : "s"} did not respond.`
       : `Scene completed across ${successful || result.counts.completed || result.counts.total} action${(successful || result.counts.completed || result.counts.total) === 1 ? "" : "s"}.`;
   return (
-    <div className="fixed inset-0 z-[150] bg-[#02060b] text-white" role="dialog" aria-modal="true" aria-labelledby="scene-result-title" aria-describedby="scene-result-description">
+    <div className="fixed inset-0 z-[150] flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-[#02060b] text-white" role="dialog" aria-modal="true" aria-labelledby="scene-result-title" aria-describedby="scene-result-description">
       <div className="oyi-ambient-bg" />
-      <header className="relative z-10 border-b border-white/[0.055] bg-[#02060b]/90 px-5 pb-3 pt-[calc(12px+var(--sat))] backdrop-blur-xl">
+      <header className="relative z-10 shrink-0 border-b border-white/[0.055] bg-[#02060b]/90 px-5 pb-3 backdrop-blur-xl" style={{ paddingTop: "max(env(safe-area-inset-top), 16px)" }}>
         <div className="mx-auto flex max-w-[430px] items-center justify-between gap-3">
           <button type="button" onClick={onClose} className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white/72">Back</button>
           <div className="min-w-0 flex-1 text-center">
@@ -661,7 +742,7 @@ function SceneResultSurface({ result, onClose, onRunAgain }: { result: SceneRunR
           <button type="button" onClick={onClose} className="grid h-9 w-9 place-items-center rounded-full bg-white/[0.06]" aria-label="Close scene result"><X className="h-4 w-4" /></button>
         </div>
       </header>
-      <div className="relative z-10 h-[calc(100dvh-var(--sat))] overflow-y-auto px-5 pb-[calc(96px+var(--sab))] pt-4">
+      <main className="relative z-10 min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-3 [-webkit-overflow-scrolling:touch]">
         <div className="mx-auto max-w-[430px]">
           <section className="rounded-[26px] border border-white/[0.08] bg-white/[0.04] p-4">
             <div className="text-[10px] uppercase tracking-[0.2em] text-sky-100/48">Completed run</div>
@@ -688,13 +769,13 @@ function SceneResultSurface({ result, onClose, onRunAgain }: { result: SceneRunR
             ))}
           </div>
         </div>
-      </div>
-      <div className="fixed inset-x-0 bottom-0 z-[151] border-t border-white/[0.055] bg-[#02060b]/92 px-5 pb-[calc(14px+var(--sab))] pt-3 backdrop-blur-xl">
+      </main>
+      <footer className="relative z-10 shrink-0 border-t border-white/[0.055] bg-[#02060b]/92 px-5 pt-3 backdrop-blur-xl" style={{ paddingBottom: "max(env(safe-area-inset-bottom), 14px)" }}>
         <div className="mx-auto grid max-w-[430px] grid-cols-2 gap-2">
           {onRunAgain ? <button type="button" onClick={onRunAgain} className="rounded-full border border-white/[0.08] bg-white/[0.04] px-4 py-3 text-sm text-white/72">Run again</button> : <span />}
           <button type="button" onClick={onClose} className="rounded-full bg-white px-4 py-3 text-sm font-semibold text-black">Done</button>
         </div>
-      </div>
+      </footer>
     </div>
   );
 }
