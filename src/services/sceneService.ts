@@ -1,8 +1,33 @@
 import API from "./api";
 
-export type SceneAction = { device_id: string; command: Record<string, any> };
+export type SceneAction = {
+  device_id: string;
+  command: Record<string, any>;
+  label?: string | null;
+  action_label?: string | null;
+  device_name?: string | null;
+  command_code?: string | null;
+};
 export type ConsumerScene = { id: string; name: string; description?: string | null; icon?: string; mood?: string; actions: SceneAction[]; enabled?: boolean };
 export type ConsumerAutomation = { id: string; name: string; trigger: Record<string, any>; condition?: Record<string, any>; actions: SceneAction[]; enabled: boolean };
+export type SceneRunActionResult = {
+  device_id: string | null;
+  device_name: string;
+  action_label: string;
+  status: "completed" | "accepted" | "pending_confirmation" | "failed" | "denied" | "skipped" | "timed_out" | string;
+  command_execution_id?: string | null;
+};
+export type SceneRunResult = {
+  ok?: boolean;
+  scene_run_id: string;
+  scene_id: string;
+  scene_name: string;
+  status: "completed" | "partially_completed" | "failed" | string;
+  requested_at: string;
+  completed_at?: string | null;
+  counts: { total: number; completed: number; failed: number };
+  actions: SceneRunActionResult[];
+};
 
 export const sceneService = {
   async listScenes(): Promise<ConsumerScene[]> {
@@ -21,7 +46,7 @@ export const sceneService = {
     const res = await API.delete(`/scenes/${encodeURIComponent(id)}`);
     return res.data;
   },
-  async runScene(id: string, name?: string) {
+  async runScene(id: string, name?: string): Promise<SceneRunResult> {
     const res = await API.post(`/scenes/${encodeURIComponent(id)}/run`);
     if (typeof window !== "undefined") {
       const label = String(name || res.data?.scene?.name || res.data?.name || "").trim();
@@ -31,7 +56,11 @@ export const sceneService = {
         window.dispatchEvent(new CustomEvent("oyi:scene-activated", { detail }));
       }
     }
-    return res.data;
+    return res.data as SceneRunResult;
+  },
+  async listSceneRuns(id: string): Promise<SceneRunResult[]> {
+    const res = await API.get(`/scenes/${encodeURIComponent(id)}/runs`);
+    return Array.isArray(res.data?.runs) ? res.data.runs : [];
   },
   async listAutomations(): Promise<ConsumerAutomation[]> {
     const res = await API.get("/scenes/automations");
