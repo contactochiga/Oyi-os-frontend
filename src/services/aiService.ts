@@ -123,6 +123,7 @@ export const aiService = {
         ...(context?.recent_executions ? { recent_executions: context.recent_executions } : {}),
         ...(context?.active_scenes ? { active_scenes: context.active_scenes } : {}),
         ...(context?.active_automations ? { active_automations: context.active_automations } : {}),
+        ...(context?.active_intelligence_context ? { active_intelligence_context: context.active_intelligence_context } : {}),
         ...(context?.conversation_context ? { conversation_context: context.conversation_context } : {}),
         ...(context?.operational_object ? { operational_object: context.operational_object } : {}),
         ...(context?.target ? { target: context.target } : {}),

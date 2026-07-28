@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, ArrowUp, Check, Clock3, Copy, History, Mic, Plus, Square, ThumbsUp, Volume2, X } from "lucide-react";
 
@@ -392,7 +392,7 @@ function OyiAiCommandCenterContent() {
   const [composerHeight, setComposerHeight] = useState(132);
   const [targetError, setTargetError] = useState<string | null>(null);
   const moduleContext = searchParams.get("module") || "ai";
-  const [registeredContext, setRegisteredContext] = useState<ActiveIntelligenceContext | null>(null);
+  const [registeredContext, setRegisteredContext] = useState<ActiveIntelligenceContext | null>(() => readPersistedActiveIntelligenceContext());
 
   useEffect(() => {
     const context = readPersistedActiveIntelligenceContext();
@@ -400,6 +400,13 @@ function OyiAiCommandCenterContent() {
     if (context && (!expectedRef || context.context_id === expectedRef)) setRegisteredContext(context);
     else setRegisteredContext(null);
   }, [searchParams]);
+
+  const latestRegisteredContext = useCallback(() => {
+    const persisted = readPersistedActiveIntelligenceContext();
+    const expectedRef = searchParams.get("contextRef");
+    if (persisted && (!expectedRef || persisted.context_id === expectedRef)) return persisted;
+    return registeredContext;
+  }, [registeredContext, searchParams]);
 
   function openTarget(target: OyiTarget | null | undefined) {
     const result = resolveConsumerOyiTarget(target, router);
@@ -416,18 +423,19 @@ function OyiAiCommandCenterContent() {
         home_id: activeContext.home_id || (user as any)?.home_id || null,
         searchParams,
       };
-      const registeredObject = operationalObjectFromActiveContext(registeredContext);
-      const registeredTarget = targetFromActiveContext(registeredContext);
+      const currentRegisteredContext = latestRegisteredContext();
+      const registeredObject = operationalObjectFromActiveContext(currentRegisteredContext);
+      const registeredTarget = targetFromActiveContext(currentRegisteredContext);
       return {
         surface: "consumer",
         scope: "home",
-        module: registeredContext?.module || moduleContext,
+        module: currentRegisteredContext?.module || moduleContext,
         route: pathname || "/ai",
         page: pathname || "/ai",
         estate_id: routeContext.estate_id,
         home_id: routeContext.home_id,
-        room_id: registeredContext?.scope.room_id || searchParams.get("roomId") || null,
-        device_id: registeredContext?.primary_object?.object_type === "device" ? registeredContext.primary_object.canonical_id : searchParams.get("deviceId") || null,
+        room_id: currentRegisteredContext?.scope.room_id || searchParams.get("roomId") || null,
+        device_id: currentRegisteredContext?.primary_object?.object_type === "device" ? currentRegisteredContext.primary_object.canonical_id : searchParams.get("deviceId") || null,
         visitor_id: searchParams.get("visitorId") || null,
         wallet_reference: searchParams.get("transactionId") || null,
         maintenance_id: searchParams.get("ticketId") || null,
@@ -435,17 +443,17 @@ function OyiAiCommandCenterContent() {
         conversation_id: searchParams.get("threadId") || null,
         operational_object: registeredObject || deriveConsumerOperationalObject(routeContext),
         target: registeredTarget || deriveConsumerTarget(routeContext),
-        active_intelligence_context: registeredContext,
+        active_intelligence_context: currentRegisteredContext,
         conversation_context: {
-          active_context: registeredContext,
-          context_id: registeredContext?.context_id || null,
-          context_version: registeredContext?.context_version || null,
-          selected_subobject: registeredContext?.selected_subobject || null,
-          visible_state: registeredContext?.visible_state || null,
+          active_context: currentRegisteredContext,
+          context_id: currentRegisteredContext?.context_id || null,
+          context_version: currentRegisteredContext?.context_version || null,
+          selected_subobject: currentRegisteredContext?.selected_subobject || null,
+          visible_state: currentRegisteredContext?.visible_state || null,
         },
       };
     },
-    [activeContext.estate_id, activeContext.home_id, moduleContext, pathname, registeredContext, searchParams, user],
+    [activeContext.estate_id, activeContext.home_id, latestRegisteredContext, moduleContext, pathname, searchParams, user],
   );
 
   const suggestions = useMemo(() => {

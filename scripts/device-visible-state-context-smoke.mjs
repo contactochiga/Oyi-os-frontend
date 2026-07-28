@@ -5,6 +5,9 @@ import { readFile } from "node:fs/promises";
 const deviceClientSource = await readFile(new URL("../src/app/devices/DevicesClient.tsx", import.meta.url), "utf8");
 const storeSource = await readFile(new URL("../src/store/useActiveIntelligenceContextStore.ts", import.meta.url), "utf8");
 const launcherSource = await readFile(new URL("../src/app/components/ContextualOyiButton.tsx", import.meta.url), "utf8");
+const aiPageSource = await readFile(new URL("../src/app/ai/page.tsx", import.meta.url), "utf8");
+const aiServiceSource = await readFile(new URL("../src/services/aiService.ts", import.meta.url), "utf8");
+const oyiServiceSource = await readFile(new URL("../src/services/oyiService.ts", import.meta.url), "utf8");
 
 function check(name, fn) {
   try {
@@ -59,6 +62,16 @@ check("context launcher persists exact active context before opening Oyi", () =>
   assert.match(launcherSource, /params\.set\("targetId", object\.canonical_id\)/);
   assert.match(launcherSource, /params\.set\("deviceId", intelligenceContext\.primary_object\.canonical_id\)/);
   assert.match(launcherSource, /params\.set\("channel", String\(intelligenceContext\.selected_subobject\.metadata\.channel_code\)\)/);
+});
+
+check("AI conversation request carries active context top-level and nested", () => {
+  assert.match(aiPageSource, /useState<ActiveIntelligenceContext \| null>\(\(\) => readPersistedActiveIntelligenceContext\(\)\)/);
+  assert.match(aiPageSource, /active_intelligence_context: currentRegisteredContext/);
+  assert.match(aiPageSource, /conversation_context:\s*{/);
+  assert.match(aiPageSource, /active_context: currentRegisteredContext/);
+  assert.match(aiPageSource, /visible_state: currentRegisteredContext\?\.visible_state/);
+  assert.match(aiServiceSource, /active_intelligence_context: context\.active_intelligence_context/);
+  assert.match(oyiServiceSource, /active_intelligence_context: input\.active_intelligence_context/);
 });
 
 check("visible-state payload does not intentionally carry raw provider payloads or credentials", () => {

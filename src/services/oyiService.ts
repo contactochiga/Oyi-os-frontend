@@ -133,6 +133,7 @@ export type OyiChatRequest = {
   recent_executions?: Array<Record<string, any>> | null;
   active_scenes?: Array<Record<string, any>> | null;
   active_automations?: Array<Record<string, any>> | null;
+  active_intelligence_context?: Record<string, any> | null;
   conversation_context?: Record<string, any> | null;
   operational_object?: Partial<OperationalObject> | null;
   target?: OyiTarget | null;
@@ -224,6 +225,7 @@ export const oyiService = {
       recent_executions: input.recent_executions || null,
       active_scenes: input.active_scenes || null,
       active_automations: input.active_automations || null,
+      active_intelligence_context: input.active_intelligence_context || (input.context as any)?.active_intelligence_context || null,
       conversation_context: input.conversation_context || null,
       operational_object: input.operational_object || null,
       target: input.target || null,
