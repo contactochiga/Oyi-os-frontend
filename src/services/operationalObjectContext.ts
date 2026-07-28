@@ -33,8 +33,8 @@ function candidateLabel(objectType: OperationalObject["object_type"], module: st
 
 export function deriveConsumerOperationalObject(input: RouteContextInput): Partial<OperationalObject> | null {
   const routeCandidates: Array<{ object_type: OperationalObject["object_type"]; id: string; source_module: string }> = [
-    { object_type: "device", id: text(input.searchParams.get("deviceId")), source_module: "devices" },
     { object_type: "device_channel", id: text(input.searchParams.get("deviceId") && input.searchParams.get("channel") ? `${input.searchParams.get("deviceId")}:${input.searchParams.get("channel")}` : ""), source_module: "devices" },
+    { object_type: "device", id: text(input.searchParams.get("deviceId")), source_module: "devices" },
     { object_type: "room", id: text(input.searchParams.get("roomId")), source_module: "rooms" },
     { object_type: "scene", id: text(input.searchParams.get("sceneId")), source_module: "scenes" },
     { object_type: "automation", id: text(input.searchParams.get("automationId")), source_module: "automations" },

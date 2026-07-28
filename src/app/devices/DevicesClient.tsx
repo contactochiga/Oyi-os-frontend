@@ -46,6 +46,7 @@ import { oyiService } from "@/services/oyiService";
 import { sceneService } from "@/services/sceneService";
 import { getSocket } from "@/services/socket";
 import { useRuntimeIntelligenceStore } from "@/store/useRuntimeIntelligenceStore";
+import { useActiveIntelligenceContextStore } from "@/store/useActiveIntelligenceContextStore";
 import GangRingSwitch from "@/app/components/devices/GangRingSwitch";
 import DoorPanel from "@/app/components/remotes/DoorPanel";
 import { getDeviceFamily, getDeviceIcon, getDeviceIconTone, isSimplePowerDevice } from "@/lib/devicePresentation";
@@ -1670,6 +1671,8 @@ function AddDeviceSheet({ tab, setTab, discovering, binding, discovered, provide
 function DeviceModalRouter({ device, state, runtime, switchCommands, busy, awareness, recommendation, onClose, onToggleGang, onPower, onCommand, onTool, onCreateScene, onCreateAutomation, onBindIrAppliance }: { device: AnyDevice; state: any; runtime?: Partial<DeviceRuntimeContract> | null; switchCommands?: Record<string, SwitchChannelCommandState>; busy: boolean; awareness?: Record<string, any> | null; recommendation?: Record<string, any> | null; onClose: () => void; onToggleGang: (device: AnyDevice, gangIndex: number, next: boolean) => void; onPower: (device: AnyDevice) => void; onCommand: (device: AnyDevice, command: Record<string, any>, optimisticPatch?: Record<string, any>) => Promise<void>; onTool: (kind: DeviceTool, device: AnyDevice) => void; onCreateScene: (device: AnyDevice) => void; onCreateAutomation: (device: AnyDevice) => void; onBindIrAppliance: (device: AnyDevice, profile: IrProfile) => void }) {
   const { user } = useAuth();
   const activeContext = useActiveContext();
+  const pushIntelligenceContext = useActiveIntelligenceContextStore((store) => store.pushContext);
+  const popIntelligenceContext = useActiveIntelligenceContextStore((store) => store.popContext);
   const gangCount = guessGangCount(device, state, runtime);
   const values = Object.keys(state || {}).length ? readGangValues(gangCount, state, runtime) : Array.from({ length: gangCount }, () => null);
   const caps = uiCapabilities(device, runtime);
@@ -1699,6 +1702,98 @@ function DeviceModalRouter({ device, state, runtime, switchCommands, busy, aware
   const responseSurface = splitConversationResponse(latestAssistantLine, awarenessMessage.headline, awarenessMessage.body);
   const intelligenceContext = normalizeRuntimeContract(device, runtime);
   const timerCode = commandCodeFor(device, [/countdown/, /timer/]);
+  const deviceContextId = `ctx_consumer_device_${String(pickDbId(device) || "").trim()}`;
+
+  useEffect(() => {
+    const deviceId = String(pickDbId(device) || "").trim();
+    if (!deviceId) return;
+    pushIntelligenceContext({
+      context_id: deviceContextId,
+      surface: "consumer",
+      module: "device",
+      route: "/devices",
+      scope: {
+        estate_id: activeContext.estate_id || user?.estate_id || null,
+        building_id: null,
+        home_id: activeContext.home_id || user?.home_id || null,
+        unit_id: null,
+        room_id: pickRoomId(device),
+      },
+      primary_object: {
+        object_type: "device",
+        canonical_id: deviceId,
+        label: pickName(device),
+        privacy_class: isLockRenderer ? "smart_access_private" : "resident_device_private",
+        source_module: "devices",
+      },
+      selected_subobject: null,
+      visible_state: {
+        data_version: String((runtime as any)?.state_updated_at || (runtime as any)?.updated_at || ""),
+        freshness: String((runtime as any)?.freshness?.state || (runtime as any)?.freshness || ""),
+        current_state: intelligenceContext.primary_state || null,
+        health: intelligenceContext.health_status || null,
+        summary: {
+          family: intelligenceContext.device_family || null,
+          control_profile: intelligenceContext.control_profile || null,
+          channel_definitions: intelligenceContext.channel_definitions || [],
+          provider_ack_is_physical_confirmation: false,
+        },
+      },
+      source: "detail_panel",
+      permissions: [],
+      ownership: { owner: "resident_home" },
+    });
+    return () => popIntelligenceContext(deviceContextId);
+  }, [activeContext.estate_id, activeContext.home_id, device, deviceContextId, intelligenceContext.channel_definitions, intelligenceContext.control_profile, intelligenceContext.device_family, intelligenceContext.health_status, intelligenceContext.primary_state, isLockRenderer, popIntelligenceContext, pushIntelligenceContext, runtime, user?.estate_id, user?.home_id]);
+
+  function registerDeviceChannelContext(gangIndex: number) {
+    const deviceId = String(pickDbId(device) || "").trim();
+    if (!deviceId) return;
+    const commandCode = normalizeCommandKey(device, state, runtime, gangIndex);
+    const channelLabel = `Channel ${gangIndex + 1}`;
+    pushIntelligenceContext({
+      context_id: `${deviceContextId}_${commandCode}`,
+      surface: "consumer",
+      module: "device",
+      route: "/devices",
+      scope: {
+        estate_id: activeContext.estate_id || user?.estate_id || null,
+        building_id: null,
+        home_id: activeContext.home_id || user?.home_id || null,
+        unit_id: null,
+        room_id: pickRoomId(device),
+      },
+      primary_object: {
+        object_type: "device",
+        canonical_id: deviceId,
+        label: pickName(device),
+        privacy_class: "resident_device_private",
+        source_module: "devices",
+      },
+      selected_subobject: {
+        object_type: "device_channel",
+        canonical_id: `${deviceId}:${commandCode}`,
+        label: `${pickName(device)} · ${channelLabel}`,
+        parent_id: deviceId,
+        metadata: { channel_code: commandCode, gang_index: gangIndex },
+      },
+      visible_state: {
+        data_version: String((runtime as any)?.state_updated_at || (runtime as any)?.updated_at || ""),
+        freshness: String((runtime as any)?.freshness?.state || (runtime as any)?.freshness || ""),
+        current_state: typeof values[gangIndex] === "boolean" ? (values[gangIndex] ? "on" : "off") : "unknown",
+        health: intelligenceContext.health_status || null,
+        summary: { command_key: commandCode, channel_definitions: intelligenceContext.channel_definitions || [] },
+      },
+      source: "selected_card",
+      permissions: [],
+      ownership: { owner: "resident_home" },
+    });
+  }
+
+  function handleToggleGang(device: AnyDevice, gangIndex: number, next: boolean) {
+    registerDeviceChannelContext(gangIndex);
+    onToggleGang(device, gangIndex, next);
+  }
 
   useEffect(() => () => {
     if (timerRef.current) window.clearInterval(timerRef.current);
@@ -2000,10 +2095,10 @@ function DeviceModalRouter({ device, state, runtime, switchCommands, busy, aware
             {needsIrProfile ? <IRProfilePicker options={irOptions} onSelect={(profile) => { setSelectedIrProfile(profile); onBindIrAppliance(device, profile); }} /> : null}
             {renderer === "tv" ? <TVRenderer device={device} runtime={runtime} busy={busy} onPower={onPower} onCommand={onCommand} /> : null}
             {renderer === "ac" ? <ACRenderer device={device} state={state} runtime={runtime} busy={busy} onCommand={onCommand} /> : null}
-            {renderer === "socket" ? <SocketRenderer device={device} state={state} runtime={runtime} caps={caps} gangCount={gangCount} values={values} switchCommands={switchCommands} busy={busy} onToggleGang={onToggleGang} /> : null}
+            {renderer === "socket" ? <SocketRenderer device={device} state={state} runtime={runtime} caps={caps} gangCount={gangCount} values={values} switchCommands={switchCommands} busy={busy} onToggleGang={handleToggleGang} /> : null}
             {renderer === "ir" && !needsIrProfile ? <IRRenderer device={device} state={state} runtime={runtime} busy={busy} onPower={onPower} onCommand={onCommand} /> : null}
             {renderer === "lock" ? <DoorPanel deviceId={String(pickDbId(device) || "")} lastUpdated={runtimeLastUpdatedAt(runtime) || undefined} onInteraction={() => {}} /> : null}
-            {renderer === "switch" ? <SwitchRenderer device={device} state={state} runtime={runtime} caps={caps} gangCount={gangCount} values={values} switchCommands={switchCommands} busy={busy} onToggleGang={onToggleGang} /> : null}
+            {renderer === "switch" ? <SwitchRenderer device={device} state={state} runtime={runtime} caps={caps} gangCount={gangCount} values={values} switchCommands={switchCommands} busy={busy} onToggleGang={handleToggleGang} /> : null}
             {renderer === "unsupported" ? <UnsupportedDeviceRenderer device={device} runtime={runtime} /> : null}
             {conversationRestoring ? <p className="mt-3 text-xs text-white/40">Restoring recent device conversation…</p> : null}
             <div className="mt-4 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">

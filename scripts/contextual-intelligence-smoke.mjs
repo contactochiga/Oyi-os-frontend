@@ -6,6 +6,7 @@ const objectContextSource = await readFile(new URL("../src/services/operationalO
 const oyiServiceSource = await readFile(new URL("../src/services/oyiService.ts", import.meta.url), "utf8");
 const deviceClientSource = await readFile(new URL("../src/app/devices/DevicesClient.tsx", import.meta.url), "utf8");
 const launcherSource = await readFile(new URL("../src/app/components/ContextualOyiButton.tsx", import.meta.url), "utf8");
+const activeContextStoreSource = await readFile(new URL("../src/store/useActiveIntelligenceContextStore.ts", import.meta.url), "utf8");
 const shellSource = await readFile(new URL("../src/app/components/ConsumerShell.tsx", import.meta.url), "utf8");
 const scenePageSource = await readFile(new URL("../src/app/scenes/page.tsx", import.meta.url), "utf8");
 const aiPageSource = await readFile(new URL("../src/app/ai/page.tsx", import.meta.url), "utf8");
@@ -25,6 +26,7 @@ check("Consumer route context derives device, room, maintenance, wallet, service
     assert.match(objectContextSource, new RegExp(token));
   }
   assert.match(objectContextSource, /source: "consumer_route_context"/);
+  assert.ok(objectContextSource.indexOf('object_type: "device_channel"') < objectContextSource.indexOf('object_type: "device"'), "device_channel route candidate must be evaluated before device");
 });
 
 check("Consumer Oyi runtime conversation sends operational object and target", () => {
@@ -37,11 +39,16 @@ check("Device intelligence context includes exact channel definitions and scene 
   assert.match(deviceClientSource, /channel_definitions: intelligenceContext\.channel_definitions/);
   assert.match(deviceClientSource, /active_scenes: intelligenceContext\.active_scenes/);
   assert.match(deviceClientSource, /active_automations: intelligenceContext\.active_automations/);
+  assert.match(deviceClientSource, /pushIntelligenceContext/);
+  assert.match(deviceClientSource, /selected_subobject:\s*{/);
+  assert.match(deviceClientSource, /canonical_id: `\$\{deviceId\}:\$\{commandCode\}`/);
 });
 
 check("Consumer renders visible contextual Oyi entry points on shell, devices and scenes", () => {
   assert.match(launcherSource, /Ask Oyi about/);
   assert.match(launcherSource, /starter/);
+  assert.match(launcherSource, /useActiveIntelligenceContextStore/);
+  assert.match(launcherSource, /persistActiveIntelligenceContext/);
   assert.match(shellSource, /ContextualOyiButton/);
   assert.match(deviceClientSource, /Ask Oyi about devices/);
   assert.match(scenePageSource, /Ask Oyi about/);
@@ -52,6 +59,17 @@ check("Consumer AI page exposes object-specific starter prompts and target switc
   assert.match(aiPageSource, /Why didn’t this run\?/);
   assert.match(aiPageSource, /Explain this transaction\./);
   assert.match(aiPageSource, /deriveConsumerOperationalObject/);
+  assert.match(aiPageSource, /readPersistedActiveIntelligenceContext/);
+  assert.match(aiPageSource, /operationalObjectFromActiveContext/);
+  assert.match(aiPageSource, /active_intelligence_context/);
+});
+
+check("Consumer active context registry supports stack, restore and session handoff", () => {
+  for (const token of ["registerContext", "pushContext", "popContext", "replaceContext", "getActiveContext", "ACTIVE_INTELLIGENCE_CONTEXT_SESSION_KEY"]) {
+    assert.match(activeContextStoreSource, new RegExp(token));
+  }
+  assert.match(activeContextStoreSource, /targetFromActiveContext/);
+  assert.match(activeContextStoreSource, /operationalObjectFromActiveContext/);
 });
 
 check("Consumer service uses Oyi Core language and avoids new runtime naming", () => {

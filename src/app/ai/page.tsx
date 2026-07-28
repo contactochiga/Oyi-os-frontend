@@ -12,6 +12,12 @@ import { deriveConsumerOperationalObject, deriveConsumerTarget } from "@/service
 import { oyiService, type OyiThreadMessage } from "@/services/oyiService";
 import { resolveConsumerOyiTarget } from "@/services/oyiTargetRegistry";
 import type { OyiTarget } from "@/services/oyiService";
+import {
+  operationalObjectFromActiveContext,
+  readPersistedActiveIntelligenceContext,
+  targetFromActiveContext,
+  type ActiveIntelligenceContext,
+} from "@/store/useActiveIntelligenceContextStore";
 
 type AiMessage = {
   id: string;
@@ -386,6 +392,14 @@ function OyiAiCommandCenterContent() {
   const [composerHeight, setComposerHeight] = useState(132);
   const [targetError, setTargetError] = useState<string | null>(null);
   const moduleContext = searchParams.get("module") || "ai";
+  const [registeredContext, setRegisteredContext] = useState<ActiveIntelligenceContext | null>(null);
+
+  useEffect(() => {
+    const context = readPersistedActiveIntelligenceContext();
+    const expectedRef = searchParams.get("contextRef");
+    if (context && (!expectedRef || context.context_id === expectedRef)) setRegisteredContext(context);
+    else setRegisteredContext(null);
+  }, [searchParams]);
 
   function openTarget(target: OyiTarget | null | undefined) {
     const result = resolveConsumerOyiTarget(target, router);
@@ -402,26 +416,36 @@ function OyiAiCommandCenterContent() {
         home_id: activeContext.home_id || (user as any)?.home_id || null,
         searchParams,
       };
+      const registeredObject = operationalObjectFromActiveContext(registeredContext);
+      const registeredTarget = targetFromActiveContext(registeredContext);
       return {
         surface: "consumer",
         scope: "home",
-        module: moduleContext,
+        module: registeredContext?.module || moduleContext,
         route: pathname || "/ai",
         page: pathname || "/ai",
         estate_id: routeContext.estate_id,
         home_id: routeContext.home_id,
-        room_id: searchParams.get("roomId") || null,
-        device_id: searchParams.get("deviceId") || null,
+        room_id: registeredContext?.scope.room_id || searchParams.get("roomId") || null,
+        device_id: registeredContext?.primary_object?.object_type === "device" ? registeredContext.primary_object.canonical_id : searchParams.get("deviceId") || null,
         visitor_id: searchParams.get("visitorId") || null,
         wallet_reference: searchParams.get("transactionId") || null,
         maintenance_id: searchParams.get("ticketId") || null,
         notification_id: searchParams.get("notificationId") || null,
         conversation_id: searchParams.get("threadId") || null,
-        operational_object: deriveConsumerOperationalObject(routeContext),
-        target: deriveConsumerTarget(routeContext),
+        operational_object: registeredObject || deriveConsumerOperationalObject(routeContext),
+        target: registeredTarget || deriveConsumerTarget(routeContext),
+        active_intelligence_context: registeredContext,
+        conversation_context: {
+          active_context: registeredContext,
+          context_id: registeredContext?.context_id || null,
+          context_version: registeredContext?.context_version || null,
+          selected_subobject: registeredContext?.selected_subobject || null,
+          visible_state: registeredContext?.visible_state || null,
+        },
       };
     },
-    [activeContext.estate_id, activeContext.home_id, moduleContext, pathname, searchParams, user],
+    [activeContext.estate_id, activeContext.home_id, moduleContext, pathname, registeredContext, searchParams, user],
   );
 
   const suggestions = useMemo(() => {
