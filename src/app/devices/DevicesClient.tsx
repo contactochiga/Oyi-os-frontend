@@ -1707,15 +1707,21 @@ function DeviceModalRouter({ device, state, runtime, switchCommands, busy, aware
   useEffect(() => {
     const deviceId = String(pickDbId(device) || "").trim();
     if (!deviceId) return;
+    const visibleFetchedAt = new Date().toISOString();
+    const scopeEstateId = activeContext.estate_id || user?.estate_id || null;
+    const scopeHomeId = activeContext.home_id || user?.home_id || null;
+    const runtimeTimestamp = String((runtime as any)?.runtime_timestamp || (runtime as any)?.state_confirmed_at || (runtime as any)?.state_updated_at || (runtime as any)?.updated_at || "");
+    const runtimeFreshness = String((runtime as any)?.freshness?.state || (runtime as any)?.freshness || "");
+    const channelDefinitions = Array.isArray(intelligenceContext.channel_definitions) ? intelligenceContext.channel_definitions : [];
     pushIntelligenceContext({
       context_id: deviceContextId,
       surface: "consumer",
       module: "device",
       route: "/devices",
       scope: {
-        estate_id: activeContext.estate_id || user?.estate_id || null,
+        estate_id: scopeEstateId,
         building_id: null,
-        home_id: activeContext.home_id || user?.home_id || null,
+        home_id: scopeHomeId,
         unit_id: null,
         room_id: pickRoomId(device),
       },
@@ -1728,14 +1734,38 @@ function DeviceModalRouter({ device, state, runtime, switchCommands, busy, aware
       },
       selected_subobject: null,
       visible_state: {
-        data_version: String((runtime as any)?.state_updated_at || (runtime as any)?.updated_at || ""),
-        freshness: String((runtime as any)?.freshness?.state || (runtime as any)?.freshness || ""),
+        source: "device_runtime_v2",
+        object_type: "device",
+        object_id: deviceId,
+        home_id: scopeHomeId,
+        estate_id: scopeEstateId,
+        fetched_at: visibleFetchedAt,
+        runtime_timestamp: runtimeTimestamp,
+        provider_timestamp: String((runtime as any)?.provider_timestamp || (runtime as any)?.last_successful_provider_contact_at || ""),
+        data_version: runtimeTimestamp,
+        freshness: runtimeFreshness,
         current_state: intelligenceContext.primary_state || null,
         health: intelligenceContext.health_status || null,
         summary: {
+          source: "device_runtime_v2",
+          object_id: deviceId,
+          canonical_device_id: deviceId,
+          home_id: scopeHomeId,
+          estate_id: scopeEstateId,
+          fetched_at: visibleFetchedAt,
+          runtime_timestamp: runtimeTimestamp,
+          freshness: runtimeFreshness,
+          name: pickName(device),
           family: intelligenceContext.device_family || null,
+          device_family: intelligenceContext.device_family || null,
           control_profile: intelligenceContext.control_profile || null,
-          channel_definitions: intelligenceContext.channel_definitions || [],
+          supported_controls: intelligenceContext.supported_controls || [],
+          capability_codes: intelligenceContext.capability_codes || [],
+          channel_definitions: channelDefinitions,
+          canonical_state: (runtime as any)?.canonical_state || null,
+          normalized_state: intelligenceContext.normalized_state || {},
+          provider_health: (runtime as any)?.provider_health || null,
+          health_status: intelligenceContext.health_status || null,
           provider_ack_is_physical_confirmation: false,
         },
       },
@@ -1744,22 +1774,29 @@ function DeviceModalRouter({ device, state, runtime, switchCommands, busy, aware
       ownership: { owner: "resident_home" },
     });
     return () => popIntelligenceContext(deviceContextId);
-  }, [activeContext.estate_id, activeContext.home_id, device, deviceContextId, intelligenceContext.channel_definitions, intelligenceContext.control_profile, intelligenceContext.device_family, intelligenceContext.health_status, intelligenceContext.primary_state, isLockRenderer, popIntelligenceContext, pushIntelligenceContext, runtime, user?.estate_id, user?.home_id]);
+  }, [activeContext.estate_id, activeContext.home_id, device, deviceContextId, intelligenceContext.capability_codes, intelligenceContext.channel_definitions, intelligenceContext.control_profile, intelligenceContext.device_family, intelligenceContext.health_status, intelligenceContext.normalized_state, intelligenceContext.primary_state, intelligenceContext.supported_controls, isLockRenderer, popIntelligenceContext, pushIntelligenceContext, runtime, user?.estate_id, user?.home_id]);
 
   function registerDeviceChannelContext(gangIndex: number) {
     const deviceId = String(pickDbId(device) || "").trim();
     if (!deviceId) return;
     const commandCode = normalizeCommandKey(device, state, runtime, gangIndex);
     const channelLabel = `Channel ${gangIndex + 1}`;
+    const visibleFetchedAt = new Date().toISOString();
+    const scopeEstateId = activeContext.estate_id || user?.estate_id || null;
+    const scopeHomeId = activeContext.home_id || user?.home_id || null;
+    const runtimeTimestamp = String((runtime as any)?.runtime_timestamp || (runtime as any)?.state_confirmed_at || (runtime as any)?.state_updated_at || (runtime as any)?.updated_at || "");
+    const runtimeFreshness = String((runtime as any)?.freshness?.state || (runtime as any)?.freshness || "");
+    const channelDefinitions = Array.isArray(intelligenceContext.channel_definitions) ? intelligenceContext.channel_definitions : [];
+    const channelStates = Object.fromEntries(switchCommandCodes(device, state, runtime).map((code, index) => [code, typeof values[index] === "boolean" ? (values[index] ? "on" : "off") : "unknown"]));
     pushIntelligenceContext({
       context_id: `${deviceContextId}_${commandCode}`,
       surface: "consumer",
       module: "device",
       route: "/devices",
       scope: {
-        estate_id: activeContext.estate_id || user?.estate_id || null,
+        estate_id: scopeEstateId,
         building_id: null,
-        home_id: activeContext.home_id || user?.home_id || null,
+        home_id: scopeHomeId,
         unit_id: null,
         room_id: pickRoomId(device),
       },
@@ -1778,11 +1815,42 @@ function DeviceModalRouter({ device, state, runtime, switchCommands, busy, aware
         metadata: { channel_code: commandCode, gang_index: gangIndex },
       },
       visible_state: {
-        data_version: String((runtime as any)?.state_updated_at || (runtime as any)?.updated_at || ""),
-        freshness: String((runtime as any)?.freshness?.state || (runtime as any)?.freshness || ""),
+        source: "device_runtime_v2",
+        object_type: "device_channel",
+        object_id: `${deviceId}:${commandCode}`,
+        parent_device_id: deviceId,
+        home_id: scopeHomeId,
+        estate_id: scopeEstateId,
+        fetched_at: visibleFetchedAt,
+        runtime_timestamp: runtimeTimestamp,
+        provider_timestamp: String((runtime as any)?.provider_timestamp || (runtime as any)?.last_successful_provider_contact_at || ""),
+        data_version: runtimeTimestamp,
+        freshness: runtimeFreshness,
         current_state: typeof values[gangIndex] === "boolean" ? (values[gangIndex] ? "on" : "off") : "unknown",
         health: intelligenceContext.health_status || null,
-        summary: { command_key: commandCode, channel_definitions: intelligenceContext.channel_definitions || [] },
+        summary: {
+          source: "device_runtime_v2",
+          object_id: `${deviceId}:${commandCode}`,
+          parent_device_id: deviceId,
+          device_id: deviceId,
+          channel_code: commandCode,
+          command_key: commandCode,
+          home_id: scopeHomeId,
+          estate_id: scopeEstateId,
+          fetched_at: visibleFetchedAt,
+          runtime_timestamp: runtimeTimestamp,
+          freshness: runtimeFreshness,
+          name: pickName(device),
+          family: intelligenceContext.device_family || null,
+          device_family: intelligenceContext.device_family || null,
+          control_profile: intelligenceContext.control_profile || null,
+          supported_controls: intelligenceContext.supported_controls || [],
+          capability_codes: intelligenceContext.capability_codes || [],
+          channel_definitions: channelDefinitions,
+          channel_states: channelStates,
+          provider_health: (runtime as any)?.provider_health || null,
+          provider_ack_is_physical_confirmation: false,
+        },
       },
       source: "selected_card",
       permissions: [],

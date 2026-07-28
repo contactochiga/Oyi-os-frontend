@@ -32,6 +32,15 @@ export type ActiveIntelligenceContext = {
     metadata: Record<string, unknown>;
   } | null;
   visible_state: {
+    source?: string | null;
+    object_type?: string | null;
+    object_id?: string | null;
+    parent_device_id?: string | null;
+    home_id?: string | null;
+    estate_id?: string | null;
+    fetched_at?: string | null;
+    runtime_timestamp?: string | null;
+    provider_timestamp?: string | null;
     data_version: string | null;
     freshness: string | null;
     current_state: string | null;
