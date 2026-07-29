@@ -1396,7 +1396,8 @@ export default function DeviceClient() {
       });
       setStateMap((p) => ({ ...p, [sid]: { ...(p[sid] || {}), ...command, switch: next, power: next, on: next } }));
     } catch (e: any) {
-      setErr(e?.response?.data?.error || e?.message || "Command failed");
+      const body = e?.response?.data || {};
+      setErr(body.safe_error_message || body.details || body.error || e?.message || "Command failed");
     } finally {
       setBusyId(null);
     }
@@ -1430,7 +1431,8 @@ export default function DeviceClient() {
       if (optimisticPatch) setStateMap((p) => ({ ...p, [sid]: { ...(p[sid] || {}), ...optimisticPatch } }));
       setTool(null);
     } catch (e: any) {
-      setErr(e?.response?.data?.error || e?.message || "Command failed");
+      const body = e?.response?.data || {};
+      setErr(body.safe_error_message || body.details || body.error || e?.message || "Command failed");
       throw e;
     } finally {
       if (!isIrRemoteCommand) setBusyId(null);
