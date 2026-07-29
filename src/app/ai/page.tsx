@@ -14,9 +14,11 @@ import { resolveConsumerOyiTarget } from "@/services/oyiTargetRegistry";
 import type { OyiTarget } from "@/services/oyiService";
 import {
   operationalObjectFromActiveContext,
+  clearPersistedActiveIntelligenceContext,
   readPersistedActiveIntelligenceContext,
   targetFromActiveContext,
   type ActiveIntelligenceContext,
+  useActiveIntelligenceContextStore,
 } from "@/store/useActiveIntelligenceContextStore";
 
 type AiMessage = {
@@ -44,7 +46,16 @@ type AiMessage = {
 type Suggestion = { label: string; prompt?: string; href?: string; tone?: "blue" | "green" | "amber" | "violet" };
 type VoiceMode = "idle" | "recording" | "conversation";
 type VoiceStatus = "Listening" | "Thinking" | "Speaking" | "Done" | "Failed";
-type Conversation = { id: string; title: string; updatedAt: number; messages: AiMessage[]; backendThreadId?: string | null };
+type Conversation = {
+  id: string;
+  title: string;
+  updatedAt: number;
+  messages: AiMessage[];
+  backendThreadId?: string | null;
+  preview?: string | null;
+  messageCount?: number;
+  scope?: string | null;
+};
 const SUPPORT_DISPLAY_MODES = new Set(["list", "detail", "audit", "report", "awareness"]);
 
 function shouldRenderSupport(displayMode?: string) {
@@ -92,7 +103,8 @@ function isBroadHomeReadPrompt(message: string) {
 
 function broadIntentHint(message: string) {
   const lower = message.toLowerCase();
-  if (/offline|unavailable|down|failed/.test(lower) && /devices?/.test(lower)) return "current_state";
+  if (/offline|unavailable|down|failed/.test(lower) && /devices?/.test(lower)) return "device_availability_inventory";
+  if (/what(?:'s| is) happening|needs attention/.test(lower) && /home|house|apartment|unit/.test(lower)) return "home_operational_summary";
   if (/changed|recent|activity|history/.test(lower)) return "recent_changes";
   if (/report|summary/.test(lower)) return "report";
   return "current_state";
@@ -112,6 +124,19 @@ function turnScopedAiContext(command: string, context: Record<string, any>) {
     intent_hint: broadIntentHint(command),
     operation_class_hint: "read",
     scope_mode_hint: "explicit_broad_scope",
+    page_launch_context: context.active_intelligence_context || null,
+    selected_ui_object: null,
+    current_turn_hints: {
+      intent_hint: broadIntentHint(command),
+      operation_class_hint: "read",
+      scope_mode_hint: "explicit_broad_scope",
+      inherited_target_cleared: true,
+    },
+    authorised_scope: {
+      estate_id: context.estate_id || null,
+      home_id: context.home_id || null,
+      surface: context.surface || "consumer",
+    },
     conversation_context: {
       ...conversationContext,
       active_context: null,
@@ -422,6 +447,7 @@ function OyiAiCommandCenterContent() {
   const searchParams = useSearchParams();
   const { user } = useAuth() as any;
   const activeContext = useActiveContext();
+  const clearActiveIntelligenceContext = useActiveIntelligenceContextStore((state) => state.clearContext);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [messages, setMessages] = useState<AiMessage[]>([]);
@@ -444,6 +470,7 @@ function OyiAiCommandCenterContent() {
   const meterRafRef = useRef<number | null>(null);
   const composerRef = useRef<HTMLFormElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const routeThreadRestoreRef = useRef<string | null>(null);
   const [audioLevels, setAudioLevels] = useState<number[]>(Array.from({ length: 28 }, () => 0.2));
   const [composerHeight, setComposerHeight] = useState(132);
   const [targetError, setTargetError] = useState<string | null>(null);
@@ -470,6 +497,21 @@ function OyiAiCommandCenterContent() {
     return result.handled;
   }
 
+  const setThreadRoute = useCallback((threadId: string | null) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (threadId) params.set("threadId", threadId);
+    else {
+      params.delete("threadId");
+      params.delete("contextRef");
+      params.delete("deviceId");
+      params.delete("roomId");
+      params.delete("channel");
+      params.delete("prompt");
+    }
+    const next = params.toString();
+    router.replace(next ? `${pathname || "/ai"}?${next}` : pathname || "/ai", { scroll: false });
+  }, [pathname, router, searchParams]);
+
   const context = useMemo(
     () => {
       const routeContext = {
@@ -482,6 +524,7 @@ function OyiAiCommandCenterContent() {
       const currentRegisteredContext = latestRegisteredContext();
       const registeredObject = operationalObjectFromActiveContext(currentRegisteredContext);
       const registeredTarget = targetFromActiveContext(currentRegisteredContext);
+      const selectedUiObject = currentRegisteredContext?.selected_subobject || currentRegisteredContext?.primary_object || null;
       return {
         surface: "consumer",
         scope: "home",
@@ -500,6 +543,14 @@ function OyiAiCommandCenterContent() {
         operational_object: registeredObject || deriveConsumerOperationalObject(routeContext),
         target: registeredTarget || deriveConsumerTarget(routeContext),
         active_intelligence_context: currentRegisteredContext,
+        page_launch_context: currentRegisteredContext,
+        selected_ui_object: selectedUiObject,
+        current_turn_hints: null,
+        authorised_scope: {
+          estate_id: routeContext.estate_id,
+          home_id: routeContext.home_id,
+          surface: "consumer",
+        },
         conversation_context: {
           active_context: currentRegisteredContext,
           context_id: currentRegisteredContext?.context_id || null,
@@ -564,14 +615,13 @@ function OyiAiCommandCenterContent() {
         });
         if (cancelled) return;
         const rows = res.threads || [];
-        if (!rows.length) {
-          setConversations(localFallback);
-          return;
-        }
         setConversations(rows.map((thread) => ({
           id: `backend:${thread.id}`,
           backendThreadId: thread.id,
           title: thread.title || "Oyi conversation",
+          preview: thread.preview || null,
+          messageCount: thread.message_count || 0,
+          scope: thread.last_scope || null,
           updatedAt: toTimestamp(thread.updated_at || thread.created_at),
           messages: [],
         })));
@@ -631,10 +681,11 @@ function OyiAiCommandCenterContent() {
 
   function persistConversation(nextMessages: AiMessage[], threadId = backendThreadId) {
     const firstUser = nextMessages.find((item) => item.role === "user")?.content || "Oyi conversation";
-    const item: Conversation = { id: conversationId, backendThreadId: threadId || undefined, title: firstUser.slice(0, 84), updatedAt: Date.now(), messages: nextMessages };
+    const latestMessage = nextMessages[nextMessages.length - 1];
+    const item: Conversation = { id: threadId ? `backend:${threadId}` : conversationId, backendThreadId: threadId || undefined, title: firstUser.slice(0, 84), updatedAt: Date.now(), messages: nextMessages, preview: latestMessage?.content || firstUser, messageCount: nextMessages.length };
     setConversations((current) => {
-      const next = [item, ...current.filter((entry) => entry.id !== conversationId)].slice(0, 24);
-      saveJson(CONVERSATIONS_KEY, next);
+      const next = [item, ...current.filter((entry) => entry.id !== item.id && entry.id !== conversationId)].slice(0, 24);
+      if (!(user as any)?.id || !threadId) saveJson(CONVERSATIONS_KEY, next);
       return next;
     });
   }
@@ -667,7 +718,11 @@ function OyiAiCommandCenterContent() {
       const turnContext = turnScopedAiContext(command, context as Record<string, any>);
       const resp = await aiService.chat(command, { ...turnContext, thread_id: backendThreadId || undefined });
       const nextThreadId = resp.thread_id || backendThreadId;
-      if (nextThreadId) setBackendThreadId(nextThreadId);
+      if (nextThreadId) {
+        setBackendThreadId(nextThreadId);
+        setConversationId(`backend:${nextThreadId}`);
+        setThreadRoute(nextThreadId);
+      }
       const content = replyFromResponse(resp) || "Done.";
       const state = responseState(resp);
       if (["informational", "report_ready", "recommendation", "action_confirmed"].includes(String(state))) remember(options?.usageLabel || command);
@@ -861,11 +916,13 @@ function OyiAiCommandCenterContent() {
         const res = await oyiService.getThreadMessages(conversation.backendThreadId);
         const nextMessages = (res.messages || []).map(messageFromThread);
         setMessages(nextMessages.length ? nextMessages : conversation.messages || []);
+        setThreadRoute(conversation.backendThreadId);
       } catch {
-        setMessages(conversation.messages || []);
+        setMessages([{ id: createId(), role: "assistant", content: "I could not open that conversation in this authorised scope.", state: "unavailable" }]);
       }
     } else {
       setMessages(conversation.messages || []);
+      setThreadRoute(null);
     }
     setHistoryOpen(false);
   }
@@ -875,7 +932,28 @@ function OyiAiCommandCenterContent() {
     setBackendThreadId(null);
     setMessages([]);
     setHistoryOpen(false);
+    setInput("");
+    setTranscript("");
+    setTargetError(null);
+    setRegisteredContext(null);
+    clearActiveIntelligenceContext();
+    clearPersistedActiveIntelligenceContext();
+    setThreadRoute(null);
   }
+
+  useEffect(() => {
+    const routeThreadId = searchParams.get("threadId");
+    if (!(user as any)?.id || !routeThreadId || routeThreadId === backendThreadId || routeThreadRestoreRef.current === routeThreadId) return;
+    routeThreadRestoreRef.current = routeThreadId;
+    void restoreConversation({
+      id: `backend:${routeThreadId}`,
+      backendThreadId: routeThreadId,
+      title: "Oyi conversation",
+      updatedAt: Date.now(),
+      messages: [],
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backendThreadId, searchParams, user]);
 
   const groupedConversations = ["Today", "Yesterday", "Earlier"].map((group) => ({ group, items: conversations.filter((item) => groupConversationTime(item.updatedAt) === group) })).filter((section) => section.items.length);
 
@@ -1029,7 +1107,13 @@ function OyiAiCommandCenterContent() {
                     <div className="space-y-2">
                       {section.items.map((conversation) => (
                         <button key={conversation.id} type="button" onClick={() => void restoreConversation(conversation)} className="flex w-full items-center justify-between gap-3 rounded-[18px] border border-white/[0.06] bg-white/[0.032] px-3.5 py-3 text-left transition active:scale-[0.99]">
-                          <span className="min-w-0"><span className="block truncate text-sm font-semibold text-white/88">{conversation.title}</span><span className="mt-0.5 block text-xs text-white/38">{conversation.messages.length ? `${conversation.messages.length} messages` : "Saved thread"}</span></span>
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm font-semibold text-white/88">{conversation.title}</span>
+                            <span className="mt-0.5 block truncate text-xs text-white/38">
+                              {conversation.messageCount || conversation.messages.length ? `${conversation.messageCount || conversation.messages.length} messages` : "No messages yet"}
+                              {conversation.preview ? ` · ${conversation.preview}` : ""}
+                            </span>
+                          </span>
                           <span className="shrink-0 text-xs text-white/38">{formatTime(conversation.updatedAt)}</span>
                         </button>
                       ))}

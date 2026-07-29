@@ -68,7 +68,13 @@
     "smoke:drawer-target-consistency": "node scripts/intelligence-turn-context-smoke.mjs",
     "smoke:quick-action-target-contract": "node scripts/intelligence-turn-context-smoke.mjs",
     "smoke:home-scope-ai-context": "node scripts/intelligence-turn-context-smoke.mjs",
-    "smoke:intelligence-response-presentation": "node scripts/intelligence-turn-context-smoke.mjs"
+    "smoke:intelligence-response-presentation": "node scripts/intelligence-turn-context-smoke.mjs",
+    "smoke:thread-history-list": "node scripts/conversation-thread-foundation-ui-smoke.mjs",
+    "smoke:thread-full-restoration": "node scripts/conversation-thread-foundation-ui-smoke.mjs",
+    "smoke:thread-continuation": "node scripts/conversation-thread-foundation-ui-smoke.mjs",
+    "smoke:new-conversation-reset": "node scripts/conversation-thread-foundation-ui-smoke.mjs",
+    "smoke:thread-route-restoration": "node scripts/conversation-thread-foundation-ui-smoke.mjs",
+    "smoke:voice-canonical-pipeline": "node scripts/conversation-thread-foundation-ui-smoke.mjs"
   },
   "dependencies": {
     "@capacitor-community/speech-recognition": "^6.0.0",
