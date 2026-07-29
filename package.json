@@ -63,7 +63,12 @@
     "smoke:resident-language": "node scripts/resident-language-ui-smoke.mjs",
     "smoke:ir-error-presentation": "node scripts/resident-language-ui-smoke.mjs",
     "smoke:tv-remote-command-contract": "node scripts/tv-remote-command-contract-smoke.mjs",
-    "smoke:tv-remote-fifo": "node scripts/tv-remote-fifo-smoke.mjs"
+    "smoke:tv-remote-fifo": "node scripts/tv-remote-fifo-smoke.mjs",
+    "smoke:ai-turn-context-reset": "node scripts/intelligence-turn-context-smoke.mjs",
+    "smoke:drawer-target-consistency": "node scripts/intelligence-turn-context-smoke.mjs",
+    "smoke:quick-action-target-contract": "node scripts/intelligence-turn-context-smoke.mjs",
+    "smoke:home-scope-ai-context": "node scripts/intelligence-turn-context-smoke.mjs",
+    "smoke:intelligence-response-presentation": "node scripts/intelligence-turn-context-smoke.mjs"
   },
   "dependencies": {
     "@capacitor-community/speech-recognition": "^6.0.0",

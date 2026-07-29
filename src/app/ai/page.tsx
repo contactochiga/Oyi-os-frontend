@@ -80,6 +80,53 @@ function createId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function isBroadHomeReadPrompt(message: string) {
+  const lower = message.toLowerCase();
+  if (/\b(this|selected|current)\b[\s\S]{0,20}\b(device|channel|switch|tv|remote|light|socket|plug)\b/i.test(lower)) return false;
+  if (/\b(show|list|which|what|check|find)\b[\s\S]{0,40}\b(offline|unavailable|down|failed)\b[\s\S]{0,30}\bdevices?\b/i.test(lower)) return true;
+  if (/\bwhat(?:'s| is) happening\b[\s\S]{0,24}\b(home|house|apartment|unit)\b/i.test(lower)) return true;
+  if (/\bwhat changed recently\b/i.test(lower)) return true;
+  if (/\b(home|house|apartment|unit)\b[\s\S]{0,24}\b(report|summary|recent|changed|changes|offline|unavailable)\b/i.test(lower)) return true;
+  return false;
+}
+
+function broadIntentHint(message: string) {
+  const lower = message.toLowerCase();
+  if (/offline|unavailable|down|failed/.test(lower) && /devices?/.test(lower)) return "current_state";
+  if (/changed|recent|activity|history/.test(lower)) return "recent_changes";
+  if (/report|summary/.test(lower)) return "report";
+  return "current_state";
+}
+
+function turnScopedAiContext(command: string, context: Record<string, any>) {
+  if (!isBroadHomeReadPrompt(command)) return context;
+  const conversationContext = { ...(context.conversation_context || {}) };
+  return {
+    ...context,
+    module: context.module === "device" ? "dashboard" : context.module,
+    room_id: null,
+    device_id: null,
+    operational_object: null,
+    target: null,
+    active_intelligence_context: null,
+    intent_hint: broadIntentHint(command),
+    operation_class_hint: "read",
+    scope_mode_hint: "explicit_broad_scope",
+    conversation_context: {
+      ...conversationContext,
+      active_context: null,
+      context_id: null,
+      context_version: null,
+      selected_subobject: null,
+      visible_state: null,
+      target_override_reason: "explicit_broad_home_read",
+      intent_hint: broadIntentHint(command),
+      operation_class_hint: "read",
+      scope_mode_hint: "explicit_broad_scope",
+    },
+  };
+}
+
 function replyFromResponse(resp: AiChatResponse) {
   const base = resp.message || resp.reply;
   return base || "";
@@ -617,7 +664,8 @@ function OyiAiCommandCenterContent() {
     setMessages(baseMessages);
 
     try {
-      const resp = await aiService.chat(command, { ...context, thread_id: backendThreadId || undefined });
+      const turnContext = turnScopedAiContext(command, context as Record<string, any>);
+      const resp = await aiService.chat(command, { ...turnContext, thread_id: backendThreadId || undefined });
       const nextThreadId = resp.thread_id || backendThreadId;
       if (nextThreadId) setBackendThreadId(nextThreadId);
       const content = replyFromResponse(resp) || "Done.";
