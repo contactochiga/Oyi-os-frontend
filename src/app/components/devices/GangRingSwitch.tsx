@@ -26,6 +26,9 @@ function ringClass({
   if (online === false) return "ring-off";
   if (online === null) return "ring-off";
 
+  if (busy && value === true) return "ring-on-intent ring-busy";
+  if (busy && value === false) return "ring-off-intent ring-busy";
+
   // online
   if (value === true) return busy ? "ring-on ring-busy" : "ring-on";
   if (value === false) return busy ? "ring-ready ring-busy" : "ring-ready";
@@ -92,6 +95,16 @@ export default function GangRingSwitch({
         /* Connected and ON = GREEN */
         .ring-on span.ring-2 {
           --tw-ring-color: rgba(52, 211, 153, 0.9);
+        }
+        .ring-on-intent span.ring-2 {
+          --tw-ring-color: rgba(52, 211, 153, 0.95);
+          border: 1px dashed rgba(110, 231, 183, 0.75);
+          box-shadow: 0 0 18px rgba(52, 211, 153, 0.22);
+        }
+        .ring-off-intent span.ring-2 {
+          --tw-ring-color: rgba(255, 70, 70, 0.86);
+          border: 1px dashed rgba(252, 165, 165, 0.72);
+          box-shadow: 0 0 18px rgba(244, 63, 94, 0.2);
         }
         .ring-busy {
           animation: ringPulse 0.9s ease-in-out infinite;

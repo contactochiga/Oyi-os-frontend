@@ -69,16 +69,23 @@ type AddDeviceTab = "nearby" | "provider" | "manual";
 type CategoryKey = "all" | "lights" | "climate" | "security" | "entertainment" | "sensors";
 type DeviceTool = "timer" | "schedule" | "settings" | "activity";
 type IrProfile = "tv" | "ac" | "fan" | "projector";
-type SwitchCommandStatus = "pending" | "confirmed" | "failed" | "timeout";
+type SwitchCommandStatus = "idle" | "queued" | "dispatching" | "awaiting_confirmation" | "confirmed" | "failed" | "mismatch" | "timed_out" | "uncertain" | "pending" | "timeout";
 type SwitchChannelCommandState = {
   confirmed_state: boolean | null;
+  pending_expected_state: boolean | string | number | null;
+  latest_desired_state: boolean | string | number | null;
   desired_state: boolean;
+  active_command_execution_id: string | null;
   command_status: SwitchCommandStatus;
+  provider_status: "not_started" | "pending" | "accepted" | "rejected" | "unavailable";
   command_execution_id: string | null;
   command_key: string;
   command_code: string;
   tap_sequence: number;
   client_tap_timestamp: number;
+  pending_started_at: string | null;
+  last_confirmed_at: string | null;
+  last_error?: { classification: string; message: string; retryable: boolean } | null;
   error?: string | null;
 };
 
@@ -754,17 +761,26 @@ export default function DeviceClient() {
     switchTimeoutsRef.current[key] = setTimeout(() => {
       setSwitchCommands((current) => {
         const pending = current[key];
-        if (!pending || pending.command_status !== "pending") return current;
+        if (!pending || !["queued", "dispatching", "awaiting_confirmation", "pending"].includes(pending.command_status)) return current;
         return {
           ...current,
           [key]: {
             ...pending,
-            command_status: "timeout",
+            command_status: "timed_out",
+            provider_status: pending.provider_status || "pending",
+            last_error: { classification: "confirmation_timed_out", message: `${label} did not confirm in time.`, retryable: true },
             error: `${label} did not confirm in time.`,
           },
         };
       });
     }, 12_000);
+  }
+
+  function channelValueFromState(state: Record<string, any> | null | undefined, channelCode: string): boolean | null {
+    const normalized = state?.normalized_state && typeof state.normalized_state === "object" ? state.normalized_state : {};
+    const switches = (normalized as any)?.switches && typeof (normalized as any).switches === "object" ? (normalized as any).switches : {};
+    const raw = state?.[channelCode] ?? switches?.[channelCode];
+    return typeof raw === "boolean" ? raw : null;
   }
 
   function settleSwitchCommandsFromPatch(deviceId: string, patch: Record<string, any>) {
@@ -773,14 +789,48 @@ export default function DeviceClient() {
       const next = { ...current };
       for (const [key, pending] of Object.entries(current)) {
         if (!key.startsWith(`${deviceId}:`)) continue;
-        const raw = patch?.[pending.command_code];
-        if (typeof raw !== "boolean" || raw !== pending.desired_state) continue;
+        const raw = channelValueFromState(patch, pending.command_code);
+        if (typeof raw !== "boolean") continue;
+        console.info("consumer_command_ui_reconciled", {
+          source: "runtime_state",
+          device_id: deviceId,
+          channel: pending.command_code,
+          confirmed_state: raw,
+          pending_state: pending.latest_desired_state,
+          command_status: pending.command_status,
+        });
+        if (raw !== pending.latest_desired_state) {
+          next[key] = {
+            ...pending,
+            confirmed_state: raw,
+            command_status: "awaiting_confirmation",
+            provider_status: pending.provider_status || "accepted",
+            last_confirmed_at: new Date().toISOString(),
+          };
+          changed = true;
+          continue;
+        }
         clearSwitchTimeout(key);
         delete next[key];
         changed = true;
       }
       return changed ? next : current;
     });
+  }
+
+  function dispatchFollowupIfNeeded(deviceId: string, channelCode: string, confirmed: boolean | null, desired: unknown) {
+    if (typeof confirmed !== "boolean" || typeof desired !== "boolean" || confirmed === desired) return;
+    const device = items.find((candidate) => String(pickDbId(candidate) || "") === deviceId);
+    if (!device) return;
+    const state = stateMap[deviceId] || {};
+    const runtime = runtimeMap[deviceId] || null;
+    const gangCount = guessGangCount(device, state, runtime);
+    let gangIndex = -1;
+    for (let i = 0; i < gangCount; i += 1) {
+      if (normalizeCommandKey(device, state, runtime, i) === channelCode) gangIndex = i;
+    }
+    if (gangIndex < 0) return;
+    window.setTimeout(() => void toggleGang(device, gangIndex, desired), 0);
   }
 
   function applyCommandExecutionUpdate(update: Record<string, any>) {
@@ -790,24 +840,73 @@ export default function DeviceClient() {
     if (!deviceId || !channelCode) return;
     const stateKey = switchStateKey(deviceId, channelCode);
     const finalStatus = String(update?.final_status || update?.confirmation_status || update?.provider_status || "").toLowerCase();
+    const providerStatus = String(update?.provider_status || "").toLowerCase();
+    const observedState = update?.observed_state && typeof update.observed_state === "object" ? update.observed_state : null;
+    const confirmedValue = channelValueFromState(observedState, channelCode);
     const safeMessage = String(update?.safe_error_message || update?.error || "").trim();
+    if (typeof confirmedValue === "boolean") {
+      setStateMap((prev) => ({ ...prev, [deviceId]: { ...(prev[deviceId] || {}), [channelCode]: confirmedValue } }));
+    }
     setSwitchCommands((current) => {
       const pending = current[stateKey];
       if (!pending) return current;
-      if (executionId && pending.command_execution_id && executionId !== pending.command_execution_id) return current;
+      if (executionId && pending.active_command_execution_id && executionId !== pending.active_command_execution_id) return current;
+      console.info("consumer_command_ui_reconciled", {
+        source: update?.source === "status_poll" ? "status_poll" : "socket",
+        device_id: deviceId,
+        channel: channelCode,
+        confirmed_state: confirmedValue,
+        pending_state: pending.latest_desired_state,
+        command_status: finalStatus,
+      });
       if (["state_confirmed", "confirmed", "executed"].includes(finalStatus)) {
         clearSwitchTimeout(stateKey);
+        const desired = pending.latest_desired_state;
+        const confirmed = typeof confirmedValue === "boolean" ? confirmedValue : pending.pending_expected_state === pending.latest_desired_state ? pending.latest_desired_state : pending.confirmed_state;
+        dispatchFollowupIfNeeded(deviceId, channelCode, typeof confirmed === "boolean" ? confirmed : null, desired);
+        if (typeof confirmed === "boolean" && typeof desired === "boolean" && confirmed !== desired) {
+          return {
+            ...current,
+            [stateKey]: {
+              ...pending,
+              confirmed_state: confirmed,
+              pending_expected_state: desired,
+              desired_state: desired,
+              command_status: "queued",
+              provider_status: "not_started",
+              active_command_execution_id: null,
+              command_execution_id: null,
+              last_confirmed_at: new Date().toISOString(),
+            },
+          };
+        }
         const next = { ...current };
         delete next[stateKey];
         return next;
       }
-      if (["provider_rejected", "state_mismatch", "confirmation_timed_out", "failed", "rejected"].includes(finalStatus)) {
-        clearSwitchTimeout(stateKey);
+      if (["accepted", "awaiting_state_confirmation", "provider_accepted"].includes(finalStatus) || providerStatus === "accepted") {
         return {
           ...current,
           [stateKey]: {
             ...pending,
-            command_status: finalStatus === "confirmation_timed_out" ? "timeout" : "failed",
+            active_command_execution_id: executionId || pending.active_command_execution_id,
+            command_execution_id: executionId || pending.command_execution_id,
+            command_status: "awaiting_confirmation",
+            provider_status: "accepted",
+          },
+        };
+      }
+      if (["provider_rejected", "state_mismatch", "confirmation_timed_out", "failed", "rejected"].includes(finalStatus)) {
+        clearSwitchTimeout(stateKey);
+        const mappedStatus = finalStatus === "confirmation_timed_out" ? "timed_out" : finalStatus === "state_mismatch" ? "mismatch" : "failed";
+        return {
+          ...current,
+          [stateKey]: {
+            ...pending,
+            pending_expected_state: null,
+            command_status: mappedStatus,
+            provider_status: finalStatus === "provider_rejected" || finalStatus === "rejected" ? "rejected" : pending.provider_status,
+            last_error: { classification: finalStatus || "command_failed", message: safeMessage || `${pending.command_code} command did not complete.`, retryable: true },
             error: safeMessage || `${pending.command_code} command did not complete.`,
           },
         };
@@ -825,7 +924,7 @@ export default function DeviceClient() {
         const result = await deviceService.getCommandExecution(commandExecutionId);
         const execution = result?.execution || null;
         if (execution) {
-          applyCommandExecutionUpdate({ ...execution, canonical_device_id: execution.canonical_device_id || deviceId, channel_code: execution.channel_code || commandCode });
+          applyCommandExecutionUpdate({ ...execution, canonical_device_id: execution.canonical_device_id || deviceId, channel_code: execution.channel_code || commandCode, source: "status_poll" });
           const finalStatus = String(execution.final_status || execution.confirmation_status || "").toLowerCase();
           if (["state_confirmed", "provider_rejected", "state_mismatch", "confirmation_timed_out", "failed"].includes(finalStatus)) return;
         }
@@ -1114,7 +1213,7 @@ export default function DeviceClient() {
     const sid = String(dbId);
     if (stateMap[sid]) return;
     try {
-      const res = await deviceService.getDeviceState(sid);
+      const res = await deviceService.getDeviceState(sid, { view: "control" });
       setStateMap((p) => ({ ...p, [sid]: (res as any)?.state ?? res ?? {} }));
     } catch {
       // silent warmup
@@ -1147,25 +1246,64 @@ export default function DeviceClient() {
       const gangCount = guessGangCount(device, cached, runtime);
       const code = normalizeCommandKey(device, cached, runtime, gangIndex);
       commandCode = code;
-      const existing = switchCommands[switchStateKey(sid, code)];
-      if (existing?.command_status === "pending" && existing.desired_state === next) return;
+      stateKey = switchStateKey(sid, code);
+      const existing = switchCommands[stateKey];
       const values = readGangValues(gangCount, cached, runtime);
       confirmedState = existing?.confirmed_state ?? values[gangIndex] ?? null;
+      if (existing && ["queued", "dispatching", "awaiting_confirmation", "pending"].includes(existing.command_status)) {
+        setSwitchCommands((current) => {
+          const active = current[stateKey];
+          if (!active) return current;
+          return {
+            ...current,
+            [stateKey]: {
+              ...active,
+              pending_expected_state: next,
+              latest_desired_state: next,
+              desired_state: next,
+              command_status: active.active_command_execution_id ? "awaiting_confirmation" : "queued",
+              error: null,
+              last_error: null,
+            },
+          };
+        });
+        console.info("consumer_command_followup_coalesced", {
+          device_id: sid,
+          channel: code,
+          active_execution: existing.active_command_execution_id || existing.command_execution_id || null,
+          previous_desired_state: existing.latest_desired_state,
+          latest_desired_state: next,
+        });
+        return;
+      }
       const tapSequence = nextSwitchTapSequence(sid, code);
       const clientTapTimestamp = Date.now();
       const commandKey = `${activeContext.contextKey || "home"}:${sid}:${code}:${tapSequence}`;
-      stateKey = switchStateKey(sid, code);
+      console.info("consumer_command_intent_registered", {
+        device_id: sid,
+        channel: code,
+        desired_state: next,
+        active_execution: null,
+        latest_desired_state: next,
+      });
       setSwitchCommands((current) => ({
         ...current,
         [stateKey]: {
           confirmed_state: confirmedState,
+          pending_expected_state: next,
+          latest_desired_state: next,
           desired_state: next,
-          command_status: "pending",
+          active_command_execution_id: null,
+          command_status: "dispatching",
+          provider_status: "pending",
           command_execution_id: null,
           command_key: commandKey,
           command_code: code,
           tap_sequence: tapSequence,
           client_tap_timestamp: clientTapTimestamp,
+          pending_started_at: new Date(clientTapTimestamp).toISOString(),
+          last_confirmed_at: null,
+          last_error: null,
           error: null,
         },
       }));
@@ -1184,6 +1322,9 @@ export default function DeviceClient() {
           [stateKey]: {
             ...pending,
             command_execution_id: response?.command_execution_id || pending.command_execution_id,
+            active_command_execution_id: response?.command_execution_id || pending.active_command_execution_id,
+            command_status: "awaiting_confirmation",
+            provider_status: response?.provider_status === "accepted" ? "accepted" : pending.provider_status,
           },
         };
       });
@@ -1203,6 +1344,9 @@ export default function DeviceClient() {
             [stateKey]: {
               ...pending,
               command_status: "failed",
+              provider_status: "rejected",
+              pending_expected_state: null,
+              last_error: { classification: body?.provider_error_classification || body?.error || "command_failed", message: scopedMessage, retryable: Boolean(body?.retryable) },
               error: scopedMessage,
             },
           };
@@ -1339,6 +1483,11 @@ export default function DeviceClient() {
     setSheetOpen(true);
     const sid = String(pickDbId(device) || "");
     const renderer = deviceRendererKind(device, sid ? runtimeMap[sid] : null);
+    if (sid) void deviceService.getDeviceState(sid, { view: "control" }).then((res) => {
+      const state = (res as any)?.state ?? res ?? {};
+      setStateMap((p) => ({ ...p, [sid]: state }));
+      setRuntimeMap((p) => ({ ...p, [sid]: normalizeRuntimeContract(device, res) }));
+    }).catch(() => {});
     if (renderer !== "lock") void hydrateDeviceIntelligence(device);
   }
 
@@ -1403,7 +1552,7 @@ export default function DeviceClient() {
     setStateOpen(true);
     setStateLoading(true);
     try {
-      const res = await deviceService.getDeviceState(sid, { view: "panel" });
+      const res = await deviceService.getDeviceState(sid, { view: "control" });
       const state = (res as any)?.state ?? res ?? {};
       setStateMap((p) => ({ ...p, [sid]: state }));
       setRuntimeMap((p) => ({ ...p, [sid]: normalizeRuntimeContract(device, res) }));
@@ -2062,7 +2211,7 @@ function DeviceModalRouter({ device, state, runtime, switchCommands, busy, aware
       await Promise.resolve(onCommand(device, { [timerCode]: 20 * 60, timer_action: "off" }, { [timerCode]: 20 * 60 }));
       setConversationLines((current) => [
         ...current,
-        { role: "assistant", content: "Done. This device will turn off in 20 minutes." },
+        { role: "assistant", content: "Timer accepted. Oyi will confirm when it is scheduled." },
       ]);
       setConversationState("done");
       setContextualActions([
@@ -2332,23 +2481,34 @@ function SwitchRenderer({ device, state, runtime, caps, gangCount, values, switc
   const desiredValues: Array<boolean | null | undefined> = [];
   const pendingKeys: Record<number, boolean> = {};
   const issues: string[] = [];
+  let pendingOnCount = 0;
+  let pendingOffCount = 0;
   for (let i = 0; i < safeGangCount; i += 1) {
     const code = normalizeCommandKey(device, state, runtime, i);
     const pending = sid ? switchCommands?.[switchStateKey(sid, code)] : null;
-    if (pending && pending.command_status === "pending") {
-      desiredValues[i] = pending.desired_state;
+    if (pending && ["queued", "dispatching", "awaiting_confirmation", "pending"].includes(pending.command_status)) {
+      desiredValues[i] = typeof pending.latest_desired_state === "boolean" ? pending.latest_desired_state : pending.desired_state;
       pendingKeys[i] = true;
-    } else if (pending && (pending.command_status === "failed" || pending.command_status === "timeout")) {
+      if (desiredValues[i] === true) pendingOnCount += 1;
+      if (desiredValues[i] === false) pendingOffCount += 1;
+    } else if (pending && (pending.command_status === "failed" || pending.command_status === "timed_out" || pending.command_status === "timeout" || pending.command_status === "mismatch" || pending.command_status === "uncertain")) {
       desiredValues[i] = pending.confirmed_state;
-      issues.push(`Channel ${i + 1}: ${pending.error || (pending.command_status === "timeout" ? "confirmation timed out" : "command failed")}`);
+      issues.push(`Channel ${i + 1}: ${pending.error || (pending.command_status === "timed_out" || pending.command_status === "timeout" ? "confirmation timed out" : "command failed")}`);
     }
   }
+  const confirmedOnCount = values.slice(0, safeGangCount).filter((value, index) => value === true && !pendingKeys[index]).length;
+  const changingCount = Object.keys(pendingKeys).length;
   return (
     <div className="space-y-3">
       <div className="rounded-[24px] border border-white/[0.07] bg-white/[0.035] p-4">
-        <div className="mb-4 text-sm font-semibold text-white">Controls</div>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="text-sm font-semibold text-white">Controls</div>
+          <div className="text-[11px] text-white/45">
+            {changingCount ? `${confirmedOnCount} confirmed on · ${changingCount} changing` : `${values.slice(0, safeGangCount).filter((value) => value === true).length} of ${safeGangCount} confirmed on`}
+          </div>
+        </div>
         {caps.canSwitch ? <GangRingSwitch gangCount={safeGangCount} online={isOnline(device, runtime)} values={values} desiredValues={desiredValues} pendingKeys={pendingKeys} busy={busy} onToggleGang={(gangIndex, next) => onToggleGang(device, gangIndex, next)} size={safeGangCount === 1 ? 88 : 70} /> : null}
-        {Object.keys(pendingKeys).length ? <p className="mt-3 text-xs text-amber-100/75">Changing… waiting for provider/state confirmation.</p> : null}
+        {changingCount ? <p className="mt-3 text-xs text-amber-100/75">Changing… {pendingOnCount ? `${pendingOnCount} pending on` : ""}{pendingOnCount && pendingOffCount ? " · " : ""}{pendingOffCount ? `${pendingOffCount} pending off` : ""}. Waiting for provider/state confirmation.</p> : null}
         {issues.length ? (
           <div className="mt-3 rounded-2xl border border-rose-300/20 bg-rose-500/10 px-3 py-2 text-xs leading-5 text-rose-100/85">
             {issues.map((issue) => <p key={issue}>{issue}</p>)}

@@ -80,7 +80,7 @@ assert(/runtimeDevicesCache/.test(deviceService) && /RUNTIME_DEVICES_DEDUPE_MS/.
 assert(/deviceStateInFlight/.test(deviceService) && /inferredView = options\.view \|\| \(includeValues\.includes\("intelligence"\) \? "panel" : undefined\)/.test(deviceService), "panel intelligence state reads are inferred as view=panel and deduplicated");
 assert(/deviceViewReleaseInFlight/.test(deviceService), "device panel view releases are deduplicated to prevent release storms");
 assert(!/sheetOpen \? 15_000 : 45_000/.test(devicesClient) && !/runtime_dashboard_stale/.test(devicesClient), "Devices page does not run sheet-driven runtime polling");
-assert(/getDeviceState\(deviceId, \{ view: "panel" \}/.test(read("src/hooks/useDeviceLiveState.ts")) && /getDeviceState\(sid, \{ include: \["intelligence"\], view: "panel" \}/.test(devicesClient) && /getDeviceState\(sid, \{ view: "panel" \}\)/.test(devicesClient), "opened device panels explicitly acquire one runtime view lease");
+assert(/getDeviceState\(deviceId, \{ view: "panel" \}/.test(read("src/hooks/useDeviceLiveState.ts")) && /getDeviceState\(sid, \{ include: \["intelligence"\], view: "panel" \}/.test(devicesClient) && /getDeviceState\(sid, \{ view: "control" \}\)/.test(devicesClient), "opened device panels acquire one runtime view lease and fast control-state view");
 
 assert(/startPresenceHeartbeat/.test(presenceBridge) && !/messagesService\.pingPresence/.test(presenceBridge), "PresenceBridge delegates to the shared presence manager");
 assert(/let activeCount = 0/.test(presenceService) && /inFlight/.test(presenceService) && /MIN_PING_GAP_MS/.test(presenceService), "presence manager enforces one heartbeat and in-flight ping guard");

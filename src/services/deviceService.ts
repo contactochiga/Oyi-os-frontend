@@ -250,7 +250,7 @@ export const deviceService = {
    * - If backend returns 404 (device not found in DB / wrong estate), we return { state: {} }
    * - We DO NOT throw
    */
-  async getDeviceState(deviceId: string, options: { include?: DeviceStateInclude[]; view?: "panel" | "device" | "active" } = {}): Promise<DeviceStateResponse> {
+  async getDeviceState(deviceId: string, options: { include?: DeviceStateInclude[]; view?: "panel" | "device" | "active" | "control" } = {}): Promise<DeviceStateResponse> {
     const includeValues = Array.from(new Set(options.include || []));
     const include = includeValues.join(",");
     const inferredView = options.view || (includeValues.includes("intelligence") ? "panel" : undefined);

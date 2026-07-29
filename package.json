@@ -44,7 +44,14 @@
     "smoke:command-failure-rollback": "node scripts/command-truth-ui-smoke.mjs",
     "smoke:multi-gang-confirmed-aggregate": "node scripts/command-truth-ui-smoke.mjs",
     "smoke:command-status-reconnect": "node scripts/command-truth-ui-smoke.mjs",
-    "smoke:read-only-chat-safety": "node scripts/command-truth-ui-smoke.mjs"
+    "smoke:read-only-chat-safety": "node scripts/command-truth-ui-smoke.mjs",
+    "smoke:immediate-pending-ring": "node scripts/command-truth-ui-smoke.mjs",
+    "smoke:second-tap-coalescing": "node scripts/command-truth-ui-smoke.mjs",
+    "smoke:per-channel-command-queue": "node scripts/command-truth-ui-smoke.mjs",
+    "smoke:live-drawer-reconciliation": "node scripts/command-truth-ui-smoke.mjs",
+    "smoke:confirmed-aggregate-state": "node scripts/command-truth-ui-smoke.mjs",
+    "smoke:command-socket-recovery": "node scripts/command-truth-ui-smoke.mjs",
+    "smoke:fast-control-drawer": "node scripts/command-truth-ui-smoke.mjs"
   },
   "dependencies": {
     "@capacitor-community/speech-recognition": "^6.0.0",

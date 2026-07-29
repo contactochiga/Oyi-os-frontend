@@ -22,7 +22,7 @@ check(devicesSource.includes("releaseDeviceView(deviceId)"), "closing an opened 
 check(roomHydration.includes("getRuntimeDevices(homeId)"), "Spaces page hydrates from one home-scoped runtime request");
 check(!roomHydration.includes("Promise.all(targets.map"), "Spaces page no longer fans out state requests");
 check(devicesSource.includes('include: ["intelligence"], view: "panel"'), "opened device explicitly requests optional intelligence with one panel view lease");
-check(devicesSource.includes('getDeviceState(sid, { view: "panel" })'), "device details modal uses the canonical panel view contract");
+check(devicesSource.includes('getDeviceState(sid, { view: "control" })'), "device details modal uses the fast control-state contract");
 
 for (const [passed, label] of checks) console.log(`${passed ? "PASS" : "FAIL"} ${label}`);
 if (checks.some(([passed]) => !passed)) process.exit(1);
