@@ -60,7 +60,9 @@
     "smoke:one-turn-one-message": "node scripts/intelligence-authority-ui-smoke.mjs",
     "smoke:full-circle-intelligence-acceptance": "node scripts/intelligence-authority-ui-smoke.mjs",
     "smoke:resident-language": "node scripts/resident-language-ui-smoke.mjs",
-    "smoke:ir-error-presentation": "node scripts/resident-language-ui-smoke.mjs"
+    "smoke:ir-error-presentation": "node scripts/resident-language-ui-smoke.mjs",
+    "smoke:tv-remote-command-contract": "node scripts/tv-remote-command-contract-smoke.mjs",
+    "smoke:tv-remote-fifo": "node scripts/tv-remote-fifo-smoke.mjs"
   },
   "dependencies": {
     "@capacitor-community/speech-recognition": "^6.0.0",

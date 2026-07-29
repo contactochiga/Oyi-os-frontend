@@ -1432,7 +1432,7 @@ export default function DeviceClient() {
       setTool(null);
     } catch (e: any) {
       const body = e?.response?.data || {};
-      setErr(body.safe_error_message || body.details || body.error || e?.message || "Command failed");
+      if (!isIrRemoteCommand) setErr(body.safe_error_message || body.details || body.error || e?.message || "Command failed");
       throw e;
     } finally {
       if (!isIrRemoteCommand) setBusyId(null);
@@ -2780,9 +2780,11 @@ function TVRenderer({ device, runtime, onPower, onCommand }: { device: AnyDevice
   const canShow = (key: string, ...aliases: string[]) => supports(key, ...aliases);
   const canSend = (key: string, ...aliases: string[]) => supports(key, ...aliases);
   const [remoteStatus, setRemoteStatus] = useState<"idle" | "sending" | "acknowledged" | "rejected">("idle");
+  const [remoteError, setRemoteError] = useState<string | null>(null);
   const sendKey = async (key: string) => {
     const definition = providerButtons.get(key);
     setRemoteStatus("sending");
+    setRemoteError(null);
     try {
       await Promise.resolve(onCommand(device, {
         type: "tv_remote",
@@ -2792,7 +2794,9 @@ function TVRenderer({ device, runtime, onPower, onCommand }: { device: AnyDevice
         key_id: definition?.keyId ?? undefined,
       }));
       setRemoteStatus("acknowledged");
-    } catch {
+    } catch (error: any) {
+      const body = error?.response?.data || {};
+      setRemoteError(body.safe_error_message || body.details || body.error || error?.message || "This remote command could not be completed.");
       setRemoteStatus("rejected");
     } finally {
       window.setTimeout(() => setRemoteStatus("idle"), 900);
@@ -2830,6 +2834,7 @@ function TVRenderer({ device, runtime, onPower, onCommand }: { device: AnyDevice
           {remoteStatus === "sending" ? "Sending" : remoteStatus === "acknowledged" ? "Provider acknowledged" : remoteStatus === "rejected" ? "Unavailable" : "Idle"}
         </span>
       </div>
+      {remoteError ? <p className="rounded-[18px] border border-red-300/16 bg-red-400/[0.08] px-3 py-2 text-xs leading-5 text-red-100/86">{remoteError}</p> : null}
       <div className="grid grid-cols-2 gap-2">
         {canPower ? <TvRemoteKey icon={Power} label="Power" enabled={isOnline(device, runtime) !== false && canSendPower} onClick={powerClick} /> : null}
         {canShow("mute") ? <TvRemoteKey icon={VolumeX} label="Mute" enabled={canSend("mute")} onClick={() => void sendKey("mute")} /> : null}
