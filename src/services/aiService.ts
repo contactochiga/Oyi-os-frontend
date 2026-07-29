@@ -44,6 +44,7 @@ export type AiChatResponse = {
   sources?: Array<Record<string, any>>;
   suggested_actions?: Array<Record<string, any>>;
   awareness?: OyiAwareness;
+  context?: Record<string, any>;
   thread_id?: string;
   safe_mode?: boolean;
   approvalRequired?: boolean;
@@ -83,6 +84,7 @@ function normalize(resp: any): AiChatResponse {
     sources: Array.isArray(resp?.sources) ? resp.sources : [],
     suggested_actions: Array.isArray(resp?.suggested_actions) ? resp.suggested_actions : Array.isArray(resp?.suggestedActions) ? resp.suggestedActions : [],
     awareness: resp?.awareness || undefined,
+    context: resp?.context && typeof resp.context === "object" ? resp.context : undefined,
     thread_id: resp?.thread_id ? String(resp.thread_id) : undefined,
     safe_mode: Boolean(resp?.safe_mode),
     approvalRequired: Boolean(resp?.approvalRequired),

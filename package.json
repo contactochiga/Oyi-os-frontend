@@ -51,7 +51,13 @@
     "smoke:live-drawer-reconciliation": "node scripts/command-truth-ui-smoke.mjs",
     "smoke:confirmed-aggregate-state": "node scripts/command-truth-ui-smoke.mjs",
     "smoke:command-socket-recovery": "node scripts/command-truth-ui-smoke.mjs",
-    "smoke:fast-control-drawer": "node scripts/command-truth-ui-smoke.mjs"
+    "smoke:fast-control-drawer": "node scripts/command-truth-ui-smoke.mjs",
+    "smoke:response-state-contract": "node scripts/intelligence-authority-ui-smoke.mjs",
+    "smoke:exact-context-handoff": "node scripts/intelligence-authority-ui-smoke.mjs",
+    "smoke:broad-scope-override": "node scripts/intelligence-authority-ui-smoke.mjs",
+    "smoke:report-rendering": "node scripts/intelligence-authority-ui-smoke.mjs",
+    "smoke:read-only-not-action-success": "node scripts/intelligence-authority-ui-smoke.mjs",
+    "smoke:one-turn-one-message": "node scripts/intelligence-authority-ui-smoke.mjs"
   },
   "dependencies": {
     "@capacitor-community/speech-recognition": "^6.0.0",

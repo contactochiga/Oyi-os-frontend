@@ -23,7 +23,7 @@ type AiMessage = {
   id: string;
   role: "user" | "assistant";
   content: string;
-  state?: "idle" | "preparing" | "confirmation_required" | "executing" | "success" | "failed" | "denied";
+  state?: "idle" | "preparing" | "informational" | "report_ready" | "recommendation" | "clarification_required" | "approval_required" | "executing" | "action_confirmed" | "action_failed" | "failed" | "denied" | "partial" | "unavailable";
   pending?: boolean;
   confirmations?: Array<Record<string, any>>;
   cards?: Array<Record<string, any>>;
@@ -86,14 +86,23 @@ function replyFromResponse(resp: AiChatResponse) {
 }
 
 function responseState(resp: AiChatResponse): AiMessage["state"] {
-  if (resp.confirmations?.length) return "confirmation_required";
+  const intent = String(resp.intent || "").toLowerCase();
+  const operationClass = String((resp.context as any)?.request_contract?.operation_class || (resp.context as any)?.canonical_request_contract?.operation_class || "").toLowerCase();
+  if (resp.confirmations?.length || resp.requiresConfirmation) return "approval_required";
   const results = Array.isArray(resp.execution?.results) ? resp.execution.results : [];
-  if (results.some((result) => result?.status === "pending_confirmation")) return "confirmation_required";
+  if (results.some((result) => result?.status === "pending_confirmation")) return "approval_required";
   if (results.some((result) => result?.status === "denied")) return "denied";
-  if (results.some((result) => result?.status === "failed")) return "failed";
+  if (results.some((result) => result?.status === "failed")) return "action_failed";
   if ((resp.tools || []).some((tool) => tool.status === "denied")) return "denied";
-  if ((resp.tools || []).some((tool) => tool.status === "failed")) return "failed";
-  return "success";
+  if ((resp.tools || []).some((tool) => tool.status === "failed")) return "action_failed";
+  const executionStatus = String(resp.execution?.status || resp.execution?.final_status || "").toLowerCase();
+  if (/failed|rejected|timed_out|mismatch/.test(executionStatus)) return "action_failed";
+  if (/executed|state_confirmed|action_confirmed/.test(executionStatus) && !/read_only/.test(executionStatus)) return "action_confirmed";
+  if (resp.display_mode === "report" || intent === "report") return "report_ready";
+  if (/recommend/.test(intent)) return "recommendation";
+  if (/clarification/.test(intent)) return "clarification_required";
+  if (operationClass === "read" || operationClass === "report" || operationClass === "recommend" || executionStatus === "read_only") return "informational";
+  return "informational";
 }
 
 function awarenessCards(resp: AiChatResponse) {
@@ -159,7 +168,7 @@ function messageFromThread(row: OyiThreadMessage): AiMessage {
     id: row.id,
     role: row.role === "user" ? "user" : "assistant",
     content: row.content || "",
-    state: row.role === "user" ? undefined : "success",
+    state: row.role === "user" ? undefined : (metadata.display_mode === "report" ? "report_ready" : "informational"),
     cards: row.cards || [],
     sources: row.sources || [],
     suggested_actions: row.suggested_actions || [],
@@ -613,13 +622,13 @@ function OyiAiCommandCenterContent() {
       if (nextThreadId) setBackendThreadId(nextThreadId);
       const content = replyFromResponse(resp) || "Done.";
       const state = responseState(resp);
-      if (state === "success") remember(options?.usageLabel || command);
+      if (["informational", "report_ready", "recommendation", "action_confirmed"].includes(String(state))) remember(options?.usageLabel || command);
       const nextMessages = baseMessages.map((item) => item.id === pendingId ? { ...item, pending: false, content, state, confirmations: resp.confirmations || [], cards: awarenessCards(resp), sources: resp.sources || [], suggested_actions: resp.suggested_actions || [], intent: resp.intent, understood: resp.understood, execution: resp.execution, display_mode: resp.display_mode || "conversation", executionSummary: resp.executionSummary, executionHistory: resp.executionHistory, approvalRequired: resp.approvalRequired, trustScore: resp.trustScore, initiatorType: resp.initiatorType, approvedBy: resp.approvedBy } : item);
       setMessages(nextMessages);
       persistConversation(nextMessages, nextThreadId || undefined);
       if (options?.fromVoice) {
-        setVoiceStatus(state === "failed" || state === "denied" ? "Failed" : "Speaking");
-        if (state !== "failed" && state !== "denied") speakResponse(content, true);
+        setVoiceStatus(state === "failed" || state === "action_failed" || state === "denied" ? "Failed" : "Speaking");
+        if (state !== "failed" && state !== "action_failed" && state !== "denied") speakResponse(content, true);
       }
     } catch {
       const nextMessages = baseMessages.map((item) => item.id === pendingId ? { ...item, pending: false, state: "failed" as const, content: "Oyi could not respond right now." } : item);
@@ -783,7 +792,7 @@ function OyiAiCommandCenterContent() {
     try {
       const result = decision === "confirm" ? await aiService.confirm(ledgerId) : await aiService.cancel(ledgerId);
       const nextMessages = baseMessages.map((item) => item.id === pendingId
-        ? { ...item, pending: false, state: decision === "confirm" ? "success" as const : "denied" as const, content: result?.record?.result_summary || (decision === "confirm" ? "Command approved and processed." : "Cancelled. No action was executed.") }
+        ? { ...item, pending: false, state: decision === "confirm" ? "action_confirmed" as const : "denied" as const, content: result?.record?.result_summary || (decision === "confirm" ? "Command approved and processed." : "Cancelled. No action was executed.") }
         : item);
       setMessages(nextMessages);
       persistConversation(nextMessages);
