@@ -13,7 +13,7 @@ export type OisContext = {
   resolved_at: string;
 };
 export type OyiTarget = {
-  target_type: "workflow" | "prediction" | "incident" | "maintenance" | "visitor" | "device" | "camera" | "infrastructure" | "wallet" | "service" | "community" | "message" | "handover" | "none";
+  target_type: "workflow" | "prediction" | "incident" | "maintenance" | "visitor" | "device" | "device_channel" | "camera" | "infrastructure" | "wallet" | "service" | "community" | "message" | "handover" | "none";
   target_id?: string | null;
   infrastructure_source?: "devices" | "cameras" | "edge" | "utilities" | "providers";
   open_as: "drawer" | "page" | "queue" | "attention" | "none";
@@ -137,6 +137,9 @@ export type OyiChatRequest = {
   conversation_context?: Record<string, any> | null;
   operational_object?: Partial<OperationalObject> | null;
   target?: OyiTarget | null;
+  intent_hint?: string | null;
+  operation_class_hint?: "read" | "report" | "recommend" | "execute" | "mutation" | string | null;
+  scope_mode_hint?: "exact_target" | "home_scope" | "room_scope" | "building_scope" | "explicit_broad_scope" | string | null;
 };
 
 export type OyiChatResponse = {
@@ -229,6 +232,9 @@ export const oyiService = {
       conversation_context: input.conversation_context || null,
       operational_object: input.operational_object || null,
       target: input.target || null,
+      intent_hint: input.intent_hint || null,
+      operation_class_hint: input.operation_class_hint || null,
+      scope_mode_hint: input.scope_mode_hint || null,
     });
     const runtime = res.data?.response || {};
     return {

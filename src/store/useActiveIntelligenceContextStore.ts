@@ -201,7 +201,7 @@ export function targetFromActiveContext(context: ActiveIntelligenceContext | nul
   if (!object?.object_type || !object?.canonical_id) return null;
   const targetTypeMap: Record<string, OyiTarget["target_type"]> = {
     device: "device",
-    device_channel: "device",
+    device_channel: "device_channel",
     room: "none",
     scene: "workflow",
     automation: "workflow",

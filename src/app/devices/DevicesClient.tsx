@@ -70,6 +70,16 @@ type CategoryKey = "all" | "lights" | "climate" | "security" | "entertainment" |
 type DeviceTool = "timer" | "schedule" | "settings" | "activity";
 type IrProfile = "tv" | "ac" | "fan" | "projector";
 type SwitchCommandStatus = "idle" | "queued" | "dispatching" | "awaiting_confirmation" | "confirmed" | "failed" | "mismatch" | "timed_out" | "uncertain" | "pending" | "timeout";
+type DrawerConversationTarget = {
+  object_type: "device" | "device_channel";
+  canonical_id: string;
+  parent_device_id: string | null;
+  channel_code: string | null;
+  label: string;
+  room_id: string | null;
+  context_id: string;
+  context_version: number;
+};
 type SwitchChannelCommandState = {
   confirmed_state: boolean | null;
   pending_expected_state: boolean | string | number | null;
@@ -1911,6 +1921,147 @@ function DeviceModalRouter({ device, state, runtime, switchCommands, busy, aware
   const intelligenceContext = normalizeRuntimeContract(device, runtime);
   const timerCode = commandCodeFor(device, [/countdown/, /timer/]);
   const deviceContextId = `ctx_consumer_device_${String(pickDbId(device) || "").trim()}`;
+  const [drawerConversationTarget, setDrawerConversationTarget] = useState<DrawerConversationTarget>(() => {
+    const deviceId = String(pickDbId(device) || "").trim();
+    return {
+      object_type: "device",
+      canonical_id: deviceId,
+      parent_device_id: null,
+      channel_code: null,
+      label: pickName(device),
+      room_id: pickRoomId(device),
+      context_id: `ctx_consumer_device_${deviceId}`,
+      context_version: 1,
+    };
+  });
+
+  useEffect(() => {
+    const deviceId = String(pickDbId(device) || "").trim();
+    setDrawerConversationTarget({
+      object_type: "device",
+      canonical_id: deviceId,
+      parent_device_id: null,
+      channel_code: null,
+      label: pickName(device),
+      room_id: pickRoomId(device),
+      context_id: `ctx_consumer_device_${deviceId}`,
+      context_version: 1,
+    });
+  }, [device]);
+
+  function drawerTargetForChannel(gangIndex: number): DrawerConversationTarget {
+    const deviceId = String(pickDbId(device) || "").trim();
+    const commandCode = normalizeCommandKey(device, state, runtime, gangIndex);
+    const channelLabel = `Channel ${gangIndex + 1}`;
+    return {
+      object_type: "device_channel",
+      canonical_id: `${deviceId}:${commandCode}`,
+      parent_device_id: deviceId,
+      channel_code: commandCode,
+      label: `${pickName(device)} · ${channelLabel}`,
+      room_id: pickRoomId(device),
+      context_id: `${deviceContextId}_${commandCode}`,
+      context_version: drawerConversationTarget.context_version + 1,
+    };
+  }
+
+  function intentHintForPrompt(prompt: string) {
+    const lower = prompt.toLowerCase();
+    if (/fail|failure|failed|error|timeout|rejected/.test(lower)) return "failure_history";
+    if (/diagnos|investigat|check connection|why/.test(lower)) return "diagnosis";
+    if (/relationship|what controls|where.*belong|scene|automation|dependencies/.test(lower)) return "relationships";
+    if (/activity|history|what happened|recent/.test(lower)) return "activity_history";
+    if (/last command|did that work|command/.test(lower)) return "command_outcome";
+    if (/working|health|healthy|status|online|offline/.test(lower)) return "health_check";
+    if (/what can|capabilit|help/.test(lower)) return "capability";
+    return "current_state";
+  }
+
+  function makeDrawerIntelligenceContext(target: DrawerConversationTarget) {
+    const visibleFetchedAt = new Date().toISOString();
+    const scopeEstateId = activeContext.estate_id || user?.estate_id || null;
+    const scopeHomeId = activeContext.home_id || user?.home_id || null;
+    const runtimeTimestamp = String((runtime as any)?.runtime_timestamp || (runtime as any)?.state_confirmed_at || (runtime as any)?.state_updated_at || (runtime as any)?.updated_at || "");
+    const runtimeFreshness = String((runtime as any)?.freshness?.state || (runtime as any)?.freshness || "");
+    const channelDefinitions = Array.isArray(intelligenceContext.channel_definitions) ? intelligenceContext.channel_definitions : [];
+    const channelStates = Object.fromEntries(switchCommandCodes(device, state, runtime).map((code, index) => [code, typeof values[index] === "boolean" ? (values[index] ? "on" : "off") : "unknown"]));
+    const currentState = target.channel_code
+      ? String(channelStates[target.channel_code] || "unknown")
+      : intelligenceContext.primary_state || null;
+    return {
+      context_id: target.context_id,
+      context_version: target.context_version,
+      surface: "consumer",
+      module: "device",
+      route: "/devices",
+      scope: {
+        estate_id: scopeEstateId,
+        building_id: null,
+        home_id: scopeHomeId,
+        unit_id: null,
+        room_id: target.room_id || pickRoomId(device),
+      },
+      primary_object: {
+        object_type: "device",
+        canonical_id: target.parent_device_id || target.canonical_id,
+        label: pickName(device),
+        privacy_class: isLockRenderer ? "smart_access_private" : "resident_device_private",
+        source_module: "devices",
+      },
+      selected_subobject: target.object_type === "device_channel" ? {
+        object_type: "device_channel",
+        canonical_id: target.canonical_id,
+        label: target.label,
+        parent_id: target.parent_device_id,
+        metadata: { channel_code: target.channel_code },
+      } : null,
+      visible_state: {
+        source: "device_runtime_v2",
+        object_type: target.object_type,
+        object_id: target.canonical_id,
+        parent_device_id: target.parent_device_id || undefined,
+        home_id: scopeHomeId,
+        estate_id: scopeEstateId,
+        fetched_at: visibleFetchedAt,
+        runtime_timestamp: runtimeTimestamp,
+        provider_timestamp: String((runtime as any)?.provider_timestamp || (runtime as any)?.last_successful_provider_contact_at || ""),
+        data_version: runtimeTimestamp,
+        freshness: runtimeFreshness,
+        current_state: currentState,
+        health: intelligenceContext.health_status || null,
+        summary: {
+          source: "device_runtime_v2",
+          object_id: target.canonical_id,
+          canonical_device_id: target.parent_device_id || target.canonical_id,
+          parent_device_id: target.parent_device_id,
+          device_id: target.parent_device_id || target.canonical_id,
+          channel_code: target.channel_code,
+          command_key: target.channel_code,
+          home_id: scopeHomeId,
+          estate_id: scopeEstateId,
+          fetched_at: visibleFetchedAt,
+          runtime_timestamp: runtimeTimestamp,
+          freshness: runtimeFreshness,
+          name: pickName(device),
+          family: intelligenceContext.device_family || null,
+          device_family: intelligenceContext.device_family || null,
+          control_profile: intelligenceContext.control_profile || null,
+          supported_controls: intelligenceContext.supported_controls || [],
+          capability_codes: intelligenceContext.capability_codes || [],
+          channel_definitions: channelDefinitions,
+          channel_states: channelStates,
+          canonical_state: (runtime as any)?.canonical_state || null,
+          normalized_state: intelligenceContext.normalized_state || {},
+          provider_health: (runtime as any)?.provider_health || null,
+          health_status: intelligenceContext.health_status || null,
+          provider_ack_is_physical_confirmation: false,
+        },
+      },
+      source: target.object_type === "device_channel" ? "selected_card" : "detail_panel",
+      permissions: [],
+      ownership: { owner: "resident_home" },
+    };
+  }
 
   useEffect(() => {
     const deviceId = String(pickDbId(device) || "").trim();
@@ -1996,6 +2147,8 @@ function DeviceModalRouter({ device, state, runtime, switchCommands, busy, aware
     const runtimeFreshness = String((runtime as any)?.freshness?.state || (runtime as any)?.freshness || "");
     const channelDefinitions = Array.isArray(intelligenceContext.channel_definitions) ? intelligenceContext.channel_definitions : [];
     const channelStates = Object.fromEntries(switchCommandCodes(device, state, runtime).map((code, index) => [code, typeof values[index] === "boolean" ? (values[index] ? "on" : "off") : "unknown"]));
+    const nextTarget = drawerTargetForChannel(gangIndex);
+    setDrawerConversationTarget(nextTarget);
     pushIntelligenceContext({
       context_id: `${deviceContextId}_${commandCode}`,
       surface: "consumer",
@@ -2230,6 +2383,52 @@ function DeviceModalRouter({ device, state, runtime, switchCommands, busy, aware
   async function submitDeviceConversation(prompt: string) {
     const message = String(prompt || "").trim();
     if (!message || busy) return;
+    const targetContract = drawerConversationTarget.canonical_id ? drawerConversationTarget : {
+      object_type: "device" as const,
+      canonical_id: String(pickDbId(device) || "").trim(),
+      parent_device_id: null,
+      channel_code: null,
+      label: pickName(device),
+      room_id: pickRoomId(device),
+      context_id: deviceContextId,
+      context_version: 1,
+    };
+    const activeDrawerContext = makeDrawerIntelligenceContext(targetContract);
+    const intentHint = intentHintForPrompt(message);
+    const submittedTarget = {
+      target_type: targetContract.object_type,
+      target_id: targetContract.canonical_id,
+      open_as: "page" as const,
+      action: "inspect" as const,
+    };
+    const submittedObject = {
+      object_type: targetContract.object_type,
+      canonical_id: targetContract.canonical_id,
+      label: targetContract.label,
+      estate_id: activeContext.estate_id || user?.estate_id || null,
+      home_id: activeContext.home_id || user?.home_id || null,
+      room_id: targetContract.room_id || pickRoomId(device),
+      parent_id: targetContract.parent_device_id,
+      source_module: "devices",
+      capabilities: Array.isArray(intelligenceContext.supported_controls) ? intelligenceContext.supported_controls : [],
+      current_state: activeDrawerContext.visible_state?.current_state || intelligenceContext.primary_state || null,
+      health: intelligenceContext.health_status || null,
+      relationships: intelligenceContext.relationships || {},
+      metadata: {
+        control_profile: intelligenceContext.control_profile || null,
+        channel_code: targetContract.channel_code,
+        immutable_drawer_target: targetContract,
+        visible_state: activeDrawerContext.visible_state,
+      },
+    };
+    if (process.env.NODE_ENV !== "production") {
+      console.debug("[oyi-device-conversation-target]", {
+        visible_target_id: drawerConversationTarget.canonical_id,
+        submitted_target_id: targetContract.canonical_id,
+        channel_code: targetContract.channel_code,
+        target_consistency: drawerConversationTarget.canonical_id === targetContract.canonical_id ? "matched" : "repaired_before_submit",
+      });
+    }
     stopVoiceCapture();
     setComposerValue("");
     setConversationState("thinking");
@@ -2258,25 +2457,15 @@ function DeviceModalRouter({ device, state, runtime, switchCommands, busy, aware
         thread_id: conversationThreadId || undefined,
         estate_id: activeContext.estate_id || user?.estate_id || null,
         home_id: activeContext.home_id || user?.home_id || null,
-        operational_object: {
-          object_type: "device",
-          canonical_id: pickDbId(device),
-          label: pickName(device),
-          estate_id: activeContext.estate_id || user?.estate_id || null,
-          home_id: activeContext.home_id || user?.home_id || null,
-          room_id: pickRoomId(device),
-          source_module: "devices",
-          capabilities: Array.isArray(intelligenceContext.supported_controls) ? intelligenceContext.supported_controls : [],
-          current_state: intelligenceContext.primary_state || null,
-          health: intelligenceContext.health_status || null,
-          relationships: intelligenceContext.relationships || {},
-          metadata: {
-            control_profile: intelligenceContext.control_profile || null,
-          },
-        },
-        device_id: pickDbId(device),
+        operational_object: submittedObject,
+        target: submittedTarget,
+        intent_hint: intentHint,
+        operation_class_hint: "read",
+        scope_mode_hint: "exact_target",
+        active_intelligence_context: activeDrawerContext,
+        device_id: targetContract.parent_device_id || pickDbId(device),
         device_name: pickName(device),
-        room_id: pickRoomId(device),
+        room_id: targetContract.room_id || pickRoomId(device),
         room_name: pickRoomName(device),
         control_profile: intelligenceContext.control_profile,
         primary_state: intelligenceContext.primary_state,
@@ -2289,7 +2478,18 @@ function DeviceModalRouter({ device, state, runtime, switchCommands, busy, aware
         recent_executions: intelligenceContext.recent_executions,
         active_scenes: intelligenceContext.active_scenes,
         active_automations: intelligenceContext.active_automations,
-        conversation_context: intelligenceContext.conversation_context,
+        conversation_context: {
+          ...(intelligenceContext.conversation_context || {}),
+          active_context: activeDrawerContext,
+          context_id: activeDrawerContext.context_id,
+          context_version: activeDrawerContext.context_version,
+          selected_subobject: activeDrawerContext.selected_subobject,
+          visible_state: activeDrawerContext.visible_state,
+          immutable_drawer_target: targetContract,
+          intent_hint: intentHint,
+          operation_class_hint: "read",
+          scope_mode_hint: "exact_target",
+        },
       });
       stageTimers.forEach((timer) => window.clearTimeout(timer));
       if (response.thread_id) setConversationThreadId(String(response.thread_id));

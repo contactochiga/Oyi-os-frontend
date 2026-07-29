@@ -6,6 +6,7 @@ const aiPage = read("src/app/ai/page.tsx");
 const aiService = read("src/services/aiService.ts");
 const oyiService = read("src/services/oyiService.ts");
 const contextStore = read("src/store/useActiveIntelligenceContextStore.ts");
+const devicesClient = read("src/app/devices/DevicesClient.tsx");
 
 function check(name, fn) {
   try {
@@ -58,6 +59,27 @@ check("active context includes versioned visible state for broad and exact scope
   assert.match(contextStore, /context_version/);
   assert.match(contextStore, /visible_state/);
   assert.match(contextStore, /primary_object/);
+});
+
+check("device drawer preserves immutable selected target for typed voice and quick actions", () => {
+  assert.match(devicesClient, /type DrawerConversationTarget/);
+  assert.match(devicesClient, /drawerConversationTarget/);
+  assert.match(devicesClient, /makeDrawerIntelligenceContext/);
+  assert.match(devicesClient, /immutable_drawer_target/);
+  assert.match(devicesClient, /submitted_target_id/);
+});
+
+check("quick action requests send structured read exact-target hints", () => {
+  assert.match(devicesClient, /intentHintForPrompt/);
+  assert.match(devicesClient, /operation_class_hint: "read"/);
+  assert.match(devicesClient, /scope_mode_hint: "exact_target"/);
+  assert.match(devicesClient, /target_type: targetContract\.object_type/);
+});
+
+check("device channel identity is not flattened to parent device", () => {
+  assert.match(contextStore, /device_channel: "device_channel"/);
+  assert.match(devicesClient, /object_type: "device_channel"/);
+  assert.ok(devicesClient.includes("canonical_id: `${deviceId}:${commandCode}`"));
 });
 
 console.log("intelligence-authority-ui-smoke passed");

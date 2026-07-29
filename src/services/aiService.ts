@@ -129,6 +129,9 @@ export const aiService = {
         ...(context?.conversation_context ? { conversation_context: context.conversation_context } : {}),
         ...(context?.operational_object ? { operational_object: context.operational_object } : {}),
         ...(context?.target ? { target: context.target } : {}),
+        ...(context?.intent_hint ? { intent_hint: context.intent_hint } : {}),
+        ...(context?.operation_class_hint ? { operation_class_hint: context.operation_class_hint } : {}),
+        ...(context?.scope_mode_hint ? { scope_mode_hint: context.scope_mode_hint } : {}),
         context: context?.ois_context || context || null,
         message,
       });
