@@ -52,6 +52,7 @@
     "smoke:confirmed-aggregate-state": "node scripts/command-truth-ui-smoke.mjs",
     "smoke:command-socket-recovery": "node scripts/command-truth-ui-smoke.mjs",
     "smoke:fast-control-drawer": "node scripts/command-truth-ui-smoke.mjs",
+    "smoke:device-control-reconciliation": "node scripts/command-truth-ui-smoke.mjs",
     "smoke:response-state-contract": "node scripts/intelligence-authority-ui-smoke.mjs",
     "smoke:exact-context-handoff": "node scripts/intelligence-authority-ui-smoke.mjs",
     "smoke:broad-scope-override": "node scripts/intelligence-authority-ui-smoke.mjs",

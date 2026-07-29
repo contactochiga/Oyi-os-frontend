@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Haptics, ImpactStyle } from "@capacitor/haptics";
@@ -61,6 +61,7 @@ import {
   simplePowerState,
   type DeviceRuntimeContract,
 } from "@/lib/deviceRuntimeContract";
+import { mergeDeviceRuntimePatch, readConfirmedSwitchChannel } from "@/lib/deviceControlReconciliation";
 import { scopeMatches } from "@/lib/footerBadges";
 
 type AnyDevice = Record<string, any>;
@@ -220,16 +221,14 @@ function guessGangCount(device: AnyDevice, state: any, runtime?: Partial<DeviceR
 }
 
 function readGangValues(gangCount: 1 | 2 | 3, state: any, runtime?: Partial<DeviceRuntimeContract> | null): Array<boolean | null> {
-  const normalized = normalizeRuntimeContract({}, runtime).normalized_state || {};
-  const switches = (normalized as any)?.switches || {};
   const out: Array<boolean | null> = [];
   for (let i = 1; i <= gangCount; i += 1) {
     const k = `switch_${i}`;
-    const v = switches?.[k] ?? state?.[k];
-    out.push(typeof v === "boolean" ? v : null);
+    out.push(readConfirmedSwitchChannel(k, state, runtime));
   }
   if (gangCount === 1 && out[0] === null) {
-    const v = state?.switch ?? state?.power ?? state?.on;
+    const normalized = state?.normalized_state && typeof state.normalized_state === "object" ? state.normalized_state : {};
+    const v = state?.switch ?? state?.power ?? state?.on ?? (normalized as any)?.power ?? readConfirmedSwitchChannel("switch", state, runtime);
     if (typeof v === "boolean") out[0] = v;
   }
   return out;
@@ -259,7 +258,7 @@ function normalizeCommandKey(device: AnyDevice, state: any, runtime: Partial<Dev
 }
 
 function readPowerState(state: any, runtime?: Partial<DeviceRuntimeContract> | null): boolean | null {
-  return simplePowerState({}, { state, ...(runtime || {}) });
+  return simplePowerState({}, { ...(runtime || {}), state });
 }
 
 function readTemperature(state: any, runtime?: Partial<DeviceRuntimeContract> | null): string | null {
@@ -282,7 +281,7 @@ function readLockState(device: AnyDevice, state: any, runtime?: Partial<DeviceRu
 }
 
 function displayState(device: AnyDevice, state: any, runtime?: Partial<DeviceRuntimeContract> | null) {
-  const contract = normalizeRuntimeContract(device, { state, ...(runtime || {}) });
+  const contract = normalizeRuntimeContract(device, { ...(runtime || {}), state });
   const presentation = contract.canonical_presentation || contract.presentation || null;
   if (presentation?.primaryState?.label) return presentation.primaryState.label;
   const canonical = contract.canonical_state;
@@ -322,7 +321,7 @@ function isFavoriteDevice(device: AnyDevice) {
 }
 
 function friendlyStateRows(device: AnyDevice, state: any, runtime?: Partial<DeviceRuntimeContract> | null) {
-  const contract = normalizeRuntimeContract(device, { state, ...(runtime || {}) });
+  const contract = normalizeRuntimeContract(device, { ...(runtime || {}), state });
   const canonical = contract.canonical_state;
   const online = isOnline(device, contract);
   const power = readPowerState(state, contract);
@@ -355,7 +354,7 @@ function friendlyStateRows(device: AnyDevice, state: any, runtime?: Partial<Devi
 }
 
 function attentionReason(device: AnyDevice, state: any, runtime?: Partial<DeviceRuntimeContract> | null) {
-  const contract = normalizeRuntimeContract(device, { state, ...(runtime || {}) });
+  const contract = normalizeRuntimeContract(device, { ...(runtime || {}), state });
   const alert = contract.canonical_state?.alerts?.find((item: { severity?: string }) => item.severity === "critical") || contract.canonical_state?.alerts?.[0];
   if (alert?.message) return alert.message;
   if (isOnline(device, contract) === false) return "Connection lost";
@@ -750,6 +749,7 @@ export default function DeviceClient() {
   const irTapSequenceRef = useRef(0);
   const switchTapSequenceRef = useRef<Record<string, number>>({});
   const switchTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const commandPollersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const [switchCommands, setSwitchCommands] = useState<Record<string, SwitchChannelCommandState>>({});
   const latestAwareness = useRuntimeIntelligenceStore((state) => state.latestAwareness);
   const latestRecommendations = useRuntimeIntelligenceStore((state) => state.latestRecommendations);
@@ -764,6 +764,21 @@ export default function DeviceClient() {
   function clearSwitchTimeout(key: string) {
     if (switchTimeoutsRef.current[key]) clearTimeout(switchTimeoutsRef.current[key]);
     delete switchTimeoutsRef.current[key];
+  }
+
+  const clearCommandPoll = useCallback((commandExecutionId: string | null | undefined) => {
+    const key = String(commandExecutionId || "");
+    if (!key) return;
+    if (commandPollersRef.current[key]) clearTimeout(commandPollersRef.current[key]);
+    delete commandPollersRef.current[key];
+  }, []);
+
+  const clearAllCommandPolls = useCallback(() => {
+    Object.keys(commandPollersRef.current).forEach((key) => clearCommandPoll(key));
+  }, [clearCommandPoll]);
+
+  function isTerminalExecutionStatus(status: string) {
+    return ["state_confirmed", "provider_rejected", "state_mismatch", "confirmation_timed_out", "failed", "cancelled"].includes(status);
   }
 
   function scheduleSwitchTimeout(key: string, label: string) {
@@ -787,10 +802,26 @@ export default function DeviceClient() {
   }
 
   function channelValueFromState(state: Record<string, any> | null | undefined, channelCode: string): boolean | null {
-    const normalized = state?.normalized_state && typeof state.normalized_state === "object" ? state.normalized_state : {};
-    const switches = (normalized as any)?.switches && typeof (normalized as any).switches === "object" ? (normalized as any).switches : {};
-    const raw = state?.[channelCode] ?? switches?.[channelCode];
-    return typeof raw === "boolean" ? raw : null;
+    return readConfirmedSwitchChannel(channelCode, state, null);
+  }
+
+  function reconcileConfirmedDevicePatch(deviceId: string, patch: Record<string, any>, observedAt?: string | null) {
+    setStateMap((prev) => {
+      const reconciled = mergeDeviceRuntimePatch({
+        state: { ...(prev[deviceId] || {}), ...patch },
+        runtime: runtimeMap[deviceId] || null,
+        observedAt,
+      });
+      return { ...prev, [deviceId]: reconciled.state };
+    });
+    setRuntimeMap((prev) => {
+      const reconciled = mergeDeviceRuntimePatch({
+        state: { ...(stateMap[deviceId] || {}), ...patch },
+        runtime: prev[deviceId] || null,
+        observedAt,
+      });
+      return { ...prev, [deviceId]: reconciled.runtime };
+    });
   }
 
   function settleSwitchCommandsFromPatch(deviceId: string, patch: Record<string, any>) {
@@ -855,7 +886,7 @@ export default function DeviceClient() {
     const confirmedValue = channelValueFromState(observedState, channelCode);
     const safeMessage = String(update?.safe_error_message || update?.error || "").trim();
     if (typeof confirmedValue === "boolean") {
-      setStateMap((prev) => ({ ...prev, [deviceId]: { ...(prev[deviceId] || {}), [channelCode]: confirmedValue } }));
+      reconcileConfirmedDevicePatch(deviceId, { [channelCode]: confirmedValue }, String(update?.evidence_observed_at || update?.confirmation_completed_at || update?.updated_at || "") || null);
     }
     setSwitchCommands((current) => {
       const pending = current[stateKey];
@@ -870,6 +901,7 @@ export default function DeviceClient() {
         command_status: finalStatus,
       });
       if (["state_confirmed", "confirmed", "executed"].includes(finalStatus)) {
+        clearCommandPoll(executionId);
         clearSwitchTimeout(stateKey);
         const desired = pending.latest_desired_state;
         const confirmed = typeof confirmedValue === "boolean" ? confirmedValue : pending.pending_expected_state === pending.latest_desired_state ? pending.latest_desired_state : pending.confirmed_state;
@@ -907,6 +939,7 @@ export default function DeviceClient() {
         };
       }
       if (["provider_rejected", "state_mismatch", "confirmation_timed_out", "failed", "rejected"].includes(finalStatus)) {
+        clearCommandPoll(executionId);
         clearSwitchTimeout(stateKey);
         const mappedStatus = finalStatus === "confirmation_timed_out" ? "timed_out" : finalStatus === "state_mismatch" ? "mismatch" : "failed";
         return {
@@ -926,6 +959,7 @@ export default function DeviceClient() {
   }
 
   function pollCommandExecution(commandExecutionId: string, deviceId: string, commandCode: string, attempts = 8) {
+    clearCommandPoll(commandExecutionId);
     let remaining = attempts;
     const tick = async () => {
       if (remaining <= 0) return;
@@ -936,14 +970,17 @@ export default function DeviceClient() {
         if (execution) {
           applyCommandExecutionUpdate({ ...execution, canonical_device_id: execution.canonical_device_id || deviceId, channel_code: execution.channel_code || commandCode, source: "status_poll" });
           const finalStatus = String(execution.final_status || execution.confirmation_status || "").toLowerCase();
-          if (["state_confirmed", "provider_rejected", "state_mismatch", "confirmation_timed_out", "failed"].includes(finalStatus)) return;
+          if (isTerminalExecutionStatus(finalStatus)) {
+            clearCommandPoll(commandExecutionId);
+            return;
+          }
         }
       } catch {
         // Socket/runtime updates remain authoritative; polling is only recovery.
       }
-      window.setTimeout(tick, remaining > 4 ? 1200 : 2200);
+      commandPollersRef.current[commandExecutionId] = setTimeout(tick, remaining > 4 ? 1200 : 2200);
     };
-    window.setTimeout(tick, 1000);
+    commandPollersRef.current[commandExecutionId] = setTimeout(tick, 1000);
   }
 
   async function hydrateStates(
@@ -959,8 +996,14 @@ export default function DeviceClient() {
         const sid = String(pickDbId(device) || "");
         const runtime = runtimeById.get(sid);
         if (!sid || !runtime) return;
-        patch[sid] = runtime.state || {};
-        runtimePatch[sid] = normalizeRuntimeContract(device, runtime);
+        const normalized = normalizeRuntimeContract(device, runtime);
+        const reconciled = mergeDeviceRuntimePatch({
+          state: normalized.state || runtime.state || {},
+          runtime: normalized,
+          observedAt: String((runtime as any)?.runtime_timestamp || (runtime as any)?.state_confirmed_at || (runtime as any)?.updated_at || "") || null,
+        });
+        patch[sid] = reconciled.state;
+        runtimePatch[sid] = reconciled.runtime;
       });
     } catch (error: any) {
       console.error("[consumer.devices.runtime] batch_load_failed", {
@@ -985,8 +1028,15 @@ export default function DeviceClient() {
     try {
       const response = await deviceService.getDeviceState(sid, { include: ["intelligence"], view: "panel" });
       if (response.error) return;
-      setStateMap((current) => ({ ...current, [sid]: response.state || {} }));
-      setRuntimeMap((current) => ({ ...current, [sid]: normalizeRuntimeContract(device, response) }));
+      const normalized = normalizeRuntimeContract(device, response);
+      const reconciled = mergeDeviceRuntimePatch({
+        state: response.state || {},
+        runtime: normalized,
+        observedAt: String((response as any)?.runtime_timestamp || (response as any)?.state_confirmed_at || (response as any)?.updated_at || "") || null,
+      });
+      setStateMap((current) => ({ ...current, [sid]: reconciled.state }));
+      setRuntimeMap((current) => ({ ...current, [sid]: reconciled.runtime }));
+      settleSwitchCommandsFromPatch(sid, reconciled.state);
     } catch {
       // The live runtime remains usable while optional intelligence is unavailable.
     }
@@ -1033,8 +1083,14 @@ export default function DeviceClient() {
         if (timeouts[key]) clearTimeout(timeouts[key]);
         delete timeouts[key];
       });
+      clearAllCommandPolls();
     };
-  }, []);
+  }, [clearAllCommandPolls]);
+
+  useEffect(() => {
+    clearAllCommandPolls();
+    setSwitchCommands({});
+  }, [activeContext.contextKey, clearAllCommandPolls]);
 
   useEffect(() => {
     if (!contextReady || !estateId || !homeId) return;
@@ -1066,17 +1122,7 @@ export default function DeviceClient() {
       const sid = String(pickDbId(target) || "");
       if (!sid) return;
       const statePatch = payload?.state || {};
-      setStateMap((prev) => ({
-        ...prev,
-        [sid]: { ...(prev[sid] || {}), ...statePatch },
-      }));
-      setRuntimeMap((prev) => ({
-        ...prev,
-        [sid]: normalizeRuntimeContract(target, {
-          ...(prev[sid] || { state: {} }),
-          state: { ...((prev[sid] as any)?.state || {}), ...statePatch },
-        }),
-      }));
+      reconcileConfirmedDevicePatch(sid, statePatch, String(payload?.provider_timestamp || payload?.runtime_timestamp || payload?.updated_at || "") || null);
       settleSwitchCommandsFromPatch(sid, statePatch);
     };
 
@@ -1224,19 +1270,17 @@ export default function DeviceClient() {
     if (stateMap[sid]) return;
     try {
       const res = await deviceService.getDeviceState(sid, { view: "control" });
-      setStateMap((p) => ({ ...p, [sid]: (res as any)?.state ?? res ?? {} }));
+      const normalized = normalizeRuntimeContract(device, res as any);
+      const reconciled = mergeDeviceRuntimePatch({
+        state: (res as any)?.state ?? res ?? {},
+        runtime: normalized,
+        observedAt: String((res as any)?.runtime_timestamp || (res as any)?.state_confirmed_at || (res as any)?.updated_at || "") || null,
+      });
+      setStateMap((p) => ({ ...p, [sid]: reconciled.state }));
+      setRuntimeMap((p) => ({ ...p, [sid]: reconciled.runtime }));
     } catch {
       // silent warmup
     }
-  }
-
-  function buildPowerCommand(device: AnyDevice, state: any, next: boolean) {
-    const runtime = runtimeMap[String(pickDbId(device) || "")] || null;
-    const gangCount = guessGangCount(device, state, runtime);
-    if (gangCount === 1) return { [normalizeCommandKey(device, state, runtime, 0)]: next };
-    const out: Record<string, boolean> = {};
-    for (let i = 0; i < gangCount; i += 1) out[normalizeCommandKey(device, state, runtime, i)] = next;
-    return out;
   }
 
   async function toggleGang(device: AnyDevice, gangIndex: number, next: boolean) {
@@ -1365,8 +1409,25 @@ export default function DeviceClient() {
       setStateMap((p) => {
         const cached = p[sid] || {};
         if (!commandCode || confirmedState === null) return p;
-        return { ...p, [sid]: { ...cached, [commandCode]: confirmedState } };
+        const reconciled = mergeDeviceRuntimePatch({
+          state: { ...cached, [commandCode]: confirmedState },
+          runtime: runtimeMap[sid] || null,
+          commandCode,
+          confirmedValue: confirmedState,
+        });
+        return { ...p, [sid]: reconciled.state };
       });
+      if (commandCode && confirmedState !== null) {
+        setRuntimeMap((prev) => {
+          const reconciled = mergeDeviceRuntimePatch({
+            state: { ...(stateMap[sid] || {}), [commandCode]: confirmedState },
+            runtime: prev[sid] || null,
+            commandCode,
+            confirmedValue: confirmedState,
+          });
+          return { ...prev, [sid]: reconciled.runtime };
+        });
+      }
       setErr(`${label}: ${scopedMessage}`);
     }
   }
@@ -1382,19 +1443,14 @@ export default function DeviceClient() {
     try {
       await warmState(device);
       const cached = stateMap[sid] || {};
-      const nowOn = readPowerState(cached, runtimeMap[sid] || null);
+      const runtime = runtimeMap[sid] || null;
+      const gangCount = guessGangCount(device, cached, runtime);
+      const values = readGangValues(gangCount, cached, runtime);
+      const nowOn = values.some((value) => value === true) ? true : values.some((value) => value === false) ? false : readPowerState(cached, runtime);
       const next = nowOn === null ? true : !nowOn;
-      const command = buildPowerCommand(device, cached, next);
-      const tapSequence = nextSwitchTapSequence(sid, "master");
-      const clientTapTimestamp = Date.now();
-      const commandKey = `${activeContext.contextKey || "home"}:${sid}:master:${tapSequence}`;
-      await deviceService.commandDevice(sid, command, {
-        idempotencyKey: commandKey,
-        commandKey,
-        tapSequence,
-        clientTapTimestamp,
-      });
-      setStateMap((p) => ({ ...p, [sid]: { ...(p[sid] || {}), ...command, switch: next, power: next, on: next } }));
+      for (let i = 0; i < gangCount; i += 1) {
+        if (values[i] !== next) await toggleGang(device, i, next);
+      }
     } catch (e: any) {
       const body = e?.response?.data || {};
       setErr(body.safe_error_message || body.details || body.error || e?.message || "Command failed");
@@ -1823,7 +1879,7 @@ function DeviceRow({ device, state, runtime, busy, bordered, editingFavorites, o
   const Icon = deviceIcon(device, runtime);
   const simple = isSimpleControlDevice(device, state, runtime);
   const stateText = busy ? "Working…" : displayState(device, state, runtime);
-  const contract = normalizeRuntimeContract(device, { state, ...(runtime || {}) });
+  const contract = normalizeRuntimeContract(device, { ...(runtime || {}), state });
   const secondary = runtimeActivitySummary(device, contract, contract.canonical_state?.secondaryState?.label || pickRoomName(device, contract) || "Unassigned");
   return (
     <div className={cn("flex w-full items-center gap-3 px-3.5 py-3 transition hover:bg-white/[0.035]", bordered && "border-t border-white/[0.055]")}>

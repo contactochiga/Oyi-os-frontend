@@ -7,6 +7,7 @@ const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
 
 const devicesClient = read("src/app/devices/DevicesClient.tsx");
 const deviceService = read("src/services/deviceService.ts");
+const reconciliation = read("src/lib/deviceControlReconciliation.ts");
 
 function check(name, fn) {
   try {
@@ -47,11 +48,35 @@ check("switch channel optimistic UI does not overwrite canonical stateMap", () =
   assert.match(devicesClient, /Changing…[\s\S]*Waiting for provider\/state confirmation/);
 });
 
+check("fresh local control state takes precedence over stale runtime state", () => {
+  assert.doesNotMatch(devicesClient, /\{ state, \.\.\.\(runtime \|\| \{\}\) \}/);
+  assert.match(devicesClient, /readConfirmedSwitchChannel\(k, state, runtime\)/);
+  assert.match(reconciliation, /state\?\.\[channelCode\] \?\? stateSwitches\[channelCode\]/);
+});
+
+check("confirmed command updates reconcile raw state and runtime contract together", () => {
+  assert.match(devicesClient, /function reconcileConfirmedDevicePatch/);
+  assert.match(devicesClient, /mergeDeviceRuntimePatch/);
+  assert.match(devicesClient, /setRuntimeMap\(\(prev\) =>/);
+  assert.match(reconciliation, /normalized\.switches = switches/);
+  assert.match(reconciliation, /channel_definitions\.map/);
+});
+
 check("second taps coalesce to latest desired state per channel", () => {
   assert.match(devicesClient, /consumer_command_followup_coalesced/);
   assert.match(devicesClient, /dispatchFollowupIfNeeded/);
   assert.match(devicesClient, /latest_desired_state: next/);
   assert.match(devicesClient, /active_command_execution_id/);
+});
+
+check("master power delegates to channel queues instead of stamping confirmed state", () => {
+  const masterStart = devicesClient.indexOf("async function toggleMasterPower");
+  const masterEnd = devicesClient.indexOf("async function sendDeviceCommand", masterStart);
+  assert.ok(masterStart > -1, "toggleMasterPower should exist");
+  assert.ok(masterEnd > masterStart, "sendDeviceCommand should follow toggleMasterPower");
+  const source = devicesClient.slice(masterStart, masterEnd);
+  assert.match(source, /await toggleGang\(device, i, next\)/);
+  assert.doesNotMatch(source, /setStateMap\(\(p\) =>/);
 });
 
 check("pending ring is visually distinct from confirmed ring", () => {
