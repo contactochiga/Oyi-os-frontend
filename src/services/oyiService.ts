@@ -162,6 +162,7 @@ export type OyiChatResponse = {
   warnings?: string[];
   persistence_saved?: boolean;
   resolved_turn?: Record<string, any>;
+  presentation_policy?: Record<string, any>;
   truth?: CanonicalTruth;
   operational_object?: OperationalObject | null;
   context?: {
@@ -269,6 +270,7 @@ export const oyiService = {
       warnings: Array.isArray(runtime.warnings) ? runtime.warnings : [],
       persistence_saved: typeof runtime.persistence_saved === "boolean" ? runtime.persistence_saved : undefined,
       resolved_turn: runtime.resolved_turn && typeof runtime.resolved_turn === "object" ? runtime.resolved_turn : undefined,
+      presentation_policy: runtime.presentation_policy && typeof runtime.presentation_policy === "object" ? runtime.presentation_policy : undefined,
       truth: runtime.truth || undefined,
       operational_object: runtime.operational_object || null,
       context: runtime.context || undefined,

@@ -49,6 +49,7 @@ export type AiChatResponse = {
   warnings?: string[];
   persistence_saved?: boolean;
   resolved_turn?: Record<string, any>;
+  presentation_policy?: Record<string, any>;
   safe_mode?: boolean;
   approvalRequired?: boolean;
   executionSummary?: string;
@@ -92,6 +93,7 @@ function normalize(resp: any): AiChatResponse {
     warnings: Array.isArray(resp?.warnings) ? resp.warnings.map(String) : [],
     persistence_saved: typeof resp?.persistence_saved === "boolean" ? resp.persistence_saved : undefined,
     resolved_turn: resp?.resolved_turn && typeof resp.resolved_turn === "object" ? resp.resolved_turn : undefined,
+    presentation_policy: resp?.presentation_policy && typeof resp.presentation_policy === "object" ? resp.presentation_policy : undefined,
     safe_mode: Boolean(resp?.safe_mode),
     approvalRequired: Boolean(resp?.approvalRequired),
     executionSummary: typeof resp?.executionSummary === "string" ? resp.executionSummary : undefined,

@@ -34,6 +34,7 @@ type AiMessage = {
   warnings?: string[];
   persistence_saved?: boolean;
   resolved_turn?: Record<string, any>;
+  presentation_policy?: Record<string, any>;
   intent?: string;
   understood?: string;
   execution?: Record<string, any>;
@@ -242,6 +243,8 @@ function containsInternalConversationText(value: unknown) {
 
 function awarenessCards(resp: AiChatResponse) {
   if (!["list", "detail", "audit", "report", "awareness"].includes(String(resp.display_mode || "conversation"))) return [];
+  const policy = (resp as any).presentation_policy && typeof (resp as any).presentation_policy === "object" ? (resp as any).presentation_policy : {};
+  const suppressAwareness = Boolean(policy.suppress_equivalent_awareness) && String(policy.primary || "") === "table";
   const answerText = normalizedUiCopy(resp.message || resp.reply || "");
   const cards = (Array.isArray(resp.cards) ? resp.cards : []).filter((card) => {
     if (containsInternalConversationText(JSON.stringify(card))) return false;
@@ -249,6 +252,7 @@ function awarenessCards(resp: AiChatResponse) {
     return !cardText || !answerText || cardText !== answerText;
   });
   const awareness = resp.awareness;
+  if (suppressAwareness) return cards;
   if (!awareness?.headline) return cards;
   const awarenessText = normalizedUiCopy(`${awareness.headline || ""} ${awareness.summary || awareness.body || ""}`);
   if (awarenessText && answerText && (awarenessText === answerText || answerText.includes(awarenessText))) return cards;
@@ -323,6 +327,7 @@ function messageFromThread(row: OyiThreadMessage): AiMessage {
     warnings: Array.isArray(metadata.warnings) ? metadata.warnings.map(String) : [],
     persistence_saved: typeof metadata.persistence_saved === "boolean" ? metadata.persistence_saved : undefined,
     resolved_turn: metadata.resolved_turn && typeof metadata.resolved_turn === "object" ? metadata.resolved_turn as Record<string, any> : undefined,
+    presentation_policy: metadata.presentation_policy && typeof metadata.presentation_policy === "object" ? metadata.presentation_policy as Record<string, any> : undefined,
   };
 }
 
@@ -864,7 +869,7 @@ function OyiAiCommandCenterContent() {
       const content = replyFromResponse(resp) || "Done.";
       const state = responseState(resp);
       if (["informational", "report_ready", "recommendation", "action_confirmed"].includes(String(state))) remember(options?.usageLabel || command);
-      const nextMessages = baseMessages.map((item) => item.id === pendingId ? { ...item, pending: false, content, state, confirmations: resp.confirmations || [], cards: awarenessCards(resp), sources: resp.sources || [], suggested_actions: resp.suggested_actions || [], warnings: resp.warnings || [], persistence_saved: resp.persistence_saved, resolved_turn: resp.resolved_turn, intent: resp.intent, understood: resp.understood, execution: resp.execution, display_mode: resp.display_mode || "conversation", executionSummary: resp.executionSummary, executionHistory: resp.executionHistory, approvalRequired: resp.approvalRequired, trustScore: resp.trustScore, initiatorType: resp.initiatorType, approvedBy: resp.approvedBy } : item);
+      const nextMessages = baseMessages.map((item) => item.id === pendingId ? { ...item, pending: false, content, state, confirmations: resp.confirmations || [], cards: awarenessCards(resp), sources: resp.sources || [], suggested_actions: resp.suggested_actions || [], warnings: resp.warnings || [], persistence_saved: resp.persistence_saved, resolved_turn: resp.resolved_turn, presentation_policy: resp.presentation_policy, intent: resp.intent, understood: resp.understood, execution: resp.execution, display_mode: resp.display_mode || "conversation", executionSummary: resp.executionSummary, executionHistory: resp.executionHistory, approvalRequired: resp.approvalRequired, trustScore: resp.trustScore, initiatorType: resp.initiatorType, approvedBy: resp.approvedBy } : item);
       setMessages(nextMessages);
       persistConversation(nextMessages, nextThreadId || undefined);
       const navigationRoute = navigationRouteFromResponse(resp);

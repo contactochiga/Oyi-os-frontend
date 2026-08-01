@@ -106,7 +106,16 @@
     "smoke:navigation-auto-handoff": "node scripts/conversation-final-correction-ui-smoke.mjs",
     "smoke:clarification-choice-continuation": "node scripts/conversation-final-correction-ui-smoke.mjs",
     "smoke:device-conversation-regression": "node scripts/conversation-final-correction-ui-smoke.mjs",
-    "smoke:empty-thread-protection": "node scripts/conversation-final-correction-ui-smoke.mjs"
+    "smoke:empty-thread-protection": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:durable-thread-live-roundtrip": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:presentation-policy-enforcement": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:offline-inventory-clean-render": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:navigation-route-handoff": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:clarification-choice-flow": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:approval-action-separation": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:room-intelligence-rendering": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:conversation-time-standard": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:persistence-warning-visibility": "node scripts/conversation-final-correction-ui-smoke.mjs"
   },
   "dependencies": {
     "@capacitor-community/speech-recognition": "^6.0.0",

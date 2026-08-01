@@ -4,6 +4,8 @@ import path from "node:path";
 
 const root = process.cwd();
 const aiPage = fs.readFileSync(path.join(root, "src/app/ai/page.tsx"), "utf8");
+const aiService = fs.readFileSync(path.join(root, "src/services/aiService.ts"), "utf8");
+const oyiService = fs.readFileSync(path.join(root, "src/services/oyiService.ts"), "utf8");
 const operationalContext = fs.readFileSync(path.join(root, "src/services/operationalObjectContext.ts"), "utf8");
 
 async function check(name, fn) {
@@ -192,6 +194,11 @@ await check("persistence warnings survive normalization and render visibly", () 
 await check("intent presentation policy suppresses duplicate support for informational rows", () => {
   assert.match(aiPage, /function shouldRenderSupport/);
   assert.match(aiPage, /awarenessText/);
+  assert.match(aiPage, /presentation_policy/);
+  assert.match(aiPage, /suppress_equivalent_awareness/);
+  assert.match(aiPage, /if \(suppressAwareness\) return cards/);
+  assert.match(aiService, /presentation_policy/);
+  assert.match(oyiService, /presentation_policy/);
   assert.match(aiPage, /suppress_context_chips|containsInternalConversationText|normalizedUiCopy/);
 });
 
