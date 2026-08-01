@@ -90,7 +90,17 @@
     "smoke:history-click-awaits-hydration": "node scripts/conversation-final-correction-ui-smoke.mjs",
     "smoke:restored-thread-continuation": "node scripts/conversation-final-correction-ui-smoke.mjs",
     "smoke:history-message-count": "node scripts/conversation-final-correction-ui-smoke.mjs",
-    "smoke:compact-history-list": "node scripts/conversation-final-correction-ui-smoke.mjs"
+    "smoke:compact-history-list": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:durable-thread-restoration": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:empty-thread-guard": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:module-navigation-rendering": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:room-navigation": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:clarification-options": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:approval-card-contract": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:navigation-action-separation": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:intent-presentation-policy": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:offline-table-clean-presentation": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:conversation-time-formatting": "node scripts/conversation-final-correction-ui-smoke.mjs"
   },
   "dependencies": {
     "@capacitor-community/speech-recognition": "^6.0.0",

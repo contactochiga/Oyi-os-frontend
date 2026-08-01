@@ -38,6 +38,11 @@ function createRestoreHarness(fetchThread) {
       state.active = { threadId: requestedThreadId, status: "thread_error", source };
       return false;
     }
+    if (!res.messages?.length) {
+      state.historyError = "This conversation has no saved messages.";
+      state.active = { threadId: requestedThreadId, status: "thread_error", source };
+      return false;
+    }
     if (Number(res.thread?.message_count || 0) > 0 && !res.messages?.length) {
       state.historyError = "This conversation could not be loaded. Try again.";
       state.active = { threadId: requestedThreadId, status: "thread_error", source };
@@ -125,6 +130,7 @@ await check("thread restore is race-safe and does not blank current messages on 
   assert.match(aiPage, /thread_message_count_mismatch/);
   assert.match(aiPage, /setMessages\(\(current\) => current\.length \? current/);
   assert.match(aiPage, /This conversation could not be loaded\. Try again\./);
+  assert.match(aiPage, /This conversation has no saved messages\./);
 });
 
 await check("history click waits for hydration before closing", () => {
@@ -141,6 +147,55 @@ await check("compact searchable history list replaces oversized cards", () => {
   assert.match(aiPage, /groupedConversations/);
   assert.doesNotMatch(aiPage, /No messages yet/);
   assert.doesNotMatch(aiPage, /Previous Oyi interactions across your signed-in devices/);
+});
+
+await check("module navigation actions render as explicit route actions", () => {
+  assert.match(aiPage, /function isNavigationSuggestion/);
+  assert.match(aiPage, /action\?\.type === "navigation"/);
+  assert.match(aiPage, /action\?\.type === "open_module"/);
+  assert.match(aiPage, /data-action-kind=\{navigation \? "navigation" : "contextual"\}/);
+  assert.match(aiPage, /text-emerald-50\/88/);
+});
+
+await check("navigation action rendering remains separated from target mutation controls", () => {
+  assert.match(aiPage, /operation_class === "navigate"/);
+  assert.match(aiPage, /operation_class === "list"/);
+  assert.match(aiPage, /if \(!onTarget\(action\.target\) && action\.route\) onOpen\(String\(action\.route\)\)/);
+  assert.doesNotMatch(aiPage, /data-action-kind=\{navigation \? "control"/);
+});
+
+await check("room navigation and destination parameters remain route actions", () => {
+  assert.match(aiPage, /data-action-kind=\{navigation \? "navigation" : "contextual"\}/);
+  assert.match(aiPage, /router\.push\(route\)/);
+  assert.match(aiPage, /onOpen: \(route: string\) => void/);
+});
+
+await check("clarification and approval have dedicated presentation paths", () => {
+  assert.match(aiPage, /clarification_required/);
+  assert.match(aiPage, /function ConfirmationCard/);
+  assert.match(aiPage, /Confirmation required/);
+  assert.match(aiPage, /Cancel/);
+  assert.match(aiPage, /Confirm/);
+});
+
+await check("intent presentation policy suppresses duplicate support for informational rows", () => {
+  assert.match(aiPage, /function shouldRenderSupport/);
+  assert.match(aiPage, /awarenessText/);
+  assert.match(aiPage, /suppress_context_chips|containsInternalConversationText|normalizedUiCopy/);
+});
+
+await check("offline and recent-change tables remain clean presentation blocks", () => {
+  assert.match(aiPage, /function ConversationTable/);
+  assert.match(aiPage, /rows\.slice\(0, 20\)/);
+  assert.match(aiPage, /overflow-x-auto/);
+  assert.doesNotMatch(aiPage, /Oyi answer grounded[\s\S]{0,80}Home is selected/);
+});
+
+await check("conversation time formatting is safe and calendar-aware", () => {
+  assert.match(aiPage, /Time unavailable/);
+  assert.match(aiPage, /Yesterday, \$\{time\}/);
+  assert.match(aiPage, /month: "short", day: "numeric"/);
+  assert.doesNotMatch(aiPage, /Invalid Date/);
 });
 
 await check("behaviour: route thread hydration loads ordered messages and closes only after success", async () => {
@@ -179,6 +234,15 @@ await check("behaviour: restore failure preserves current messages and leaves er
   assert.equal(harness.state.active.status, "thread_error");
   assert.equal(harness.state.historyError, "This conversation could not be loaded. Try again.");
   assert.deepEqual(harness.state.messages.map((m) => m.id), ["existing"]);
+});
+
+await check("behaviour: empty thread guard keeps history open and does not create blank active thread", async () => {
+  const harness = createRestoreHarness(async () => ({ ok: true, thread: { id: "thread-empty", message_count: 0 }, messages: [] }));
+  assert.equal(await harness.restoreThreadById("thread-empty", "history"), false);
+  assert.equal(harness.state.historyOpen, true);
+  assert.equal(harness.state.historyError, "This conversation has no saved messages.");
+  assert.equal(harness.state.active.status, "thread_error");
+  assert.deepEqual(harness.state.messages, []);
 });
 
 console.log("conversation-final-correction-ui-smoke passed");

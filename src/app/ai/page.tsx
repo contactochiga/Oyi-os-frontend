@@ -286,7 +286,16 @@ function groupConversationTime(timestamp: number) {
 }
 
 function formatTime(timestamp: number) {
-  return new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return "Time unavailable";
+  const date = new Date(timestamp);
+  const now = new Date();
+  const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate()) return time;
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (date.getFullYear() === yesterday.getFullYear() && date.getMonth() === yesterday.getMonth() && date.getDate() === yesterday.getDate()) return `Yesterday, ${time}`;
+  if (date.getFullYear() === now.getFullYear()) return date.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  return date.toLocaleString([], { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
 function Spinner() {
@@ -429,16 +438,31 @@ function SourceLabels({ sources }: { sources?: Array<Record<string, any>> }) {
   );
 }
 
+function isNavigationSuggestion(action: Record<string, any>) {
+  return action?.type === "navigation" || action?.type === "open_module" || action?.operation_class === "navigate" || action?.operation_class === "list";
+}
+
 function SuggestedActions({ actions, onOpen, onTarget }: { actions?: Array<Record<string, any>>; onOpen: (route: string) => void; onTarget: (target: OyiTarget | null | undefined) => boolean }) {
   const rows = (actions || []).filter((action) => action?.label && (action?.route || (action?.target && action.target.target_type !== "none")));
   if (!rows.length) return null;
   return (
     <div className="mt-3 flex flex-wrap gap-2">
-      {rows.slice(0, 4).map((action, index) => (
-        <button key={`${action.route || action.label}-${index}`} type="button" onClick={() => { if (!onTarget(action.target) && action.route) onOpen(String(action.route)); }} className="rounded-full border border-sky-200/15 bg-sky-400/[0.07] px-3 py-1.5 text-[11px] font-medium text-sky-100/84 transition active:scale-95">
-          {action.label}
+      {rows.slice(0, 4).map((action, index) => {
+        const navigation = isNavigationSuggestion(action);
+        return (
+        <button
+          key={`${action.route || action.label}-${index}`}
+          type="button"
+          data-action-kind={navigation ? "navigation" : "contextual"}
+          onClick={() => { if (!onTarget(action.target) && action.route) onOpen(String(action.route)); }}
+          className={navigation
+            ? "inline-flex items-center gap-1.5 rounded-full border border-emerald-200/16 bg-emerald-300/[0.075] px-3 py-1.5 text-[11px] font-semibold text-emerald-50/88 transition active:scale-95"
+            : "rounded-full border border-sky-200/15 bg-sky-400/[0.07] px-3 py-1.5 text-[11px] font-medium text-sky-100/84 transition active:scale-95"}
+        >
+          <span>{action.label}</span>
+          {navigation ? <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-emerald-50/42">open</span> : null}
         </button>
-      ))}
+      );})}
     </div>
   );
 }
@@ -990,6 +1014,7 @@ function OyiAiCommandCenterContent() {
       if (restoreSequenceRef.current !== restoreSeq) return false;
       if (res.ok === false) throw new Error("thread_restore_rejected");
       if (res.thread?.id && String(res.thread.id) !== requestedThreadId) throw new Error("thread_restore_mismatch");
+      if (!res.messages?.length) throw new Error("thread_empty");
       const rows = (res.messages || []).slice().sort((a, b) => {
         const at = toTimestamp(a.created_at);
         const bt = toTimestamp(b.created_at);
@@ -1014,11 +1039,12 @@ function OyiAiCommandCenterContent() {
       setHistoryOpen(false);
       window.requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ block: "end", behavior: "smooth" }));
       return true;
-    } catch {
+    } catch (error) {
       if (restoreSequenceRef.current !== restoreSeq) return false;
-      setHistoryError("This conversation could not be loaded. Try again.");
+      const emptyThread = error instanceof Error && error.message === "thread_empty";
+      setHistoryError(emptyThread ? "This conversation has no saved messages." : "This conversation could not be loaded. Try again.");
       setActiveConversation({ threadId: requestedThreadId, status: "thread_error", source });
-      setMessages((current) => current.length ? current : [{ id: createId(), role: "assistant", content: "This conversation could not be loaded right now.", state: "unavailable" }]);
+      setMessages((current) => current.length ? current : emptyThread ? [] : [{ id: createId(), role: "assistant", content: "This conversation could not be loaded right now.", state: "unavailable" }]);
       return false;
     } finally {
       if (restoreSequenceRef.current === restoreSeq) setRestoringThreadId(null);
