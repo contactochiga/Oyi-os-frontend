@@ -94,9 +94,12 @@ function createId() {
 function isBroadHomeReadPrompt(message: string) {
   const lower = message.toLowerCase();
   if (/\b(this|selected|current)\b[\s\S]{0,20}\b(device|channel|switch|tv|remote|light|socket|plug)\b/i.test(lower)) return false;
+  if (/\b(channel|gang|switch)\s*[123]\b/i.test(lower)) return false;
   if (/\b(show|list|which|what|check|find)\b[\s\S]{0,40}\b(offline|unavailable|down|failed)\b[\s\S]{0,30}\bdevices?\b/i.test(lower)) return true;
   if (/\bwhat(?:'s| is) happening\b[\s\S]{0,24}\b(home|house|apartment|unit)\b/i.test(lower)) return true;
   if (/\bwhat changed recently\b/i.test(lower)) return true;
+  if (/\bwhat needs attention\b/i.test(lower)) return true;
+  if (/\bis everything okay\b/i.test(lower)) return true;
   if (/\b(home|house|apartment|unit)\b[\s\S]{0,24}\b(report|summary|recent|changed|changes|offline|unavailable)\b/i.test(lower)) return true;
   return false;
 }
@@ -123,13 +126,13 @@ function turnScopedAiContext(command: string, context: Record<string, any>) {
     active_intelligence_context: null,
     intent_hint: broadIntentHint(command),
     operation_class_hint: "read",
-    scope_mode_hint: "explicit_broad_scope",
+    scope_mode_hint: "home_scope",
     page_launch_context: context.active_intelligence_context || null,
     selected_ui_object: null,
     current_turn_hints: {
       intent_hint: broadIntentHint(command),
       operation_class_hint: "read",
-      scope_mode_hint: "explicit_broad_scope",
+      scope_mode_hint: "home_scope",
       inherited_target_cleared: true,
     },
     authorised_scope: {
@@ -147,7 +150,7 @@ function turnScopedAiContext(command: string, context: Record<string, any>) {
       target_override_reason: "explicit_broad_home_read",
       intent_hint: broadIntentHint(command),
       operation_class_hint: "read",
-      scope_mode_hint: "explicit_broad_scope",
+      scope_mode_hint: "home_scope",
     },
   };
 }
@@ -177,11 +180,26 @@ function responseState(resp: AiChatResponse): AiMessage["state"] {
   return "informational";
 }
 
+function normalizedUiCopy(value: unknown) {
+  return String(value ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function containsInternalConversationText(value: unknown) {
+  return /\b(?:proximity\.(?:awareness\.checked|awareness_evaluated)|audit\.recorded|ai\.[a-z0-9_.-]+|oyi\.[a-z0-9_.-]+|tool\.(?:requested|executed)|response\.generated|command\.received)\b/i.test(String(value ?? ""));
+}
+
 function awarenessCards(resp: AiChatResponse) {
   if (!["list", "detail", "audit", "report", "awareness"].includes(String(resp.display_mode || "conversation"))) return [];
-  const cards = Array.isArray(resp.cards) ? resp.cards : [];
+  const answerText = normalizedUiCopy(resp.message || resp.reply || "");
+  const cards = (Array.isArray(resp.cards) ? resp.cards : []).filter((card) => {
+    if (containsInternalConversationText(JSON.stringify(card))) return false;
+    const cardText = normalizedUiCopy(`${card?.title || ""} ${card?.summary || ""}`);
+    return !cardText || !answerText || cardText !== answerText;
+  });
   const awareness = resp.awareness;
   if (!awareness?.headline) return cards;
+  const awarenessText = normalizedUiCopy(`${awareness.headline || ""} ${awareness.summary || awareness.body || ""}`);
+  if (awarenessText && answerText && (awarenessText === answerText || answerText.includes(awarenessText))) return cards;
   const primaryCard = {
     type: awareness.severity === "normal" ? "normal" : "attention",
     title: awareness.headline,
@@ -236,13 +254,15 @@ function toTimestamp(value?: string | null) {
 
 function messageFromThread(row: OyiThreadMessage): AiMessage {
   const metadata = row.metadata || {};
+  const cards = (row.cards || []).filter((card) => !containsInternalConversationText(JSON.stringify(card)));
+  const sources = (row.sources || []).filter((source) => !containsInternalConversationText(JSON.stringify(source)));
   return {
     id: row.id,
     role: row.role === "user" ? "user" : "assistant",
     content: row.content || "",
     state: row.role === "user" ? undefined : (metadata.display_mode === "report" ? "report_ready" : "informational"),
-    cards: row.cards || [],
-    sources: row.sources || [],
+    cards,
+    sources,
     suggested_actions: row.suggested_actions || [],
     intent: typeof metadata.intent === "string" ? metadata.intent : undefined,
     understood: typeof metadata.understood === "string" ? metadata.understood : undefined,
@@ -268,6 +288,36 @@ function Spinner() {
   return <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border border-white/18 border-t-sky-200 align-[-2px]" />;
 }
 
+function ConversationTable({ card }: { card: Record<string, any> }) {
+  const columns = Array.isArray(card.columns) ? card.columns.filter((column) => column?.key && column?.label) : [];
+  const rows = Array.isArray(card.rows) ? card.rows : [];
+  if (!columns.length || !rows.length) return null;
+  return (
+    <div className="mt-2 overflow-x-auto rounded-2xl border border-white/[0.06]">
+      <table className="min-w-full border-separate border-spacing-0 text-left text-[11px] leading-4">
+        <thead className="bg-white/[0.045] text-white/45">
+          <tr>
+            {columns.map((column: any) => (
+              <th key={String(column.key)} className="whitespace-nowrap px-3 py-2 font-medium">{String(column.label)}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.slice(0, 20).map((row: any, rowIndex: number) => (
+            <tr key={row.event_id || row.device_id || rowIndex} className="border-t border-white/[0.05]">
+              {columns.map((column: any) => (
+                <td key={`${rowIndex}-${String(column.key)}`} className="max-w-[220px] border-t border-white/[0.045] px-3 py-2 align-top text-white/68">
+                  <span className="break-words">{row?.[column.key] === null || row?.[column.key] === undefined || row?.[column.key] === "" ? "—" : String(row[column.key])}</span>
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function StructuredCards({ cards, onTarget }: { cards?: Array<Record<string, any>>; onTarget: (target: OyiTarget | null | undefined) => boolean }) {
   const visibleCards = (cards || []).filter((card) => !["capability", "capability_registry"].includes(String(card?.type || "")));
   if (!visibleCards.length) return null;
@@ -275,12 +325,14 @@ function StructuredCards({ cards, onTarget }: { cards?: Array<Record<string, any
     <div className="mt-3 space-y-2">
       {visibleCards.slice(0, 3).map((card, index) => {
         const items = Array.isArray(card.items) ? card.items : [];
+        const isTable = String(card.type || "") === "table";
         return (
           <div key={`${card.type || card.title || "card"}-${index}`} className="rounded-[18px] border border-white/[0.07] bg-black/18 p-3">
             <div className="text-[11px] uppercase tracking-[0.16em] text-sky-100/46">{card.type ? String(card.type).replace(/_/g, " ") : "Summary"}</div>
             <div className="mt-1 text-[13px] font-semibold text-white/90">{card.title || "Home update"}</div>
             {card.summary ? <div className="mt-1 text-xs leading-5 text-white/52">{String(card.summary)}</div> : null}
-            {items.length ? (
+            {isTable ? <ConversationTable card={card} /> : null}
+            {!isTable && items.length ? (
               <div className="mt-2 grid gap-1.5">
                 {items.slice(0, 6).map((item: any, itemIndex: number) => (
                   <button key={itemIndex} type="button" onClick={() => onTarget(item.target || card.target)} className="flex w-full items-start justify-between gap-3 rounded-xl bg-white/[0.035] px-2.5 py-2 text-left text-xs">
@@ -359,7 +411,7 @@ function ExecutionAccountability({
 }
 
 function SourceLabels({ sources }: { sources?: Array<Record<string, any>> }) {
-  const visibleSources = (sources || []).filter((source) => !/ai_tool|execution_ledger|capability registry/i.test(String(source?.label || source?.table || "")));
+  const visibleSources = (sources || []).filter((source) => !/ai_tool|execution_ledger|capability registry/i.test(String(source?.label || source?.table || "")) && !containsInternalConversationText(JSON.stringify(source)));
   if (!visibleSources.length) return null;
   return (
     <div className="mt-2 flex flex-wrap gap-1.5">
@@ -911,14 +963,18 @@ function OyiAiCommandCenterContent() {
   async function restoreConversation(conversation: Conversation) {
     setConversationId(conversation.id);
     setBackendThreadId(conversation.backendThreadId || null);
+    setTargetError(null);
+    setRegisteredContext(null);
+    clearActiveIntelligenceContext();
+    clearPersistedActiveIntelligenceContext();
     if (conversation.backendThreadId) {
       try {
         const res = await oyiService.getThreadMessages(conversation.backendThreadId);
         const nextMessages = (res.messages || []).map(messageFromThread);
-        setMessages(nextMessages.length ? nextMessages : conversation.messages || []);
+        setMessages(nextMessages);
         setThreadRoute(conversation.backendThreadId);
       } catch {
-        setMessages([{ id: createId(), role: "assistant", content: "I could not open that conversation in this authorised scope.", state: "unavailable" }]);
+        setMessages([{ id: createId(), role: "assistant", content: "This conversation could not be loaded right now.", state: "unavailable" }]);
       }
     } else {
       setMessages(conversation.messages || []);
@@ -959,11 +1015,11 @@ function OyiAiCommandCenterContent() {
 
   return (
     <LayoutWrapper>
-      <main className="fixed inset-0 overflow-hidden bg-[#02060b] text-white">
+      <main className="fixed inset-0 flex flex-col overflow-hidden bg-[#02060b] text-white">
         <div className="oyi-ambient-bg" />
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_12%,rgba(0,132,255,0.16),transparent_32%),linear-gradient(180deg,rgba(4,12,22,0.12),rgba(0,0,0,0.94))]" />
 
-        <header className="relative z-20 mx-auto max-w-[680px] px-5" style={{ paddingTop: "calc(12px + var(--sat))" }}>
+        <header className="relative z-20 mx-auto w-full max-w-[680px] shrink-0 px-5" style={{ paddingTop: "calc(12px + var(--sat))" }}>
           <div className="flex items-center justify-between">
             <button type="button" onClick={() => (window.history.length > 1 ? router.back() : router.push("/home"))} className="inline-flex h-10 items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.035] px-3.5 text-sm text-white/72 backdrop-blur-2xl transition active:scale-95" aria-label="Back">
               <ArrowLeft className="h-[18px] w-[18px]" /> Back
@@ -980,7 +1036,7 @@ function OyiAiCommandCenterContent() {
         </header>
         {targetError ? <div className="relative z-20 mx-auto mt-2 max-w-[680px] px-5"><p className="rounded-xl border border-amber-300/20 bg-amber-400/[0.08] px-3 py-2 text-xs text-amber-100">{targetError}</p></div> : null}
 
-        <section className="relative z-10 mx-auto flex h-full max-w-[680px] flex-col px-5" style={{ paddingTop: 8, paddingBottom: composerReserve }}>
+        <section className="relative z-10 mx-auto flex min-h-0 w-full max-w-[680px] flex-1 flex-col px-5" style={{ paddingTop: 8 }}>
           <div
             ref={scrollerRef}
             className="min-h-0 flex-1 overflow-y-auto pr-1"
@@ -1039,7 +1095,7 @@ function OyiAiCommandCenterContent() {
                     </div>
                   </div>
                 ))}
-                <div ref={bottomRef} className="h-1" />
+                <div ref={bottomRef} aria-hidden style={{ height: composerReserve }} />
               </div>
             )}
           </div>

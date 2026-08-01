@@ -54,10 +54,10 @@ check("Consumer submits context layers as hints, not final authority", () => {
   assert.match(aiService, /page_launch_context/);
 });
 
-check("broad prompts become explicit broad-scope hints", () => {
+check("broad prompts become home-scope hints", () => {
   assert.match(aiPage, /device_availability_inventory/);
   assert.match(aiPage, /home_operational_summary/);
-  assert.match(aiPage, /scope_mode_hint: "explicit_broad_scope"/);
+  assert.match(aiPage, /scope_mode_hint: "home_scope"/);
   assert.match(aiPage, /inherited_target_cleared: true/);
 });
 

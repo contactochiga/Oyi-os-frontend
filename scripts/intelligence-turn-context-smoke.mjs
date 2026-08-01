@@ -24,7 +24,7 @@ check("main AI broad home turns clear stale exact targets", () => {
   assert.match(turnContext, /operational_object: null/);
   assert.match(turnContext, /target: null/);
   assert.match(turnContext, /active_intelligence_context: null/);
-  assert.match(turnContext, /scope_mode_hint: "explicit_broad_scope"/);
+  assert.match(turnContext, /scope_mode_hint: "home_scope"/);
 });
 
 check("main AI broad turns clear selected subobject and visible state", () => {

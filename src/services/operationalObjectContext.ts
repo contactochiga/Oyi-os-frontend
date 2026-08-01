@@ -24,7 +24,6 @@ function candidateLabel(objectType: OperationalObject["object_type"], module: st
     scene: "Scene",
     automation: "Automation",
     device_channel: "Device channel",
-    message_thread: "Message thread",
     community_post: "Community post",
     notification: "Notification",
   };
@@ -42,7 +41,6 @@ export function deriveConsumerOperationalObject(input: RouteContextInput): Parti
     { object_type: "maintenance_request", id: text(input.searchParams.get("requestId") || input.searchParams.get("ticketId")), source_module: "maintenance" },
     { object_type: "transaction", id: text(input.searchParams.get("transactionId") || input.searchParams.get("receipt")), source_module: "wallet" },
     { object_type: "notification", id: text(input.searchParams.get("notificationId")), source_module: "notifications" },
-    { object_type: "message_thread", id: text(input.searchParams.get("threadId")), source_module: "messages" },
     { object_type: "community_post", id: text(input.searchParams.get("postId")), source_module: "community" },
     { object_type: "service_account", id: text(input.searchParams.get("serviceId")), source_module: "services" },
   ];
@@ -79,7 +77,6 @@ export function deriveConsumerTarget(input: RouteContextInput): OyiTarget | null
     service_account: "service",
     scene: "workflow",
     automation: "workflow",
-    message_thread: "message",
     community_post: "community",
     notification: "message",
   };

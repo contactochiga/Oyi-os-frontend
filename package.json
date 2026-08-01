@@ -74,7 +74,15 @@
     "smoke:thread-continuation": "node scripts/conversation-thread-foundation-ui-smoke.mjs",
     "smoke:new-conversation-reset": "node scripts/conversation-thread-foundation-ui-smoke.mjs",
     "smoke:thread-route-restoration": "node scripts/conversation-thread-foundation-ui-smoke.mjs",
-    "smoke:voice-canonical-pipeline": "node scripts/conversation-thread-foundation-ui-smoke.mjs"
+    "smoke:voice-canonical-pipeline": "node scripts/conversation-thread-foundation-ui-smoke.mjs",
+    "smoke:history-thread-restoration": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:history-thread-continuation": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:new-chat-full-reset": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:thread-route-identity": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:message-thread-target-rejection": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:conversation-table-rendering": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:conversation-card-deduplication": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:composer-safe-area-layout": "node scripts/conversation-final-correction-ui-smoke.mjs"
   },
   "dependencies": {
     "@capacitor-community/speech-recognition": "^6.0.0",
