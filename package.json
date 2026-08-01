@@ -82,7 +82,15 @@
     "smoke:message-thread-target-rejection": "node scripts/conversation-final-correction-ui-smoke.mjs",
     "smoke:conversation-table-rendering": "node scripts/conversation-final-correction-ui-smoke.mjs",
     "smoke:conversation-card-deduplication": "node scripts/conversation-final-correction-ui-smoke.mjs",
-    "smoke:composer-safe-area-layout": "node scripts/conversation-final-correction-ui-smoke.mjs"
+    "smoke:composer-safe-area-layout": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:thread-route-hydration": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:thread-restore-after-remount": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:thread-restore-race-safety": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:thread-restore-does-not-blank": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:history-click-awaits-hydration": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:restored-thread-continuation": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:history-message-count": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:compact-history-list": "node scripts/conversation-final-correction-ui-smoke.mjs"
   },
   "dependencies": {
     "@capacitor-community/speech-recognition": "^6.0.0",

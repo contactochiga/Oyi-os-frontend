@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, ArrowUp, Check, Clock3, Copy, History, Mic, Plus, Square, ThumbsUp, Volume2, X } from "lucide-react";
+import { ArrowLeft, ArrowUp, Check, Clock3, Copy, History, Mic, Plus, Search, Square, ThumbsUp, Volume2, X } from "lucide-react";
 
 import LayoutWrapper from "@/app/components/LayoutWrapper";
 import useAuth from "@/hooks/useAuth";
@@ -55,6 +55,11 @@ type Conversation = {
   preview?: string | null;
   messageCount?: number;
   scope?: string | null;
+};
+type ActiveConversationState = {
+  threadId: string | null;
+  status: "blank" | "loading_thread" | "active_thread" | "thread_error";
+  source: "new" | "history" | "route" | "drawer";
 };
 const SUPPORT_DISPLAY_MODES = new Set(["list", "detail", "audit", "report", "awareness"]);
 
@@ -507,7 +512,11 @@ function OyiAiCommandCenterContent() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [conversationId, setConversationId] = useState(createId);
   const [backendThreadId, setBackendThreadId] = useState<string | null>(null);
+  const [activeConversation, setActiveConversation] = useState<ActiveConversationState>({ threadId: null, status: "blank", source: "new" });
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyQuery, setHistoryQuery] = useState("");
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [restoringThreadId, setRestoringThreadId] = useState<string | null>(null);
   const [voiceMode, setVoiceMode] = useState<VoiceMode>("idle");
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>("Listening");
   const [voiceError, setVoiceError] = useState("");
@@ -523,6 +532,7 @@ function OyiAiCommandCenterContent() {
   const composerRef = useRef<HTMLFormElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const routeThreadRestoreRef = useRef<string | null>(null);
+  const restoreSequenceRef = useRef(0);
   const [audioLevels, setAudioLevels] = useState<number[]>(Array.from({ length: 28 }, () => 0.2));
   const [composerHeight, setComposerHeight] = useState(132);
   const [targetError, setTargetError] = useState<string | null>(null);
@@ -627,6 +637,7 @@ function OyiAiCommandCenterContent() {
   }, [moduleContext, searchParams, usage]);
 
   const chatMode = messages.length > 0;
+  const canonicalActiveThreadId = activeConversation.threadId || backendThreadId;
   const recording = voiceMode === "recording";
   const voiceConversation = voiceMode === "conversation";
   const inputWake = input.toLowerCase().includes("oyi") || transcript.toLowerCase().includes("oyi");
@@ -768,10 +779,11 @@ function OyiAiCommandCenterContent() {
 
     try {
       const turnContext = turnScopedAiContext(command, context as Record<string, any>);
-      const resp = await aiService.chat(command, { ...turnContext, thread_id: backendThreadId || undefined });
-      const nextThreadId = resp.thread_id || backendThreadId;
+      const resp = await aiService.chat(command, { ...turnContext, thread_id: canonicalActiveThreadId || undefined });
+      const nextThreadId = resp.thread_id || canonicalActiveThreadId;
       if (nextThreadId) {
         setBackendThreadId(nextThreadId);
+        setActiveConversation({ threadId: nextThreadId, status: "active_thread", source: activeConversation.status === "blank" ? "new" : activeConversation.source });
         setConversationId(`backend:${nextThreadId}`);
         setThreadRoute(nextThreadId);
       }
@@ -960,34 +972,91 @@ function OyiAiCommandCenterContent() {
     }
   }
 
-  async function restoreConversation(conversation: Conversation) {
-    setConversationId(conversation.id);
-    setBackendThreadId(conversation.backendThreadId || null);
+  async function restoreThreadById(threadId: string, source: "history" | "route") {
+    const requestedThreadId = String(threadId || "").trim();
+    if (!requestedThreadId) return false;
+    const restoreSeq = restoreSequenceRef.current + 1;
+    restoreSequenceRef.current = restoreSeq;
+    routeThreadRestoreRef.current = requestedThreadId;
+    setActiveConversation({ threadId: requestedThreadId, status: "loading_thread", source });
+    setRestoringThreadId(requestedThreadId);
+    setHistoryError(null);
     setTargetError(null);
     setRegisteredContext(null);
     clearActiveIntelligenceContext();
     clearPersistedActiveIntelligenceContext();
-    if (conversation.backendThreadId) {
-      try {
-        const res = await oyiService.getThreadMessages(conversation.backendThreadId);
-        const nextMessages = (res.messages || []).map(messageFromThread);
-        setMessages(nextMessages);
-        setThreadRoute(conversation.backendThreadId);
-      } catch {
-        setMessages([{ id: createId(), role: "assistant", content: "This conversation could not be loaded right now.", state: "unavailable" }]);
-      }
-    } else {
-      setMessages(conversation.messages || []);
-      setThreadRoute(null);
+    try {
+      const res = await oyiService.getThreadMessages(requestedThreadId);
+      if (restoreSequenceRef.current !== restoreSeq) return false;
+      if (res.ok === false) throw new Error("thread_restore_rejected");
+      if (res.thread?.id && String(res.thread.id) !== requestedThreadId) throw new Error("thread_restore_mismatch");
+      const rows = (res.messages || []).slice().sort((a, b) => {
+        const at = toTimestamp(a.created_at);
+        const bt = toTimestamp(b.created_at);
+        if (at !== bt) return at - bt;
+        return String(a.id || "").localeCompare(String(b.id || ""));
+      });
+      if (Number(res.thread?.message_count || 0) > 0 && rows.length === 0) throw new Error("thread_message_count_mismatch");
+      const nextMessages = rows.map(messageFromThread);
+      setMessages(nextMessages);
+      setBackendThreadId(requestedThreadId);
+      setConversationId(`backend:${requestedThreadId}`);
+      setActiveConversation({ threadId: requestedThreadId, status: "active_thread", source });
+      setConversations((current) => current.map((item) => item.backendThreadId === requestedThreadId ? {
+        ...item,
+        title: res.thread?.title || item.title,
+        preview: res.thread?.preview || item.preview,
+        messageCount: Number(res.thread?.message_count || nextMessages.length || item.messageCount || 0),
+        updatedAt: res.thread?.updated_at ? toTimestamp(res.thread.updated_at) : item.updatedAt,
+        messages: nextMessages,
+      } : item));
+      setThreadRoute(requestedThreadId);
+      setHistoryOpen(false);
+      window.requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ block: "end", behavior: "smooth" }));
+      return true;
+    } catch {
+      if (restoreSequenceRef.current !== restoreSeq) return false;
+      setHistoryError("This conversation could not be loaded. Try again.");
+      setActiveConversation({ threadId: requestedThreadId, status: "thread_error", source });
+      setMessages((current) => current.length ? current : [{ id: createId(), role: "assistant", content: "This conversation could not be loaded right now.", state: "unavailable" }]);
+      return false;
+    } finally {
+      if (restoreSequenceRef.current === restoreSeq) setRestoringThreadId(null);
     }
+  }
+
+  async function restoreConversation(conversation: Conversation) {
+    const threadId = conversation.backendThreadId || null;
+    if (threadId) {
+      setThreadRoute(threadId);
+      await restoreThreadById(threadId, "history");
+      return;
+    }
+    setConversationId(conversation.id);
+    setBackendThreadId(null);
+    setActiveConversation({ threadId: null, status: "blank", source: "history" });
+    setMessages(conversation.messages || []);
+    setThreadRoute(null);
     setHistoryOpen(false);
   }
 
   function startNewConversation() {
+    if (activeConversation.status === "loading_thread" || activeConversation.status === "active_thread") {
+      console.debug("conversation_blank_state_suppressed_for_active_thread", {
+        thread_id: activeConversation.threadId,
+        status: activeConversation.status,
+        source: activeConversation.source,
+        reason: "explicit_new_conversation_reset",
+      });
+    }
+    restoreSequenceRef.current += 1;
     setConversationId(createId());
     setBackendThreadId(null);
+    setActiveConversation({ threadId: null, status: "blank", source: "new" });
     setMessages([]);
     setHistoryOpen(false);
+    setHistoryError(null);
+    setRestoringThreadId(null);
     setInput("");
     setTranscript("");
     setTargetError(null);
@@ -999,19 +1068,20 @@ function OyiAiCommandCenterContent() {
 
   useEffect(() => {
     const routeThreadId = searchParams.get("threadId");
-    if (!(user as any)?.id || !routeThreadId || routeThreadId === backendThreadId || routeThreadRestoreRef.current === routeThreadId) return;
-    routeThreadRestoreRef.current = routeThreadId;
-    void restoreConversation({
-      id: `backend:${routeThreadId}`,
-      backendThreadId: routeThreadId,
-      title: "Oyi conversation",
-      updatedAt: Date.now(),
-      messages: [],
-    });
+    if (!(user as any)?.id || !routeThreadId) return;
+    if (routeThreadId === activeConversation.threadId && activeConversation.status === "active_thread") return;
+    if (routeThreadId === activeConversation.threadId && activeConversation.status === "loading_thread") return;
+    if (routeThreadRestoreRef.current === routeThreadId && activeConversation.status !== "thread_error") return;
+    void restoreThreadById(routeThreadId, "route");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [backendThreadId, searchParams, user]);
+  }, [activeConversation.status, activeConversation.threadId, searchParams, user]);
 
-  const groupedConversations = ["Today", "Yesterday", "Earlier"].map((group) => ({ group, items: conversations.filter((item) => groupConversationTime(item.updatedAt) === group) })).filter((section) => section.items.length);
+  const filteredConversations = useMemo(() => {
+    const query = historyQuery.trim().toLowerCase();
+    if (!query) return conversations;
+    return conversations.filter((item) => `${item.title || ""} ${item.preview || ""}`.toLowerCase().includes(query));
+  }, [conversations, historyQuery]);
+  const groupedConversations = ["Today", "Yesterday", "Earlier"].map((group) => ({ group, items: filteredConversations.filter((item) => groupConversationTime(item.updatedAt) === group) })).filter((section) => section.items.length);
 
   return (
     <LayoutWrapper>
@@ -1025,7 +1095,7 @@ function OyiAiCommandCenterContent() {
               <ArrowLeft className="h-[18px] w-[18px]" /> Back
             </button>
             <div className="flex items-center gap-2">
-              <button type="button" onClick={() => setHistoryOpen(true)} className="grid h-10 w-10 place-items-center rounded-full border border-sky-300/14 bg-sky-300/[0.055] text-sky-50/82 shadow-[0_0_24px_rgba(56,189,248,0.14)] transition active:scale-95" aria-label="Conversation history"><History className="h-4 w-4" /></button>
+              <button type="button" onClick={() => { setHistoryError(null); setHistoryOpen(true); }} className="grid h-10 w-10 place-items-center rounded-full border border-sky-300/14 bg-sky-300/[0.055] text-sky-50/82 shadow-[0_0_24px_rgba(56,189,248,0.14)] transition active:scale-95" aria-label="Conversation history"><History className="h-4 w-4" /></button>
               <button type="button" onClick={startNewConversation} className="grid h-10 w-10 place-items-center rounded-full border border-white/[0.09] bg-white/[0.045] text-white/78 transition active:scale-95" aria-label="New chat"><Plus className="h-4 w-4" /></button>
             </div>
           </div>
@@ -1148,34 +1218,55 @@ function OyiAiCommandCenterContent() {
         {historyOpen ? (
           <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/55 px-4 pb-[calc(14px+var(--sab))] backdrop-blur-md sm:items-center">
             <button type="button" className="absolute inset-0" onClick={() => setHistoryOpen(false)} aria-label="Close recent conversations" />
-            <section className="relative flex max-h-[76dvh] w-full max-w-[430px] flex-col overflow-hidden rounded-[28px] border border-white/[0.08] bg-[#050a12]/96 shadow-[0_26px_90px_rgba(0,0,0,0.68)]">
-              <div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-3.5">
-                <div>
-                  <h2 className="text-lg font-semibold tracking-[-0.04em]">Recent Conversations</h2>
-                  <p className="mt-0.5 text-xs text-white/42">Previous Oyi interactions across your signed-in devices.</p>
+            <section className="relative flex max-h-[76dvh] w-full max-w-[420px] flex-col overflow-hidden rounded-[24px] border border-white/[0.08] bg-[#050a12]/97 shadow-[0_26px_90px_rgba(0,0,0,0.68)]">
+              <div className="border-b border-white/[0.06] px-3.5 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="text-[15px] font-semibold tracking-[-0.035em]">Recent Conversations</h2>
+                  <button type="button" onClick={() => setHistoryOpen(false)} className="grid h-8 w-8 place-items-center rounded-full bg-white/[0.055] text-white/55"><X className="h-4 w-4" /></button>
                 </div>
-                <button type="button" onClick={() => setHistoryOpen(false)} className="grid h-9 w-9 place-items-center rounded-full bg-white/[0.06] text-white/55"><X className="h-4 w-4" /></button>
+                <label className="mt-2 flex h-9 items-center gap-2 rounded-full border border-white/[0.065] bg-white/[0.035] px-3 text-xs text-white/45">
+                  <Search className="h-3.5 w-3.5 shrink-0" />
+                  <input
+                    value={historyQuery}
+                    onChange={(event) => setHistoryQuery(event.target.value)}
+                    placeholder="Search conversations"
+                    className="min-w-0 flex-1 bg-transparent text-[13px] text-white/78 outline-none placeholder:text-white/32"
+                  />
+                </label>
+                {historyError ? <div className="mt-2 rounded-xl border border-amber-300/18 bg-amber-400/[0.07] px-3 py-2 text-xs text-amber-100/82">{historyError}</div> : null}
               </div>
-              <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3" style={{ WebkitOverflowScrolling: "touch" }}>
+              <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2" style={{ WebkitOverflowScrolling: "touch" }}>
                 {groupedConversations.length ? groupedConversations.map((section) => (
-                  <div key={section.group} className="mb-4">
-                    <div className="mb-2 text-[10px] uppercase tracking-[0.2em] text-sky-100/45">{section.group}</div>
-                    <div className="space-y-2">
+                  <div key={section.group} className="mb-2">
+                    <div className="px-2 pb-1.5 pt-2 text-[10px] font-medium uppercase tracking-[0.18em] text-sky-100/42">{section.group}</div>
+                    <div className="space-y-0.5">
                       {section.items.map((conversation) => (
-                        <button key={conversation.id} type="button" onClick={() => void restoreConversation(conversation)} className="flex w-full items-center justify-between gap-3 rounded-[18px] border border-white/[0.06] bg-white/[0.032] px-3.5 py-3 text-left transition active:scale-[0.99]">
-                          <span className="min-w-0">
-                            <span className="block truncate text-sm font-semibold text-white/88">{conversation.title}</span>
-                            <span className="mt-0.5 block truncate text-xs text-white/38">
-                              {conversation.messageCount || conversation.messages.length ? `${conversation.messageCount || conversation.messages.length} messages` : "No messages yet"}
+                        <button
+                          key={conversation.id}
+                          type="button"
+                          onClick={() => void restoreConversation(conversation)}
+                          className={`flex min-h-[46px] w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left transition active:scale-[0.99] ${conversation.backendThreadId && conversation.backendThreadId === canonicalActiveThreadId ? "bg-sky-300/[0.09] text-white" : "text-white/78 hover:bg-white/[0.045]"}`}
+                        >
+                          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${conversation.backendThreadId && conversation.backendThreadId === canonicalActiveThreadId ? "bg-sky-200" : "bg-transparent"}`} />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[13px] font-medium leading-5">{conversation.title}</span>
+                            <span className="block truncate text-[11px] leading-4 text-white/34">
+                              {conversation.messageCount || conversation.messages.length ? `${conversation.messageCount || conversation.messages.length} messages` : conversation.preview ? "Saved conversation" : "Conversation"}
                               {conversation.preview ? ` · ${conversation.preview}` : ""}
                             </span>
                           </span>
-                          <span className="shrink-0 text-xs text-white/38">{formatTime(conversation.updatedAt)}</span>
+                          <span className="shrink-0 text-[11px] text-white/36">{restoringThreadId === conversation.backendThreadId ? <Spinner /> : formatTime(conversation.updatedAt)}</span>
                         </button>
                       ))}
                     </div>
                   </div>
-                )) : <div className="rounded-[22px] border border-white/[0.06] bg-white/[0.025] p-5 text-center"><Clock3 className="mx-auto h-5 w-5 text-sky-200/60" /><div className="mt-2 text-sm font-semibold">No recent conversations yet.</div><div className="mt-1 text-xs leading-5 text-white/42">Your Oyi interactions will appear here after a successful command or question.</div></div>}
+                )) : (
+                  <div className="px-6 py-12 text-center">
+                    <Clock3 className="mx-auto h-5 w-5 text-sky-200/55" />
+                    <div className="mt-2 text-sm font-semibold">{historyQuery.trim() ? "No matching conversations." : "No conversations yet."}</div>
+                    <div className="mt-1 text-xs leading-5 text-white/42">{historyQuery.trim() ? "Try another title or phrase." : "Your Oyi conversations will appear here."}</div>
+                  </div>
+                )}
               </div>
             </section>
           </div>

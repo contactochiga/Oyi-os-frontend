@@ -28,13 +28,14 @@ check("thread route identity is updated on restore and send", () => {
   assert.match(aiPage, /function setThreadRoute|const setThreadRoute/);
   assert.match(aiPage, /params\.set\("threadId", threadId\)/);
   assert.match(aiPage, /setThreadRoute\(nextThreadId\)/);
-  assert.match(aiPage, /setThreadRoute\(conversation\.backendThreadId\)/);
+  assert.match(aiPage, /setThreadRoute\(requestedThreadId\)/);
 });
 
 check("direct thread route reload restores full Backend messages", () => {
   assert.match(aiPage, /searchParams\.get\("threadId"\)/);
-  assert.match(aiPage, /oyiService\.getThreadMessages\(conversation\.backendThreadId\)/);
-  assert.match(aiPage, /\(res\.messages \|\| \[\]\)\.map\(messageFromThread\)/);
+  assert.match(aiPage, /restoreThreadById\(routeThreadId, "route"\)/);
+  assert.match(aiPage, /oyiService\.getThreadMessages\(requestedThreadId\)/);
+  assert.match(aiPage, /rows\.map\(messageFromThread\)/);
 });
 
 check("new conversation clears conversation-specific active intelligence context", () => {
