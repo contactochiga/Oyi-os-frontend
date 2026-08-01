@@ -31,6 +31,9 @@ type AiMessage = {
   cards?: Array<Record<string, any>>;
   sources?: Array<Record<string, any>>;
   suggested_actions?: Array<Record<string, any>>;
+  warnings?: string[];
+  persistence_saved?: boolean;
+  resolved_turn?: Record<string, any>;
   intent?: string;
   understood?: string;
   execution?: Record<string, any>;
@@ -42,6 +45,50 @@ type AiMessage = {
   initiatorType?: string | null;
   approvedBy?: string | null;
 };
+
+function routeForOyiDestination(destination?: Record<string, any> | null) {
+  const key = String(destination?.key || "");
+  const params = destination?.parameters && typeof destination.parameters === "object" ? destination.parameters as Record<string, any> : {};
+  const routes: Record<string, string> = {
+    "devices.module": "/devices",
+    "visitors.module": "/visitors",
+    "wallet.summary": "/wallet",
+    "maintenance.module": "/maintenance",
+    "scenes.module": "/scenes",
+    "automations.module": "/scenes?tab=automations",
+    "services.module": "/services",
+    "community.module": "/community",
+    "messages.module": "/messages",
+    "rooms.module": "/rooms",
+    "rooms.detail": "/room",
+    "devices.detail": "/devices",
+    "devices.channel": "/devices",
+    "visitors.detail": "/visitors",
+    "maintenance.detail": "/maintenance",
+    "wallet.transaction": "/wallet",
+    "scenes.detail": "/scenes",
+    "automations.detail": "/scenes?tab=automations",
+  };
+  const route = routes[key];
+  if (!route) return null;
+  const entries = Object.entries(params).filter(([, value]) => value !== null && value !== undefined && String(value).trim());
+  if (!entries.length) return route;
+  const separator = route.includes("?") ? "&" : "?";
+  return `${route}${separator}${entries.map(([paramKey, value]) => `${encodeURIComponent(paramKey)}=${encodeURIComponent(String(value))}`).join("&")}`;
+}
+
+function navigationRouteFromResponse(resp: AiChatResponse) {
+  const turnDestination = resp.resolved_turn?.destination && typeof resp.resolved_turn.destination === "object"
+    ? routeForOyiDestination(resp.resolved_turn.destination as Record<string, any>)
+    : null;
+  if (turnDestination && /^navigate_/.test(String(resp.resolved_turn?.operation || ""))) return turnDestination;
+  const action = (resp.suggested_actions || []).find((item) => {
+    const type = String(item?.type || "");
+    return type === "navigation" || type === "open_module";
+  });
+  if (!action) return null;
+  return routeForOyiDestination(action.destination as Record<string, any>) || (typeof action.route === "string" ? action.route : null);
+}
 
 type Suggestion = { label: string; prompt?: string; href?: string; tone?: "blue" | "green" | "amber" | "violet" };
 type VoiceMode = "idle" | "recording" | "conversation";
@@ -273,6 +320,9 @@ function messageFromThread(row: OyiThreadMessage): AiMessage {
     understood: typeof metadata.understood === "string" ? metadata.understood : undefined,
     execution: metadata.execution && typeof metadata.execution === "object" ? metadata.execution as Record<string, any> : undefined,
     display_mode: typeof metadata.display_mode === "string" ? metadata.display_mode as AiMessage["display_mode"] : "conversation",
+    warnings: Array.isArray(metadata.warnings) ? metadata.warnings.map(String) : [],
+    persistence_saved: typeof metadata.persistence_saved === "boolean" ? metadata.persistence_saved : undefined,
+    resolved_turn: metadata.resolved_turn && typeof metadata.resolved_turn === "object" ? metadata.resolved_turn as Record<string, any> : undefined,
   };
 }
 
@@ -814,9 +864,13 @@ function OyiAiCommandCenterContent() {
       const content = replyFromResponse(resp) || "Done.";
       const state = responseState(resp);
       if (["informational", "report_ready", "recommendation", "action_confirmed"].includes(String(state))) remember(options?.usageLabel || command);
-      const nextMessages = baseMessages.map((item) => item.id === pendingId ? { ...item, pending: false, content, state, confirmations: resp.confirmations || [], cards: awarenessCards(resp), sources: resp.sources || [], suggested_actions: resp.suggested_actions || [], intent: resp.intent, understood: resp.understood, execution: resp.execution, display_mode: resp.display_mode || "conversation", executionSummary: resp.executionSummary, executionHistory: resp.executionHistory, approvalRequired: resp.approvalRequired, trustScore: resp.trustScore, initiatorType: resp.initiatorType, approvedBy: resp.approvedBy } : item);
+      const nextMessages = baseMessages.map((item) => item.id === pendingId ? { ...item, pending: false, content, state, confirmations: resp.confirmations || [], cards: awarenessCards(resp), sources: resp.sources || [], suggested_actions: resp.suggested_actions || [], warnings: resp.warnings || [], persistence_saved: resp.persistence_saved, resolved_turn: resp.resolved_turn, intent: resp.intent, understood: resp.understood, execution: resp.execution, display_mode: resp.display_mode || "conversation", executionSummary: resp.executionSummary, executionHistory: resp.executionHistory, approvalRequired: resp.approvalRequired, trustScore: resp.trustScore, initiatorType: resp.initiatorType, approvedBy: resp.approvedBy } : item);
       setMessages(nextMessages);
       persistConversation(nextMessages, nextThreadId || undefined);
+      const navigationRoute = navigationRouteFromResponse(resp);
+      if (navigationRoute && !resp.approvalRequired && !resp.requiresConfirmation) {
+        window.setTimeout(() => router.push(navigationRoute), 120);
+      }
       if (options?.fromVoice) {
         setVoiceStatus(state === "failed" || state === "action_failed" || state === "denied" ? "Failed" : "Speaking");
         if (state !== "failed" && state !== "action_failed" && state !== "denied") speakResponse(content, true);
@@ -1162,6 +1216,11 @@ function OyiAiCommandCenterContent() {
                   <div key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
                     <div className={`max-w-[94%] overflow-hidden rounded-[24px] px-4 py-3 text-sm leading-6 shadow-[0_16px_42px_rgba(0,0,0,0.24)] sm:max-w-[86%] ${message.role === "user" ? "rounded-br-[8px] bg-white text-black" : "rounded-bl-[8px] border border-white/[0.07] bg-white/[0.045] text-white/82 backdrop-blur-xl"}`}>
                       <div className="whitespace-pre-wrap break-words">{message.pending ? <span className="inline-flex items-center gap-2"><Spinner /> {message.content}</span> : message.content}</div>
+                      {!message.pending && message.role === "assistant" && (message.persistence_saved === false || message.warnings?.some((warning) => /not saved|history/i.test(warning))) ? (
+                        <div className="mt-2 rounded-2xl border border-amber-300/18 bg-amber-400/[0.07] px-3 py-2 text-xs leading-5 text-amber-100/84">
+                          This response could not be saved to History.
+                        </div>
+                      ) : null}
                       {!message.pending && message.role === "assistant" ? (
                         <>
                           {shouldRenderSupport(message.display_mode) ? <>

@@ -46,6 +46,9 @@ export type AiChatResponse = {
   awareness?: OyiAwareness;
   context?: Record<string, any>;
   thread_id?: string;
+  warnings?: string[];
+  persistence_saved?: boolean;
+  resolved_turn?: Record<string, any>;
   safe_mode?: boolean;
   approvalRequired?: boolean;
   executionSummary?: string;
@@ -86,6 +89,9 @@ function normalize(resp: any): AiChatResponse {
     awareness: resp?.awareness || undefined,
     context: resp?.context && typeof resp.context === "object" ? resp.context : undefined,
     thread_id: resp?.thread_id ? String(resp.thread_id) : undefined,
+    warnings: Array.isArray(resp?.warnings) ? resp.warnings.map(String) : [],
+    persistence_saved: typeof resp?.persistence_saved === "boolean" ? resp.persistence_saved : undefined,
+    resolved_turn: resp?.resolved_turn && typeof resp.resolved_turn === "object" ? resp.resolved_turn : undefined,
     safe_mode: Boolean(resp?.safe_mode),
     approvalRequired: Boolean(resp?.approvalRequired),
     executionSummary: typeof resp?.executionSummary === "string" ? resp.executionSummary : undefined,

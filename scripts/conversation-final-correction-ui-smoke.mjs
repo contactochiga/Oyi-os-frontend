@@ -151,10 +151,13 @@ await check("compact searchable history list replaces oversized cards", () => {
 
 await check("module navigation actions render as explicit route actions", () => {
   assert.match(aiPage, /function isNavigationSuggestion/);
+  assert.match(aiPage, /function navigationRouteFromResponse/);
+  assert.match(aiPage, /function routeForOyiDestination/);
   assert.match(aiPage, /action\?\.type === "navigation"/);
   assert.match(aiPage, /action\?\.type === "open_module"/);
   assert.match(aiPage, /data-action-kind=\{navigation \? "navigation" : "contextual"\}/);
   assert.match(aiPage, /text-emerald-50\/88/);
+  assert.match(aiPage, /router\.push\(navigationRoute\)/);
 });
 
 await check("navigation action rendering remains separated from target mutation controls", () => {
@@ -172,10 +175,18 @@ await check("room navigation and destination parameters remain route actions", (
 
 await check("clarification and approval have dedicated presentation paths", () => {
   assert.match(aiPage, /clarification_required/);
+  assert.match(aiPage, /resolved_turn/);
   assert.match(aiPage, /function ConfirmationCard/);
   assert.match(aiPage, /Confirmation required/);
   assert.match(aiPage, /Cancel/);
   assert.match(aiPage, /Confirm/);
+});
+
+await check("persistence warnings survive normalization and render visibly", () => {
+  assert.match(aiPage, /persistence_saved/);
+  assert.match(aiPage, /warnings\?: string\[\]/);
+  assert.match(aiPage, /This response could not be saved to History\./);
+  assert.match(aiPage, /message\.warnings\?\.some/);
 });
 
 await check("intent presentation policy suppresses duplicate support for informational rows", () => {

@@ -100,7 +100,13 @@
     "smoke:navigation-action-separation": "node scripts/conversation-final-correction-ui-smoke.mjs",
     "smoke:intent-presentation-policy": "node scripts/conversation-final-correction-ui-smoke.mjs",
     "smoke:offline-table-clean-presentation": "node scripts/conversation-final-correction-ui-smoke.mjs",
-    "smoke:conversation-time-formatting": "node scripts/conversation-final-correction-ui-smoke.mjs"
+    "smoke:conversation-time-formatting": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:persistence-warning-propagation": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:durable-history-roundtrip": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:navigation-auto-handoff": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:clarification-choice-continuation": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:device-conversation-regression": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:empty-thread-protection": "node scripts/conversation-final-correction-ui-smoke.mjs"
   },
   "dependencies": {
     "@capacitor-community/speech-recognition": "^6.0.0",
