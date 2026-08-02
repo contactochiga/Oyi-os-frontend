@@ -296,4 +296,30 @@ await check("behaviour: empty thread guard keeps history open and does not creat
   assert.deepEqual(harness.state.messages, []);
 });
 
+await check("workflow review and terminal action cards render from restored execution metadata", () => {
+  assert.match(aiPage, /function ReviewCard/);
+  assert.match(aiPage, /function ActionLifecycleCard/);
+  assert.match(aiPage, /terminalActionStatus/);
+  assert.match(aiPage, /data-terminal-action=\{terminal \? "true" : "false"\}/);
+  assert.match(aiPage, /This historical action is terminal\. Confirm and Cancel controls are not reusable\./);
+  assert.match(aiPage, /<ReviewCard workflow=\{message\.execution\?\.workflow/);
+  assert.match(aiPage, /<ActionLifecycleCard execution=\{message\.execution\}/);
+});
+
+await check("workflow UI keeps approval and navigation separate from ordinary suggestions", () => {
+  assert.match(aiPage, /ConfirmationCard/);
+  assert.match(aiPage, /NavigationTransition/);
+  assert.match(aiPage, /SuggestedActions/);
+  assert.match(aiPage, /data-action-kind=\{navigation \? "navigation" : "contextual"\}/);
+  assert.doesNotMatch(aiPage, /data-action-kind=\{navigation \? "approval"/);
+});
+
+await check("domain UI supports compact restored tables previews and composer clearance", () => {
+  assert.match(aiPage, /ConversationTable/);
+  assert.match(aiPage, /rows\.slice\(0, 20\)/);
+  assert.match(aiPage, /overflow-x-auto/);
+  assert.match(aiPage, /composerReserve/);
+  assert.match(aiPage, /bottomRef/);
+});
+
 console.log("conversation-final-correction-ui-smoke passed");

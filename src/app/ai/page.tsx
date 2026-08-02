@@ -472,6 +472,69 @@ function OperatingStatus({ execution }: { intent?: string; understood?: string; 
   );
 }
 
+function terminalActionStatus(status: string) {
+  return /confirmed|failed|cancelled|unobservable|timed_out|provider_rejected|superseded/.test(status);
+}
+
+function ReviewCard({ workflow }: { workflow?: Record<string, any> | null }) {
+  if (!workflow || typeof workflow !== "object") return null;
+  const status = String(workflow.status || "");
+  if (!["collecting_inputs", "ready_for_review", "awaiting_approval"].includes(status)) return null;
+  const proposed = workflow.proposed_action && typeof workflow.proposed_action === "object" ? workflow.proposed_action as Record<string, any> : {};
+  const target = workflow.target && typeof workflow.target === "object" ? workflow.target as Record<string, any> : {};
+  const unresolved = Array.isArray(workflow.unresolved_inputs) ? workflow.unresolved_inputs : [];
+  return (
+    <div className="mt-3 rounded-[20px] border border-cyan-200/12 bg-cyan-300/[0.055] p-3.5">
+      <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/58">Review</div>
+      <div className="mt-1.5 text-sm font-semibold text-white">{target.label || workflow.capability_key || "Review this request"}</div>
+      {proposed.command || proposed.desired_state !== undefined ? (
+        <div className="mt-2 text-xs leading-5 text-white/60">
+          {proposed.command ? <div>Action: {String(proposed.command).replace(/_/g, " ")}</div> : null}
+          {proposed.desired_state !== undefined ? <div>Requested result: {String(proposed.desired_state)}</div> : null}
+        </div>
+      ) : null}
+      {unresolved.length ? <div className="mt-2 text-xs leading-5 text-cyan-50/68">Oyi still needs: {unresolved.map((item) => String(item).replace(/_/g, " ")).join(", ")}.</div> : null}
+    </div>
+  );
+}
+
+function ActionLifecycleCard({ execution }: { execution?: Record<string, any> }) {
+  const action = execution?.action && typeof execution.action === "object" ? execution.action as Record<string, any> : null;
+  const workflow = execution?.workflow && typeof execution.workflow === "object" ? execution.workflow as Record<string, any> : null;
+  if (!action && !workflow) return null;
+  const operation = String(action?.requested_operation || workflow?.operation || "");
+  const hasActionLifecycle = Boolean(
+    action ||
+      workflow?.proposed_action ||
+      Array.isArray(workflow?.unresolved_inputs) && workflow.unresolved_inputs.length > 0 ||
+      ["propose_mutation", "approve", "execute", "execute_mutation"].includes(operation),
+  );
+  if (!hasActionLifecycle) return null;
+  const status = String(action?.status || workflow?.status || "");
+  const target = action?.target && typeof action.target === "object" ? action.target as Record<string, any> : workflow?.target && typeof workflow.target === "object" ? workflow.target as Record<string, any> : {};
+  const terminal = terminalActionStatus(status);
+  const tone = terminal
+    ? /failed|rejected|timed_out/.test(status)
+      ? "border-rose-300/16 bg-rose-400/[0.06] text-rose-50/82"
+      : "border-emerald-300/16 bg-emerald-400/[0.06] text-emerald-50/82"
+    : "border-amber-300/16 bg-amber-400/[0.06] text-amber-50/82";
+  return (
+    <div className={`mt-3 rounded-[20px] border p-3.5 ${tone}`} data-terminal-action={terminal ? "true" : "false"}>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-[11px] uppercase tracking-[0.18em] opacity-70">{terminal ? "Action closed" : "Action pending"}</div>
+          <div className="mt-1 text-sm font-semibold text-white/90">{target.label || action?.requested_operation || workflow?.capability_key || "Oyi action"}</div>
+        </div>
+        <div className="grid h-8 w-8 place-items-center rounded-full bg-white/[0.08]">
+          {terminal && /failed|rejected|timed_out/.test(status) ? <X className="h-4 w-4" /> : terminal ? <Check className="h-4 w-4" /> : <Clock3 className="h-4 w-4" />}
+        </div>
+      </div>
+      <div className="mt-2 text-xs leading-5 opacity-82">Status: {status ? status.replace(/_/g, " ") : "waiting"}</div>
+      {terminal ? <div className="mt-2 text-[11px] leading-5 opacity-70">This historical action is terminal. Confirm and Cancel controls are not reusable.</div> : null}
+    </div>
+  );
+}
+
 function ExecutionAccountability({
   executionSummary,
   executionHistory,
@@ -1272,6 +1335,8 @@ function OyiAiCommandCenterContent() {
                           {shouldRenderSupport(message.display_mode) ? <>
                             <StructuredCards cards={message.cards} onTarget={openTarget} />
                             <OperatingStatus execution={message.execution} />
+                            <ReviewCard workflow={message.execution?.workflow as Record<string, any> | undefined} />
+                            <ActionLifecycleCard execution={message.execution} />
                             <ExecutionAccountability
                               executionSummary={message.executionSummary}
                               executionHistory={message.executionHistory}
