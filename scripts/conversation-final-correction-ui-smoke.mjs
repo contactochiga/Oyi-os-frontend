@@ -100,6 +100,8 @@ await check("conversation table cards render responsively", () => {
   assert.match(aiPage, /function ConversationTable/);
   assert.match(aiPage, /overflow-x-auto/);
   assert.match(aiPage, /String\(card\.type \|\| ""\) === "table"/);
+  assert.match(aiPage, /function formatSnapshotTime/);
+  assert.match(aiPage, /Snapshot from \$\{formatSnapshotTime/);
 });
 
 await check("duplicate/internal cards and sources are filtered", () => {
@@ -213,6 +215,8 @@ await check("offline and recent-change tables remain clean presentation blocks",
   assert.match(aiPage, /Snapshot from/);
   assert.match(aiPage, /rows\.slice\(0, 20\)/);
   assert.match(aiPage, /overflow-x-auto/);
+  assert.match(aiPage, /!\s*isTable \? <div className="text-\[11px\]/);
+  assert.match(aiPage, /!\s*isTable \? <div className="mt-1 text-\[13px\]/);
   assert.doesNotMatch(aiPage, /Oyi answer grounded[\s\S]{0,80}Home is selected/);
 });
 
@@ -230,9 +234,19 @@ await check("thread restoration preserves structured snapshot and navigation met
 
 await check("conversation time formatting is safe and calendar-aware", () => {
   assert.match(aiPage, /Time unavailable/);
+  assert.match(aiPage, /formatSnapshotTime/);
+  assert.match(aiPage, /Today, \$\{time\}/);
   assert.match(aiPage, /Yesterday, \$\{time\}/);
   assert.match(aiPage, /month: "short", day: "numeric"/);
   assert.doesNotMatch(aiPage, /Invalid Date/);
+});
+
+await check("wallet utility and room table rendering use the same compact block", () => {
+  assert.match(aiPage, /function ConversationTable/);
+  assert.match(aiPage, /const isTable = String\(card\.type \|\| ""\) === "table"/);
+  assert.match(aiPage, /isTable \? <ConversationTable card=\{card\} \/>/);
+  assert.match(aiPage, /!\s*isTable \? <div className="text-\[11px\]/);
+  assert.match(aiPage, /!\s*isTable \? <div className="mt-1 text-\[13px\]/);
 });
 
 await check("behaviour: route thread hydration loads ordered messages and closes only after success", async () => {

@@ -354,6 +354,19 @@ function formatTime(timestamp: number) {
   return date.toLocaleString([], { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
+function formatSnapshotTime(timestamp: number) {
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return "Time unavailable";
+  const date = new Date(timestamp);
+  const now = new Date();
+  const time = date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startYesterday = startToday - 24 * 60 * 60 * 1000;
+  if (timestamp >= startToday) return `Today, ${time}`;
+  if (timestamp >= startYesterday) return `Yesterday, ${time}`;
+  if (date.getFullYear() === now.getFullYear()) return date.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  return date.toLocaleString([], { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
 function Spinner() {
   return <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border border-white/18 border-t-sky-200 align-[-2px]" />;
 }
@@ -363,7 +376,7 @@ function ConversationTable({ card }: { card: Record<string, any> }) {
   const rows = Array.isArray(card.rows) ? card.rows : [];
   const snapshot = card.snapshot && typeof card.snapshot === "object" ? card.snapshot : null;
   const snapshotLabel = snapshot?.snapshot_generated_at
-    ? `Snapshot from ${formatTime(Date.parse(String(snapshot.snapshot_generated_at)))}`
+    ? `Snapshot from ${formatSnapshotTime(Date.parse(String(snapshot.snapshot_generated_at)))}`
     : null;
   if (!columns.length || !rows.length) return null;
   return (
@@ -408,9 +421,9 @@ function StructuredCards({ cards, onTarget }: { cards?: Array<Record<string, any
         const isTable = String(card.type || "") === "table";
         return (
           <div key={`${card.type || card.title || "card"}-${index}`} className="rounded-[18px] border border-white/[0.07] bg-black/18 p-3">
-            <div className="text-[11px] uppercase tracking-[0.16em] text-sky-100/46">{card.type ? String(card.type).replace(/_/g, " ") : "Summary"}</div>
-            <div className="mt-1 text-[13px] font-semibold text-white/90">{card.title || "Home update"}</div>
-            {card.summary ? <div className="mt-1 text-xs leading-5 text-white/52">{String(card.summary)}</div> : null}
+            {!isTable ? <div className="text-[11px] uppercase tracking-[0.16em] text-sky-100/46">{card.type ? String(card.type).replace(/_/g, " ") : "Summary"}</div> : null}
+            {!isTable ? <div className="mt-1 text-[13px] font-semibold text-white/90">{card.title || "Home update"}</div> : null}
+            {!isTable && card.summary ? <div className="mt-1 text-xs leading-5 text-white/52">{String(card.summary)}</div> : null}
             {isTable ? <ConversationTable card={card} /> : null}
             {!isTable && items.length ? (
               <div className="mt-2 grid gap-1.5">

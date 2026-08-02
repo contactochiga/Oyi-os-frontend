@@ -127,7 +127,16 @@
     "smoke:presentation-policy-authority": "node scripts/conversation-final-correction-ui-smoke.mjs",
     "smoke:approval-card-deduplication": "node scripts/conversation-final-correction-ui-smoke.mjs",
     "smoke:clarification-choice-render": "node scripts/conversation-final-correction-ui-smoke.mjs",
-    "smoke:domain-conversation-presentation": "node scripts/conversation-final-correction-ui-smoke.mjs"
+    "smoke:domain-conversation-presentation": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:global-response-rendering": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:room-summary-rendering": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:clarification-continuation-rendering": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:wallet-history-table": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:utility-summary-table": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:table-title-deduplication": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:snapshot-time-formatting": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:domain-specific-error-rendering": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:resident-device-hierarchy": "node scripts/conversation-final-correction-ui-smoke.mjs"
   },
   "dependencies": {
     "@capacitor-community/speech-recognition": "^6.0.0",
