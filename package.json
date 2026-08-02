@@ -115,7 +115,19 @@
     "smoke:approval-action-separation": "node scripts/conversation-final-correction-ui-smoke.mjs",
     "smoke:room-intelligence-rendering": "node scripts/conversation-final-correction-ui-smoke.mjs",
     "smoke:conversation-time-standard": "node scripts/conversation-final-correction-ui-smoke.mjs",
-    "smoke:persistence-warning-visibility": "node scripts/conversation-final-correction-ui-smoke.mjs"
+    "smoke:persistence-warning-visibility": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:global-turn-context-reset": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:show-does-not-auto-navigate": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:open-navigation-transition": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:return-thread-handoff": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:room-summary-render": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:room-table-render": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:resident-name-table-render": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:snapshot-thread-restoration": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:presentation-policy-authority": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:approval-card-deduplication": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:clarification-choice-render": "node scripts/conversation-final-correction-ui-smoke.mjs",
+    "smoke:domain-conversation-presentation": "node scripts/conversation-final-correction-ui-smoke.mjs"
   },
   "dependencies": {
     "@capacitor-community/speech-recognition": "^6.0.0",

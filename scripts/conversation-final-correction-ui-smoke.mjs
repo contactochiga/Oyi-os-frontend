@@ -155,6 +155,11 @@ await check("module navigation actions render as explicit route actions", () => 
   assert.match(aiPage, /function isNavigationSuggestion/);
   assert.match(aiPage, /function navigationRouteFromResponse/);
   assert.match(aiPage, /function routeForOyiDestination/);
+  assert.match(aiPage, /if \(!policy\.auto_navigation\) return null/);
+  assert.match(aiPage, /\^navigate_/);
+  assert.match(aiPage, /function NavigationTransition/);
+  assert.match(aiPage, /Your conversation will remain available here\./);
+  assert.match(aiPage, /cancelledNavigationRef/);
   assert.match(aiPage, /action\?\.type === "navigation"/);
   assert.match(aiPage, /action\?\.type === "open_module"/);
   assert.match(aiPage, /data-action-kind=\{navigation \? "navigation" : "contextual"\}/);
@@ -164,7 +169,7 @@ await check("module navigation actions render as explicit route actions", () => 
 
 await check("navigation action rendering remains separated from target mutation controls", () => {
   assert.match(aiPage, /operation_class === "navigate"/);
-  assert.match(aiPage, /operation_class === "list"/);
+  assert.doesNotMatch(aiPage, /operation_class === "list"\s*\|\|/);
   assert.match(aiPage, /if \(!onTarget\(action\.target\) && action\.route\) onOpen\(String\(action\.route\)\)/);
   assert.doesNotMatch(aiPage, /data-action-kind=\{navigation \? "control"/);
 });
@@ -204,9 +209,23 @@ await check("intent presentation policy suppresses duplicate support for informa
 
 await check("offline and recent-change tables remain clean presentation blocks", () => {
   assert.match(aiPage, /function ConversationTable/);
+  assert.match(aiPage, /card\.snapshot/);
+  assert.match(aiPage, /Snapshot from/);
   assert.match(aiPage, /rows\.slice\(0, 20\)/);
   assert.match(aiPage, /overflow-x-auto/);
   assert.doesNotMatch(aiPage, /Oyi answer grounded[\s\S]{0,80}Home is selected/);
+});
+
+await check("approval summary is suppressed when a confirmation card is present", () => {
+  assert.match(aiPage, /approvalRequired=\{message\.confirmations\?\.length \? false : message\.approvalRequired\}/);
+});
+
+await check("thread restoration preserves structured snapshot and navigation metadata", () => {
+  assert.match(aiPage, /navigation_route:/);
+  assert.match(aiPage, /metadata\.resolved_turn/);
+  assert.match(aiPage, /String\(\(metadata\.resolved_turn as Record<string, any>\)\.operation/);
+  assert.match(aiPage, /const cards = \(row\.cards \|\| \[\]\)\.filter/);
+  assert.match(aiPage, /cards,/);
 });
 
 await check("conversation time formatting is safe and calendar-aware", () => {

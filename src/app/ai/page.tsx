@@ -35,6 +35,7 @@ type AiMessage = {
   persistence_saved?: boolean;
   resolved_turn?: Record<string, any>;
   presentation_policy?: Record<string, any>;
+  navigation_route?: string | null;
   intent?: string;
   understood?: string;
   execution?: Record<string, any>;
@@ -79,16 +80,13 @@ function routeForOyiDestination(destination?: Record<string, any> | null) {
 }
 
 function navigationRouteFromResponse(resp: AiChatResponse) {
+  const policy = resp.presentation_policy && typeof resp.presentation_policy === "object" ? resp.presentation_policy : {};
+  if (!policy.auto_navigation) return null;
   const turnDestination = resp.resolved_turn?.destination && typeof resp.resolved_turn.destination === "object"
     ? routeForOyiDestination(resp.resolved_turn.destination as Record<string, any>)
     : null;
   if (turnDestination && /^navigate_/.test(String(resp.resolved_turn?.operation || ""))) return turnDestination;
-  const action = (resp.suggested_actions || []).find((item) => {
-    const type = String(item?.type || "");
-    return type === "navigation" || type === "open_module";
-  });
-  if (!action) return null;
-  return routeForOyiDestination(action.destination as Record<string, any>) || (typeof action.route === "string" ? action.route : null);
+  return null;
 }
 
 type Suggestion = { label: string; prompt?: string; href?: string; tone?: "blue" | "green" | "amber" | "violet" };
@@ -328,6 +326,9 @@ function messageFromThread(row: OyiThreadMessage): AiMessage {
     persistence_saved: typeof metadata.persistence_saved === "boolean" ? metadata.persistence_saved : undefined,
     resolved_turn: metadata.resolved_turn && typeof metadata.resolved_turn === "object" ? metadata.resolved_turn as Record<string, any> : undefined,
     presentation_policy: metadata.presentation_policy && typeof metadata.presentation_policy === "object" ? metadata.presentation_policy as Record<string, any> : undefined,
+    navigation_route: metadata.resolved_turn && typeof metadata.resolved_turn === "object" && /^navigate_/.test(String((metadata.resolved_turn as Record<string, any>).operation || ""))
+      ? routeForOyiDestination((metadata.resolved_turn as Record<string, any>).destination as Record<string, any>)
+      : null,
   };
 }
 
@@ -360,9 +361,19 @@ function Spinner() {
 function ConversationTable({ card }: { card: Record<string, any> }) {
   const columns = Array.isArray(card.columns) ? card.columns.filter((column) => column?.key && column?.label) : [];
   const rows = Array.isArray(card.rows) ? card.rows : [];
+  const snapshot = card.snapshot && typeof card.snapshot === "object" ? card.snapshot : null;
+  const snapshotLabel = snapshot?.snapshot_generated_at
+    ? `Snapshot from ${formatTime(Date.parse(String(snapshot.snapshot_generated_at)))}`
+    : null;
   if (!columns.length || !rows.length) return null;
   return (
     <div className="mt-2 overflow-x-auto rounded-2xl border border-white/[0.06]">
+      {card.title || snapshotLabel ? (
+        <div className="border-b border-white/[0.06] bg-white/[0.035] px-3 py-2">
+          {card.title ? <div className="text-xs font-semibold text-white/70">{card.title}</div> : null}
+          {snapshotLabel ? <div className="mt-0.5 text-[10px] text-white/38">{snapshotLabel}</div> : null}
+        </div>
+      ) : null}
       <table className="min-w-full border-separate border-spacing-0 text-left text-[11px] leading-4">
         <thead className="bg-white/[0.045] text-white/45">
           <tr>
@@ -494,7 +505,7 @@ function SourceLabels({ sources }: { sources?: Array<Record<string, any>> }) {
 }
 
 function isNavigationSuggestion(action: Record<string, any>) {
-  return action?.type === "navigation" || action?.type === "open_module" || action?.operation_class === "navigate" || action?.operation_class === "list";
+  return action?.type === "navigation" || action?.type === "open_module" || action?.operation_class === "navigate";
 }
 
 function SuggestedActions({ actions, onOpen, onTarget }: { actions?: Array<Record<string, any>>; onOpen: (route: string) => void; onTarget: (target: OyiTarget | null | undefined) => boolean }) {
@@ -518,6 +529,20 @@ function SuggestedActions({ actions, onOpen, onTarget }: { actions?: Array<Recor
           {navigation ? <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-emerald-50/42">open</span> : null}
         </button>
       );})}
+    </div>
+  );
+}
+
+function NavigationTransition({ route, onStay, onContinue }: { route?: string | null; onStay: () => void; onContinue: (route: string) => void }) {
+  if (!route) return null;
+  return (
+    <div className="mt-3 rounded-[20px] border border-emerald-200/14 bg-emerald-300/[0.07] p-3">
+      <div className="text-xs font-semibold text-emerald-50/86">Opening another workspace…</div>
+      <div className="mt-1 text-[11px] leading-5 text-emerald-50/58">Your conversation will remain available here.</div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button type="button" onClick={onStay} className="rounded-full border border-white/10 px-3 py-1.5 text-[11px] text-white/70 transition active:scale-95">Stay in chat</button>
+        <button type="button" onClick={() => onContinue(route)} className="rounded-full bg-emerald-200 px-3 py-1.5 text-[11px] font-semibold text-emerald-950 transition active:scale-95">Continue</button>
+      </div>
     </div>
   );
 }
@@ -612,6 +637,7 @@ function OyiAiCommandCenterContent() {
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const routeThreadRestoreRef = useRef<string | null>(null);
   const restoreSequenceRef = useRef(0);
+  const cancelledNavigationRef = useRef<Set<string>>(new Set());
   const [audioLevels, setAudioLevels] = useState<number[]>(Array.from({ length: 28 }, () => 0.2));
   const [composerHeight, setComposerHeight] = useState(132);
   const [targetError, setTargetError] = useState<string | null>(null);
@@ -869,12 +895,14 @@ function OyiAiCommandCenterContent() {
       const content = replyFromResponse(resp) || "Done.";
       const state = responseState(resp);
       if (["informational", "report_ready", "recommendation", "action_confirmed"].includes(String(state))) remember(options?.usageLabel || command);
-      const nextMessages = baseMessages.map((item) => item.id === pendingId ? { ...item, pending: false, content, state, confirmations: resp.confirmations || [], cards: awarenessCards(resp), sources: resp.sources || [], suggested_actions: resp.suggested_actions || [], warnings: resp.warnings || [], persistence_saved: resp.persistence_saved, resolved_turn: resp.resolved_turn, presentation_policy: resp.presentation_policy, intent: resp.intent, understood: resp.understood, execution: resp.execution, display_mode: resp.display_mode || "conversation", executionSummary: resp.executionSummary, executionHistory: resp.executionHistory, approvalRequired: resp.approvalRequired, trustScore: resp.trustScore, initiatorType: resp.initiatorType, approvedBy: resp.approvedBy } : item);
+      const navigationRoute = navigationRouteFromResponse(resp);
+      const nextMessages = baseMessages.map((item) => item.id === pendingId ? { ...item, pending: false, content, state, confirmations: resp.confirmations || [], cards: awarenessCards(resp), sources: resp.sources || [], suggested_actions: resp.suggested_actions || [], warnings: resp.warnings || [], persistence_saved: resp.persistence_saved, resolved_turn: resp.resolved_turn, presentation_policy: resp.presentation_policy, navigation_route: navigationRoute, intent: resp.intent, understood: resp.understood, execution: resp.execution, display_mode: resp.display_mode || "conversation", executionSummary: resp.executionSummary, executionHistory: resp.executionHistory, approvalRequired: resp.approvalRequired, trustScore: resp.trustScore, initiatorType: resp.initiatorType, approvedBy: resp.approvedBy } : item);
       setMessages(nextMessages);
       persistConversation(nextMessages, nextThreadId || undefined);
-      const navigationRoute = navigationRouteFromResponse(resp);
       if (navigationRoute && !resp.approvalRequired && !resp.requiresConfirmation) {
-        window.setTimeout(() => router.push(navigationRoute), 120);
+        window.setTimeout(() => {
+          if (!cancelledNavigationRef.current.has(pendingId)) router.push(navigationRoute);
+        }, 1400);
       }
       if (options?.fromVoice) {
         setVoiceStatus(state === "failed" || state === "action_failed" || state === "denied" ? "Failed" : "Speaking");
@@ -1234,10 +1262,15 @@ function OyiAiCommandCenterContent() {
                             <ExecutionAccountability
                               executionSummary={message.executionSummary}
                               executionHistory={message.executionHistory}
-                              approvalRequired={message.approvalRequired}
+                              approvalRequired={message.confirmations?.length ? false : message.approvalRequired}
                               trustScore={message.trustScore}
                               initiatorType={message.initiatorType}
                               approvedBy={message.approvedBy}
+                            />
+                            <NavigationTransition
+                              route={message.navigation_route}
+                              onStay={() => cancelledNavigationRef.current.add(message.id)}
+                              onContinue={(route) => router.push(route)}
                             />
                             <SourceLabels sources={message.sources} />
                             <SuggestedActions actions={message.suggested_actions} onOpen={(route) => router.push(route)} onTarget={openTarget} />
