@@ -1,6 +1,6 @@
 // src/services/aiService.ts
 import API from "./api";
-import { oyiService, type OyiAwareness } from "./oyiService";
+import { oyiService, type OyiActiveWorkflow, type OyiAwareness } from "./oyiService";
 
 export type AiAction =
   | {
@@ -46,6 +46,7 @@ export type AiChatResponse = {
   awareness?: OyiAwareness;
   context?: Record<string, any>;
   thread_id?: string;
+  active_workflow?: OyiActiveWorkflow | null;
   warnings?: string[];
   persistence_saved?: boolean;
   resolved_turn?: Record<string, any>;
@@ -90,6 +91,7 @@ function normalize(resp: any): AiChatResponse {
     awareness: resp?.awareness || undefined,
     context: resp?.context && typeof resp.context === "object" ? resp.context : undefined,
     thread_id: resp?.thread_id ? String(resp.thread_id) : undefined,
+    active_workflow: resp?.active_workflow || undefined,
     warnings: Array.isArray(resp?.warnings) ? resp.warnings.map(String) : [],
     persistence_saved: typeof resp?.persistence_saved === "boolean" ? resp.persistence_saved : undefined,
     resolved_turn: resp?.resolved_turn && typeof resp.resolved_turn === "object" ? resp.resolved_turn : undefined,
@@ -118,6 +120,8 @@ export const aiService = {
         module: context?.module || null,
         role: context?.role || null,
         thread_id: context?.thread_id || context?.threadId || null,
+        workflow_id: context?.workflow_id || context?.workflowId || context?.active_workflow?.workflow_id || null,
+        active_workflow: context?.active_workflow || null,
         ...(context?.device_id ? { device_id: context.device_id } : {}),
         ...(context?.device_name ? { device_name: context.device_name } : {}),
         ...(context?.room_id ? { room_id: context.room_id } : {}),

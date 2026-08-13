@@ -117,6 +117,8 @@ export type OyiChatRequest = {
   role?: string | null;
   message: string;
   thread_id?: string | null;
+  workflow_id?: string | null;
+  active_workflow?: OyiActiveWorkflow | null;
   context?: Partial<OisContext> | null;
   device_id?: string | null;
   device_name?: string | null;
@@ -159,6 +161,7 @@ export type OyiChatResponse = {
   suggested_actions?: Array<Record<string, any>>;
   awareness?: OyiAwareness;
   thread_id?: string;
+  active_workflow?: OyiActiveWorkflow | null;
   warnings?: string[];
   persistence_saved?: boolean;
   resolved_turn?: Record<string, any>;
@@ -193,6 +196,7 @@ export type OyiThread = {
   last_operational_object?: { type: string; id: string; label: string | null } | null;
   created_at?: string;
   updated_at?: string;
+  active_workflow?: OyiActiveWorkflow | null;
   metadata?: Record<string, any>;
 };
 
@@ -210,6 +214,61 @@ export type OyiThreadMessage = {
 
 const threadListInFlight = new Map<string, Promise<{ ok?: boolean; threads?: OyiThread[] }>>();
 
+export type OyiActiveWorkflow = {
+  workflow_id: string;
+  action_id?: string | null;
+  status?: string | null;
+  capability_key?: string | null;
+  missing_input?: string | null;
+  target_id?: string | null;
+  target_label?: string | null;
+  target_channel_code?: string | null;
+  channel_label?: string | null;
+  requested_state?: string | null;
+};
+
+const TERMINAL_OYI_WORKFLOW_STATUSES = new Set([
+  "answered",
+  "completed",
+  "failed",
+  "cancelled",
+  "expired",
+  "superseded",
+  "empty",
+  "unavailable",
+  "unsupported",
+  "permission_restricted",
+]);
+
+export function normalizeOyiActiveWorkflow(value: unknown): OyiActiveWorkflow | null {
+  if (!value || typeof value !== "object") return null;
+  const source = value as Record<string, any>;
+  const nested = source.workflow && typeof source.workflow === "object" ? source.workflow as Record<string, any> : null;
+  const workflowId = String(source.workflow_id || source.workflowId || nested?.workflow_id || nested?.workflowId || "").trim();
+  if (!workflowId) return null;
+  return {
+    workflow_id: workflowId,
+    action_id: source.action_id || source.actionId || nested?.action_id || nested?.actionId || null,
+    status: source.status || source.workflow_status || nested?.status || nested?.workflow_status || null,
+    capability_key: source.capability_key || source.capabilityKey || nested?.capability_key || nested?.capabilityKey || null,
+    missing_input: source.missing_input || source.missingInput || nested?.missing_input || nested?.missingInput || null,
+    target_id: source.target_id || source.targetId || nested?.target_id || nested?.targetId || null,
+    target_label: source.target_label || source.targetLabel || nested?.target_label || nested?.targetLabel || null,
+    target_channel_code: source.target_channel_code || source.channel_code || source.channelCode || nested?.target_channel_code || nested?.channel_code || nested?.channelCode || null,
+    channel_label: source.channel_label || source.channelLabel || nested?.channel_label || nested?.channelLabel || null,
+    requested_state: source.requested_state || source.requestedState || nested?.requested_state || nested?.requestedState || null,
+  };
+}
+
+export function isTerminalOyiWorkflowStatus(status?: string | null) {
+  return TERMINAL_OYI_WORKFLOW_STATUSES.has(String(status || "").toLowerCase());
+}
+
+export function isActiveOyiWorkflow(value: unknown): value is OyiActiveWorkflow {
+  const workflow = normalizeOyiActiveWorkflow(value);
+  return Boolean(workflow && !isTerminalOyiWorkflowStatus(workflow.status));
+}
+
 export const oyiService = {
   async awareness(input: { surface?: OyiSurface; estate_id?: string | null; home_id?: string | null; context?: OisContext | null }) {
     const res = await API.get("/oyi/awareness", { params: { surface: input.surface, estate_id: input.context?.estate_id || input.estate_id, home_id: input.context?.home_id || input.home_id } });
@@ -225,6 +284,7 @@ export const oyiService = {
       module: input.module || input.context?.module || null,
       role: input.role || null,
       thread_id: input.thread_id || null,
+      workflow_id: input.workflow_id || input.active_workflow?.workflow_id || null,
       context: input.context || null,
       device_id: input.device_id || null,
       device_name: input.device_name || null,
@@ -242,7 +302,9 @@ export const oyiService = {
       active_scenes: input.active_scenes || null,
       active_automations: input.active_automations || null,
       active_intelligence_context: input.active_intelligence_context || (input.context as any)?.active_intelligence_context || null,
-      conversation_context: input.conversation_context || null,
+      conversation_context: input.active_workflow
+        ? { ...(input.conversation_context || {}), active_workflow: input.active_workflow }
+        : input.conversation_context || null,
       operational_object: input.operational_object || null,
       target: input.target || null,
       page_launch_context: input.page_launch_context || null,
@@ -254,6 +316,7 @@ export const oyiService = {
       scope_mode_hint: input.scope_mode_hint || null,
     });
     const runtime = res.data?.response || {};
+    const activeWorkflow = normalizeOyiActiveWorkflow(runtime.active_workflow || runtime.execution?.workflow || runtime.execution);
     return {
       ok: Boolean(res.data?.ok),
       message: runtime.message || runtime.reply || "",
@@ -267,6 +330,7 @@ export const oyiService = {
       suggested_actions: Array.isArray(runtime.suggested_actions) ? runtime.suggested_actions : [],
       awareness: runtime.awareness,
       thread_id: runtime.thread_id,
+      active_workflow: activeWorkflow,
       warnings: Array.isArray(runtime.warnings) ? runtime.warnings : [],
       persistence_saved: typeof runtime.persistence_saved === "boolean" ? runtime.persistence_saved : undefined,
       resolved_turn: runtime.resolved_turn && typeof runtime.resolved_turn === "object" ? runtime.resolved_turn : undefined,

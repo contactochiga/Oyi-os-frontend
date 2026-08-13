@@ -27,6 +27,12 @@ function createRestoreHarness(fetchThread) {
     historyError: null,
     routeThreadId: null,
   };
+  function activeWorkflowFromThread(thread) {
+    const workflow = thread?.active_workflow || thread?.metadata?.active_workflow || thread?.metadata?.conversation_state?.active_workflow || null;
+    if (!workflow?.workflow_id) return null;
+    if (["cancelled", "completed", "failed", "expired", "superseded"].includes(String(workflow.status || "").toLowerCase())) return null;
+    return workflow;
+  }
   async function restoreThreadById(threadId, source) {
     const requestedThreadId = String(threadId || "").trim();
     if (!requestedThreadId) return false;
@@ -51,12 +57,21 @@ function createRestoreHarness(fetchThread) {
       return false;
     }
     state.messages = [...(res.messages || [])].sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")) || String(a.id).localeCompare(String(b.id)));
-    state.active = { threadId: requestedThreadId, status: "active_thread", source };
+    state.active = { threadId: requestedThreadId, status: "active_thread", source, activeWorkflow: activeWorkflowFromThread(res.thread) };
     state.historyOpen = false;
     state.routeThreadId = requestedThreadId;
     return true;
   }
   return { state, restoreThreadById };
+}
+
+function buildContinuationRequest(state, message) {
+  const workflow = state.active?.activeWorkflow || null;
+  return {
+    message,
+    thread_id: state.active?.threadId || null,
+    workflow_id: workflow?.workflow_id || null,
+  };
 }
 
 await check("AI thread routes do not become message-thread operational targets", () => {
@@ -232,6 +247,35 @@ await check("thread restoration preserves structured snapshot and navigation met
   assert.match(aiPage, /cards,/);
 });
 
+await check("thread restoration preserves server-authored active workflow metadata", () => {
+  assert.match(oyiService, /export type OyiActiveWorkflow/);
+  assert.match(oyiService, /active_workflow\?: OyiActiveWorkflow \| null/);
+  assert.match(oyiService, /workflow_id\?: string \| null/);
+  assert.match(oyiService, /workflow_id: input\.workflow_id \|\| input\.active_workflow\?\.workflow_id \|\| null/);
+  assert.match(oyiService, /active_workflow: activeWorkflow/);
+  assert.match(aiService, /workflow_id: context\?\.workflow_id \|\| context\?\.workflowId \|\| context\?\.active_workflow\?\.workflow_id \|\| null/);
+  assert.match(aiPage, /function activeWorkflowFromThread/);
+  assert.match(aiPage, /activeWorkflowFromThread\(res\.thread\)/);
+  assert.match(aiPage, /activeWorkflow: restoredWorkflow/);
+});
+
+await check("restored workflow id is sent on the next conversation turn", () => {
+  assert.match(aiPage, /workflowForTurn = activeWorkflowFromUnknown\(options\?\.workflowOverride \|\| activeConversation\.activeWorkflow\)/);
+  assert.match(aiPage, /workflow_id: workflowForTurn\?\.workflow_id \|\| undefined/);
+  assert.match(aiPage, /active_workflow: workflowForTurn \|\| undefined/);
+  assert.match(aiPage, /conversation_context: conversationContext/);
+  assert.match(aiPage, /canonicalActiveThreadId = activeConversation\.threadId \|\| backendThreadId \|\| searchParams\.get\("threadId"\)/);
+});
+
+await check("durable confirmation buttons route through canonical Oyi continuation when workflow-backed", () => {
+  assert.match(aiPage, /onDecision: \(confirmation: Record<string, any>, decision: "confirm" \| "cancel"\) => void/);
+  assert.match(aiPage, /const workflowId = workflow\?\.workflow_id \|\| String\(confirmation\?\.workflow_id \|\| ""\)\.trim\(\)/);
+  assert.match(aiPage, /workflow_id: workflowId/);
+  assert.match(aiPage, /await handleSend\(decision === "confirm" \? "Confirm" : "Cancel"/);
+  assert.match(aiPage, /workflowOverride: nextWorkflow/);
+  assert.match(aiPage, /threadIdOverride: canonicalActiveThreadId \|\| undefined/);
+});
+
 await check("conversation time formatting is safe and calendar-aware", () => {
   assert.match(aiPage, /Time unavailable/);
   assert.match(aiPage, /formatSnapshotTime/);
@@ -263,6 +307,54 @@ await check("behaviour: route thread hydration loads ordered messages and closes
   assert.equal(harness.state.active.status, "active_thread");
   assert.equal(harness.state.historyOpen, false);
   assert.deepEqual(harness.state.messages.map((m) => m.id), ["m1", "m2"]);
+});
+
+await check("behaviour: post-reload channel continuation keeps thread and workflow ids", async () => {
+  const harness = createRestoreHarness(async () => ({
+    ok: true,
+    thread: {
+      id: "thread-X",
+      message_count: 2,
+      active_workflow: {
+        workflow_id: "workflow-W",
+        status: "awaiting_clarification",
+        capability_key: "devices.power.control",
+        missing_input: "channel",
+        target_label: "3Gang Living room",
+      },
+    },
+    messages: [
+      { id: "u1", created_at: "2026-08-01T08:00:00Z", role: "user", content: "Turn off 3Gang Living room" },
+      { id: "a1", created_at: "2026-08-01T08:00:01Z", role: "assistant", content: "Which channel?" },
+    ],
+  }));
+  assert.equal(await harness.restoreThreadById("thread-X", "route"), true);
+  const payload = buildContinuationRequest(harness.state, "Channel 1");
+  assert.equal(payload.thread_id, "thread-X");
+  assert.equal(payload.workflow_id, "workflow-W");
+  assert.equal(payload.message, "Channel 1");
+});
+
+await check("behaviour: terminal restored workflow is not reused after reload", async () => {
+  const harness = createRestoreHarness(async () => ({
+    ok: true,
+    thread: {
+      id: "thread-cancelled",
+      message_count: 2,
+      active_workflow: {
+        workflow_id: "workflow-old",
+        status: "cancelled",
+      },
+    },
+    messages: [
+      { id: "u1", created_at: "2026-08-01T08:00:00Z", role: "user", content: "Cancel" },
+      { id: "a1", created_at: "2026-08-01T08:00:01Z", role: "assistant", content: "Cancelled." },
+    ],
+  }));
+  assert.equal(await harness.restoreThreadById("thread-cancelled", "route"), true);
+  const payload = buildContinuationRequest(harness.state, "Yes");
+  assert.equal(payload.thread_id, "thread-cancelled");
+  assert.equal(payload.workflow_id, null);
 });
 
 await check("behaviour: quick Thread A then Thread B selection keeps Thread B", async () => {

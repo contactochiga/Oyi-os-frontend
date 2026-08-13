@@ -9,7 +9,7 @@ import useAuth from "@/hooks/useAuth";
 import useActiveContext from "@/hooks/useActiveContext";
 import { aiService, type AiChatResponse } from "@/services/aiService";
 import { deriveConsumerOperationalObject, deriveConsumerTarget } from "@/services/operationalObjectContext";
-import { oyiService, type OyiThreadMessage } from "@/services/oyiService";
+import { isTerminalOyiWorkflowStatus, normalizeOyiActiveWorkflow, oyiService, type OyiActiveWorkflow, type OyiThread, type OyiThreadMessage } from "@/services/oyiService";
 import { resolveConsumerOyiTarget } from "@/services/oyiTargetRegistry";
 import type { OyiTarget } from "@/services/oyiService";
 import {
@@ -98,6 +98,7 @@ type Conversation = {
   updatedAt: number;
   messages: AiMessage[];
   backendThreadId?: string | null;
+  activeWorkflow?: OyiActiveWorkflow | null;
   preview?: string | null;
   messageCount?: number;
   scope?: string | null;
@@ -106,6 +107,7 @@ type ActiveConversationState = {
   threadId: string | null;
   status: "blank" | "loading_thread" | "active_thread" | "thread_error";
   source: "new" | "history" | "route" | "drawer";
+  activeWorkflow?: OyiActiveWorkflow | null;
 };
 const SUPPORT_DISPLAY_MODES = new Set(["list", "detail", "audit", "report", "awareness"]);
 
@@ -204,6 +206,37 @@ function turnScopedAiContext(command: string, context: Record<string, any>) {
       scope_mode_hint: "home_scope",
     },
   };
+}
+
+function activeWorkflowFromUnknown(value: unknown) {
+  const workflow = normalizeOyiActiveWorkflow(value);
+  if (!workflow || isTerminalOyiWorkflowStatus(workflow.status)) return null;
+  return workflow;
+}
+
+function activeWorkflowFromThread(thread?: OyiThread | null) {
+  const metadata = thread?.metadata && typeof thread.metadata === "object" ? thread.metadata as Record<string, any> : {};
+  const conversationState = metadata.conversation_state && typeof metadata.conversation_state === "object" ? metadata.conversation_state as Record<string, any> : {};
+  return activeWorkflowFromUnknown(thread?.active_workflow || metadata.active_workflow || conversationState.active_workflow || metadata.workflow);
+}
+
+function workflowFromChatResponse(resp: AiChatResponse) {
+  const candidates: unknown[] = [
+    resp.active_workflow,
+    resp.execution?.workflow,
+    resp.execution,
+    ...(Array.isArray(resp.confirmations) ? resp.confirmations : []),
+  ];
+  for (const candidate of candidates) {
+    const workflow = normalizeOyiActiveWorkflow(candidate);
+    if (workflow) return workflow;
+  }
+  return null;
+}
+
+function isTerminalWorkflowIntent(command: string) {
+  const lower = command.trim().toLowerCase();
+  return /^(cancel|cancel it|never mind|don't do it|do not do it|no|nope)$/i.test(lower);
 }
 
 function replyFromResponse(resp: AiChatResponse) {
@@ -664,15 +697,15 @@ function OyiOrb({ size = "large", state = "idle", onClick }: { size?: "large" | 
   );
 }
 
-function ConfirmationCard({ confirmation, onDecision, disabled }: { confirmation: Record<string, any>; onDecision: (id: string, decision: "confirm" | "cancel") => void; disabled: boolean }) {
-  const ledgerId = String(confirmation?.ledger_id || confirmation?.id || confirmation?.command_id || "");
+function ConfirmationCard({ confirmation, onDecision, disabled }: { confirmation: Record<string, any>; onDecision: (confirmation: Record<string, any>, decision: "confirm" | "cancel") => void; disabled: boolean }) {
+  const referenceId = String(confirmation?.workflow_id || confirmation?.action_id || confirmation?.ledger_id || confirmation?.id || confirmation?.command_id || "");
   return (
     <div className="mt-3 rounded-[20px] border border-amber-200/14 bg-amber-300/[0.055] p-3.5">
       <div className="text-[11px] uppercase tracking-[0.18em] text-amber-100/60">Confirmation required</div>
       <div className="mt-1.5 text-sm font-semibold text-white">{confirmation?.summary || confirmation?.prompt || "Approve this action?"}</div>
       <div className="mt-3 grid grid-cols-2 gap-2">
-        <button type="button" disabled={disabled || !ledgerId} onClick={() => onDecision(ledgerId, "cancel")} className="rounded-full border border-white/10 bg-white/[0.045] px-3 py-2 text-xs text-white/70 disabled:opacity-45">Cancel</button>
-        <button type="button" disabled={disabled || !ledgerId} onClick={() => onDecision(ledgerId, "confirm")} className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-black disabled:opacity-45">Confirm</button>
+        <button type="button" disabled={disabled || !referenceId} onClick={() => onDecision(confirmation, "cancel")} className="rounded-full border border-white/10 bg-white/[0.045] px-3 py-2 text-xs text-white/70 disabled:opacity-45">Cancel</button>
+        <button type="button" disabled={disabled || !referenceId} onClick={() => onDecision(confirmation, "confirm")} className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-black disabled:opacity-45">Confirm</button>
       </div>
     </div>
   );
@@ -818,7 +851,7 @@ function OyiAiCommandCenterContent() {
   }, [moduleContext, searchParams, usage]);
 
   const chatMode = messages.length > 0;
-  const canonicalActiveThreadId = activeConversation.threadId || backendThreadId;
+  const canonicalActiveThreadId = activeConversation.threadId || backendThreadId || searchParams.get("threadId");
   const recording = voiceMode === "recording";
   const voiceConversation = voiceMode === "conversation";
   const inputWake = input.toLowerCase().includes("oyi") || transcript.toLowerCase().includes("oyi");
@@ -923,10 +956,10 @@ function OyiAiCommandCenterContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function persistConversation(nextMessages: AiMessage[], threadId = backendThreadId) {
+  function persistConversation(nextMessages: AiMessage[], threadId = backendThreadId, activeWorkflow = activeConversation.activeWorkflow || null) {
     const firstUser = nextMessages.find((item) => item.role === "user")?.content || "Oyi conversation";
     const latestMessage = nextMessages[nextMessages.length - 1];
-    const item: Conversation = { id: threadId ? `backend:${threadId}` : conversationId, backendThreadId: threadId || undefined, title: firstUser.slice(0, 84), updatedAt: Date.now(), messages: nextMessages, preview: latestMessage?.content || firstUser, messageCount: nextMessages.length };
+    const item: Conversation = { id: threadId ? `backend:${threadId}` : conversationId, backendThreadId: threadId || undefined, activeWorkflow, title: firstUser.slice(0, 84), updatedAt: Date.now(), messages: nextMessages, preview: latestMessage?.content || firstUser, messageCount: nextMessages.length };
     setConversations((current) => {
       const next = [item, ...current.filter((entry) => entry.id !== item.id && entry.id !== conversationId)].slice(0, 24);
       if (!(user as any)?.id || !threadId) saveJson(CONVERSATIONS_KEY, next);
@@ -943,7 +976,7 @@ function OyiAiCommandCenterContent() {
     });
   }
 
-  async function handleSend(text?: string, options?: { usageLabel?: string; fromVoice?: boolean }) {
+  async function handleSend(text?: string, options?: { usageLabel?: string; fromVoice?: boolean; workflowOverride?: OyiActiveWorkflow | null; threadIdOverride?: string | null }) {
     const command = (text ?? input).trim();
     if (!command || busy) return;
 
@@ -960,11 +993,28 @@ function OyiAiCommandCenterContent() {
 
     try {
       const turnContext = turnScopedAiContext(command, context as Record<string, any>);
-      const resp = await aiService.chat(command, { ...turnContext, thread_id: canonicalActiveThreadId || undefined });
-      const nextThreadId = resp.thread_id || canonicalActiveThreadId;
+      const workflowForTurn = activeWorkflowFromUnknown(options?.workflowOverride || activeConversation.activeWorkflow);
+      const turnThreadId = options?.threadIdOverride || canonicalActiveThreadId || undefined;
+      const conversationContext = workflowForTurn
+        ? { ...(turnContext.conversation_context || {}), active_workflow: workflowForTurn }
+        : turnContext.conversation_context;
+      const resp = await aiService.chat(command, {
+        ...turnContext,
+        thread_id: turnThreadId,
+        workflow_id: workflowForTurn?.workflow_id || undefined,
+        active_workflow: workflowForTurn || undefined,
+        conversation_context: conversationContext,
+      });
+      const nextThreadId = resp.thread_id || turnThreadId || null;
+      const responseWorkflow = workflowFromChatResponse(resp);
+      const nextActiveWorkflow = responseWorkflow && !isTerminalOyiWorkflowStatus(responseWorkflow.status)
+        ? responseWorkflow
+        : responseWorkflow || isTerminalWorkflowIntent(command)
+          ? null
+          : workflowForTurn;
       if (nextThreadId) {
         setBackendThreadId(nextThreadId);
-        setActiveConversation({ threadId: nextThreadId, status: "active_thread", source: activeConversation.status === "blank" ? "new" : activeConversation.source });
+        setActiveConversation({ threadId: nextThreadId, status: "active_thread", source: activeConversation.status === "blank" ? "new" : activeConversation.source, activeWorkflow: nextActiveWorkflow });
         setConversationId(`backend:${nextThreadId}`);
         setThreadRoute(nextThreadId);
       }
@@ -974,7 +1024,7 @@ function OyiAiCommandCenterContent() {
       const navigationRoute = navigationRouteFromResponse(resp);
       const nextMessages = baseMessages.map((item) => item.id === pendingId ? { ...item, pending: false, content, state, confirmations: resp.confirmations || [], cards: awarenessCards(resp), sources: resp.sources || [], suggested_actions: resp.suggested_actions || [], warnings: resp.warnings || [], persistence_saved: resp.persistence_saved, resolved_turn: resp.resolved_turn, presentation_policy: resp.presentation_policy, navigation_route: navigationRoute, intent: resp.intent, understood: resp.understood, execution: resp.execution, display_mode: resp.display_mode || "conversation", executionSummary: resp.executionSummary, executionHistory: resp.executionHistory, approvalRequired: resp.approvalRequired, trustScore: resp.trustScore, initiatorType: resp.initiatorType, approvedBy: resp.approvedBy } : item);
       setMessages(nextMessages);
-      persistConversation(nextMessages, nextThreadId || undefined);
+      persistConversation(nextMessages, nextThreadId || undefined, nextActiveWorkflow);
       if (navigationRoute && !resp.approvalRequired && !resp.requiresConfirmation) {
         window.setTimeout(() => {
           if (!cancelledNavigationRef.current.has(pendingId)) router.push(navigationRoute);
@@ -1136,8 +1186,27 @@ function OyiAiCommandCenterContent() {
     }
   }
 
-  async function decideConfirmation(ledgerId: string, decision: "confirm" | "cancel") {
-    if (!ledgerId || busy) return;
+  async function decideConfirmation(confirmation: Record<string, any>, decision: "confirm" | "cancel") {
+    if (busy) return;
+    const workflow = activeWorkflowFromUnknown(confirmation) || activeWorkflowFromUnknown(activeConversation.activeWorkflow);
+    const workflowId = workflow?.workflow_id || String(confirmation?.workflow_id || "").trim();
+    if (workflowId) {
+      const nextWorkflow = workflow || {
+        workflow_id: workflowId,
+        action_id: confirmation?.action_id || confirmation?.id || null,
+        status: "awaiting_confirmation",
+        capability_key: confirmation?.capability_key || null,
+      };
+      await handleSend(decision === "confirm" ? "Confirm" : "Cancel", {
+        usageLabel: decision === "confirm" ? "Confirm action" : "Cancel action",
+        workflowOverride: nextWorkflow,
+        threadIdOverride: canonicalActiveThreadId || undefined,
+      });
+      return;
+    }
+
+    const ledgerId = String(confirmation?.ledger_id || confirmation?.id || confirmation?.command_id || "").trim();
+    if (!ledgerId) return;
     const pendingId = createId();
     const pendingMessage: AiMessage = { id: pendingId, role: "assistant", content: decision === "confirm" ? "Executing command…" : "Cancelling…", state: "executing", pending: true };
     const baseMessages = [...messages, pendingMessage];
@@ -1165,7 +1234,7 @@ function OyiAiCommandCenterContent() {
     const restoreSeq = restoreSequenceRef.current + 1;
     restoreSequenceRef.current = restoreSeq;
     routeThreadRestoreRef.current = requestedThreadId;
-    setActiveConversation({ threadId: requestedThreadId, status: "loading_thread", source });
+    setActiveConversation({ threadId: requestedThreadId, status: "loading_thread", source, activeWorkflow: null });
     setRestoringThreadId(requestedThreadId);
     setHistoryError(null);
     setTargetError(null);
@@ -1186,10 +1255,11 @@ function OyiAiCommandCenterContent() {
       });
       if (Number(res.thread?.message_count || 0) > 0 && rows.length === 0) throw new Error("thread_message_count_mismatch");
       const nextMessages = rows.map(messageFromThread);
+      const restoredWorkflow = activeWorkflowFromThread(res.thread);
       setMessages(nextMessages);
       setBackendThreadId(requestedThreadId);
       setConversationId(`backend:${requestedThreadId}`);
-      setActiveConversation({ threadId: requestedThreadId, status: "active_thread", source });
+      setActiveConversation({ threadId: requestedThreadId, status: "active_thread", source, activeWorkflow: restoredWorkflow });
       setConversations((current) => current.map((item) => item.backendThreadId === requestedThreadId ? {
         ...item,
         title: res.thread?.title || item.title,
@@ -1197,6 +1267,7 @@ function OyiAiCommandCenterContent() {
         messageCount: Number(res.thread?.message_count || nextMessages.length || item.messageCount || 0),
         updatedAt: res.thread?.updated_at ? toTimestamp(res.thread.updated_at) : item.updatedAt,
         messages: nextMessages,
+        activeWorkflow: restoredWorkflow,
       } : item));
       setThreadRoute(requestedThreadId);
       setHistoryOpen(false);
@@ -1206,7 +1277,7 @@ function OyiAiCommandCenterContent() {
       if (restoreSequenceRef.current !== restoreSeq) return false;
       const emptyThread = error instanceof Error && error.message === "thread_empty";
       setHistoryError(emptyThread ? "This conversation has no saved messages." : "This conversation could not be loaded. Try again.");
-      setActiveConversation({ threadId: requestedThreadId, status: "thread_error", source });
+      setActiveConversation({ threadId: requestedThreadId, status: "thread_error", source, activeWorkflow: null });
       setMessages((current) => current.length ? current : emptyThread ? [] : [{ id: createId(), role: "assistant", content: "This conversation could not be loaded right now.", state: "unavailable" }]);
       return false;
     } finally {
@@ -1223,7 +1294,7 @@ function OyiAiCommandCenterContent() {
     }
     setConversationId(conversation.id);
     setBackendThreadId(null);
-    setActiveConversation({ threadId: null, status: "blank", source: "history" });
+    setActiveConversation({ threadId: null, status: "blank", source: "history", activeWorkflow: conversation.activeWorkflow || null });
     setMessages(conversation.messages || []);
     setThreadRoute(null);
     setHistoryOpen(false);
@@ -1241,7 +1312,7 @@ function OyiAiCommandCenterContent() {
     restoreSequenceRef.current += 1;
     setConversationId(createId());
     setBackendThreadId(null);
-    setActiveConversation({ threadId: null, status: "blank", source: "new" });
+    setActiveConversation({ threadId: null, status: "blank", source: "new", activeWorkflow: null });
     setMessages([]);
     setHistoryOpen(false);
     setHistoryError(null);
