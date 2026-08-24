@@ -7,8 +7,13 @@ const hook = fs.readFileSync("src/lib/oyi-camera-core/useCameraPlayback.ts", "ut
 const service = fs.readFileSync("src/services/cameraService.ts", "utf8");
 const player = fs.readFileSync("src/app/components/remotes/StreamPlayer.tsx", "utf8");
 const target = fs.readFileSync("src/services/oyiTargetRegistry.ts", "utf8");
+const media = fs.readFileSync("src/lib/oyi-camera-core/media.ts", "utf8");
+const detection = fs.readFileSync("src/lib/oyi-camera-core/detection.ts", "utf8");
+const compile = (source) => { const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText; const mod = { exports: {} }; new Function("module", "exports", js)(mod, mod.exports); return mod.exports; };
+const mediaModule = compile(media);
+const detectionModule = compile(detection);
 const js = ts.transpileModule(runtime, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-const mod = { exports: {} }; new Function("module", "exports", js)(mod, mod.exports); const core = mod.exports;
+const mod = { exports: {} }; new Function("module", "exports", "require", js)(mod, mod.exports, (specifier) => specifier === "./media" ? mediaModule : specifier === "./detection" ? detectionModule : (() => { throw new Error(`Unexpected require: ${specifier}`); })()); const core = mod.exports;
 const camera = core.normalizeCamera({ id:"cam", privacy_scope:"home", home_id:"home-a", stream_status:"ready", health:{online:true,status:"healthy"}, rtsp_url:"rtsp://secret@10.0.0.2/live", edge_hls_url:"http://10.0.0.2/live.m3u8" });
 assert.equal(camera.scope,"home"); assert.equal(camera.runtimeState,"online"); assert.equal(JSON.stringify(camera).includes("10.0.0.2"),false);
 assert.throws(()=>core.normalizePlaybackSession({type:"webrtc",url:"https://example.invalid/whep"}),/unavailable/);

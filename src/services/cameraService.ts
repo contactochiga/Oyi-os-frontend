@@ -22,9 +22,9 @@ export const cameraService = {
     }
   },
 
-  async getPlayback(cameraId: string, rewindSeconds = 0): Promise<CameraPlaybackSession> {
+  async getPlayback(cameraId: string): Promise<CameraPlaybackSession> {
     try {
-      return await readClient.createPlaybackSession(cameraId, { rewindSeconds });
+      return await readClient.createPlaybackSession(cameraId);
     } catch (err) {
       throw new Error(pickError(err, "Failed to load playback"));
     }

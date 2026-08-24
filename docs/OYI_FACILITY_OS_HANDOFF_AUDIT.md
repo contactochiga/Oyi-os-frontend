@@ -202,10 +202,10 @@ GET   /facility/visitors/reports/export
 ### Cameras
 
 ```text
-POST /cameras/scan
+POST /edge/camera-discovery/commands
 GET  /cameras/estate/:estateId
 POST /cameras/bind
-GET  /cameras/:cameraId/hls-token
+GET  /cameras/:cameraId/playback
 GET  /cameras/:cameraId/playback
 GET  /cameras/:cameraId/events
 POST /cameras/:cameraId/events

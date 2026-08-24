@@ -864,12 +864,12 @@ Review resident access to `/services/config` before final service-catalog rollou
 
 | Method | Path | Permission | Purpose |
 | --- | --- | --- | --- |
-| `POST` | `/cameras/scan` | `cameras.view` | Scan cameras |
+| `POST` | `/edge/camera-discovery/commands` | `cameras.manage` | Ask an authorized Oyi Edge node to discover cameras |
 | `GET` | `/cameras/estate/:estateId` | `cameras.view` | List estate cameras |
 | `POST` | `/cameras/bind` | `devices.control` | Bind camera |
 | `POST` | `/cameras/bind-from-discovery` | `devices.control` | Bind discovered camera |
 | `GET` | `/cameras/reports/security` | `cameras.view` | Security report |
-| `GET` | `/cameras/:cameraId/hls-token` | `cameras.view` | Issue short-lived playback token |
+| `GET` | `/cameras/:cameraId/playback` | `cameras.view` | Issue an authorized live playback session |
 | `GET` | `/cameras/:cameraId/playback` | `cameras.view` | Get playback URL |
 | `GET` | `/cameras/:cameraId/events` | `cameras.view` | List camera events |
 | `POST` | `/cameras/:cameraId/events` | `cameras.view` | Create camera event |
