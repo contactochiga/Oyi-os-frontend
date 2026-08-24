@@ -3,44 +3,26 @@
 import { useEffect, useState } from "react";
 import StreamPlayer from "@/app/components/remotes/StreamPlayer";
 import cameraService, { CameraEvent, CameraItem } from "@/services/cameraService";
-
-type StreamInfo = { type: "hls"; url: string };
+import { getCameraEventOccurrenceTime } from "@/lib/oyi-camera-core/core";
 
 function confidenceLabel(v?: number | null) {
   if (typeof v !== "number") return "n/a";
   return `${Math.round(v * 100)}%`;
 }
 
-export default function CameraIntelPanel({ estateId }: { estateId?: string | null }) {
+export default function CameraIntelPanel({ homeId }: { homeId?: string | null }) {
   const [cams, setCams] = useState<CameraItem[]>([]);
   const [activeCamId, setActiveCamId] = useState<string>("");
-  const [stream, setStream] = useState<StreamInfo | null>(null);
   const [events, setEvents] = useState<CameraEvent[]>([]);
-  const [loading, setLoading] = useState(false);
   const [eventsLoading, setEventsLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [rewind, setRewind] = useState<number>(0);
 
   async function loadCameras() {
-    if (!estateId) return;
-    const list = await cameraService.listByEstate(String(estateId));
+    if (!homeId) return;
+    const list = await cameraService.listByHome(String(homeId));
     setCams(list);
     if (!activeCamId && list.length) setActiveCamId(String(list[0].id));
-  }
-
-  async function loadPlayback(cameraId: string, rewindSeconds: number) {
-    if (!cameraId) return;
-    setLoading(true);
-    setErr(null);
-    try {
-      const s = await cameraService.getPlayback(cameraId, rewindSeconds);
-      setStream(s);
-    } catch (e: any) {
-      setErr(e?.message || "Failed to load stream");
-      setStream(null);
-    } finally {
-      setLoading(false);
-    }
   }
 
   async function loadEvents(cameraId: string) {
@@ -60,13 +42,11 @@ export default function CameraIntelPanel({ estateId }: { estateId?: string | nul
   useEffect(() => {
     loadCameras();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [estateId]);
+  }, [homeId]);
 
   useEffect(() => {
     if (!activeCamId) return;
-    loadPlayback(activeCamId, rewind);
     loadEvents(activeCamId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeCamId, rewind]);
 
   return (
@@ -118,10 +98,8 @@ export default function CameraIntelPanel({ estateId }: { estateId?: string | nul
       </div>
 
       <div className="mt-3 rounded-2xl overflow-hidden border border-white/10 bg-black/40">
-        {loading ? (
-          <div className="h-48 flex items-center justify-center text-xs text-white/50">Loading camera stream…</div>
-        ) : stream ? (
-          <StreamPlayer stream={stream} />
+        {activeCamId ? (
+          <StreamPlayer cameraId={activeCamId} rewindSeconds={rewind} />
         ) : (
           <div className="h-48 flex items-center justify-center text-xs text-white/50">
             {err || "Select a camera to start stream"}
@@ -140,13 +118,13 @@ export default function CameraIntelPanel({ estateId }: { estateId?: string | nul
             events.map((ev) => (
               <div key={ev.id} className="rounded-xl border border-white/10 bg-black/20 p-2.5">
                 <div className="flex items-center justify-between gap-2">
-                  <div className="text-xs font-semibold text-white">{String(ev.event_type || "event").replace(/_/g, " ")}</div>
+                  <div className="text-xs font-semibold text-white">{String(ev.type || "event").replace(/_/g, " ")}</div>
                   <div className="text-[11px] text-white/45">{confidenceLabel(ev.confidence)}</div>
                 </div>
                 <div className="mt-1 text-[11px] text-white/60">
-                  {ev.created_at ? new Date(ev.created_at).toLocaleString() : "Unknown time"}
+                  {new Date(getCameraEventOccurrenceTime(ev)).toLocaleString()}
                 </div>
-                {ev.message ? <div className="mt-1 text-[11px] text-white/75">{ev.message}</div> : null}
+                {typeof ev.metadata.message === "string" ? <div className="mt-1 text-[11px] text-white/75">{ev.metadata.message}</div> : null}
               </div>
             ))
           )}
@@ -155,4 +133,3 @@ export default function CameraIntelPanel({ estateId }: { estateId?: string | nul
     </div>
   );
 }
-

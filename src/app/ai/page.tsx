@@ -768,7 +768,7 @@ function OyiAiCommandCenterContent() {
   }, [registeredContext, searchParams]);
 
   function openTarget(target: OyiTarget | null | undefined) {
-    const result = resolveConsumerOyiTarget(target, router);
+    const result = resolveConsumerOyiTarget(target, router, { homeId: activeContext.home_id || (user as any)?.home_id || null });
     if (!result.handled && result.error) setTargetError(result.error);
     return result.handled;
   }

@@ -18,6 +18,8 @@ export type OyiTarget = {
   infrastructure_source?: "devices" | "cameras" | "edge" | "utilities" | "providers";
   open_as: "drawer" | "page" | "queue" | "attention" | "none";
   action?: "inspect" | "approve" | "assign" | "acknowledge" | "verify" | "resolve" | "escalate" | "control" | "pay" | "message";
+  camera_scope?: "facility" | "home" | "office" | "unknown";
+  home_id?: string | null;
 };
 
 export type OperationalObjectType =

@@ -1,0 +1,20 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import ts from "typescript";
+
+const runtime = fs.readFileSync("src/lib/oyi-camera-core/runtime.ts", "utf8");
+const hook = fs.readFileSync("src/lib/oyi-camera-core/useCameraPlayback.ts", "utf8");
+const service = fs.readFileSync("src/services/cameraService.ts", "utf8");
+const player = fs.readFileSync("src/app/components/remotes/StreamPlayer.tsx", "utf8");
+const target = fs.readFileSync("src/services/oyiTargetRegistry.ts", "utf8");
+const js = ts.transpileModule(runtime, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+const mod = { exports: {} }; new Function("module", "exports", js)(mod, mod.exports); const core = mod.exports;
+const camera = core.normalizeCamera({ id:"cam", privacy_scope:"home", home_id:"home-a", stream_status:"ready", health:{online:true,status:"healthy"}, rtsp_url:"rtsp://secret@10.0.0.2/live", edge_hls_url:"http://10.0.0.2/live.m3u8" });
+assert.equal(camera.scope,"home"); assert.equal(camera.runtimeState,"online"); assert.equal(JSON.stringify(camera).includes("10.0.0.2"),false);
+assert.throws(()=>core.normalizePlaybackSession({type:"webrtc",url:"https://example.invalid/whep"}),/unavailable/);
+for (const symbol of ["CameraHealth","CameraEvent","CameraPlaybackSession","normalizeCamera","normalizeCameraEvent","cameraRuntimeState","serializeCameraOyiContext","CameraRealtimeAdapter"]) assert.match(runtime,new RegExp(symbol));
+for (const lifecycle of ["expiresAt","refreshing","failureCount","clearTimers","destroy","generation","import(\"hls.js\")"]) assert.ok(hook.includes(lifecycle),`missing playback lifecycle: ${lifecycle}`);
+assert.match(service,/createCameraReadClient/); assert.match(service,/scope: "home"/); assert.doesNotMatch(service,/listByEstate/);
+assert.match(player,/useCameraPlayback/); assert.doesNotMatch(player,/RTCPeerConnection|new Hls|WHEP/);
+assert.match(target,/camera_scope === "home"/); assert.match(target,/targetHome === activeHome/); assert.match(target,/infrastructure detail is available to facility operators only/);
+console.log("Consumer Camera Core Phase 2 privacy/playback smoke passed");

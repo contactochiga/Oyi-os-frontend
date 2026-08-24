@@ -14,8 +14,6 @@ type CameraDevice = {
   type?: string;
 };
 
-type StreamInfo = { type: "hls" | "webrtc"; url: string };
-
 export default function CctvPanel({
   deviceId,
   lastUpdated,
@@ -27,33 +25,24 @@ export default function CctvPanel({
 }) {
   const { user } = useAuth();
   const activeContext = useActiveContext();
-  const estateId = useMemo(
-    () => activeContext.estate_id || user?.estate_id || null,
-    [activeContext.estate_id, user?.estate_id]
-  );
   const homeId = useMemo(() => activeContext.home_id || user?.home_id || null, [activeContext.home_id, user?.home_id]);
 
   const [cams, setCams] = useState<CameraDevice[]>([]);
   const [activeId, setActiveId] = useState<string | null>(deviceId ?? null);
-  const [stream, setStream] = useState<StreamInfo | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [err, setErr] = useState<string | null>(null);
-
-  function touch() {
-    onInteraction?.();
-  }
 
   useEffect(() => {
     (async () => {
       try {
         setErr(null);
-        const list = homeId ? await cameraService.listByHome(homeId) : estateId ? await cameraService.listByEstate(estateId) : [];
+        const list = homeId ? await cameraService.listByHome(homeId) : [];
 
         const normalized = (list || []).map((d: any) => ({
           id: String(d.id),
           name: d.name || "Camera",
-          category: d.privacy_scope || "camera",
-          type: d.stream_status || "hls",
+          category: d.scope || "camera",
+          type: d.streamStatus || "hls",
         }));
 
         setCams(normalized);
@@ -63,28 +52,7 @@ export default function CctvPanel({
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [estateId, homeId]);
-
-  useEffect(() => {
-    if (!activeId) return;
-
-    (async () => {
-      setLoading(true);
-      setErr(null);
-      setStream(null);
-
-      try {
-        const data = await cameraService.getPlayback(activeId);
-        setStream({ type: data.type, url: data.url });
-        touch();
-      } catch (e: any) {
-        setErr(e?.response?.data?.error || e?.message || "Stream failed");
-      } finally {
-        setLoading(false);
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeId]);
+  }, [homeId]);
 
   return (
     <RemotePanel title="CCTV" lastUpdated={lastUpdated}>
@@ -92,7 +60,7 @@ export default function CctvPanel({
       <div className="flex items-center justify-between gap-3 mb-3">
         <select
           value={activeId ?? ""}
-          onChange={(e) => setActiveId(e.target.value || null)}
+          onChange={(e) => { setActiveId(e.target.value || null); onInteraction?.(); }}
           className="flex-1 rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-white/85 outline-none"
         >
           {!cams.length ? <option value="">No cameras</option> : null}
@@ -105,7 +73,7 @@ export default function CctvPanel({
 
         <button
           type="button"
-          onClick={() => activeId && setActiveId(String(activeId))} // re-trigger by setting same id
+          onClick={() => activeId && setRefreshKey((value) => value + 1)}
           className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-sm text-white/80 border border-white/10"
         >
           Refresh
@@ -114,10 +82,8 @@ export default function CctvPanel({
 
       {/* Stream */}
       <div className="rounded-2xl overflow-hidden border border-white/10 bg-black/30">
-        {loading ? (
-          <div className="h-44 flex items-center justify-center text-xs text-white/50">Loading stream…</div>
-        ) : stream ? (
-          <StreamPlayer stream={stream} />
+        {activeId ? (
+          <StreamPlayer key={`${activeId}:${refreshKey}`} cameraId={activeId} />
         ) : (
           <div className="h-44 flex items-center justify-center text-xs text-white/50 px-4 text-center">
             {err || "Select a camera to view stream."}
