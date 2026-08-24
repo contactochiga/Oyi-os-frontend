@@ -6,10 +6,18 @@ export type CameraItem = {
   home_id?: string;
   name?: string;
   ip?: string;
-  edge_hls_url?: string | null;
   privacy_scope?: "facility" | "home" | "office" | string;
   stream_status?: string | null;
   edge_status?: string | null;
+  health?: {
+    online: boolean;
+    status: string;
+    stream_status: string;
+    last_health_at?: string | null;
+    latency_ms?: number | null;
+    reconnect_count?: number;
+    provider_error?: string | null;
+  } | null;
 };
 
 export type CameraEvent = {
@@ -21,6 +29,7 @@ export type CameraEvent = {
   message?: string | null;
   metadata?: Record<string, any> | null;
   created_at?: string | null;
+  source_timestamp?: string | null;
 };
 
 function pickError(err: any, fallback: string) {
