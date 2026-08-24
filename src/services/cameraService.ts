@@ -1,90 +1,39 @@
 import API from "./api";
+import { createCameraReadClient, type Camera, type CameraEvent, type CameraPlaybackSession } from "@/lib/oyi-camera-core/core";
 
-export type CameraItem = {
-  id: string;
-  estate_id?: string;
-  home_id?: string;
-  name?: string;
-  ip?: string;
-  edge_hls_url?: string | null;
-  privacy_scope?: "facility" | "home" | "office" | string;
-  stream_status?: string | null;
-  edge_status?: string | null;
-};
-
-export type CameraEvent = {
-  id: string;
-  camera_id: string;
-  event_type: string;
-  confidence?: number | null;
-  snapshot_url?: string | null;
-  message?: string | null;
-  metadata?: Record<string, any> | null;
-  created_at?: string | null;
-};
+export type CameraItem = Camera;
+export type { CameraEvent };
 
 function pickError(err: any, fallback: string) {
-  return (
-    err?.response?.data?.error ||
-    err?.response?.data?.message ||
-    err?.message ||
-    fallback
-  );
+  return err?.response?.data?.error || err?.response?.data?.message || err?.message || fallback;
 }
 
-export const cameraService = {
-  async listByEstate(estateId: string): Promise<CameraItem[]> {
-    if (!estateId) return [];
-    try {
-      const res = await API.get(`/cameras/estate/${encodeURIComponent(estateId)}`);
-      return res.data?.items ?? [];
-    } catch (err) {
-      console.warn("cameraService.listByEstate error:", err);
-      return [];
-    }
-  },
+const readClient = createCameraReadClient(API);
 
+export const cameraService = {
+  /** Consumer inventory is deliberately home-scoped; estate inventory is never a fallback. */
   async listByHome(homeId: string): Promise<CameraItem[]> {
     if (!homeId) return [];
     try {
-      const res = await API.get(`/cameras/home/${encodeURIComponent(homeId)}`);
-      return res.data?.items ?? [];
+      return await readClient.listCameras({ scope: "home", homeId });
     } catch (err) {
-      console.warn("cameraService.listByHome error:", err);
+      console.warn("cameraService.listByHome failed", { reason: pickError(err, "camera inventory unavailable") });
       return [];
     }
   },
 
-  async getPlayback(cameraId: string, rewindSeconds = 0): Promise<{ type: "hls"; url: string; hls_url?: string; edge_status?: string; stream_status?: string; message?: string }> {
+  async getPlayback(cameraId: string, rewindSeconds = 0): Promise<CameraPlaybackSession> {
     try {
-      const res = await API.get(`/cameras/${encodeURIComponent(cameraId)}/playback`, {
-        params: { rewind: Math.max(0, Math.floor(rewindSeconds || 0)) },
-      });
-      const url = res.data?.hls_url || res.data?.url;
-      if (!url) throw new Error(res.data?.message || "Playback URL not available");
-      return {
-        type: "hls",
-        url: String(url),
-        hls_url: String(url),
-        edge_status: res.data?.edge_status,
-        stream_status: res.data?.stream_status,
-        message: res.data?.message,
-      };
-    } catch (err: any) {
+      return await readClient.createPlaybackSession(cameraId, { rewindSeconds });
+    } catch (err) {
       throw new Error(pickError(err, "Failed to load playback"));
     }
   },
 
-  async listEvents(cameraId: string, opts?: { limit?: number; sinceMinutes?: number }) {
+  async listEvents(cameraId: string, opts?: { limit?: number; sinceMinutes?: number }): Promise<CameraEvent[]> {
     try {
-      const res = await API.get(`/cameras/${encodeURIComponent(cameraId)}/events`, {
-        params: {
-          limit: opts?.limit ?? 50,
-          sinceMinutes: opts?.sinceMinutes ?? 24 * 60,
-        },
-      });
-      return (res.data?.events ?? []) as CameraEvent[];
-    } catch (err: any) {
+      return await readClient.getCameraEvents(cameraId, opts);
+    } catch (err) {
       throw new Error(pickError(err, "Failed to load camera events"));
     }
   },

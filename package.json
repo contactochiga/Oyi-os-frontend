@@ -171,6 +171,7 @@
     "axios": "^1.4.0",
     "firebase": "^10.7.0",
     "framer-motion": "^11.0.8",
+    "hls.js": "^1.7.1",
     "jwt-decode": "^4.0.0",
     "lucide-react": "^0.563.0",
     "mqtt": "^4.3.7",

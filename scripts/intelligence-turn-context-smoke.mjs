@@ -36,7 +36,7 @@ check("main AI broad turns clear selected subobject and visible state", () => {
 
 check("turn-scoped context is used for typed and voice submissions", () => {
   assert.match(sendBlock, /const turnContext = turnScopedAiContext\(command, context as Record<string, any>\)/);
-  assert.match(sendBlock, /aiService\.chat\(command, \{ \.\.\.turnContext, thread_id/);
+  assert.match(sendBlock, /aiService\.chat\(command,\s*\{\s*\.\.\.turnContext,\s*thread_id/);
 });
 
 check("exact drawer quick actions keep immutable exact target contract", () => {
