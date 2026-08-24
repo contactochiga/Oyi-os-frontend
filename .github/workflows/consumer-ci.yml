@@ -32,6 +32,9 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit --pretty false
 
+      - name: Verify generated Camera Core
+        run: npm run verify:camera-core-distribution && npm run smoke:camera-runtime-canonicalization
+
       - name: Build
         run: npm run build
 

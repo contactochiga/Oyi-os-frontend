@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "smoke:camera-runtime-canonicalization": "node scripts/camera-runtime-canonicalization-smoke.mjs",
+    "verify:camera-core-distribution": "node scripts/verify-camera-core-distribution.mjs",
     "dev": "next dev",
     "build": "next build",
     "build:native-web": "next build",

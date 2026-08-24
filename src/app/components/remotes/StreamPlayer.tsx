@@ -4,12 +4,12 @@ import { useCallback } from "react";
 import { useCameraPlayback } from "@/lib/oyi-camera-core/useCameraPlayback";
 import cameraService from "@/services/cameraService";
 
-export default function StreamPlayer({ cameraId, rewindSeconds = 0 }: { cameraId: string | null; rewindSeconds?: number }) {
+export default function StreamPlayer({ cameraId }: { cameraId: string | null }) {
   const createSession = useCallback(
-    (id: string, options?: { rewindSeconds?: number }) => cameraService.getPlayback(id, options?.rewindSeconds),
+    (id: string) => cameraService.getPlayback(id),
     []
   );
-  const { videoRef, status, error } = useCameraPlayback({ cameraId, rewindSeconds, enabled: Boolean(cameraId), createSession });
+  const { videoRef, status, error } = useCameraPlayback({ cameraId, enabled: Boolean(cameraId), createSession });
 
   return (
     <div className="relative w-full">

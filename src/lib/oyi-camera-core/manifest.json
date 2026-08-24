@@ -1,0 +1,11 @@
+{
+  "source": "Ochiga-backend/packages/oyi-camera-core/src",
+  "version": "5.0.0-phase5",
+  "hashes": {
+    "core.ts": "447bc21a3e852e5fce5a1fcae88c5db223b7fb38e2b4a95e04c0b7fda9abd4af",
+    "runtime.ts": "6546c2f74e8262348f5842d5c8f850d339b9b9741d28221387481be631be4070",
+    "media.ts": "9e498d409fec02fe101af69ac6233a7c780e7e47729aad172608ae31936b034b",
+    "detection.ts": "f557235feae2f2badd204a34e31e1bfa70f8cb8fd28f196541a216092f6b9fb5",
+    "useCameraPlayback.ts": "1d858d2f926d692a8596a7d11570110b01c215496e3797c0cb10074ef6bddbc7"
+  }
+}

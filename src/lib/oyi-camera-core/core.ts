@@ -1,2 +1,2 @@
-// Generated from Ochiga-backend/packages/oyi-camera-core/src/core.ts.
+// DO NOT EDIT DIRECTLY — generated from canonical Oyi Camera Core.
 export * from "./runtime";
