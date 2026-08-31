@@ -63,19 +63,28 @@ function getLS(key: string): string | null {
 }
 
 function activeScopeFromStorage() {
+  // Production incident: oyi_active_estate_id / oyi_active_home_id /
+  // oyi_active_context_key were read here with the HIGHEST priority, but
+  // nothing in this codebase ever writes them (confirmed by a full grep
+  // for every localStorage.setItem across src/) -- they can only ever
+  // hold stale garbage left by a since-removed code path or manual
+  // tampering, yet they silently outranked the real, actively-synced
+  // keys below (written fresh on every resolved context by
+  // useActiveContext.ts, and again by sessionBootstrap.ts right after
+  // invite activation). A resident with 100% correct, active
+  // estate_memberships/home_memberships rows could still get a stale
+  // scope silently substituted on every request. Removed entirely --
+  // never reintroduce a "highest priority" scope key that nothing in
+  // this codebase writes.
   const estateId =
-    getLS("oyi_active_estate_id") ||
     getLS("oyi_estate_id") ||
     getLS("ochiga_estate") ||
     getLS("estate_id");
   const homeId =
-    getLS("oyi_active_home_id") ||
     getLS("oyi_home_id") ||
     getLS("ochiga_home") ||
     getLS("home_id");
-  const contextKey =
-    getLS("oyi_active_context_key") ||
-    (estateId || homeId ? `${estateId || "estate"}:${homeId || "home"}` : null);
+  const contextKey = estateId || homeId ? `${estateId || "estate"}:${homeId || "home"}` : null;
   return { estateId, homeId, contextKey };
 }
 

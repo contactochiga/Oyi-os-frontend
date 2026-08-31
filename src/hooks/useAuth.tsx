@@ -129,6 +129,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         "oyi_home_id",
         "home_id",
         "ochiga_home",
+        // Defensive cleanup for any browser that still has these from a
+        // since-removed, never-current code path -- api.ts no longer
+        // reads them, but clearing them here removes the garbage outright
+        // rather than leaving it to linger indefinitely.
+        "oyi_active_estate_id",
+        "oyi_active_home_id",
+        "oyi_active_context_key",
       ].forEach((key) => window.localStorage.removeItem(key));
     }
     router.replace("/");
