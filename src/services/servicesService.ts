@@ -11,6 +11,28 @@ export type ServiceKey =
   | "service_charge"
   | "other_facility_fees";
 
+export type PricingPlan = {
+  pricing_type: "usage_based" | "fixed" | "recurring" | "subscription";
+  plan_name?: string | null;
+  unit_name?: string | null;
+  currency?: string | null;
+  rate_amount: number;
+  billing_frequency?: string | null;
+  payment_timing?: string | null;
+  provider?: string | null;
+  effective_from?: string | null;
+};
+
+// A typed pricing summary, as attached to each home-registry entry and
+// service config: either the single unambiguous current rate for a
+// usage_based/fixed/recurring service, or the full plan list for a
+// subscription service (Internet). Absent/null means genuinely not
+// configured yet -- never fabricated by the frontend.
+export type PricingSummary =
+  | (Omit<PricingPlan, "plan_name"> & { pricing_type: Exclude<PricingPlan["pricing_type"], "subscription"> })
+  | { pricing_type: "subscription"; plans: Array<Pick<PricingPlan, "plan_name" | "rate_amount" | "currency" | "billing_frequency" | "provider">> }
+  | null;
+
 export type ServiceConfig = {
   estate_id: string;
   service_key: ServiceKey;
@@ -28,6 +50,7 @@ export type ServiceConfig = {
   metadata?: Record<string, any> | null;
   created_at?: string;
   updated_at?: string;
+  pricing_plans?: PricingPlan[];
 };
 
 
@@ -43,8 +66,19 @@ export type HomeServiceRegistry = {
   internet: ServiceRegistryEntry & { plan?: string | null; expires_at?: string | null };
   generator_recovery?: ServiceRegistryEntry;
   solar_battery?: ServiceRegistryEntry & { plan?: string | null };
-  estate_fees: { enabled: boolean; outstanding?: number | null; status: string; due_date?: string | null; last_payment_at?: string | null };
-  facility_services: { enabled: boolean; available_count?: number; status?: string; last_payment_at?: string | null };
+  estate_fees: {
+    enabled: boolean;
+    outstanding?: number | null;
+    status: string;
+    due_date?: string | null;
+    last_payment_at?: string | null;
+    account_id?: string | null;
+    provisioning_status?: "not_provisioned" | "provisioned" | string | null;
+    transaction_availability?: "available" | "not_supported" | string | null;
+    unavailable_reason?: string | null;
+    pricing?: PricingSummary;
+  };
+  facility_services: { enabled: boolean; available_count?: number; status?: string; last_payment_at?: string | null; pricing?: PricingSummary };
 };
 
 export type ServiceRegistryEntry = {
@@ -63,6 +97,8 @@ export type ServiceRegistryEntry = {
   provisioning_status?: "not_provisioned" | "provisioned" | string | null;
   provider_status?: "not_required" | "pending" | "available" | "degraded" | "unavailable" | string | null;
   transaction_availability?: "available" | "temporarily_unavailable" | "not_supported" | string | null;
+  unavailable_reason?: string | null;
+  pricing?: PricingSummary;
 };
 
 export type ServiceAccount = {
@@ -198,13 +234,14 @@ export const servicesService = {
       return failure(err, "Failed to load home service registry") as any;
     }
   },
-  async pay(payload: { service_key: ServiceKey; amount: number; account_ref: string; bundle_name?: string; period_label?: string }) {
+  async pay(payload: { service_key: ServiceKey; amount: number; account_ref: string; bundle_name?: string; period_label?: string; idempotency_key: string }) {
     try {
       const res = await API.post("/services/pay", payload);
       return res.data as {
         ok?: boolean;
         balance?: number;
         receipt?: ServicePayment;
+        idempotent?: boolean;
       };
     } catch (err: any) {
       return failure(err, "Failed to process service payment") as any;

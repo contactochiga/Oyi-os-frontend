@@ -85,6 +85,35 @@ function looksLikeInternalId(value?: string | null) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(text);
 }
 
+// Consumer must never show a permanently dead button with no explanation
+// (Facility <-> Consumer Utilities acceptance, Part E). These map the
+// backend's honest, machine-readable unavailable_reason onto the exact
+// vocabulary asked for: Setup required / Provider unavailable / Coming
+// soon -- never a fabricated "Buy" action for a type with no execution
+// path.
+const UNAVAILABLE_REASON_LABELS: Record<string, string> = {
+  service_disabled: "Unavailable",
+  setup_required: "Setup required",
+  tariff_not_configured: "Setup required",
+  meter_not_linked: "Setup required",
+  resident_purchases_disabled: "Unavailable",
+  provider_not_configured: "Provider unavailable",
+  provider_not_integrated: "Provider unavailable",
+  amount_below_minimum: "Enter a valid amount",
+  amount_above_maximum: "Enter a valid amount",
+};
+
+function pricingRateText(pricing: any): string {
+  if (!pricing) return "";
+  if (pricing.pricing_type === "subscription") {
+    const plan = pricing.plans?.[0];
+    return plan ? `From ${toNaira(Number(plan.rate_amount))}/${plan.billing_frequency || "cycle"}` : "";
+  }
+  if (pricing.rate_amount == null) return "";
+  const unit = pricing.unit_name ? `/${pricing.unit_name}` : pricing.billing_frequency ? `/${pricing.billing_frequency}` : "";
+  return `${toNaira(Number(pricing.rate_amount))}${unit}`;
+}
+
 function residentState(entry: any, account?: ServiceAccount | null) {
   const provisioned = String(entry?.provisioning_status || "").toLowerCase() === "provisioned" || Boolean(account?.linked || entry?.linked || account?.identifier || account?.meter_number || account?.account_number || entry?.meter_id || entry?.account_id);
   const available = String(entry?.transaction_availability || "").toLowerCase();
@@ -114,10 +143,12 @@ function frontDetailsFor(item: (typeof SERVICE_CARDS)[number], account?: Service
     : "";
   const latest = latestPayment ? `Last purchase: ${toNaira(latestPayment.amount)}${latestUnits}` : "";
 
+  const rateText = pricingRateText(entry?.pricing);
+
   if (item.key === "electricity") {
     return {
       primary: safeIdentifier || "Meter not connected",
-      secondary: latest,
+      secondary: latest || rateText,
       status: state.label,
       tone: state.tone,
     };
@@ -126,7 +157,7 @@ function frontDetailsFor(item: (typeof SERVICE_CARDS)[number], account?: Service
   if (item.key === "water") {
     return {
       primary: safeIdentifier ? `Meter ${safeIdentifier}` : "Managed by your facility",
-      secondary: "",
+      secondary: rateText,
       status: state.label,
       tone: state.tone,
     };
@@ -135,7 +166,7 @@ function frontDetailsFor(item: (typeof SERVICE_CARDS)[number], account?: Service
   if (item.key === "internet") {
     return {
       primary: account?.plan || entry?.plan || safeIdentifier || "Home internet",
-      secondary: "",
+      secondary: rateText,
       status: state.label,
       tone: state.tone,
     };
@@ -144,7 +175,7 @@ function frontDetailsFor(item: (typeof SERVICE_CARDS)[number], account?: Service
   if (item.key === "gas") {
     return {
       primary: safeIdentifier ? `Account ${safeIdentifier}` : "Account not connected",
-      secondary: "",
+      secondary: rateText,
       status: state.label,
       tone: state.tone,
     };
@@ -152,7 +183,7 @@ function frontDetailsFor(item: (typeof SERVICE_CARDS)[number], account?: Service
 
   return {
     primary: registry?.estate_fees?.outstanding ? `Outstanding ${toNaira(Number(registry.estate_fees.outstanding || 0))}` : "No balance due",
-    secondary: latestPayment ? `Last activity ${dateText(latestPayment.created_at)}` : "",
+    secondary: latestPayment ? `Last activity ${dateText(latestPayment.created_at)}` : rateText,
     status: state.label,
     tone: state.tone,
   };
@@ -177,20 +208,29 @@ function GroupedServiceCard({
 }) {
   const Icon = item.icon;
   const front = frontDetailsFor(item, account, registry, latestPayment);
-  const state = residentState(compositeRegistryEntry(item.serviceKeys, registry || null) as any, account);
+  const entry = compositeRegistryEntry(item.serviceKeys, registry || null) as any;
+  const state = residentState(entry, account);
   const provisioned = state.label !== "Not connected";
-  const canTransact = item.key === "electricity" && state.label === "Active";
-  const hasImplementedAction = item.key === "electricity";
+  // Electricity (vending) and Service Charge (a straight wallet debit,
+  // no external provider needed) are the two service types with a real
+  // Consumer-side execution path today. This list reflects actual
+  // frontend capability -- it is deliberately combined with the
+  // backend's own transaction_availability signal below, not used
+  // instead of it, so neither side can claim an action is ready on its
+  // own.
+  const hasImplementedAction = item.key === "electricity" || item.key === "estate_fees";
+  const canTransact = hasImplementedAction && state.label === "Active";
   const actionEnabled = canTransact;
-  const actionLabel = !provisioned && item.key !== "estate_fees"
-    ? "Not available"
-    : hasImplementedAction
-      ? item.cta
-      : item.key === "estate_fees"
-        ? "View Bills"
-      : state.label === "Connected"
-        ? "Managed by facility"
-        : "Not available";
+  const unavailableReason = entry?.unavailable_reason ? UNAVAILABLE_REASON_LABELS[entry.unavailable_reason] : null;
+  const actionLabel = actionEnabled
+    ? item.cta
+    : hasImplementedAction && unavailableReason
+      ? unavailableReason
+      : !provisioned
+        ? "Not available"
+        : hasImplementedAction
+          ? "Unavailable"
+          : "Coming soon";
 
   return (
     <section className="rounded-[18px] border border-white/[0.075] bg-white/[0.026] px-3.5 py-3 shadow-[0_8px_22px_rgba(0,0,0,0.12)]">
@@ -217,7 +257,7 @@ function GroupedServiceCard({
           onClick={onAction}
           disabled={busy || !actionEnabled}
           aria-label={`${actionLabel} for ${item.title}`}
-          title={actionEnabled ? actionLabel : `${item.title} payments are not available in Consumer yet.`}
+          title={actionEnabled ? actionLabel : hasImplementedAction ? `${item.title}: ${actionLabel.toLowerCase()}.` : `${item.title} payments are not available in Consumer yet.`}
           className="min-h-10 rounded-full border border-white/10 bg-white px-4 text-[12px] font-semibold text-black transition active:scale-[0.98] disabled:bg-white/[0.08] disabled:text-white/42 disabled:opacity-100"
         >
           {busy ? "Working..." : actionLabel}
@@ -247,9 +287,15 @@ export default function ServicesPage() {
   const [purchaseResult, setPurchaseResult] = useState<any>(null);
   const [purchaseStep, setPurchaseStep] = useState<"amount" | "review" | "processing" | "success">("amount");
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
+  const [feeDialogOpen, setFeeDialogOpen] = useState(false);
+  const [feeAmount, setFeeAmount] = useState("");
+  const [feeBusy, setFeeBusy] = useState(false);
+  const [feeError, setFeeError] = useState<string | null>(null);
   const requestSeqRef = useRef(0);
   const amountInputRef = useRef<HTMLInputElement | null>(null);
   const electricityActionRef = useRef<HTMLButtonElement | null>(null);
+  const feeAmountInputRef = useRef<HTMLInputElement | null>(null);
+  const feeActionRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     requestSeqRef.current += 1;
@@ -267,16 +313,20 @@ export default function ServicesPage() {
     setPurchaseResult(null);
     setPurchaseStep("amount");
     setPurchaseError(null);
+    setFeeDialogOpen(false);
+    setFeeAmount("");
+    setFeeBusy(false);
+    setFeeError(null);
   }, [activeContext.contextKey]);
 
   useEffect(() => {
-    if (typeof document === "undefined" || !purchaseOpen) return;
+    if (typeof document === "undefined" || !(purchaseOpen || feeDialogOpen)) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [purchaseOpen]);
+  }, [purchaseOpen, feeDialogOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -393,7 +443,58 @@ export default function ServicesPage() {
       window.setTimeout(() => amountInputRef.current?.focus({ preventScroll: true }), 120);
       return;
     }
+    if (item.key === "estate_fees") {
+      const outstanding = Number(registry?.estate_fees?.outstanding || 0);
+      const rate = registry?.estate_fees?.pricing && registry.estate_fees.pricing.pricing_type !== "subscription" ? Number(registry.estate_fees.pricing.rate_amount || 0) : 0;
+      setFeeAmount(outstanding > 0 ? String(outstanding) : rate > 0 ? String(rate) : "");
+      setFeeError(null);
+        setFeeDialogOpen(true);
+      window.setTimeout(() => feeAmountInputRef.current?.focus({ preventScroll: true }), 120);
+      return;
+    }
     setMessage(`${item.title} is managed by your facility for now.`);
+  }
+
+  function closeFeeDialog() {
+    setFeeDialogOpen(false);
+    window.setTimeout(() => feeActionRef.current?.focus({ preventScroll: true }), 80);
+  }
+
+  async function payServiceCharge() {
+    const account = accountForCard(SERVICE_CARDS.find((item) => item.key === "estate_fees")!);
+    const amount = Number(feeAmount);
+    setFeeError(null);
+    if (!Number.isFinite(amount) || amount < 100) {
+      setFeeError("Enter an amount of at least ₦100.");
+      return;
+    }
+    const accountRef = account?.identifier || account?.account_number || registry?.estate_fees?.account_id || activeContext.home_id || "";
+    if (!accountRef) {
+      setFeeError("This home's service charge account is not linked yet.");
+      return;
+    }
+    setFeeBusy(true);
+    const result: any = await servicesService.pay({
+      service_key: "service_charge",
+      amount,
+      account_ref: String(accountRef),
+      idempotency_key: `${activeContext.contextKey}:service_charge:${amount}:${Date.now()}`,
+    });
+    setFeeBusy(false);
+    if (result?.error) {
+      setFeeError(result.error || "This payment could not be completed. Your wallet has not been charged.");
+      return;
+    }
+    setMessage(result?.idempotent ? "This payment was already recorded." : "Service charge payment completed.");
+    setFeeDialogOpen(false);
+    void servicesService.history({ estate_id: estateId || undefined, home_id: activeContext.home_id || undefined, limit: 40 }).then((rows: any) => {
+      if (Array.isArray(rows)) setHistory(rows);
+    });
+    const requestSeq = requestSeqRef.current;
+    void servicesService.homeRegistry({ estate_id: estateId || undefined, home_id: activeContext.home_id || undefined }).then((result: any) => {
+      if (requestSeq !== requestSeqRef.current) return;
+      if (!result?.error) setRegistry(result as HomeServiceRegistry);
+    });
   }
 
   function closePurchaseDialog() {
@@ -433,12 +534,16 @@ export default function ServicesPage() {
     return Array.from(new Set(values)).slice(0, 4);
   }, [electricityConfig?.suggested_amount]);
 
+  const electricityPricingPlan = useMemo(
+    () => electricityConfig?.pricing_plans?.find((plan) => plan.pricing_type !== "subscription") || null,
+    [electricityConfig?.pricing_plans]
+  );
   const estimatedUnits = useMemo(() => {
     const amount = Number(purchaseAmount);
-    const tariff = Number(electricityConfig?.unit_cost || 0);
+    const tariff = Number(electricityPricingPlan?.rate_amount ?? electricityConfig?.unit_cost ?? 0);
     if (!Number.isFinite(amount) || amount <= 0 || !Number.isFinite(tariff) || tariff <= 0) return null;
     return amount / tariff;
-  }, [purchaseAmount, electricityConfig?.unit_cost]);
+  }, [purchaseAmount, electricityPricingPlan, electricityConfig?.unit_cost]);
 
   async function confirmElectricityPurchase() {
     if (!purchaseQuote) return;
@@ -512,7 +617,7 @@ export default function ServicesPage() {
                   latestPayment={latestPaymentForCard(item)}
                   busy={busyKey === item.key}
                   onAction={() => void handleCardAction(item)}
-                  actionRef={item.key === "electricity" ? electricityActionRef : undefined}
+                  actionRef={item.key === "electricity" ? electricityActionRef : item.key === "estate_fees" ? feeActionRef : undefined}
                 />
               ))}
             </div>
@@ -647,6 +752,47 @@ export default function ServicesPage() {
                 </button>
               </div>
             ) : null}
+          </section>
+        </div>
+      ) : null}
+      {feeDialogOpen ? (
+        <div className="fixed inset-0 z-[160] grid place-items-center overflow-y-auto bg-black/55 px-4 py-[calc(12px+var(--sat))] pb-[calc(84px+var(--sab)+var(--kb,0px))] backdrop-blur-sm">
+          <button type="button" className="absolute inset-0 z-0" aria-label="Close service charge payment" onClick={closeFeeDialog} />
+          <section role="dialog" aria-modal="true" aria-labelledby="service-charge-payment-title" className="relative z-10 w-full max-w-[420px] overflow-y-auto rounded-[26px] border border-white/10 bg-[#07111d] p-4 shadow-[0_24px_80px_rgba(0,0,0,0.55)]">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.18em] text-white/38">Estate Fees</div>
+                <h2 id="service-charge-payment-title" className="mt-1 text-lg font-semibold text-white">Pay Service Charge</h2>
+                {registry?.estate_fees?.outstanding ? (
+                  <p className="mt-1 text-sm text-white/54">Outstanding {toNaira(Number(registry.estate_fees.outstanding))}</p>
+                ) : null}
+              </div>
+              <button type="button" onClick={closeFeeDialog} className="rounded-full border border-white/10 px-3 py-1.5 text-xs text-white/62">Close</button>
+            </div>
+
+            {feeError ? <div className="mt-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-100">{feeError}</div> : null}
+
+            <div className="mt-4 space-y-3">
+              <label className="block">
+                <span className="text-xs uppercase tracking-[0.16em] text-white/36">Amount</span>
+                <input
+                  ref={feeAmountInputRef}
+                  inputMode="decimal"
+                  value={feeAmount}
+                  onChange={(event) => setFeeAmount(event.target.value.replace(/[^0-9.]/g, ""))}
+                  placeholder="0.00"
+                  className="mt-2 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-lg font-semibold text-white outline-none focus:border-white/25"
+                />
+              </label>
+              <button
+                type="button"
+                disabled={feeBusy || !feeAmount}
+                onClick={() => void payServiceCharge()}
+                className="h-11 w-full rounded-full bg-white text-sm font-semibold text-black transition disabled:bg-white/[0.08] disabled:text-white/42"
+              >
+                {feeBusy ? "Processing..." : "Confirm Payment"}
+              </button>
+            </div>
           </section>
         </div>
       ) : null}
