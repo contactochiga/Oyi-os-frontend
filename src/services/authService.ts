@@ -120,6 +120,26 @@ export async function activateInvite(payload: InviteActivationPayload) {
   }
 }
 
+// Security fix -- an existing Oyi identity accepting an additional Home
+// invitation must authenticate normally and accept through this path,
+// never through activateInvite() (which sets a new password and would
+// have silently overwritten the existing identity's real credentials).
+// The caller must pass its CURRENT session token so the request is
+// authenticated; the backend re-verifies the authenticated identity's
+// email matches the invitation recipient.
+export async function acceptInvite(token: string, sessionToken: string) {
+  try {
+    const res = await API.post(
+      "/auth/invites/accept",
+      { token },
+      { headers: { authorization: `Bearer ${sessionToken}` } }
+    );
+    return res.data;
+  } catch (err: any) {
+    return { error: pickError(err, "Unable to accept this invitation.") };
+  }
+}
+
 /**
  * ✅ For now, disable Supabase OAuth here so consumer auth stays same as facility.
  * We can re-enable later and exchange Supabase session -> backend JWT if you want.
