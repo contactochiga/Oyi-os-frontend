@@ -17,15 +17,18 @@ import {
   QrCode,
   ShieldCheck,
 } from "lucide-react";
-import { activateInvite, type InvitePreview, validateInvite } from "@/services/authService";
+import { acceptInvite, activateInvite, type InvitePreview, validateInvite } from "@/services/authService";
 import { extractInviteToken } from "@/lib/inviteToken";
 import { establishConsumerSession } from "@/services/sessionBootstrap";
 import { markOnboardingTourPending } from "@/services/onboardingTour";
 import { scanInviteQrCode } from "@/services/inviteScanner";
 import { useSessionStore } from "@/store/useSessionStore";
+import { decodeToken, isExpired } from "@/lib/auth";
 
 function friendlyInviteError(message?: string) {
   const value = String(message || "").toLowerCase();
+  if (value.includes("please sign in instead")) return String(message);
+  if (value.includes("not sent to your account email")) return "This invitation was sent to a different email address than the account you're signed in as.";
   if (value.includes("expired")) return "This invitation has expired. Ask your estate team to resend it.";
   if (value.includes("revoked")) return "This invitation was revoked. Ask your estate team for a new setup link.";
   if (value.includes("accepted")) return "This invitation has already been used. Sign in if your account is active.";
@@ -45,7 +48,8 @@ function formatExpiry(value?: string) {
 function InviteActivationClient() {
   const router = useRouter();
   const params = useSearchParams();
-  const { setSession } = useSessionStore();
+  const session = useSessionStore();
+  const { setSession } = session;
   const [entry, setEntry] = useState(params.get("token") || "");
   const [preview, setPreview] = useState<InvitePreview | null>(null);
   const [username, setUsername] = useState("");
@@ -55,6 +59,16 @@ function InviteActivationClient() {
   const [scanBusy, setScanBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cameraMessage, setCameraMessage] = useState<string | null>(null);
+  const [useDifferentAccount, setUseDifferentAccount] = useState(false);
+
+  useEffect(() => {
+    session.hydrate();
+    // Session is intentionally hydrated once on entry.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const activeSessionDecoded = session.token ? decodeToken(session.token) : null;
+  const hasActiveSession = Boolean(session.token && session.user && activeSessionDecoded && !isExpired(activeSessionDecoded));
 
   async function runValidation(rawEntry = entry) {
     const token = extractInviteToken(rawEntry);
@@ -105,6 +119,26 @@ function InviteActivationClient() {
     // Scanner is intentionally opened once when the resident chooses Scan Invitation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function acceptAsCurrentUser() {
+    const token = extractInviteToken(entry);
+    if (!preview || !token || !session.token) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await acceptInvite(token, session.token);
+      if (response?.error || !response?.token) {
+        setError(friendlyInviteError(response?.error || "Unable to accept this invitation."));
+        return;
+      }
+      await establishConsumerSession(response.token, setSession, response.user || response.profile || null);
+      router.replace("/home");
+    } catch (activationError: any) {
+      setError(friendlyInviteError(activationError?.message));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function activate() {
     const token = extractInviteToken(entry);
@@ -210,14 +244,39 @@ function InviteActivationClient() {
                   </div>
                 </div>
 
-                <input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" placeholder="Choose username" className="w-full rounded-[18px] border border-white/[0.08] bg-black/24 px-4 py-3 text-sm text-white outline-none placeholder:text-white/30 focus:border-sky-300/28" />
-                <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" placeholder="Create password" className="w-full rounded-[18px] border border-white/[0.08] bg-black/24 px-4 py-3 text-sm text-white outline-none placeholder:text-white/30 focus:border-sky-300/28" />
-                <input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" placeholder="Confirm password" className="w-full rounded-[18px] border border-white/[0.08] bg-black/24 px-4 py-3 text-sm text-white outline-none placeholder:text-white/30 focus:border-sky-300/28" />
+                {hasActiveSession && !useDifferentAccount ? (
+                  <>
+                    <div className="rounded-[18px] border border-white/[0.08] bg-black/24 px-4 py-3 text-sm text-white/76">
+                      You&apos;re signed in as <strong className="text-white">{session.user?.email}</strong>.
+                    </div>
+                    <button type="button" onClick={() => void acceptAsCurrentUser()} disabled={busy} className="flex w-full items-center justify-center gap-2 rounded-[18px] bg-sky-500 px-4 py-3 text-sm font-semibold text-white transition disabled:opacity-45">
+                      {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+                      Accept as {session.user?.email}
+                    </button>
+                    <button type="button" onClick={() => setUseDifferentAccount(true)} className="w-full py-1 text-xs text-white/38 transition hover:text-white/62">Not you? Use a different account</button>
+                  </>
+                ) : (
+                  <>
+                    <input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" placeholder="Choose username" className="w-full rounded-[18px] border border-white/[0.08] bg-black/24 px-4 py-3 text-sm text-white outline-none placeholder:text-white/30 focus:border-sky-300/28" />
+                    <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" placeholder="Create password" className="w-full rounded-[18px] border border-white/[0.08] bg-black/24 px-4 py-3 text-sm text-white outline-none placeholder:text-white/30 focus:border-sky-300/28" />
+                    <input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" placeholder="Confirm password" className="w-full rounded-[18px] border border-white/[0.08] bg-black/24 px-4 py-3 text-sm text-white outline-none placeholder:text-white/30 focus:border-sky-300/28" />
 
-                <button type="button" onClick={() => void activate()} disabled={busy || !username.trim() || !password || !confirmPassword} className="flex w-full items-center justify-center gap-2 rounded-[18px] bg-sky-500 px-4 py-3 text-sm font-semibold text-white transition disabled:opacity-45">
-                  {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
-                  Activate Oyi Home
-                </button>
+                    <button type="button" onClick={() => void activate()} disabled={busy || !username.trim() || !password || !confirmPassword} className="flex w-full items-center justify-center gap-2 rounded-[18px] bg-sky-500 px-4 py-3 text-sm font-semibold text-white transition disabled:opacity-45">
+                      {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+                      Activate Oyi Home
+                    </button>
+                    <p className="text-center text-xs text-white/38">
+                      Already have an Oyi account?{" "}
+                      <button
+                        type="button"
+                        onClick={() => router.push(`/auth/login?next=${encodeURIComponent(`/auth/invite?token=${extractInviteToken(entry)}`)}`)}
+                        className="text-sky-200/76 transition hover:text-sky-100"
+                      >
+                        Sign in first
+                      </button>
+                    </p>
+                  </>
+                )}
                 <button type="button" onClick={() => setPreview(null)} className="w-full py-1 text-xs text-white/38 transition hover:text-white/62">Use a different invitation</button>
               </div>
             )}
