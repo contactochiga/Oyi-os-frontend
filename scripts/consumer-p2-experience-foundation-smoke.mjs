@@ -17,7 +17,7 @@ const [nav, modules, utilities, spaces, devices, room, contextual, reports, shel
 
 assert.match(nav, /\["home", "spaces", "devices", "community", "profile"\]/, "primary navigation must remain one stable resident rail");
 assert.doesNotMatch(modules, /key: "utilities"/, "Utilities must not remain a Consumer menu destination");
-assert.match(utilities, /redirect\("\/services"\)/, "legacy Utilities links must resolve to Services");
+assert.match(utilities, /router\.replace\("\/services"\)/, "legacy Utilities links must resolve to Services");
 assert.match(spaces, /RoomsClient/, "Spaces must remain the canonical room collection");
 assert.match(devices, /\/room\?roomId=/, "Devices by room must resolve to canonical Room detail");
 assert.match(room, /ContextualOyiButton label=\{`Ask about \$\{title\}`\}/, "Room Oyi entry must use a resident label");
