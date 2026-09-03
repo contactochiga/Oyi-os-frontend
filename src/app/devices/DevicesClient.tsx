@@ -1150,7 +1150,7 @@ export default function DeviceClient() {
       const ids = [pickDbId(device), pickExternalId(device), device?.device_id, device?.dev_id].map((value) => String(value || ""));
       return ids.includes(targetId);
     });
-    if (target) openDevice(target);
+    if (target) openDevice(target, { alreadyAssigned: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, searchParams]);
 
@@ -1526,8 +1526,10 @@ export default function DeviceClient() {
     }
   }
 
-  function openDevice(device: AnyDevice) {
-    if (!device?.home_id) {
+  function openDevice(device: AnyDevice, options?: { alreadyAssigned?: boolean }) {
+    // items is fetched scoped to the active home, so a device found there is
+    // already assigned even when the record itself omits home_id.
+    if (!device?.home_id && !options?.alreadyAssigned) {
       setAssignDevice(device);
       setAssignRoom(String(suggestedRoom(device) || ""));
       return;
@@ -1681,26 +1683,22 @@ export default function DeviceClient() {
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_76%_12%,rgba(0,132,255,0.16),transparent_30%),radial-gradient(circle_at_18%_38%,rgba(14,165,233,0.08),transparent_34%),linear-gradient(180deg,rgba(4,12,22,0.18),rgba(0,0,0,0.93))]" />
 
         <div className="fixed inset-x-0 z-[80] px-5" style={{ top: "calc(8px + var(--sat))" }}>
-          <div className="mx-auto flex max-w-[430px] items-center justify-between">
-            <div className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/[0.03] shadow-[0_8px_26px_rgba(0,0,0,0.28)] backdrop-blur-2xl"><HamburgerMenu /></div>
-            <div className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/[0.028] shadow-[0_8px_26px_rgba(0,0,0,0.28)] backdrop-blur-2xl"><MessagesInboxButton /></div>
+          <div className="mx-auto flex max-w-[430px] items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.03] shadow-[0_8px_26px_rgba(0,0,0,0.28)] backdrop-blur-2xl"><HamburgerMenu /></div>
+              <h1 className="truncate text-[24px] font-semibold leading-none tracking-[-0.055em] text-white">Devices</h1>
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <button type="button" onClick={openAddDevice} className="inline-flex items-center gap-1.5 rounded-full border border-sky-300/18 bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-100 shadow-[0_0_18px_rgba(0,132,255,0.14)] active:scale-[0.98]">
+                <Plus className="h-3.5 w-3.5" /> Add
+              </button>
+              <div className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/[0.028] shadow-[0_8px_26px_rgba(0,0,0,0.28)] backdrop-blur-2xl"><MessagesInboxButton /></div>
+            </div>
           </div>
         </div>
 
         <div className="absolute inset-x-0 overflow-y-auto px-5" style={{ top: "calc(68px + var(--sat))", bottom: "calc(78px + var(--sab))", WebkitOverflowScrolling: "touch" }}>
           <div className="mx-auto max-w-[430px] pb-6">
-            <header className="flex items-end justify-between gap-3">
-              <div>
-                <h1 className="text-[30px] font-semibold leading-none tracking-[-0.055em] text-white">Devices</h1>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <button type="button" onClick={() => router.push("/scenes")} className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-2 text-xs font-medium text-white/68 active:scale-[0.98]"><Moon className="h-3.5 w-3.5" /> Scenes</button>
-                <button type="button" onClick={openAddDevice} className="inline-flex items-center gap-1.5 rounded-full border border-sky-300/18 bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-100 shadow-[0_0_18px_rgba(0,132,255,0.14)] active:scale-[0.98]">
-                  <Plus className="h-3.5 w-3.5" /> Add
-                </button>
-              </div>
-            </header>
-
             {err ? <div className="mt-4 rounded-[18px] border border-red-300/16 bg-red-500/10 px-3.5 py-3 text-xs text-red-100">{err}</div> : null}
 
             <section className="mt-5">

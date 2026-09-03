@@ -371,7 +371,7 @@ export default function RoomsClient() {
               <div className="flex items-start gap-2.5">
                 <HamburgerMenu />
                 <div>
-                  <h1 className="text-[31px] font-semibold leading-none tracking-[-0.055em] text-white">Spaces</h1>
+                  <h1 className="text-[26px] font-semibold leading-none tracking-[-0.055em] text-white sm:text-[29px]">Spaces</h1>
                 </div>
               </div>
               <div className="flex items-center gap-2">
