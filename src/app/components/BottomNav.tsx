@@ -51,10 +51,15 @@ const ITEMS: Item[] = [
   { key: "profile", label: "Profile", href: "/profile", icon: FiUser, activeRoutes: ["/profile", "/account", "/settings"] },
 ];
 
-// Primary navigation is intentionally stable. Secondary resident work remains in
-// the menu, contextual links, and deep links rather than being a second hidden rail.
+// Two swipeable groups (P2 nav-restore correction): the single-group
+// collapse tried during P2 was premature. Group order below is driven
+// by ITEMS' own order, not this filter list's order, so it stays
+// exactly Home/Spaces/Devices/Community/Activity and
+// Visitors/Wallet/Maintenance/Services/Profile as long as ITEMS above
+// is not reordered.
 const NAV_GROUPS: Item[][] = [
-  ITEMS.filter((item) => ["home", "spaces", "devices", "community", "profile"].includes(item.key)),
+  ITEMS.filter((item) => ["home", "spaces", "devices", "community", "activity"].includes(item.key)),
+  ITEMS.filter((item) => ["visitors", "wallet", "maintenance", "services", "profile"].includes(item.key)),
 ];
 
 const SCROLL_DELTA_THRESHOLD = 10;

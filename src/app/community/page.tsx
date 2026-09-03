@@ -216,7 +216,6 @@ export default function CommunityPage() {
   const [items, setItems] = useState<CommunityPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  const [composerOpen, setComposerOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [attachments, setAttachments] = useState<PostAttachment[]>([]);
   const [posting, setPosting] = useState(false);
@@ -352,7 +351,6 @@ export default function CommunityPage() {
       setItems((prev) => [res as CommunityPost, ...prev]);
       setDraft("");
       setAttachments([]);
-      setComposerOpen(false);
       await load(true);
     } catch (error: any) {
       setErr(error?.message || "Failed to post update");
@@ -439,48 +437,42 @@ export default function CommunityPage() {
     <ConsumerShell title="Community" subtitle={subtitle} strip={strip} hideStrip>
       <div className="oyi-living-page mx-auto w-full max-w-[760px] space-y-4 pb-8">
             {canPost ? (
-              <section className="rounded-[21px] border border-white/[0.065] bg-white/[0.03] p-2.5 shadow-[0_14px_42px_rgba(0,0,0,0.22)] backdrop-blur-xl">
-                {!composerOpen ? (
-                  <button type="button" onClick={() => setComposerOpen(true)} className="flex w-full items-center gap-3 rounded-[17px] border border-white/[0.075] bg-black/20 px-3.5 py-3 text-left transition hover:bg-white/[0.045] active:scale-[0.99]">
-                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-sky-300/14 bg-sky-400/[0.10] text-sky-200">
-                      <MessageCircle className="h-4 w-4" />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-[13px] font-semibold text-white/84">What&apos;s happening in the estate?</span>
-                      <span className="mt-0.5 block text-[11px] text-white/42">Share an update, question or notice.</span>
-                    </span>
-                  </button>
-                ) : (
-                  <div className="space-y-3">
-                    <textarea value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={`Share a quiet update with ${estateName}...`} rows={3} className="w-full resize-none rounded-[18px] border border-white/[0.075] bg-black/25 px-3.5 py-3 text-[14px] leading-6 text-white outline-none placeholder:text-white/35 focus:border-sky-300/35" />
-                    {attachments.length ? (
-                      <div className="grid grid-cols-2 gap-2">
-                        {attachments.map((item) => (
-                          <div key={item.id} className="relative overflow-hidden rounded-[16px] border border-white/[0.08] bg-black/30">
-                            {item.type === "video" ? <video src={item.url} className="h-20 w-full object-cover" muted playsInline /> : <img src={item.url} alt={item.name || "community media"} className="h-20 w-full object-cover" />}
-                            <button type="button" onClick={() => setAttachments((prev) => prev.filter((x) => x.id !== item.id))} className="absolute right-1 top-1 rounded-full bg-black/70 px-1.5 py-0.5 text-[9px] text-white/80">Remove</button>
-                          </div>
-                        ))}
+              <section className="rounded-[21px] border border-white/[0.075] bg-white/[0.03] p-3 shadow-[0_14px_42px_rgba(0,0,0,0.22)] backdrop-blur-xl">
+                <textarea
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                  placeholder={`Share a quiet update with ${estateName}...`}
+                  rows={2}
+                  className="w-full resize-none bg-transparent px-0.5 py-1 text-[14px] leading-6 text-white outline-none placeholder:text-white/38"
+                />
+                {attachments.length ? (
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    {attachments.map((item) => (
+                      <div key={item.id} className="relative overflow-hidden rounded-[16px] border border-white/[0.08] bg-black/30">
+                        {item.type === "video" ? <video src={item.url} className="h-20 w-full object-cover" muted playsInline /> : <img src={item.url} alt={item.name || "community media"} className="h-20 w-full object-cover" />}
+                        <button type="button" onClick={() => setAttachments((prev) => prev.filter((x) => x.id !== item.id))} className="absolute right-1 top-1 rounded-full bg-black/70 px-1.5 py-0.5 text-[9px] text-white/80">Remove</button>
                       </div>
-                    ) : null}
-                    <input ref={imageInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(event) => void pickMedia("image", event.target.files)} />
-                    <input ref={videoInputRef} type="file" accept="video/*" multiple className="hidden" onChange={(event) => void pickMedia("video", event.target.files)} />
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <button type="button" onClick={() => imageInputRef.current?.click()} disabled={uploading} className="grid h-9 w-9 place-items-center rounded-full border border-white/[0.08] bg-white/[0.045] text-white/72"><ImagePlus className="h-4 w-4" /></button>
-                        <button type="button" onClick={() => videoInputRef.current?.click()} disabled={uploading} className="grid h-9 w-9 place-items-center rounded-full border border-white/[0.08] bg-white/[0.045] text-white/72"><Video className="h-4 w-4" /></button>
-                        {canBroadcast ? <button type="button" onClick={() => setLiveComposerOpen(true)} className="grid h-9 w-9 place-items-center rounded-full border border-red-300/12 bg-red-400/10 text-red-100" aria-label="Start live broadcast"><RadioTower className="h-4 w-4" /></button> : null}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button type="button" onClick={() => { setComposerOpen(false); setDraft(""); setAttachments([]); }} className="rounded-full px-3 py-2 text-[12px] text-white/50">Cancel</button>
-                        <button type="button" onClick={createPost} disabled={posting || uploading || (!draft.trim() && !attachments.length)} className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-[13px] font-semibold text-black disabled:opacity-50">
-                          {posting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                          Post
-                        </button>
-                      </div>
-                    </div>
+                    ))}
                   </div>
-                )}
+                ) : null}
+                <input ref={imageInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(event) => void pickMedia("image", event.target.files)} />
+                <input ref={videoInputRef} type="file" accept="video/*" multiple className="hidden" onChange={(event) => void pickMedia("video", event.target.files)} />
+                <div className="mt-2 flex items-center justify-between gap-2 border-t border-white/[0.055] pt-2">
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => imageInputRef.current?.click()} disabled={uploading} className="grid h-9 w-9 place-items-center rounded-full border border-white/[0.08] bg-white/[0.045] text-white/72"><ImagePlus className="h-4 w-4" /></button>
+                    <button type="button" onClick={() => videoInputRef.current?.click()} disabled={uploading} className="grid h-9 w-9 place-items-center rounded-full border border-white/[0.08] bg-white/[0.045] text-white/72"><Video className="h-4 w-4" /></button>
+                    {canBroadcast ? <button type="button" onClick={() => setLiveComposerOpen(true)} className="grid h-9 w-9 place-items-center rounded-full border border-red-300/12 bg-red-400/10 text-red-100" aria-label="Start live broadcast"><RadioTower className="h-4 w-4" /></button> : null}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {draft.trim() || attachments.length ? (
+                      <button type="button" onClick={() => { setDraft(""); setAttachments([]); }} className="rounded-full px-3 py-2 text-[12px] text-white/50">Clear</button>
+                    ) : null}
+                    <button type="button" onClick={createPost} disabled={posting || uploading || (!draft.trim() && !attachments.length)} className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-[13px] font-semibold text-black disabled:opacity-50">
+                      {posting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                      Post
+                    </button>
+                  </div>
+                </div>
               </section>
             ) : null}
 
