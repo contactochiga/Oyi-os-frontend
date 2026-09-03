@@ -267,7 +267,7 @@ export default function MaintenancePage() {
     ? `${overdueCount} request${overdueCount === 1 ? "" : "s"} need faster follow-up.`
     : openCount
       ? `${openCount} active request${openCount === 1 ? "" : "s"} are being tracked.`
-      : "Service requests and scheduled care.";
+      : undefined;
   const requestAction = (
     <section className="flex items-center justify-end gap-2">
       <button

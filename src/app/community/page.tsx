@@ -429,9 +429,7 @@ export default function CommunityPage() {
     { label: "Moderation", value: counts.announcements },
     { label: "Unread", value: unread },
   ];
-  const subtitle = latestInsights[0]?.summary
-    ? String(latestInsights[0].summary)
-    : `${estateName} notices, discussions and resident updates.`;
+  const subtitle = latestInsights[0]?.summary ? String(latestInsights[0].summary) : undefined;
 
   return (
     <ConsumerShell title="Community" subtitle={subtitle} strip={strip} hideStrip>

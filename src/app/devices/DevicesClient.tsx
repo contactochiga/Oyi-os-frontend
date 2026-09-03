@@ -36,6 +36,7 @@ import LayoutWrapper from "@/app/components/LayoutWrapper";
 import HamburgerMenu from "@/app/components/HamburgerMenu";
 import MessagesInboxButton from "@/app/components/MessagesInboxButton";
 import BottomNav from "@/app/components/BottomNav";
+import OyiComposerRow from "@/app/components/OyiComposerRow";
 import useAuth from "@/hooks/useAuth";
 import useActiveContext from "@/hooks/useActiveContext";
 import { deviceService, type IrProfileOption } from "@/services/deviceService";
@@ -663,21 +664,6 @@ function ComposerWaveform({ active, levels }: { active: boolean; levels?: number
         />
       ))}
     </div>
-  );
-}
-
-function OyiHubOrb({ state = "idle", onClick }: { state?: "idle" | "listening" | "thinking"; onClick?: () => void }) {
-  const stateClass =
-    state === "listening"
-      ? "border-sky-200/70 shadow-[0_0_36px_rgba(0,132,255,0.52)] animate-pulse"
-      : state === "thinking"
-        ? "border-sky-300/46 shadow-[0_0_30px_rgba(0,132,255,0.34)] animate-pulse"
-        : "border-sky-300/38 shadow-[0_0_20px_rgba(0,132,255,0.22)]";
-  return (
-    <button type="button" onClick={onClick} className={cn("relative grid h-10 w-10 shrink-0 place-items-center rounded-full border bg-[radial-gradient(circle_at_center,rgba(32,129,255,0.28),rgba(3,8,16,0.96)_68%)] text-[11px] font-semibold tracking-[-0.08em] transition active:scale-95", stateClass)} aria-label="Talk to Oyi about this device">
-      <span className="absolute inset-[-10px] rounded-full bg-sky-400/10 blur-xl" />
-      <span className="relative">Oyi</span>
-    </button>
   );
 }
 
@@ -1706,10 +1692,9 @@ export default function DeviceClient() {
             <header className="flex items-end justify-between gap-3">
               <div>
                 <h1 className="text-[30px] font-semibold leading-none tracking-[-0.055em] text-white">Devices</h1>
-                <p className="mt-2 text-[13px] leading-5 text-white/56">Control your connected home.</p>
               </div>
               <div className="flex items-center gap-1.5">
-                <button type="button" onClick={() => router.push("/scenes?create=scene")} className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-2 text-xs font-medium text-white/68 active:scale-[0.98]"><Moon className="h-3.5 w-3.5" /> Scenes</button>
+                <button type="button" onClick={() => router.push("/scenes")} className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-2 text-xs font-medium text-white/68 active:scale-[0.98]"><Moon className="h-3.5 w-3.5" /> Scenes</button>
                 <button type="button" onClick={openAddDevice} className="inline-flex items-center gap-1.5 rounded-full border border-sky-300/18 bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-100 shadow-[0_0_18px_rgba(0,132,255,0.14)] active:scale-[0.98]">
                   <Plus className="h-3.5 w-3.5" /> Add
                 </button>
@@ -2638,6 +2623,7 @@ function DeviceModalRouter({ device, state, runtime, switchCommands, busy, aware
                 { label: "View access events", action: () => void submitDeviceConversation("Show access events for this selected lock.") },
                 { label: "View relationships", action: () => void submitDeviceConversation("What controls this lock and where does it belong?") },
               ] : [
+                { label: "Check status", action: () => void submitDeviceConversation(`What is the current status of ${pickName(device)}?`) },
                 { label: "Show activity", action: () => void submitDeviceConversation("Show activity for this selected device.") },
                 { label: "Turn off in 20 mins", action: () => void handleQuickTimer() },
                 { label: "Set schedule", action: () => onTool("schedule", device) },
@@ -2651,30 +2637,33 @@ function DeviceModalRouter({ device, state, runtime, switchCommands, busy, aware
                 </button>
               ))}
             </div>
-            <section className="mt-3 rounded-[24px] border border-white/[0.07] bg-white/[0.028] p-3.5">
-              <div className="flex items-center gap-2 rounded-[20px] border border-white/[0.07] bg-black/20 px-2 py-2">
-                <OyiHubOrb state={voiceMode === "recording" ? "listening" : conversationState === "thinking" ? "thinking" : "idle"} onClick={() => void submitDeviceConversation(`What is the current status of ${pickName(device)}?`)} />
-                <input
-                  value={composerValue}
-                  onChange={(event) => setComposerValue(event.target.value)}
-                  placeholder="Talk to Oyi about this device..."
-                  className="min-w-0 flex-1 bg-transparent px-1 text-sm text-white outline-none placeholder:text-white/30"
-                />
-                {voiceMode === "recording" ? (
-                  <div className="min-w-0 flex flex-1 items-center gap-2 overflow-hidden">
-                    <ComposerWaveform active levels={voiceLevels} />
-                    <span className="shrink-0 text-[11px] text-sky-100/74">{voiceSeconds}s</span>
-                  </div>
-                ) : null}
-                <button type="button" onClick={startVoiceCapture} className="grid h-12 w-12 shrink-0 place-items-center rounded-full border border-white/[0.08] bg-white/[0.05] text-white/78" aria-label={voiceMode === "recording" ? "Stop recording" : "Record voice command"}>
-                  {voiceMode === "recording" ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-                </button>
-                <button type="button" disabled={!composerValue.trim() || conversationState === "thinking"} onClick={() => void submitDeviceConversation(composerValue)} className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-white text-black disabled:opacity-45" aria-label="Send device question">
-                  <ArrowUp className="h-4 w-4" />
-                </button>
-              </div>
+            <div className="mt-3">
+              <OyiComposerRow
+                value={composerValue}
+                onChange={setComposerValue}
+                onSend={() => void submitDeviceConversation(composerValue)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    if (composerValue.trim() && conversationState !== "thinking") void submitDeviceConversation(composerValue);
+                  }
+                }}
+                onMicClick={startVoiceCapture}
+                micActive={voiceMode === "recording"}
+                micDisabled={conversationState === "thinking"}
+                micIcon={voiceMode === "recording" ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                sendIcon={<ArrowUp className="h-4 w-4" />}
+                disabled={conversationState === "thinking"}
+                placeholder="Ask Oyi about this device…"
+              />
+              {voiceMode === "recording" ? (
+                <div className="mt-2 flex items-center gap-2 px-1">
+                  <ComposerWaveform active levels={voiceLevels} />
+                  <span className="shrink-0 text-[11px] text-sky-100/74">{voiceSeconds}s</span>
+                </div>
+              ) : null}
               {voiceHint ? <p className="mt-2 text-[11px] text-white/42">{voiceHint}</p> : null}
-            </section>
+            </div>
           </div>
         </section>
       </div>

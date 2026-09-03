@@ -321,7 +321,7 @@ export default function MessagesPage() {
     ? `${displayName(activeThread.peer)} · ${presenceLabel(activeThread.peer)}`
     : latestAwareness?.summary
       ? String(latestAwareness.summary)
-      : "Direct messages with runtime-aware context.";
+      : undefined;
 
   async function send() {
     if (!activeThread?.id) return;

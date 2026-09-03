@@ -1,0 +1,16 @@
+{
+  "rewrites": [
+    {
+      "source": "/index.txt",
+      "has": [{ "type": "header", "key": "accept", "value": ".*text/html.*" }],
+      "missing": [{ "type": "header", "key": "rsc" }],
+      "destination": "/"
+    },
+    {
+      "source": "/:path*.txt",
+      "has": [{ "type": "header", "key": "accept", "value": ".*text/html.*" }],
+      "missing": [{ "type": "header", "key": "rsc" }],
+      "destination": "/:path*"
+    }
+  ]
+}

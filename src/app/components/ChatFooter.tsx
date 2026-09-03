@@ -4,6 +4,7 @@
 import { FaMicrophone, FaPaperPlane, FaStop } from "react-icons/fa";
 import { useEffect, useRef, useState } from "react";
 import { Capacitor } from "@capacitor/core";
+import OyiComposerRow from "./OyiComposerRow";
 
 type VoiceState = "idle" | "recording" | "processing" | "review";
 type Intent = "default" | "light" | "ac" | "security" | "tv";
@@ -49,11 +50,6 @@ export default function ChatFooter({
   const barsRef = useRef<HTMLDivElement[]>([]);
   const smoothValues = useRef<number[]>(Array(BAR_COUNT).fill(0));
 
-  const canSend =
-    input.trim().length > 0 &&
-    !isSending &&
-    voiceState !== "recording" &&
-    voiceState !== "processing";
   const isNativePlatform = Capacitor.isNativePlatform();
   const hasSpeechRecognition =
     typeof window !== "undefined" &&
@@ -498,58 +494,27 @@ export default function ChatFooter({
             </div>
           </div>
         ) : (
-          <div className="relative z-[1] flex items-end gap-3 px-3 py-2">
-            <button
-              type="button"
-              onClick={() => void startRecording()}
-              className={`
-                w-10 h-10 rounded-2xl flex items-center justify-center
-                border transition active:scale-[0.99]
-                ${!hasVoiceEngine ? "opacity-45 cursor-not-allowed" : "bg-white/5 text-white border-white/10 hover:bg-white/10"}
-              `}
-              disabled={!hasVoiceEngine}
-              aria-label="Start recording"
-            >
-              <FaMicrophone className="text-[14px]" />
-            </button>
-
-            <textarea
+          <div className="relative z-[1] px-2 py-2">
+            <OyiComposerRow
               value={input}
-              onChange={(e) => {
-                const v = e.target.value;
+              onChange={(v) => {
                 setInput(v);
                 setIntent(inferIntent(v));
-                e.currentTarget.style.height = "0px";
-                e.currentTarget.style.height = `${Math.min(e.currentTarget.scrollHeight, 112)}px`;
               }}
+              onSend={() => void handleSend()}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
                   void handleSend();
                 }
               }}
-              rows={1}
+              onMicClick={() => void startRecording()}
+              micDisabled={!hasVoiceEngine}
+              micIcon={<FaMicrophone className="text-[14px]" />}
+              sendIcon={<FaPaperPlane className="text-[13px]" />}
+              disabled={isSending || voiceState === "processing"}
               placeholder={voiceState === "review" ? "Review voice command before sending" : "Ask Oyi…"}
-              className="max-h-24 min-h-[44px] flex-1 resize-none rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-[15px] leading-[20px] text-white/90 outline-none placeholder-white/35"
             />
-
-            <button
-              type="button"
-              onClick={() => void handleSend()}
-              disabled={!canSend}
-              className={`
-                w-10 h-10 rounded-2xl flex items-center justify-center
-                border transition active:scale-[0.99]
-                ${
-                  canSend
-                    ? "bg-white text-black border-white/20"
-                    : "bg-white/5 text-white/40 border-white/10 opacity-60"
-                }
-              `}
-              aria-label="Send"
-            >
-              <FaPaperPlane className="text-[13px]" />
-            </button>
           </div>
         )}
       </div>

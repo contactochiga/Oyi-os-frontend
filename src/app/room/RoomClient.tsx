@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { ChevronRight } from "lucide-react";
 import ConsumerShell from "@/app/components/ConsumerShell";
 import useActiveContext from "@/hooks/useActiveContext";
 import { roomsService, RoomDTO } from "@/services/roomsService";
@@ -359,30 +360,29 @@ export default function RoomClient() {
         </div>
       ) : null}
 
-      <section className="mt-4 border-b border-white/[0.09] pb-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+      <section className="mt-4 flex items-center justify-between gap-3 border-b border-white/[0.09] pb-4">
+        <div>
           <div className="text-sm text-white/60">{loading ? "Syncing room…" : `${summary.online} online${summary.offline ? ` · ${summary.offline} offline` : ""}${summary.anyOn ? ` · ${summary.anyOn} active` : ""}`}</div>
-          <button onClick={loadRoom} disabled={loading} className="rounded-md border border-white/10 px-2.5 py-1.5 text-xs text-white/72 hover:bg-white/[0.06] disabled:opacity-50" type="button">Refresh</button>
+          <button onClick={loadRoom} disabled={loading} className="mt-2 rounded-md border border-white/10 px-2.5 py-1.5 text-xs text-white/72 hover:bg-white/[0.06] disabled:opacity-50" type="button">Refresh</button>
         </div>
-        {compatibleCount ? <div className="mt-3 flex flex-wrap gap-2">
+        {compatibleCount ? (
           <button
-            onClick={() => toggleAll(true)}
-            disabled={busyId === "room-all" || loading || !controllableDevices.length}
-            className="rounded-md bg-white px-3 py-2 text-xs font-semibold text-black hover:opacity-90 disabled:opacity-50 transition"
             type="button"
+            onClick={() => toggleAll(summary.anyOn === 0)}
+            disabled={busyId === "room-all" || loading}
+            aria-label={summary.anyOn > 0 ? `Turn off ${title}` : `Turn on ${title}`}
+            aria-pressed={summary.anyOn > 0}
+            className={`relative h-8 w-14 shrink-0 rounded-full border transition disabled:opacity-50 ${
+              summary.anyOn > 0 ? "border-sky-300/40 bg-sky-400/30" : "border-white/12 bg-white/[0.06]"
+            }`}
           >
-            Turn on {compatibleCount} compatible
+            <span
+              className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform ${
+                summary.anyOn > 0 ? "translate-x-[26px]" : "translate-x-0.5"
+              }`}
+            />
           </button>
-
-          <button
-            onClick={() => toggleAll(false)}
-            disabled={busyId === "room-all" || loading || !controllableDevices.length}
-            className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-white hover:bg-white/[0.1] transition disabled:opacity-50"
-            type="button"
-          >
-            Turn off {compatibleCount} compatible
-          </button>
-        </div> : <p className="mt-3 text-xs text-white/45">No compatible room power controls are available.</p>}
+        ) : null}
       </section>
 
       {!loading && devices.length === 0 ? (
@@ -430,28 +430,39 @@ export default function RoomClient() {
                 ? [onMap[sid] ?? null]
                 : Array.from({ length: gangCount }, () => null);
 
+            const openDevice = () => sid && router.push(`/devices?deviceId=${encodeURIComponent(sid)}`);
+
             return (
               <div
                 key={String(id || name)}
-                className="px-3 py-3 transition hover:bg-white/[0.04]"
+                role="button"
+                tabIndex={0}
+                onClick={openDevice}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    openDevice();
+                  }
+                }}
                 onMouseEnter={() => warmState(d)}
                 onFocus={() => warmState(d)}
+                className="flex w-full cursor-pointer items-start justify-between gap-4 px-3 py-3 text-left transition hover:bg-white/[0.04]"
               >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full border `}><Icon className="h-4.5 w-4.5" /></span>
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-medium text-white">{name}</div>
-                        <div className="mt-0.5 text-[11px] text-white/35">{online === false ? "Offline" : "Ready"}</div>
-                      </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full border `}><Icon className="h-4.5 w-4.5" /></span>
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium text-white">{name}</div>
+                      <div className="mt-0.5 text-[11px] text-white/35">{online === false ? "Offline" : "Ready"}</div>
                     </div>
-
-                    <div className="mt-1 text-xs text-white/40">{online === false ? "Offline" : online === true ? "Online" : "Status unknown"}{gangCount > 1 ? ` · ${gangCount} controls` : ""}</div>
                   </div>
 
-                  <div className="flex items-center gap-3 shrink-0">
-                    {controllable ? (
+                  <div className="mt-1 text-xs text-white/40">{online === false ? "Offline" : online === true ? "Online" : "Status unknown"}{gangCount > 1 ? ` · ${gangCount} controls` : ""}</div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  {controllable ? (
+                    <span onClick={(event) => event.stopPropagation()}>
                       <GangRingSwitch
                         gangCount={gangCount}
                         online={online}
@@ -460,10 +471,9 @@ export default function RoomClient() {
                         onToggleGang={(gangIndex, next) => toggleGang(d, gangIndex, next)}
                         size={64}
                       />
-                    ) : (
-                      <span className="text-xs text-white/42">Status only</span>
-                    )}
-                  </div>
+                    </span>
+                  ) : null}
+                  <ChevronRight className="h-4 w-4 text-white/32" />
                 </div>
               </div>
             );

@@ -105,7 +105,7 @@ assert(/listMyNotifications\(\{\s*estate_id: activeContext\.estate_id,\s*home_id
 assert(/Infrastructure services are temporarily unavailable\. Try again\./.test(servicesPage), "services page distinguishes backend failure from unconfigured services");
 const electricityHandler = servicesPage.match(/if \(item\.key === "electricity"\) \{[\s\S]*?return;\n    \}/)?.[0] || "";
 assert(/setPurchaseOpen\(true\)/.test(electricityHandler) && !/initiateTransaction|\/services\/transactions/.test(electricityHandler), "electricity card action cannot use legacy service transaction endpoint");
-assert(/subtitle="Utility services for this home"/.test(servicesPage) && /stickyHeader/.test(servicesPage) && /hideStrip/.test(servicesPage), "services page uses the canonical shell without the heavy summary strip");
+assert(/title="Infrastructure Services"/.test(servicesPage) && /stickyHeader/.test(servicesPage) && /hideStrip/.test(servicesPage), "services page uses the canonical shell without the heavy summary strip");
 assert(/serviceSummary/.test(servicesPage) && !/label: "Ready"/.test(servicesPage) && !/label: "Pending"/.test(servicesPage), "services page uses a lightweight inline service summary");
 assert(!/View details|View Service|View purchases/.test(servicesPage), "service cards do not expose duplicate resident details actions");
 assert(servicesPage.includes('aria-label={`${actionLabel} for ${item.title}`}') && /min-h-10/.test(servicesPage), "service actions are semantic touch-sized buttons");

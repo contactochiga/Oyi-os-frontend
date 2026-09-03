@@ -599,7 +599,7 @@ export default function HomePage() {
     {
       label: latestSceneLabel ? "Last Scene" : "Scenes",
       value: scenesLabel,
-      href: "/scenes?create=scene",
+      href: "/scenes",
       Icon: Moon,
       iconClass: "text-sky-300 drop-shadow-[0_0_12px_rgba(56,189,248,0.70)]",
     },
@@ -827,7 +827,7 @@ export default function HomePage() {
                   label="Scenes"
                   value={scenesLabel}
                   tone="violet"
-                  onClick={() => router.push("/scenes?create=scene")}
+                  onClick={() => router.push("/scenes")}
                 />
               </div>
 

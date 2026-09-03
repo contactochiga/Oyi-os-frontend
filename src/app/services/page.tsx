@@ -573,7 +573,6 @@ export default function ServicesPage() {
   return (
     <ConsumerShell
       title="Infrastructure Services"
-      subtitle="Utility services for this home"
       stickyHeader
       hideStrip
     >

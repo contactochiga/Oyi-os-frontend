@@ -7,7 +7,6 @@ import useAuth from "@/hooks/useAuth";
 import useActiveContext from "@/hooks/useActiveContext";
 import { walletService, type WalletDTO, type WalletReceipt } from "@/services/walletService";
 import { servicesService, type ServicePayment } from "@/services/servicesService";
-import { loadOyiCoreExecutionHistory, loadOyiCoreExecutionStatistics } from "@/services/oyiCoreRuntimeService";
 import { useRuntimeIntelligenceStore } from "@/store/useRuntimeIntelligenceStore";
 
 function formatMoney(amount: number, currency = "NGN") {
@@ -48,8 +47,6 @@ export default function WalletPage() {
   const [servicePayments, setServicePayments] = useState<ServicePayment[]>([]);
   const [selectedPayment, setSelectedPayment] = useState<ServicePayment | null>(null);
   const [selectedReceipt, setSelectedReceipt] = useState<WalletReceipt | null>(null);
-  const [runtimeExecutions, setRuntimeExecutions] = useState<Array<Record<string, any>>>([]);
-  const [runtimeStats, setRuntimeStats] = useState<Record<string, any> | null>(null);
   const latestAwareness = useRuntimeIntelligenceStore((state) => state.latestAwareness);
 
   async function load() {
@@ -131,21 +128,6 @@ export default function WalletPage() {
     })();
   }, [contextReady, activeContext.contextKey, activeContext.estate_id, activeContext.home_id]);
 
-  useEffect(() => {
-    let alive = true;
-    void Promise.all([
-      loadOyiCoreExecutionHistory({ limit: 8, action: "payment" }).catch(() => []),
-      loadOyiCoreExecutionStatistics({ limit: 40, action: "payment" }).catch(() => null),
-    ]).then(([executions, stats]) => {
-      if (!alive) return;
-      setRuntimeExecutions(Array.isArray(executions) ? executions : []);
-      setRuntimeStats(stats?.statistics || null);
-    });
-    return () => {
-      alive = false;
-    };
-  }, []);
-
   async function fund() {
     setErr(null);
     setInfo(null);
@@ -202,35 +184,39 @@ export default function WalletPage() {
 
   const currency = wallet?.currency || "NGN";
   const balance = safeNum(wallet?.balance);
-  const strip = [
-    { label: "Balance", value: formatMoney(balance, currency) },
-    { label: "Payments", value: servicePayments.length },
-    { label: "Recent", value: String(servicePayments[0]?.status || "None") },
-    { label: "Runtime", value: runtimeStats?.total || runtimeExecutions.length },
-  ];
-  const subtitle = latestAwareness?.summary
-    ? String(latestAwareness.summary)
-    : "Balance, payments and dues.";
+  const balanceKnown = Boolean(wallet);
 
   const quickAmounts = [1000, 5000, 10000, 20000];
 
   return (
-    <ConsumerShell title="Wallet" subtitle={subtitle} strip={strip} hideStrip>
+    <ConsumerShell title="Wallet">
       <div className="oyi-living-page space-y-3 pb-8">
+      <section className="rounded-[26px] border border-white/10 bg-white/[0.035] p-5">
+        <div className="text-[11px] uppercase tracking-[0.18em] text-white/40">Available balance</div>
+        <div className="mt-1.5 text-[34px] font-semibold tracking-[-0.04em] text-white">
+          {loading ? (
+            <span className="text-white/35">Loading…</span>
+          ) : err ? (
+            <span className="text-[19px] font-medium text-red-200">Balance unavailable</span>
+          ) : balanceKnown ? (
+            formatMoney(balance, currency)
+          ) : (
+            <span className="text-white/35">—</span>
+          )}
+        </div>
+        {latestAwareness?.summary ? (
+          <div className="mt-2 text-xs leading-5 text-white/45">{String(latestAwareness.summary)}</div>
+        ) : null}
+      </section>
+
       {info && (
-        <div className="mb-4 rounded-2xl border border-cyan-500/20 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
+        <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
           {info}
         </div>
       )}
 
-      {loading && (
-        <div className="mb-4 rounded-2xl border border-white/10 bg-white/[0.035] px-4 py-3 text-sm text-white/60">
-          Syncing wallet posture…
-        </div>
-      )}
-
       {err && (
-        <div className="mb-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+        <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
           {err}
         </div>
       )}
