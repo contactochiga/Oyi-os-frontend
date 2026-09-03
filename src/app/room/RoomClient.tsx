@@ -361,29 +361,38 @@ export default function RoomClient() {
         </div>
       ) : null}
 
-      <section className="mt-4 flex items-center justify-between gap-3 border-b border-white/[0.09] pb-4">
-        <div>
-          <div className="text-sm text-white/60">{loading ? "Syncing room…" : `${summary.online} online${summary.offline ? ` · ${summary.offline} offline` : ""}${summary.anyOn ? ` · ${summary.anyOn} active` : ""}`}</div>
-          <button onClick={loadRoom} disabled={loading} className="mt-2 rounded-md border border-white/10 px-2.5 py-1.5 text-xs text-white/72 hover:bg-white/[0.06] disabled:opacity-50" type="button">Refresh</button>
+      <section className="mt-4 border-b border-white/[0.09] pb-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0 text-sm text-white/60 truncate">
+            {loading ? "Syncing room…" : `${summary.online} online${summary.offline ? ` · ${summary.offline} offline` : ""}${summary.anyOn ? ` · ${summary.anyOn} active` : ""}`}
+          </div>
+          {compatibleCount ? (
+            <button
+              type="button"
+              onClick={() => toggleAll(summary.anyOn === 0)}
+              disabled={busyId === "room-all" || loading}
+              aria-label={summary.anyOn > 0 ? `Turn off ${title}` : `Turn on ${title}`}
+              aria-pressed={summary.anyOn > 0}
+              className="flex shrink-0 items-center gap-2 disabled:opacity-50"
+            >
+              <span className={`text-[11px] font-medium tracking-wide ${summary.anyOn > 0 ? "text-sky-200" : "text-white/45"}`}>
+                {summary.anyOn > 0 ? "ON" : "OFF"}
+              </span>
+              <span
+                className={`relative h-9 w-16 rounded-full border transition ${
+                  summary.anyOn > 0 ? "border-sky-300/40 bg-sky-400/30" : "border-white/12 bg-white/[0.06]"
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 h-7 w-7 rounded-full bg-white shadow transition-transform ${
+                    summary.anyOn > 0 ? "translate-x-[30px]" : "translate-x-0.5"
+                  }`}
+                />
+              </span>
+            </button>
+          ) : null}
         </div>
-        {compatibleCount ? (
-          <button
-            type="button"
-            onClick={() => toggleAll(summary.anyOn === 0)}
-            disabled={busyId === "room-all" || loading}
-            aria-label={summary.anyOn > 0 ? `Turn off ${title}` : `Turn on ${title}`}
-            aria-pressed={summary.anyOn > 0}
-            className={`relative h-8 w-14 shrink-0 rounded-full border transition disabled:opacity-50 ${
-              summary.anyOn > 0 ? "border-sky-300/40 bg-sky-400/30" : "border-white/12 bg-white/[0.06]"
-            }`}
-          >
-            <span
-              className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform ${
-                summary.anyOn > 0 ? "translate-x-[26px]" : "translate-x-0.5"
-              }`}
-            />
-          </button>
-        ) : null}
+        <button onClick={loadRoom} disabled={loading} className="mt-2 rounded-md border border-white/10 px-2.5 py-1.5 text-xs text-white/72 hover:bg-white/[0.06] disabled:opacity-50" type="button">Refresh</button>
       </section>
 
       {!loading && devices.length === 0 ? (

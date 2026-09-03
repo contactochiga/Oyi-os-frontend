@@ -137,7 +137,9 @@ function vIsApprovedStatus(status: VisitorStatus) {
 
 function Pill({ className = "", children }: { className?: string; children: any }) {
   return (
-    <span className={`inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full border ${className}`}>
+    <span
+      className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-[10.5px] leading-none px-2 py-1.5 rounded-full border ${className}`}
+    >
       {children}
     </span>
   );
