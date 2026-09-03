@@ -70,19 +70,19 @@ export default function SecurityPage() {
   const secure = offline.length === 0 && activeVisitors.length === 0;
 
   return (
-    <ConsumerShell title="Security" subtitle="Home access, cameras and trusted arrivals.">
+    <ConsumerShell title="Security">
       <div className="space-y-3 pb-8">
         {err ? <div className="rounded-[20px] border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">{err}</div> : null}
-        <Panel className="bg-[radial-gradient(circle_at_80%_10%,rgba(14,165,233,0.14),transparent_34%),rgba(255,255,255,0.032)]">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <div className="text-[10px] uppercase tracking-[0.24em] text-sky-100/50">Secure state</div>
-              <h2 className="mt-1.5 text-[19px] font-semibold tracking-[-0.05em] text-white">{loading ? "Checking home…" : secure ? "Home is protected." : "Attention needed."}</h2>
-              <p className="mt-1 text-xs leading-5 text-white/48">Resident-visible security devices and visitor access stay here.</p>
-            </div>
-            <span className={`grid h-12 w-12 place-items-center rounded-full border ${secure ? "border-emerald-300/20 bg-emerald-300/10 text-emerald-200" : "border-amber-300/20 bg-amber-300/10 text-amber-100"}`}><ShieldCheck className="h-6 w-6" /></span>
+        {loading ? (
+          <div className="flex items-center gap-2 rounded-[16px] border border-white/[0.06] bg-white/[0.02] px-3.5 py-2.5 text-xs text-white/45">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-white/30" /> Checking home…
           </div>
-        </Panel>
+        ) : (
+          <div className="flex items-center gap-2.5 rounded-[16px] border border-white/[0.06] bg-white/[0.025] px-3.5 py-2.5">
+            <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full ${secure ? "text-emerald-200" : "text-amber-100"}`}><ShieldCheck className="h-4 w-4" /></span>
+            <span className="text-sm font-medium text-white">{secure ? "Home is protected." : "Attention needed."}</span>
+          </div>
+        )}
 
         <div className="grid grid-cols-3 gap-2">
           <Panel className="p-3"><Camera className="h-4 w-4 text-sky-200" /><div className="mt-2 text-lg font-semibold text-white">{cameras.length}</div><div className="text-[11px] text-white/42">Cameras</div></Panel>

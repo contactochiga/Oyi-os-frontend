@@ -221,7 +221,7 @@ export default function ActivityPage() {
   ];
 
   return (
-    <ConsumerShell title="Activity" subtitle="Live home events and explanations." strip={strip} hideStrip>
+    <ConsumerShell title="Activity" strip={strip} hideStrip>
       <div className="oyi-living-page space-y-4 pb-8">
             <section className="mt-5 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Activity filters">
               {FILTERS.map((item) => {

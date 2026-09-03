@@ -91,9 +91,11 @@ export default function ConsumerShell({
                     <h1 className="text-[26px] font-semibold leading-none tracking-[-0.055em] text-white sm:text-[29px]">
                       {title || "Oyi Home"}
                     </h1>
-                    <p className="mt-1.5 max-w-2xl text-[12px] leading-5 text-white/50">
-                      {subtitle || "Your living environment."}
-                    </p>
+                    {subtitle ? (
+                      <p className="mt-1.5 max-w-2xl text-[12px] leading-5 text-white/50">
+                        {subtitle}
+                      </p>
+                    ) : null}
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">

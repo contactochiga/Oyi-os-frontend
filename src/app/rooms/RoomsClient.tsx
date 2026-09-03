@@ -372,7 +372,6 @@ export default function RoomsClient() {
                 <HamburgerMenu />
                 <div>
                   <h1 className="text-[31px] font-semibold leading-none tracking-[-0.055em] text-white">Spaces</h1>
-                  <p className="mt-2 text-[13px] leading-5 text-white/54">Your home&apos;s living environment.</p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
