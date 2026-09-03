@@ -184,7 +184,7 @@ export default function WalletPage() {
 
   const currency = wallet?.currency || "NGN";
   const balance = safeNum(wallet?.balance);
-  const balanceKnown = Boolean(wallet) || (contextReady && !loading && !err);
+  const balanceKnown = Boolean(wallet);
 
   const quickAmounts = [1000, 5000, 10000, 20000];
 
