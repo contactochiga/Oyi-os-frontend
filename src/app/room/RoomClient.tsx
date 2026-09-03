@@ -7,6 +7,7 @@ import useActiveContext from "@/hooks/useActiveContext";
 import { roomsService, RoomDTO } from "@/services/roomsService";
 import { deviceService, type DeviceRuntimeSummary } from "@/services/deviceService";
 import GangRingSwitch from "@/app/components/devices/GangRingSwitch";
+import ContextualOyiButton from "@/app/components/ContextualOyiButton";
 import { getDeviceFamily, getDeviceIcon } from "@/lib/devicePresentation";
 
 type AnyDevice = Record<string, any>;
@@ -16,9 +17,6 @@ function pickId(d: AnyDevice) {
 }
 function pickName(d: AnyDevice) {
   return d.name || d.local_name || d.localName || d.alias || "Unnamed Device";
-}
-function pickVendor(d: AnyDevice) {
-  return d.vendor || d.adapter || d.protocol || d.brand || "device";
 }
 function isOnline(d: AnyDevice, runtime?: Partial<DeviceRuntimeSummary> | null): boolean | null {
   const normalized = runtime?.normalized_state || d?.normalized_state || {};
@@ -344,10 +342,11 @@ export default function RoomClient() {
   );
 
   const title = room?.name ? room.name : "Room";
-  const subtitle = "Room command center";
+  const compatibleCount = controllableDevices.length;
+  const subtitle = loading ? "Updating room state…" : `${summary.total} assigned ${summary.total === 1 ? "device" : "devices"}`;
 
   return (
-    <ConsumerShell title={title} subtitle={subtitle}>
+    <ConsumerShell title={title} subtitle={subtitle} hideStrip>
       {!roomId ? (
         <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/70">
           Missing roomId.
@@ -360,71 +359,61 @@ export default function RoomClient() {
         </div>
       ) : null}
 
-      <div className="mt-4 rounded-3xl border border-white/10 bg-white/5 p-4 flex items-center justify-between gap-3">
-        <div className="text-xs text-white/55 truncate">
-          {loading ? "Syncing room…" : `${summary.total} devices • ${summary.online} online • ${summary.anyOn} active`}
+      <section className="mt-4 border-b border-white/[0.09] pb-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="text-sm text-white/60">{loading ? "Syncing room…" : `${summary.online} online${summary.offline ? ` · ${summary.offline} offline` : ""}${summary.anyOn ? ` · ${summary.anyOn} active` : ""}`}</div>
+          <button onClick={loadRoom} disabled={loading} className="rounded-md border border-white/10 px-2.5 py-1.5 text-xs text-white/72 hover:bg-white/[0.06] disabled:opacity-50" type="button">Refresh</button>
         </div>
-
-        <div className="flex items-center gap-2">
+        {compatibleCount ? <div className="mt-3 flex flex-wrap gap-2">
           <button
             onClick={() => toggleAll(true)}
             disabled={busyId === "room-all" || loading || !controllableDevices.length}
-            className="rounded-2xl px-3 py-2 text-sm bg-white text-black hover:opacity-90 disabled:opacity-50 transition"
+            className="rounded-md bg-white px-3 py-2 text-xs font-semibold text-black hover:opacity-90 disabled:opacity-50 transition"
             type="button"
           >
-            All ON
+            Turn on {compatibleCount} compatible
           </button>
 
           <button
             onClick={() => toggleAll(false)}
             disabled={busyId === "room-all" || loading || !controllableDevices.length}
-            className="rounded-2xl px-3 py-2 text-sm bg-white/10 text-white hover:bg-white/15 border border-white/10 transition disabled:opacity-50"
+            className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-white hover:bg-white/[0.1] transition disabled:opacity-50"
             type="button"
           >
-            All OFF
+            Turn off {compatibleCount} compatible
           </button>
-
-          <button
-            onClick={loadRoom}
-            disabled={loading}
-            className="rounded-2xl px-3 py-2 text-sm bg-white/10 text-white hover:bg-white/15 border border-white/10 transition disabled:opacity-50"
-            type="button"
-          >
-            Refresh
-          </button>
-        </div>
-      </div>
+        </div> : <p className="mt-3 text-xs text-white/45">No compatible room power controls are available.</p>}
+      </section>
 
       {!loading && devices.length === 0 ? (
-        <div className="mt-4 rounded-3xl border border-white/10 bg-white/5 p-5 text-sm text-white/60">
+        <div className="mt-4 rounded-xl border border-dashed border-white/12 px-4 py-5 text-sm text-white/60">
           No devices in this room yet.
           <div className="mt-3 flex gap-2">
             <button
               type="button"
-              className="rounded-2xl px-3 py-2 text-sm bg-white text-black hover:opacity-90 transition"
+              className="rounded-md px-3 py-2 text-sm bg-white text-black hover:opacity-90 transition"
               onClick={() => router.push("/devices")}
             >
               Add devices
             </button>
             <button
               type="button"
-              className="rounded-2xl px-3 py-2 text-sm bg-white/10 text-white hover:bg-white/15 border border-white/10 transition"
-              onClick={() => router.push("/rooms")}
+              className="rounded-md px-3 py-2 text-sm bg-white/10 text-white hover:bg-white/15 border border-white/10 transition"
+              onClick={() => router.push("/spaces")}
             >
-              Back to rooms
+              Back to spaces
             </button>
           </div>
         </div>
       ) : null}
 
       {devices.length > 0 ? (
-        <div className="mt-4 space-y-3">
+        <section className="mt-4"><h2 className="mb-2 text-sm font-medium text-white">Devices</h2><div className="divide-y divide-white/[0.07] rounded-xl border border-white/[0.08] bg-white/[0.025]">
           {devices.map((d) => {
             const id = pickId(d);
             const sid = id ? String(id) : "";
             const runtime = runtimeMap[sid] || null;
             const name = pickName(d);
-            const vendor = pickVendor(d);
             const online = isOnline(d, runtime);
             const Icon = getDeviceIcon(runtime ? { ...d, ...runtime } : d);
 
@@ -444,7 +433,7 @@ export default function RoomClient() {
             return (
               <div
                 key={String(id || name)}
-                className="rounded-3xl border border-white/10 bg-white/5 hover:bg-white/7 transition p-4"
+                className="px-3 py-3 transition hover:bg-white/[0.04]"
                 onMouseEnter={() => warmState(d)}
                 onFocus={() => warmState(d)}
               >
@@ -458,11 +447,7 @@ export default function RoomClient() {
                       </div>
                     </div>
 
-                    <div className="text-xs text-white/40 mt-1 truncate">
-                      {vendor}
-                      {online === null ? "" : online ? " • online" : " • offline"}
-                      {gangCount > 1 ? ` • ${gangCount}-gang` : ""}
-                    </div>
+                    <div className="mt-1 text-xs text-white/40">{online === false ? "Offline" : online === true ? "Online" : "Status unknown"}{gangCount > 1 ? ` · ${gangCount} controls` : ""}</div>
                   </div>
 
                   <div className="flex items-center gap-3 shrink-0">
@@ -476,17 +461,16 @@ export default function RoomClient() {
                         size={64}
                       />
                     ) : (
-                      <div className="rounded-full border border-white/10 bg-white/[0.035] px-3 py-2 text-[11px] text-white/45">
-                        View only
-                      </div>
+                      <span className="text-xs text-white/42">Status only</span>
                     )}
                   </div>
                 </div>
               </div>
             );
           })}
-        </div>
+        </div></section>
       ) : null}
+      {room ? <div className="mt-4"><ContextualOyiButton label={`Ask about ${title}`} /></div> : null}
     </ConsumerShell>
   );
 }

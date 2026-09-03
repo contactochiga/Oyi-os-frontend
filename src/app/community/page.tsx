@@ -436,7 +436,7 @@ export default function CommunityPage() {
     : `${estateName} notices, discussions and resident updates.`;
 
   return (
-    <ConsumerShell title="Community" subtitle={subtitle} strip={strip}>
+    <ConsumerShell title="Community" subtitle={subtitle} strip={strip} hideStrip>
       <div className="oyi-living-page mx-auto w-full max-w-[760px] space-y-4 pb-8">
             {canPost ? (
               <section className="rounded-[21px] border border-white/[0.065] bg-white/[0.03] p-2.5 shadow-[0_14px_42px_rgba(0,0,0,0.22)] backdrop-blur-xl">

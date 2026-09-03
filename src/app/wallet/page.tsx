@@ -215,7 +215,7 @@ export default function WalletPage() {
   const quickAmounts = [1000, 5000, 10000, 20000];
 
   return (
-    <ConsumerShell title="Wallet" subtitle={subtitle} strip={strip}>
+    <ConsumerShell title="Wallet" subtitle={subtitle} strip={strip} hideStrip>
       <div className="oyi-living-page space-y-3 pb-8">
       {info && (
         <div className="mb-4 rounded-2xl border border-cyan-500/20 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">

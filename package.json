@@ -5,6 +5,7 @@
   "scripts": {
     "smoke:camera-runtime-canonicalization": "node scripts/camera-runtime-canonicalization-smoke.mjs",
     "smoke:cameras-experience": "node scripts/cameras-experience-smoke.mjs",
+    "smoke:consumer-p2-experience-foundation": "node scripts/consumer-p2-experience-foundation-smoke.mjs",
     "verify:camera-core-distribution": "node scripts/verify-camera-core-distribution.mjs",
     "dev": "next dev",
     "build": "next build",

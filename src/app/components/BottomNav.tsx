@@ -51,9 +51,10 @@ const ITEMS: Item[] = [
   { key: "profile", label: "Profile", href: "/profile", icon: FiUser, activeRoutes: ["/profile", "/account", "/settings"] },
 ];
 
+// Primary navigation is intentionally stable. Secondary resident work remains in
+// the menu, contextual links, and deep links rather than being a second hidden rail.
 const NAV_GROUPS: Item[][] = [
-  ITEMS.filter((item) => ["home", "spaces", "devices", "community", "activity"].includes(item.key)),
-  ITEMS.filter((item) => ["visitors", "wallet", "maintenance", "services", "profile"].includes(item.key)),
+  ITEMS.filter((item) => ["home", "spaces", "devices", "community", "profile"].includes(item.key)),
 ];
 
 const SCROLL_DELTA_THRESHOLD = 10;
