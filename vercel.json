@@ -1,16 +1,18 @@
 {
-  "rewrites": [
+  "redirects": [
     {
       "source": "/index.txt",
       "has": [{ "type": "header", "key": "accept", "value": ".*text/html.*" }],
       "missing": [{ "type": "header", "key": "rsc" }],
-      "destination": "/"
+      "destination": "/",
+      "permanent": false
     },
     {
       "source": "/:path*.txt",
       "has": [{ "type": "header", "key": "accept", "value": ".*text/html.*" }],
       "missing": [{ "type": "header", "key": "rsc" }],
-      "destination": "/:path*"
+      "destination": "/:path*",
+      "permanent": false
     }
   ]
 }
