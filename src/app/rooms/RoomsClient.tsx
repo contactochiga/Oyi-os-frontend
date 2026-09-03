@@ -365,23 +365,22 @@ export default function RoomsClient() {
     <LayoutWrapper>
       <main className="fixed inset-0 overflow-hidden bg-[#02060b] text-white">
         <div className="oyi-ambient-bg" />
-        <div className="relative z-10 h-full overflow-y-auto px-4 pb-[calc(118px+var(--sab))] pt-[calc(14px+var(--sat))]">
+        <div className="fixed inset-x-0 z-[80] px-4" style={{ top: "calc(8px + var(--sat))" }}>
+          <div className="mx-auto flex w-full max-w-[860px] items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.03] shadow-[0_8px_26px_rgba(0,0,0,0.28)] backdrop-blur-2xl"><HamburgerMenu /></div>
+              <h1 className="truncate text-[24px] font-semibold leading-none tracking-[-0.055em] text-white">Spaces</h1>
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <div className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/[0.028] shadow-[0_8px_26px_rgba(0,0,0,0.28)] backdrop-blur-2xl"><MessagesInboxButton /></div>
+              <button type="button" onClick={() => router.push("/ai?module=rooms")} className="hidden h-10 w-10 place-items-center rounded-full border border-sky-300/25 bg-sky-400/10 text-sky-200 shadow-[0_0_22px_rgba(56,189,248,0.16)] sm:grid" aria-label="Open Oyi AI">
+                <Waves className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+        </div>
+        <div className="relative z-10 h-full overflow-y-auto px-4 pb-[calc(118px+var(--sab))]" style={{ paddingTop: "calc(68px + var(--sat))" }}>
           <div className="mx-auto w-full max-w-[860px] space-y-3.5">
-            <header className="sticky top-0 z-30 -mx-4 flex items-start justify-between gap-3 bg-[#02060b]/96 px-4 pb-3 pt-[calc(14px+var(--sat))] shadow-[0_14px_34px_rgba(2,6,11,0.72)] backdrop-blur-2xl">
-              <div className="flex items-start gap-2.5">
-                <HamburgerMenu />
-                <div>
-                  <h1 className="text-[26px] font-semibold leading-none tracking-[-0.055em] text-white sm:text-[29px]">Spaces</h1>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <MessagesInboxButton />
-                <button type="button" onClick={() => router.push("/ai?module=rooms")} className="hidden h-11 w-11 place-items-center rounded-full border border-sky-300/25 bg-sky-400/10 text-sky-200 shadow-[0_0_22px_rgba(56,189,248,0.16)] sm:grid" aria-label="Open Oyi AI">
-                  <Waves className="h-5 w-5" />
-                </button>
-              </div>
-            </header>
-
             <div className="flex gap-1.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {chips.map(({ id, label, Icon }) => {
                 const active = selectedId === id;

@@ -28,14 +28,13 @@ import BottomNav from "../components/BottomNav";
 import OyiContextRail from "../components/OyiContextRail";
 import { getDeviceIcon, getDeviceIconTone } from "@/lib/devicePresentation";
 import { openCanonicalDevice } from "@/lib/deviceOpenNavigation";
+import { resolveSecurityState } from "@/lib/securityState";
+import { countUnreadCommunityUpdates, readLocalCommunityReadIds } from "@/lib/communityUnread";
+import { useNotificationStore } from "@/store/useNotificationStore";
 
 import { deviceService } from "../../services/deviceService";
 import { walletService } from "@/services/walletService";
 import { visitorService, type VisitorAccess } from "@/services/visitorService";
-import {
-  communityService,
-  type CommunityPost,
-} from "@/services/communityService";
 import {
   maintenanceService,
   type MaintenanceTicket,
@@ -188,12 +187,11 @@ export default function HomePage() {
   );
 
   const [visitors, setVisitors] = useState<VisitorAccess[]>([]);
-  const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>([]);
   const [maintenance, setMaintenance] = useState<MaintenanceTicket[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [scenes, setScenes] = useState<ConsumerScene[]>([]);
-  const [latestSceneLabel, setLatestSceneLabel] = useState<string | null>(null);
+  const [lastSceneRun, setLastSceneRun] = useState<{ name: string; at: string } | null>(null);
   const [messageUnread, setMessageUnread] = useState<number | null>(null);
   const [watchLabel, setWatchLabel] = useState("Unavailable");
   const [intelligenceMetrics, setIntelligenceMetrics] = useState<IntelligenceMetricSummary | null>(null);
@@ -215,6 +213,7 @@ export default function HomePage() {
   const latestExecution = useRuntimeIntelligenceStore((state) => state.latestExecution);
   const latestRecommendations = useRuntimeIntelligenceStore((state) => state.latestRecommendations);
   const latestRuntimeAwareness = useRuntimeIntelligenceStore((state) => state.latestAwareness);
+  const notificationStoreItems = useNotificationStore((state) => state.items);
 
   async function refreshDevicePanelData() {
     if (!contextReady || !estateId || !homeId) return;
@@ -245,10 +244,9 @@ export default function HomePage() {
     setAwarenessStatus("loading");
     setBackendAwareness(null);
     try {
-      const [visitorRes, communityRes, maintenanceRes, notificationRes, walletRes, messagesRes, watchRes, scenesRes, intelligenceRes, awarenessRes] =
+      const [visitorRes, maintenanceRes, notificationRes, walletRes, messagesRes, watchRes, scenesRes, intelligenceRes, awarenessRes] =
         await Promise.allSettled([
           visitorService.listMine(),
-          estateId ? communityService.listByEstate(estateId) : Promise.resolve([]),
 	          maintenanceService.listMyTickets({ estate_id: estateId, homeId }),
 	          listMyNotifications(),
 	          walletService.getWallet({ estate_id: estateId, home_id: homeId }).catch(() => null),
@@ -260,7 +258,6 @@ export default function HomePage() {
         ]);
 
       if (visitorRes.status === "fulfilled") setVisitors(asArray<VisitorAccess>(visitorRes.value));
-      if (communityRes.status === "fulfilled") setCommunityPosts(asArray<CommunityPost>(communityRes.value));
       if (maintenanceRes.status === "fulfilled") setMaintenance(asArray<MaintenanceTicket>(maintenanceRes.value));
       if (notificationRes.status === "fulfilled") {
         setNotifications(asArray<AppNotification>(notificationRes.value));
@@ -298,25 +295,41 @@ export default function HomePage() {
     }
   }
 
+  // The last-executed scene must come from the real, Home-scoped run
+  // history (audit-backed), never a device-local cache — a stale or
+  // foreign localStorage value from another Home/account has no bearing
+  // on what actually ran here.
   useEffect(() => {
-    try {
-      const cached = typeof window !== "undefined" ? JSON.parse(window.localStorage.getItem("oyi:last-scene") || "null") : null;
-      if (cached?.name) setLatestSceneLabel(String(cached.name));
-    } catch {}
-    const handler = (event: Event) => {
-      const detail = (event as CustomEvent).detail || {};
-      if (detail?.name) setLatestSceneLabel(String(detail.name));
+    let alive = true;
+    if (!scenes.length) {
+      setLastSceneRun(null);
+      return;
+    }
+    (async () => {
+      const results = await Promise.allSettled(scenes.map((scene) => sceneService.listSceneRuns(scene.id)));
+      if (!alive) return;
+      let latest: { name: string; at: string } | null = null;
+      for (const result of results) {
+        if (result.status !== "fulfilled") continue;
+        const run = result.value?.[0];
+        const at = run?.completed_at || run?.requested_at;
+        if (!run || !at) continue;
+        if (!latest || new Date(at).getTime() > new Date(latest.at).getTime()) {
+          latest = { name: run.scene_name, at };
+        }
+      }
+      setLastSceneRun(latest);
+    })();
+    return () => {
+      alive = false;
     };
-    window.addEventListener("oyi:scene-activated", handler as EventListener);
-    return () => window.removeEventListener("oyi:scene-activated", handler as EventListener);
-  }, []);
+  }, [scenes]);
 
   useEffect(() => {
     if (!contextReady) {
       setAssignedDevices([]);
       setRegistryDevices([]);
       setVisitors([]);
-      setCommunityPosts([]);
       setMaintenance([]);
       setNotifications([]);
       setScenes([]);
@@ -413,7 +426,6 @@ export default function HomePage() {
       setAssignedDevices([]);
       setRegistryDevices([]);
       setVisitors([]);
-      setCommunityPosts([]);
       setMaintenance([]);
       setNotifications([]);
       setScenes([]);
@@ -573,23 +585,26 @@ export default function HomePage() {
         href: awarenessItems[0].destination,
       }
     : fallbackHomeAwareness;
-  const securityState = activeVisitors ? `${activeVisitors} visitor${activeVisitors > 1 ? "s" : ""}` : "Protected";
+  const resolvedSecurity = resolveSecurityState(assignedDevices, activeVisitors, devicesBusy);
+  const securityState = resolvedSecurity.label;
   const deviceStateLabel = devicesBusy
     ? "Syncing"
     : devicesErr
       ? "Needs sync"
       : totalVisibleDevices
-        ? `${activeDevices} On`
-        : "Ready";
+        ? `${activeDevices}/${totalVisibleDevices} online`
+        : "No devices";
   const messagesLabel =
     messageUnread === null ? "Unavailable" : messageUnread > 0 ? `${messageUnread} unread` : "No unread";
   const maintenanceLabel = openMaintenance ? `${openMaintenance} open` : "None open";
-  const communityLabel = communityPosts.length ? `${communityPosts.length} update${communityPosts.length > 1 ? "s" : ""}` : "No updates";
+  const communityLocalReadIds = readLocalCommunityReadIds(String((user as any)?.id || ""), estateId, homeId);
+  const communityUnread = countUnreadCommunityUpdates(notificationStoreItems, communityLocalReadIds);
+  const communityLabel = communityUnread > 0 ? `${communityUnread} unread` : "No updates";
   const visitorLabel = activeVisitors ? `${activeVisitors} active` : "0 active";
-  const scenesLabel = latestSceneLabel ? `${latestSceneLabel} activated` : scenes.length ? scenes[0].name : "Create your first scene";
+  const scenesLabel = lastSceneRun ? `${lastSceneRun.name} activated` : scenes.length ? "No scene run" : "No scenes yet";
   const homeStateItems = [
     {
-      label: latestSceneLabel ? "Last Scene" : "Scenes",
+      label: lastSceneRun ? "Last Scene" : "Scenes",
       value: scenesLabel,
       href: "/scenes",
       Icon: Moon,

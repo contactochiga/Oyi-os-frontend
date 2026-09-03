@@ -26,6 +26,9 @@ const [
   roomsClient,
   openStore,
   openNav,
+  securityStateLib,
+  communityUnreadLib,
+  sceneServiceSrc,
 ] = await Promise.all([
   source("src/app/components/BottomNav.tsx"),
   source("src/lib/moduleRegistry.ts"),
@@ -50,6 +53,9 @@ const [
   source("src/app/rooms/RoomsClient.tsx"),
   source("src/store/useDeviceOpenRequestStore.ts"),
   source("src/lib/deviceOpenNavigation.ts"),
+  source("src/lib/securityState.ts"),
+  source("src/lib/communityUnread.ts"),
+  source("src/services/sceneService.ts"),
 ]);
 
 assert.match(nav, /\["home", "spaces", "devices", "community", "activity"\]/, "footer nav group 1 must be restored");
@@ -133,13 +139,36 @@ assert.doesNotMatch(devices, /Favorite Controls/, "Devices must not keep a separ
 assert.doesNotMatch(devices, /Devices by Room/, "Devices must not duplicate Spaces' room navigation");
 assert.match(devices, /key: "favorites", label: "Favorites"/, "Devices category rail must include a real Favorites filter");
 
-// Sticky module header lives in the shared shell, not hand-rolled per page
-assert.match(shell, /sticky top-0 z-30/, "ConsumerShell header must be sticky for every page that uses it");
+// Canonical Consumer header: fixed position, hamburger + title on one row,
+// circular icon badges, no solid full-bleed background bar — matching the
+// Devices/Profile reference exactly, shared via ConsumerShell for every
+// page that uses it (not hand-rolled per page).
+assert.match(shell, /fixed inset-x-0 z-\[80\]/, "ConsumerShell header must use the canonical fixed positioning");
 assert.doesNotMatch(shell, /stickyHeader/, "sticky header must be the shell's default behavior, not an opt-in prop");
-assert.match(roomsClient, /sticky top-0 z-30/, "Spaces header must be sticky like every other module");
+assert.doesNotMatch(shell, /bg-\[#03070c\]\/96/, "ConsumerShell header must not keep the old solid dark background bar");
+assert.match(shell, /ResizeObserver/, "ConsumerShell must measure its own header height so content never hides underneath it");
+assert.match(roomsClient, /fixed inset-x-0 z-\[80\]/, "Spaces header must use the same canonical fixed positioning as every other module");
+assert.match(scenes, /fixed inset-x-0 z-\[80\]/, "Scenes header must use the same canonical fixed positioning as every other module");
+assert.doesNotMatch(scenes, /Run safe, home-scoped device actions together/, "Scenes must not keep the old generic subtitle");
 
 // Profile header adopts the canonical hamburger+title row
 assert.match(profile, /<h1 className="truncate text-\[24px\][^>]*>Profile<\/h1>/, "Profile title must move into the fixed header row");
+
+// Connected Systems / Support no longer carry generic subtitles
+assert.doesNotMatch(devices, /subtitle="Manage device providers/, "Connected Systems must not keep a generic subtitle");
+
+// Home operating strip must be truth-driven, never a fabricated default
+assert.doesNotMatch(home, /oyi:last-scene|oyi:scene-activated/, "Home must not trust a device-local scene cache as authority");
+assert.match(home, /sceneService\.listSceneRuns\(scene\.id\)/, "Home's last-scene value must come from real, Home-scoped run history");
+assert.match(home, /scenes\.length \? "No scene run" : "No scenes yet"/, "Home must show a truthful empty state instead of a fabricated scene name");
+assert.doesNotMatch(sceneServiceSrc, /oyi:last-scene|oyi:scene-activated/, "sceneService must not write scene state to localStorage");
+assert.match(home, /resolveSecurityState\(assignedDevices, activeVisitors, devicesBusy\)/, "Home's Security value must come from the shared security-state resolver");
+assert.doesNotMatch(home, /activeVisitors \? `\$\{activeVisitors\} visitor/, "Home must not restate the visitor count as the Security value");
+assert.match(home, /countUnreadCommunityUpdates\(notificationStoreItems, communityLocalReadIds\)/, "Home's Community value must be a real unread count, not a raw post total");
+assert.match(home, /\$\{activeDevices\}\/\$\{totalVisibleDevices\} online/, "Home's Devices value must show active/total, not treat registered as online");
+assert.match(securityStateLib, /export function resolveSecurityState/, "a shared security-state resolver must exist for Home and Security to share");
+assert.match(security, /resolveSecurityState\(devices, activeVisitors\.length, loading\)/, "the Security page itself must use the shared resolver");
+assert.match(communityUnreadLib, /export function countUnreadCommunityUpdates/, "a shared community-unread resolver must exist for Home and Community to share");
 
 // Messages: no card-in-card nesting, composer is a single thin border
 assert.doesNotMatch(messages, /rounded-3xl border border-white\/10 bg-white\/5/, "Messages must not wrap the list/conversation in a heavy outer card");

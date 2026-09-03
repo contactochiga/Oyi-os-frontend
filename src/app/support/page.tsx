@@ -4,7 +4,7 @@ import ConsumerShell from "@/app/components/ConsumerShell";
 
 export default function SupportPage() {
   return (
-    <ConsumerShell title="Help & Support" subtitle="Guides, contact options, and resident help.">
+    <ConsumerShell title="Help & Support">
       <div className="oyi-living-page space-y-3 pb-8">
         <section className="oyi-environment-hero rounded-[24px] p-4">
           <div className="text-[10px] uppercase tracking-[0.24em] text-sky-100/60">Resident Support</div>

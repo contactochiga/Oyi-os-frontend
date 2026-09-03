@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useMemo } from "react";
+import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 
 import LayoutWrapper from "./LayoutWrapper";
@@ -10,6 +10,8 @@ import MessagesInboxButton from "./MessagesInboxButton";
 import BottomNav from "./BottomNav";
 import useActiveContext from "@/hooks/useActiveContext";
 import { useRuntimeIntelligenceStore } from "@/store/useRuntimeIntelligenceStore";
+
+const DEFAULT_HEADER_HEIGHT = 68;
 
 export default function ConsumerShell({
   children,
@@ -33,6 +35,8 @@ export default function ConsumerShell({
   const activeContext = useActiveContext();
   const latestAwareness = useRuntimeIntelligenceStore((state) => state.latestAwareness);
   const latestRecommendations = useRuntimeIntelligenceStore((state) => state.latestRecommendations);
+  const headerRef = useRef<HTMLDivElement | null>(null);
+  const [headerHeight, setHeaderHeight] = useState(DEFAULT_HEADER_HEIGHT);
   const defaultStrip = useMemo(() => {
     const contextLabel = String(
       activeContext.home?.name ||
@@ -56,16 +60,81 @@ export default function ConsumerShell({
   }, [activeContext.estate?.name, activeContext.home?.block, activeContext.home?.name, activeContext.home?.unit, latestAwareness?.severity, latestRecommendations, pathname]);
   const stripItems = strip.length ? strip : defaultStrip;
 
+  // The header is fixed (matching the canonical Devices/Profile treatment),
+  // so it no longer reserves its own space in normal flow — measure its
+  // real rendered height (which varies when a subtitle/strip/preStripSlot
+  // is present) and pad the scroll container to match, rather than hiding
+  // content underneath it.
+  useEffect(() => {
+    const node = headerRef.current;
+    if (!node || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) setHeaderHeight(Math.ceil(entry.contentRect.height) + 28);
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <LayoutWrapper>
       <main className="fixed inset-0 flex flex-col overflow-hidden bg-[#03070c] text-white">
         <div className="oyi-ambient-bg" />
         <InviteSuggestionBridge />
 
+        <div ref={headerRef} className="fixed inset-x-0 z-[80] px-4" style={{ top: "calc(8px + var(--sat))" }}>
+          <div className="mx-auto w-full max-w-[860px]">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.03] shadow-[0_8px_26px_rgba(0,0,0,0.28)] backdrop-blur-2xl">
+                  <HamburgerMenu />
+                </div>
+                <div className="min-w-0">
+                  <h1 className="truncate text-[24px] font-semibold leading-none tracking-[-0.055em] text-white">
+                    {title || "Oyi Home"}
+                  </h1>
+                  {subtitle ? (
+                    <p className="mt-1 max-w-2xl truncate text-[12px] leading-5 text-white/50">
+                      {subtitle}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-1.5">
+                <div className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/[0.028] shadow-[0_8px_26px_rgba(0,0,0,0.28)] backdrop-blur-2xl">
+                  <MessagesInboxButton />
+                </div>
+              </div>
+            </div>
+
+            {preStripSlot ? <div className="mt-3">{preStripSlot}</div> : null}
+
+            {!hideStrip ? (
+              <div className="mt-3 overflow-hidden rounded-[20px] border border-white/[0.07] bg-[linear-gradient(145deg,rgba(255,255,255,0.042),rgba(255,255,255,0.012))] px-2.5 py-2 shadow-[0_12px_38px_rgba(0,0,0,0.28)] backdrop-blur-2xl">
+                <div className="flex snap-x snap-mandatory gap-2 overflow-x-auto scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  {stripItems.slice(0, 6).map((item) => (
+                    <div
+                      key={`${item.label}:${item.value}`}
+                      className="min-w-[118px] shrink-0 snap-start rounded-[16px] border border-white/[0.05] bg-white/[0.028] px-3 py-2"
+                    >
+                      <div className="text-[9px] uppercase tracking-[0.16em] text-white/32">
+                        {item.label}
+                      </div>
+                      <div className="mt-1 text-[13px] font-semibold leading-4 tracking-[-0.03em] text-white/88">
+                        {item.value}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+
         <div
           className={`relative z-10 flex-1 overflow-x-hidden px-4 ${disableContentScroll ? "overflow-hidden" : "overflow-y-auto"}`}
           style={{
-            paddingTop: "calc(14px + var(--sat))",
+            paddingTop: `calc(${headerHeight}px + var(--sat))`,
             paddingBottom: disableContentScroll
               ? "calc(78px + var(--sab))"
               : "calc(96px + var(--sab) + var(--kb))",
@@ -73,54 +142,6 @@ export default function ConsumerShell({
           }}
         >
           <div className="oyi-living-page oyi-page-fade mx-auto w-full max-w-[860px]">
-            <header className="sticky top-0 z-30 -mx-4 mb-3.5 bg-[#03070c]/96 px-4 pb-3 pt-[calc(14px+var(--sat))] shadow-[0_14px_34px_rgba(3,7,12,0.72)] backdrop-blur-2xl">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex min-w-0 items-start gap-2.5">
-                  <div className="pt-0.5">
-                    <HamburgerMenu />
-                  </div>
-                  <div className="min-w-0 pt-0.5">
-                    <h1 className="text-[26px] font-semibold leading-none tracking-[-0.055em] text-white sm:text-[29px]">
-                      {title || "Oyi Home"}
-                    </h1>
-                    {subtitle ? (
-                      <p className="mt-1.5 max-w-2xl text-[12px] leading-5 text-white/50">
-                        {subtitle}
-                      </p>
-                    ) : null}
-                  </div>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <MessagesInboxButton />
-                  <div className="hidden h-10 w-10 sm:block">
-                    <div className="oyi-orb h-10 w-10" aria-hidden="true" />
-                  </div>
-                </div>
-              </div>
-
-              {preStripSlot ? <div className="mt-3">{preStripSlot}</div> : null}
-
-              {!hideStrip ? (
-                <div className="mt-3 overflow-hidden rounded-[20px] border border-white/[0.07] bg-[linear-gradient(145deg,rgba(255,255,255,0.042),rgba(255,255,255,0.012))] px-2.5 py-2 shadow-[0_12px_38px_rgba(0,0,0,0.28)] backdrop-blur-2xl">
-                  <div className="flex snap-x snap-mandatory gap-2 overflow-x-auto scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                    {stripItems.slice(0, 6).map((item) => (
-                      <div
-                        key={`${item.label}:${item.value}`}
-                        className="min-w-[118px] shrink-0 snap-start rounded-[16px] border border-white/[0.05] bg-white/[0.028] px-3 py-2"
-                      >
-                        <div className="text-[9px] uppercase tracking-[0.16em] text-white/32">
-                          {item.label}
-                        </div>
-                        <div className="mt-1 text-[13px] font-semibold leading-4 tracking-[-0.03em] text-white/88">
-                          {item.value}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-            </header>
-
             {children}
           </div>
         </div>
