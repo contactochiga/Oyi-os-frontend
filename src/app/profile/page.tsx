@@ -639,9 +639,12 @@ export default function ProfilePage() {
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_78%_18%,rgba(0,132,255,0.16),transparent_28%),linear-gradient(180deg,rgba(4,12,22,0.18),rgba(0,0,0,0.92))]" />
 
         <div className="fixed inset-x-0 z-[80] px-5" style={{ top: "calc(8px + var(--sat))" }}>
-          <div className="mx-auto flex max-w-[430px] items-center justify-between">
-            <div className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-white/[0.03] shadow-[0_8px_26px_rgba(0,0,0,0.28)] backdrop-blur-2xl"><HamburgerMenu /></div>
-            <div className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-white/[0.028] shadow-[0_8px_26px_rgba(0,0,0,0.28)] backdrop-blur-2xl"><MessagesInboxButton /></div>
+          <div className="mx-auto flex max-w-[430px] items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.03] shadow-[0_8px_26px_rgba(0,0,0,0.28)] backdrop-blur-2xl"><HamburgerMenu /></div>
+              <h1 className="truncate text-[24px] font-semibold leading-none tracking-[-0.055em] text-white">Profile</h1>
+            </div>
+            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.028] shadow-[0_8px_26px_rgba(0,0,0,0.28)] backdrop-blur-2xl"><MessagesInboxButton /></div>
           </div>
         </div>
 
@@ -649,9 +652,7 @@ export default function ProfilePage() {
           <div className="mx-auto max-w-[430px] pb-5">
             <section className="grid grid-cols-[1fr_auto] items-center gap-4">
               <div className="min-w-0">
-                <h1 className="text-[30px] font-semibold leading-none tracking-[-0.055em] text-white">Profile</h1>
-                <p className="mt-3 max-w-[210px] text-[15px] leading-5 text-white/56">Manage your account, home and preferences.</p>
-                <div className="mt-7">
+                <div>
                   <div className="truncate text-[22px] font-semibold tracking-[-0.045em] text-white">{name}</div>
                   <div className="mt-1 truncate text-[14px] text-sky-200/76">{email || "No email on profile"}</div>
                   <div className={`mt-2.5 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${verified ? "bg-emerald-400/12 text-emerald-300" : "bg-amber-300/12 text-amber-200"}`}>

@@ -390,9 +390,9 @@ export default function MessagesPage() {
   }
 
   const composerDock = view === "chat" ? (
-    <div className="shrink-0 border-t border-white/[0.07] pt-2">
+    <div className="shrink-0 pt-2">
         {pendingAttachment ? (
-          <div className="mb-2 rounded-2xl border border-white/10 bg-[rgba(8,12,20,0.94)] p-3 backdrop-blur-xl">
+          <div className="mb-2 rounded-2xl border border-white/10 bg-black/20 p-3">
             <div className="mb-2 flex items-center justify-between gap-2">
               <div className="text-xs text-white/70">Attachment ready</div>
               <button type="button" onClick={() => setPendingAttachment(null)} className="text-xs text-white/45">
@@ -408,52 +408,52 @@ export default function MessagesPage() {
         ) : null}
 
         <div
-          className="rounded-[28px] border border-white/10 bg-[rgba(8,12,20,0.96)] p-2 backdrop-blur-xl"
+          className="flex items-end gap-2 rounded-[24px] border border-white/10 bg-white/[0.035] px-2.5 py-2 backdrop-blur-xl"
           style={{ paddingBottom: "max(8px, env(safe-area-inset-bottom))" }}
         >
-          <div className="flex items-end gap-2 rounded-[24px] border border-white/10 bg-black/25 p-2">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*,video/*"
-              className="hidden"
-              onChange={(e) => onPickMedia(e.target.files)}
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploadingMedia}
-              className="shrink-0 rounded-2xl border border-white/10 bg-white/8 px-3 py-3 text-white/85"
-              title="Attach image or video"
-            >
-              {uploadingMedia ? <FiRefreshCw className="animate-spin" /> : <FiPaperclip />}
-            </button>
-            <textarea
-              value={compose}
-              onChange={(e) => {
-                setCompose(e.target.value);
-                e.currentTarget.style.height = "0px";
-                e.currentTarget.style.height = `${Math.min(e.currentTarget.scrollHeight, 128)}px`;
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  void send();
-                }
-              }}
-              rows={1}
-              placeholder="Type a message"
-              className="min-h-[48px] max-h-32 flex-1 resize-none rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none"
-            />
-            <button
-              type="button"
-              onClick={() => void send()}
-              disabled={sending || (!compose.trim() && !pendingAttachment)}
-              className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white text-black text-sm font-semibold disabled:opacity-50"
-            >
-              <FiSend className="h-4 w-4" />
-            </button>
-          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,video/*"
+            className="hidden"
+            onChange={(e) => onPickMedia(e.target.files)}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploadingMedia}
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-white/72 transition hover:bg-white/10"
+            title="Attach image or video"
+          >
+            {uploadingMedia ? <FiRefreshCw className="animate-spin" /> : <FiPaperclip />}
+          </button>
+          <textarea
+            value={compose}
+            onChange={(e) => {
+              setCompose(e.target.value);
+              e.currentTarget.style.height = "0px";
+              e.currentTarget.style.height = `${Math.min(e.currentTarget.scrollHeight, 128)}px`;
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                void send();
+              }
+            }}
+            rows={1}
+            placeholder="Type a message"
+            className="min-h-[40px] max-h-32 flex-1 resize-none bg-transparent px-1 py-2 text-sm text-white outline-none placeholder:text-white/35"
+          />
+          <button
+            type="button"
+            onClick={() => void send()}
+            disabled={sending || (!compose.trim() && !pendingAttachment)}
+            className={`grid h-10 w-10 shrink-0 place-items-center rounded-full transition ${
+              sending || (!compose.trim() && !pendingAttachment) ? "bg-white/[0.05] text-white/35" : "bg-white text-black"
+            }`}
+          >
+            <FiSend className="h-4 w-4" />
+          </button>
         </div>
     </div>
   ) : null;
@@ -468,116 +468,110 @@ export default function MessagesPage() {
       ) : null}
 
       {view === "list" ? (
-        <div className="space-y-3">
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-3">
-            <div className="flex items-center gap-2">
-              <FiSearch className="text-white/45" />
-              <input
-                value={listQuery}
-                onChange={(e) => setListQuery(e.target.value)}
-                placeholder="Search messages"
-                className="flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/35"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPeople((v) => !v)}
-                className="rounded-xl border border-white/10 bg-white/10 px-2.5 py-2 text-white/85"
-                title="New message"
-              >
-                <FiEdit2 />
-              </button>
-              <button
-                type="button"
-                onClick={() => void boot()}
-                className="rounded-xl border border-white/10 bg-white/10 px-2.5 py-2 text-white/85"
-                title="Refresh"
-              >
-                <FiRefreshCw />
-              </button>
-            </div>
-
-            {showPeople ? (
-              <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-2">
-                <div className="flex items-center gap-2 px-2">
-                  <FiSearch className="text-white/45" />
-                  <input
-                    value={peopleQuery}
-                    onChange={(e) => {
-                      setPeopleQuery(e.target.value);
-                      void loadResidents(e.target.value);
-                    }}
-                    placeholder="Find resident"
-                    className="flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/35"
-                  />
-                </div>
-                <div className="mt-2 max-h-44 overflow-auto space-y-1">
-                  {filteredResidents.map((r) => (
-                    <button
-                      key={r.id}
-                      type="button"
-                      onClick={() => void openThreadFromResident(r.id)}
-                      className="w-full rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 px-3 py-2 text-left"
-                    >
-                      <div className="text-sm text-white">{displayName(r)}</div>
-                      <div className="mt-0.5 text-[11px] text-white/45">{presenceLabel(r)}</div>
-                    </button>
-                  ))}
-                  {filteredResidents.length === 0 ? (
-                    <div className="px-3 py-2 text-xs text-white/50">No residents found.</div>
-                  ) : null}
-                </div>
-              </div>
-            ) : null}
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 border-b border-white/[0.07] pb-3">
+            <FiSearch className="text-white/40" />
+            <input
+              value={listQuery}
+              onChange={(e) => setListQuery(e.target.value)}
+              placeholder="Search messages"
+              className="flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/35"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPeople((v) => !v)}
+              className="grid h-9 w-9 place-items-center rounded-full text-white/72 transition hover:bg-white/[0.06]"
+              title="New message"
+            >
+              <FiEdit2 />
+            </button>
+            <button
+              type="button"
+              onClick={() => void boot()}
+              className="grid h-9 w-9 place-items-center rounded-full text-white/72 transition hover:bg-white/[0.06]"
+              title="Refresh"
+            >
+              <FiRefreshCw />
+            </button>
           </div>
 
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-2">
-            {loading ? <div className="px-3 py-3 text-xs text-white/50">Loading...</div> : null}
-            {!loading && filteredThreads.length === 0 ? (
-              <div className="px-3 py-3 text-xs text-white/50">No messages yet.</div>
-            ) : null}
-
-            <div className="space-y-1">
-              {filteredThreads.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => {
-                    setActiveThread(t);
-                    setView("chat");
+          {showPeople ? (
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-2">
+              <div className="flex items-center gap-2 px-2">
+                <FiSearch className="text-white/45" />
+                <input
+                  value={peopleQuery}
+                  onChange={(e) => {
+                    setPeopleQuery(e.target.value);
+                    void loadResidents(e.target.value);
                   }}
-                  className="w-full rounded-2xl border border-white/10 bg-black/20 hover:bg-white/10 px-3 py-2.5 text-left transition"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="h-9 w-9 rounded-full bg-white/10 border border-white/10 flex items-center justify-center text-white/90 text-sm">
-                      {initials(t.peer)}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="text-sm text-white font-medium truncate">{displayName(t.peer)}</div>
-                          <div className="text-[11px] text-white/40">{presenceLabel(t.peer)}</div>
-                        </div>
-                        <div className="text-[10px] text-white/45 shrink-0">{shortTime(t.last_message_at)}</div>
-                      </div>
-                      <div className="mt-0.5 text-xs text-white/55 truncate">
-                        {t.last_message?.body || "Start conversation"}
-                      </div>
-                    </div>
-                    {(t.unread_count || 0) > 0 ? (
-                      <div className="min-w-5 rounded-full bg-cyan-500/20 px-1.5 py-0.5 text-[10px] text-cyan-100 text-center">
-                        {t.unread_count}
-                      </div>
-                    ) : null}
-                  </div>
-                </button>
-              ))}
+                  placeholder="Find resident"
+                  className="flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/35"
+                />
+              </div>
+              <div className="mt-2 max-h-44 overflow-auto space-y-1">
+                {filteredResidents.map((r) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => void openThreadFromResident(r.id)}
+                    className="w-full rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 px-3 py-2 text-left"
+                  >
+                    <div className="text-sm text-white">{displayName(r)}</div>
+                    <div className="mt-0.5 text-[11px] text-white/45">{presenceLabel(r)}</div>
+                  </button>
+                ))}
+                {filteredResidents.length === 0 ? (
+                  <div className="px-3 py-2 text-xs text-white/50">No residents found.</div>
+                ) : null}
+              </div>
             </div>
+          ) : null}
+
+          {loading ? <div className="py-4 text-xs text-white/50">Loading...</div> : null}
+          {!loading && filteredThreads.length === 0 ? (
+            <div className="py-6 text-center text-xs text-white/45">No messages yet.</div>
+          ) : null}
+
+          <div className="divide-y divide-white/[0.06]">
+            {filteredThreads.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => {
+                  setActiveThread(t);
+                  setView("chat");
+                }}
+                className="flex w-full items-center gap-3 py-3 text-left transition hover:bg-white/[0.03]"
+              >
+                <div className="h-9 w-9 shrink-0 rounded-full bg-white/10 border border-white/10 flex items-center justify-center text-white/90 text-sm">
+                  {initials(t.peer)}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-sm text-white font-medium truncate">{displayName(t.peer)}</div>
+                      <div className="text-[11px] text-white/40">{presenceLabel(t.peer)}</div>
+                    </div>
+                    <div className="text-[10px] text-white/45 shrink-0">{shortTime(t.last_message_at)}</div>
+                  </div>
+                  <div className="mt-0.5 text-xs text-white/55 truncate">
+                    {t.last_message?.body || "Start conversation"}
+                  </div>
+                </div>
+                {(t.unread_count || 0) > 0 ? (
+                  <div className="min-w-5 shrink-0 rounded-full bg-cyan-500/20 px-1.5 py-0.5 text-[10px] text-cyan-100 text-center">
+                    {t.unread_count}
+                  </div>
+                ) : null}
+              </button>
+            ))}
           </div>
         </div>
       ) : (
         <div
           ref={chatFrameRef}
-          className="rounded-3xl border border-white/10 bg-white/5 p-3 flex h-full flex-col overflow-hidden"
+          className="flex h-full flex-col overflow-hidden"
           style={{
             height:
               chatViewportHeight != null
@@ -585,16 +579,16 @@ export default function MessagesPage() {
                 : "calc(100dvh - 240px - var(--sat) - var(--sab) - 112px)",
           }}
         >
-          <div className="border-b border-white/10 pb-2 flex items-center gap-3">
+          <div className="flex items-center gap-3 border-b border-white/[0.07] pb-3">
             <button
               type="button"
               onClick={() => setView("list")}
-              className="rounded-lg p-2 bg-white/10 border border-white/10 text-white/85"
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-white/72 transition hover:bg-white/[0.06]"
               aria-label="Back"
             >
               <FiChevronLeft />
             </button>
-            <div className="h-8 w-8 rounded-full bg-white/10 border border-white/10 flex items-center justify-center text-white/90 text-sm">
+            <div className="h-8 w-8 shrink-0 rounded-full bg-white/10 border border-white/10 flex items-center justify-center text-white/90 text-sm">
               {initials(activeThread?.peer)}
             </div>
             <div className="min-w-0">
@@ -609,7 +603,7 @@ export default function MessagesPage() {
             style={{ minHeight: 0, paddingBottom: "28px", WebkitOverflowScrolling: "touch" }}
           >
             {messages.length === 0 ? (
-              <div className="text-xs text-white/50">No messages yet.</div>
+              <div className="py-8 text-center text-xs text-white/45">No messages yet.</div>
             ) : (
               messages.map((m) => {
                 const mine = String(m.sender_id || "") === myId;

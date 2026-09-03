@@ -27,6 +27,7 @@ import MessagesInboxButton from "../components/MessagesInboxButton";
 import BottomNav from "../components/BottomNav";
 import OyiContextRail from "../components/OyiContextRail";
 import { getDeviceIcon, getDeviceIconTone } from "@/lib/devicePresentation";
+import { openCanonicalDevice } from "@/lib/deviceOpenNavigation";
 
 import { deviceService } from "../../services/deviceService";
 import { walletService } from "@/services/walletService";
@@ -337,21 +338,12 @@ export default function HomePage() {
 
   const canMountAuthedBridges = !!ready && !!token;
 
+  // Canonical favorite signal — same fields Devices' Favorite Controls reads.
+  // No type restriction and no "show something anyway" fallback: a device
+  // appears here if and only if it is genuinely favorited, so Home and
+  // Devices always agree.
   const favoriteDevices = useMemo(() => {
-    const candidates = assignedDevices.filter((device) => {
-        const type = String(
-          device?.device_type || device?.type || device?.category || "",
-        ).toLowerCase();
-        return (
-          type.includes("light") ||
-          type.includes("switch") ||
-          type.includes("socket") ||
-          type.includes("climate") ||
-          type.includes("ac")
-        );
-      });
-    const hasSavedPreferences = candidates.some((device) => typeof favoritePreference(device) === "boolean");
-    return (hasSavedPreferences ? candidates.filter((device) => favoritePreference(device) === true) : candidates).slice(0, 6);
+    return assignedDevices.filter((device) => favoritePreference(device) === true).slice(0, 6);
   }, [assignedDevices]);
 
   function pickDeviceId(device: any) {
@@ -369,7 +361,7 @@ export default function HomePage() {
     const deviceId = pickDeviceId(device);
     if (!deviceId || deviceCommandBusy) return;
     if (!isSimpleFavorite(device)) {
-      router.push("/devices");
+      openCanonicalDevice(router, deviceId);
       return;
     }
     if (isUnavailable(device)) return;
@@ -890,7 +882,7 @@ export default function HomePage() {
                         key={deviceId || device?.name}
                         type="button"
                         disabled={busy || unavailable}
-                        onClick={() => simple ? void toggleFavoriteDevice(device) : router.push("/devices")}
+                        onClick={() => simple ? void toggleFavoriteDevice(device) : openCanonicalDevice(router, deviceId)}
                         className="min-w-[118px] rounded-[20px] border border-white/[0.055] bg-black/16 px-3 py-3 text-left transition hover:bg-white/[0.04] disabled:cursor-not-allowed disabled:opacity-45 active:scale-[0.98]"
                       >
                         <span className={`grid h-8 w-8 place-items-center rounded-full border ${tone}`}>

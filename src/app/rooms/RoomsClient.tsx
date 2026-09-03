@@ -367,7 +367,7 @@ export default function RoomsClient() {
         <div className="oyi-ambient-bg" />
         <div className="relative z-10 h-full overflow-y-auto px-4 pb-[calc(118px+var(--sab))] pt-[calc(14px+var(--sat))]">
           <div className="mx-auto w-full max-w-[860px] space-y-3.5">
-            <header className="flex items-start justify-between gap-3">
+            <header className="sticky top-0 z-30 -mx-4 flex items-start justify-between gap-3 bg-[#02060b]/96 px-4 pb-3 pt-[calc(14px+var(--sat))] shadow-[0_14px_34px_rgba(2,6,11,0.72)] backdrop-blur-2xl">
               <div className="flex items-start gap-2.5">
                 <HamburgerMenu />
                 <div>
