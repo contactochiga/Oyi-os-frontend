@@ -10,7 +10,7 @@ export function resolveConsumerOyiTarget(target: OyiTarget | null | undefined, r
     const activeHome = String(context?.homeId || "");
     const targetHome = String(target.home_id || "");
     if (target.camera_scope === "home" && activeHome && targetHome === activeHome && target.target_id) {
-      router.push(`/devices?cameraId=${encodeURIComponent(target.target_id)}`);
+      router.push(`/cameras?cameraId=${encodeURIComponent(target.target_id)}`);
       return { handled: true };
     }
     return { handled: false, error: "This camera is not available in the active home context." };

@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import RemotePanel from "./RemotePanel";
 import StreamPlayer from "./StreamPlayer";
-import useAuth from "@/hooks/useAuth";
 import useActiveContext from "@/hooks/useActiveContext";
 import cameraService from "@/services/cameraService";
+import { useRouter } from "next/navigation";
 
 type CameraDevice = {
   id: string;
@@ -23,9 +23,9 @@ export default function CctvPanel({
   lastUpdated?: number;
   onInteraction?: () => void;
 }) {
-  const { user } = useAuth();
+  const router = useRouter();
   const activeContext = useActiveContext();
-  const homeId = useMemo(() => activeContext.home_id || user?.home_id || null, [activeContext.home_id, user?.home_id]);
+  const homeId = useMemo(() => activeContext.home_id || null, [activeContext.home_id]);
 
   const [cams, setCams] = useState<CameraDevice[]>([]);
   const [activeId, setActiveId] = useState<string | null>(deviceId ?? null);
@@ -90,6 +90,9 @@ export default function CctvPanel({
           </div>
         )}
       </div>
+      <button type="button" onClick={() => router.push(activeId ? `/cameras?cameraId=${encodeURIComponent(activeId)}` : "/cameras")} className="mt-3 w-full rounded-xl border border-white/10 px-3 py-2 text-sm text-white/75 hover:bg-white/[0.06]">
+        Open Cameras
+      </button>
     </RemotePanel>
   );
 }
