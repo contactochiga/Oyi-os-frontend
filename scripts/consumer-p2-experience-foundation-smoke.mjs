@@ -15,7 +15,8 @@ const [nav, modules, utilities, spaces, devices, room, contextual, reports, shel
   source("src/app/cameras/page.tsx"),
 ]);
 
-assert.match(nav, /\["home", "spaces", "devices", "community", "profile"\]/, "primary navigation must remain one stable resident rail");
+assert.match(nav, /\["home", "spaces", "devices", "community", "activity"\]/, "footer nav group 1 must be restored");
+assert.match(nav, /\["visitors", "wallet", "maintenance", "services", "profile"\]/, "footer nav group 2 must be restored");
 assert.doesNotMatch(modules, /key: "utilities"/, "Utilities must not remain a Consumer menu destination");
 assert.match(utilities, /router\.replace\("\/services"\)/, "legacy Utilities links must resolve to Services");
 assert.match(spaces, /RoomsClient/, "Spaces must remain the canonical room collection");
