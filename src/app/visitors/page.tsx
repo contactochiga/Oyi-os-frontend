@@ -337,7 +337,7 @@ export default function VisitorsPage() {
   );
 
   return (
-    <ConsumerShell title="Visitor Access" subtitle="Trusted arrivals and temporary access." strip={strip} hideStrip preStripSlot={addVisitorAction}>
+    <ConsumerShell title="Visitor Access" strip={strip} hideStrip preStripSlot={addVisitorAction}>
       <div className="oyi-living-page space-y-3 pb-8">
       {err && (
         <div className="mb-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">

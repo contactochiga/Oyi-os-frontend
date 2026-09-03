@@ -67,8 +67,12 @@ assert.match(room, /toggleAll\(summary\.anyOn === 0\)/, "room must expose a sing
 assert.match(room, /router\.push\(`\/devices\?deviceId=\$\{encodeURIComponent\(sid\)\}`\)/, "room device rows must open the canonical device surface");
 assert.doesNotMatch(room, /Status only/, "room device rows must not use a dead-end status-only label");
 
+// Devices header no longer carries its own Scenes shortcut; Scenes remains a real, separate module
+assert.doesNotMatch(devices, /<Moon className="h-3\.5 w-3\.5" \/> Scenes/, "Devices header must not carry a Scenes action");
+assert.match(devices, /openAddDevice/, "Devices header must still expose Add Device");
+assert.match(scenes, /listScenes|sceneService/, "Scenes module must remain intact and reachable on its own route");
+
 // Scenes must open the list first; only explicit create actions may deep-link into the editor
-assert.match(devices, /onClick=\{\(\) => router\.push\("\/scenes"\)\}[^>]*><Moon/, "Devices nav must open the Scenes list, not jump straight into creation");
 assert.doesNotMatch(home, /href: "\/scenes\?create=scene"/, "Home must not jump straight into Scene creation");
 assert.doesNotMatch(home, /router\.push\("\/scenes\?create=scene"\)/, "Home quick control must not jump straight into Scene creation");
 assert.match(devices, /onCreateScene=\{\(device\) => router\.push\(`\/scenes\?create=scene&deviceId=/, "explicit create-scene-with-device action must still deep-link into the editor");
@@ -89,5 +93,13 @@ assert.match(composerRow, /border border-white\/10/, "shared composer must rende
 
 // Static-export RSC payload files must not be servable as a document response
 assert.match(vercelConfig, /"missing": \[\{ "type": "header", "key": "rsc" \}\]/, "vercel.json must block direct document navigation to *.txt RSC payloads");
+
+// Room-originated device deep link must open the real control surface, not silently fall into the assign-to-room flow
+assert.match(devices, /openDevice\(target, \{ alreadyAssigned: true \}\)/, "Room-originated device deep link must bypass the assign-to-room flow");
+assert.match(devices, /options\?\.alreadyAssigned/, "openDevice must support an alreadyAssigned override for canonical home-scoped devices");
+
+// Canonical header pattern: hamburger + title on the same row, no separate subtitle-heavy header block
+assert.match(devices, /flex min-w-0 items-center gap-2\.5">\s*<div className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white\/10 bg-white\/\[0\.03\][^"]*"><HamburgerMenu \/><\/div>\s*<h1/, "Devices header must place the hamburger and title on the same row");
+assert.doesNotMatch(devices, /<header className="flex items-end justify-between gap-3">/, "Devices must not keep a separate scrolled-in header row below the fixed hamburger bar");
 
 console.log("consumer P2 experience foundation smoke passed");

@@ -573,7 +573,6 @@ export default function ServicesPage() {
   return (
     <ConsumerShell
       title="Infrastructure Services"
-      stickyHeader
       hideStrip
     >
       <div className="space-y-3 pb-8">

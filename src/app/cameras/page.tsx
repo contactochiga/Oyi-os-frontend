@@ -20,7 +20,7 @@ const eventLabel = (event: CameraEvent | CameraDetection) => String(event.type |
 const activityTime = (item: CameraEvent | CameraDetection) => ("sourceTimestamp" in item ? item.sourceTimestamp : null) || ("observedAt" in item ? item.observedAt : null) || item.createdAt || new Date(0).toISOString();
 
 export default function CamerasPage() {
-  return <Suspense fallback={<ConsumerShell title="Cameras" subtitle="Live views for your selected home." hideStrip><div className="py-10 text-sm text-white/55">Loading cameras…</div></ConsumerShell>}><CamerasContent /></Suspense>;
+  return <Suspense fallback={<ConsumerShell title="Cameras" hideStrip><div className="py-10 text-sm text-white/55">Loading cameras…</div></ConsumerShell>}><CamerasContent /></Suspense>;
 }
 
 function CamerasContent() {
@@ -64,7 +64,7 @@ function CamerasContent() {
     try { const access = item.accessUrl ? item : await cameraService.getMediaAccess(item.id); if (access.accessUrl) window.open(access.accessUrl, "_blank", "noopener,noreferrer"); } catch { /* access remains intentionally silent and resident-safe */ }
   }
 
-  return <ConsumerShell title="Cameras" subtitle={active.home?.name || "Live views for your selected home."} hideStrip>
+  return <ConsumerShell title="Cameras" hideStrip>
     <div className="space-y-4 pb-6">
       <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-3">
         <p className="text-sm text-white/55">{loading ? "Loading cameras…" : `${cameras.length} authorized ${cameras.length === 1 ? "camera" : "cameras"}`}</p>
