@@ -368,6 +368,7 @@ export default function MaintenancePage() {
       title="Maintenance"
       subtitle={subtitle}
       strip={strip}
+      hideStrip
       preStripSlot={requestAction}
     >
       <div className="oyi-living-page space-y-2.5 pb-8">

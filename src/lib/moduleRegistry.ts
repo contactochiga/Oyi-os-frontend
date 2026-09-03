@@ -54,7 +54,6 @@ export const CONSUMER_MODULES: ModuleDefinition[] = [
   { key: "wallet", label: "Wallet", href: "/wallet", badgeKey: "wallet", anyOf: ["wallets.read"] },
   { key: "services", label: "Services", href: "/services", anyOf: ["homes.read"] },
   { key: "security", label: "Security", href: "/security", anyOf: ["visitors.create", "visitors.manage", "cameras.view"] },
-  { key: "utilities", label: "Utilities", href: "/utilities", anyOf: ["devices.read", "homes.read"] },
   { key: "watch", label: "Watch", href: "/watch", anyOf: ["devices.read"] },
   { key: "intelligence", label: "Oyi Intelligence", href: "/ai" },
   { key: "reports", label: "Reports", href: "/reports", anyOf: ["homes.read", "devices.read", "wallets.read"] },

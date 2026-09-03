@@ -18,7 +18,8 @@ export default function ConsumerShell({
   subtitle,
   strip = [],
   preStripSlot,
-  hideStrip = false,
+  // Pages opt into a strip only when its metrics support a resident decision.
+  hideStrip = true,
   disableContentScroll = false,
   stickyHeader = false,
 }: {

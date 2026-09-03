@@ -71,7 +71,8 @@ function fallbackActiveContext(module: string, pathname: string, search: URLSear
   const deviceId = text(search.get("deviceId"));
   const channel = text(search.get("channel"));
   const canonicalId = routeTarget.type === "device_channel" && deviceId && channel ? `${deviceId}:${channel}` : routeTarget.id || `${module}:scope`;
-  const label = routeTarget.id ? routeTarget.id : activeContext.home?.name || "current context";
+  // IDs remain in the canonical context payload but must never become resident copy.
+  const label = text(search.get("deviceName")) || text(search.get("roomName")) || activeContext.home?.name || "current context";
   return {
     context_id: `ctx_route_${module}_${canonicalId}`.replace(/[^a-zA-Z0-9_-]+/g, "_"),
     context_version: 0,
@@ -150,7 +151,7 @@ function ContextualOyiButtonInner({ label, contextOverride }: { label?: string; 
       aria-label={`Ask Oyi about ${targetLabel}`}
     >
       <Sparkles className="h-3.5 w-3.5 shrink-0 text-cyan-100/80" />
-      <span className="truncate">{label || `Ask Oyi about ${targetLabel}`}</span>
+      <span className="truncate">{label || "Ask Oyi"}</span>
     </Link>
   );
 }
