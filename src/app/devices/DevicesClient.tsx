@@ -47,6 +47,7 @@ import { sceneService } from "@/services/sceneService";
 import { getSocket } from "@/services/socket";
 import { useRuntimeIntelligenceStore } from "@/store/useRuntimeIntelligenceStore";
 import { useActiveIntelligenceContextStore } from "@/store/useActiveIntelligenceContextStore";
+import { useDeviceOpenRequestStore } from "@/store/useDeviceOpenRequestStore";
 import GangRingSwitch from "@/app/components/devices/GangRingSwitch";
 import DoorPanel from "@/app/components/remotes/DoorPanel";
 import { getDeviceFamily, getDeviceIcon, getDeviceIconTone, isSimplePowerDevice } from "@/lib/devicePresentation";
@@ -67,7 +68,7 @@ import { scopeMatches } from "@/lib/footerBadges";
 type AnyDevice = Record<string, any>;
 type DiscoveryDevice = Record<string, any>;
 type AddDeviceTab = "nearby" | "provider" | "manual";
-type CategoryKey = "all" | "lights" | "climate" | "security" | "entertainment" | "sensors";
+type CategoryKey = "all" | "favorites" | "lights" | "climate" | "security" | "entertainment" | "sensors";
 type DeviceTool = "timer" | "schedule" | "settings" | "activity";
 type IrProfile = "tv" | "ac" | "fan" | "projector";
 type SwitchCommandStatus = "idle" | "queued" | "dispatching" | "awaiting_confirmation" | "confirmed" | "failed" | "mismatch" | "timed_out" | "uncertain" | "pending" | "timeout";
@@ -106,6 +107,7 @@ function switchStateKey(deviceId: string, commandCode: string) {
 
 const CATEGORIES: Array<{ key: CategoryKey; label: string }> = [
   { key: "all", label: "All" },
+  { key: "favorites", label: "Favorites" },
   { key: "lights", label: "Lights" },
   { key: "climate", label: "Climate" },
   { key: "security", label: "Security" },
@@ -147,10 +149,6 @@ function pickName(d: AnyDevice) {
 function pickRoomName(d: AnyDevice, runtime?: Partial<DeviceRuntimeContract> | null) {
   const presentation = runtime?.canonical_presentation || runtime?.presentation || null;
   return presentation?.assignment?.roomName || d?.room_name || d?.room?.name || d?.metadata?.room_name || d?.metadata?.room || null;
-}
-
-function pickRoomKey(d: AnyDevice) {
-  return String(d?.room_id || d?.room?.id || pickRoomName(d) || "unassigned").toLowerCase();
 }
 
 function pickRoomId(d: AnyDevice) {
@@ -698,6 +696,8 @@ function messageLinesFromThread(messages: Array<Record<string, any>> = []): Arra
 export default function DeviceClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const requestedDeviceId = useDeviceOpenRequestStore((state) => state.requestedDeviceId);
+  const clearRequestedDeviceOpen = useDeviceOpenRequestStore((state) => state.clearRequestedDeviceOpen);
   useAuth();
   const activeContext = useActiveContext();
   const estateId = useMemo(() => activeContext.estate_id || null, [activeContext.estate_id]);
@@ -1144,15 +1144,21 @@ export default function DeviceClient() {
   }, [contextReady, activeContext.contextKey]);
 
   useEffect(() => {
-    const targetId = String(searchParams.get("deviceId") || "").trim();
-    if (!targetId || !items.length) return;
+    if (!items.length) return;
+    const targetId = requestedDeviceId || String(searchParams.get("deviceId") || "").trim();
+    if (!targetId) return;
     const target = items.find((device) => {
       const ids = [pickDbId(device), pickExternalId(device), device?.device_id, device?.dev_id].map((value) => String(value || ""));
       return ids.includes(targetId);
     });
-    if (target) openDevice(target, { alreadyAssigned: true });
+    if (target) {
+      openDevice(target, { alreadyAssigned: true });
+    } else if (process.env.NODE_ENV !== "production") {
+      console.warn("[consumer.devices] device deep-link target not found", { targetId, itemCount: items.length });
+    }
+    if (requestedDeviceId) clearRequestedDeviceOpen();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, searchParams]);
+  }, [items, searchParams, requestedDeviceId]);
 
   useEffect(() => {
     if (!sheetOpen || !sheetDevice) {
@@ -1215,7 +1221,12 @@ export default function DeviceClient() {
     return residentItems.filter((d) => {
       const deviceCategory = categoryFor(d);
       const family = inferFamily(d);
-      const categoryMatch = category === "all" || deviceCategory === category || (category === "lights" && family === "switch");
+      const categoryMatch =
+        category === "all"
+          ? true
+          : category === "favorites"
+            ? isFavoriteDevice(d)
+            : deviceCategory === category || (category === "lights" && family === "switch");
       if (!categoryMatch) return false;
       if (!term) return true;
       return [pickName(d), pickRoomName(d), displayState(d, stateMap[String(pickDbId(d))] || {}, runtimeMap[String(pickDbId(d))] || null)]
@@ -1225,22 +1236,6 @@ export default function DeviceClient() {
         .includes(term);
     });
   }, [residentItems, q, category, stateMap, runtimeMap]);
-
-  const favorites = useMemo(() => residentItems.filter((device) => Boolean(device?.home_id) && isFavoriteDevice(device)).slice(0, 8), [residentItems]);
-
-  const roomGroups = useMemo(() => {
-    const map = new Map<string, { key: string; roomId: string; name: string; devices: AnyDevice[] }>();
-    residentItems.forEach((device) => {
-      const roomId = pickRoomId(device);
-      if (!device?.home_id || !roomId) return;
-      const key = pickRoomKey(device);
-      const name = pickRoomName(device) || "Room";
-      const current = map.get(key) || { key, roomId: String(roomId), name, devices: [] as AnyDevice[] };
-      current.devices.push(device);
-      map.set(key, current);
-    });
-    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [residentItems]);
 
   const attentionItems = useMemo(() => {
     return residentItems
@@ -1676,6 +1671,8 @@ export default function DeviceClient() {
     }
   }
 
+  const listTitle = category === "all" ? "All Devices" : CATEGORIES.find((item) => item.key === category)?.label || "All Devices";
+
   return (
     <LayoutWrapper>
       <main className="fixed inset-0 overflow-hidden bg-[#02060b] text-white">
@@ -1689,9 +1686,6 @@ export default function DeviceClient() {
               <h1 className="truncate text-[24px] font-semibold leading-none tracking-[-0.055em] text-white">Devices</h1>
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
-              <button type="button" onClick={openAddDevice} className="inline-flex items-center gap-1.5 rounded-full border border-sky-300/18 bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-100 shadow-[0_0_18px_rgba(0,132,255,0.14)] active:scale-[0.98]">
-                <Plus className="h-3.5 w-3.5" /> Add
-              </button>
               <div className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/[0.028] shadow-[0_8px_26px_rgba(0,0,0,0.28)] backdrop-blur-2xl"><MessagesInboxButton /></div>
             </div>
           </div>
@@ -1701,41 +1695,16 @@ export default function DeviceClient() {
           <div className="mx-auto max-w-[430px] pb-6">
             {err ? <div className="mt-4 rounded-[18px] border border-red-300/16 bg-red-500/10 px-3.5 py-3 text-xs text-red-100">{err}</div> : null}
 
-            <section className="mt-5">
-              <div className="mb-2.5 flex items-center justify-between">
-                <h2 className="text-[17px] font-semibold tracking-[-0.04em] text-white">Favorite Controls</h2>
-                <div className="flex items-center gap-3">
-                  <button type="button" onClick={() => setEditingFavorites((current) => !current)} className="text-xs text-sky-200/76">{editingFavorites ? "Done" : "Edit favorites"}</button>
-                  <button type="button" onClick={load} disabled={loading} className="text-xs text-sky-200/76 disabled:text-white/30">{loading ? "Syncing" : "Refresh"}</button>
-                </div>
+            <section className="mt-5 flex items-center gap-2" aria-label="Device categories">
+              <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {CATEGORIES.map((item) => {
+                  const active = category === item.key;
+                  return <button key={item.key} type="button" onClick={() => setCategory(item.key)} className={cn("shrink-0 rounded-full border px-3.5 py-2 text-xs font-medium transition active:scale-[0.98]", active ? "border-sky-400/70 bg-sky-400/10 text-sky-200 shadow-[0_0_20px_rgba(0,132,255,0.18)]" : "border-white/[0.075] bg-white/[0.025] text-white/62 hover:bg-white/[0.05]")}>{item.label}</button>;
+                })}
               </div>
-              {favorites.length ? (
-                <div className="flex snap-x gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                  {favorites.map((device) => <FavoriteCard key={String(pickDbId(device) || pickExternalId(device) || pickName(device))} device={device} state={stateMap[String(pickDbId(device))] || {}} runtime={runtimeMap[String(pickDbId(device))] || null} busy={busyId === String(pickDbId(device))} onOpen={openDevice} onPower={toggleMasterPower} />)}
-                </div>
-              ) : (
-                <div className="rounded-[22px] border border-white/[0.07] bg-[linear-gradient(145deg,rgba(255,255,255,0.042),rgba(255,255,255,0.012))] p-4 text-sm text-white/54 shadow-[0_14px_48px_rgba(0,0,0,0.28)] backdrop-blur-2xl">
-                  No favorite controls yet.
-                </div>
-              )}
-            </section>
-
-            <section className="mt-5 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Device categories">
-              {CATEGORIES.map((item) => {
-                const active = category === item.key;
-                return <button key={item.key} type="button" onClick={() => setCategory(item.key)} className={cn("shrink-0 rounded-full border px-3.5 py-2 text-xs font-medium transition active:scale-[0.98]", active ? "border-sky-400/70 bg-sky-400/10 text-sky-200 shadow-[0_0_20px_rgba(0,132,255,0.18)]" : "border-white/[0.075] bg-white/[0.025] text-white/62 hover:bg-white/[0.05]")}>{item.label}</button>;
-              })}
-            </section>
-
-            <section className="mt-4">
-              <h2 className="text-[17px] font-semibold tracking-[-0.04em] text-white">Devices by Room</h2>
-              {roomGroups.length ? (
-                <div className="mt-3 grid grid-cols-2 gap-2.5">
-                  {roomGroups.map((room) => <RoomCard key={room.key} room={room} />)}
-                </div>
-              ) : (
-                <AmbientEmpty className="mt-3" title="No rooms available" body="Assigned room devices will appear here." />
-              )}
+              <button type="button" onClick={openAddDevice} className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-sky-300/18 bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-100 shadow-[0_0_18px_rgba(0,132,255,0.14)] active:scale-[0.98]">
+                <Plus className="h-3.5 w-3.5" /> Add
+              </button>
             </section>
 
             {attentionItems.length ? (
@@ -1749,8 +1718,11 @@ export default function DeviceClient() {
 
             <section className="mt-5">
               <div className="mb-3 flex items-center justify-between gap-3">
-                <h2 className="text-[17px] font-semibold tracking-[-0.04em] text-white">All Devices</h2>
-                <button type="button" onClick={() => router.push("/activity")} className="inline-flex items-center gap-1 text-xs text-sky-200/80">View Activity <ChevronRight className="h-3.5 w-3.5" /></button>
+                <h2 className="text-[17px] font-semibold tracking-[-0.04em] text-white">{listTitle}</h2>
+                <div className="flex items-center gap-3">
+                  <button type="button" onClick={() => setEditingFavorites((current) => !current)} className="text-xs text-sky-200/76">{editingFavorites ? "Done" : "Edit favorites"}</button>
+                  <button type="button" onClick={() => router.push("/activity")} className="inline-flex items-center gap-1 text-xs text-sky-200/80">Activity <ChevronRight className="h-3.5 w-3.5" /></button>
+                </div>
               </div>
               <label className="flex h-11 items-center gap-2 rounded-full border border-white/[0.075] bg-white/[0.035] px-4 text-white/70 shadow-[0_12px_34px_rgba(0,0,0,0.24)] backdrop-blur-2xl focus-within:border-sky-300/25 focus-within:bg-sky-400/[0.045]">
                 <Search className="h-4 w-4 text-white/36" />
@@ -1759,7 +1731,7 @@ export default function DeviceClient() {
 
               <div className="mt-3 overflow-hidden rounded-[24px] border border-white/[0.07] bg-[linear-gradient(145deg,rgba(255,255,255,0.042),rgba(255,255,255,0.012))] shadow-[0_14px_48px_rgba(0,0,0,0.29)] backdrop-blur-2xl">
                 {loading && !filtered.length ? <div className="px-4 py-5 text-sm text-white/50">Loading devices…</div> : null}
-                {!loading && !filtered.length ? <div className="px-4 py-5 text-sm text-white/50">No devices available.</div> : null}
+                {!loading && !filtered.length ? <div className="px-4 py-5 text-sm text-white/50">{category === "favorites" ? "No favorite devices yet." : "No devices available."}</div> : null}
                 {filtered.map((device, index) => <DeviceRow key={String(pickDbId(device) || pickExternalId(device) || pickName(device))} device={device} state={stateMap[String(pickDbId(device))] || {}} runtime={runtimeMap[String(pickDbId(device))] || null} busy={busyId === String(pickDbId(device))} bordered={index > 0} editingFavorites={editingFavorites} onOpen={openDevice} onPower={toggleMasterPower} onFavorite={toggleFavorite} />)}
               </div>
             </section>
@@ -1792,33 +1764,6 @@ export default function DeviceClient() {
   );
 }
 
-function FavoriteCard({ device, state, runtime, busy, onOpen, onPower }: { device: AnyDevice; state: any; runtime?: Partial<DeviceRuntimeContract> | null; busy: boolean; onOpen: (device: AnyDevice) => void; onPower: (device: AnyDevice) => void }) {
-  const Icon = deviceIcon(device, runtime);
-  const stateText = busy ? "Working…" : displayState(device, state, runtime);
-  return (
-    <button type="button" onClick={() => onOpen(device)} className="relative min-h-[142px] w-[156px] shrink-0 snap-start overflow-hidden rounded-[26px] border border-white/[0.075] bg-[linear-gradient(145deg,rgba(255,255,255,0.052),rgba(255,255,255,0.014))] p-3.5 text-left shadow-[0_16px_48px_rgba(0,0,0,0.30)] backdrop-blur-2xl transition active:scale-[0.985]">
-      <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-sky-400/12 blur-3xl" />
-      <div className={cn("relative grid h-11 w-11 place-items-center rounded-full border", iconTone(device, runtime))}><Icon className="h-5 w-5" /></div>
-      <div className="relative mt-5 text-[15px] font-semibold leading-5 tracking-[-0.035em] text-white line-clamp-2">{pickName(device)}</div>
-      <div className="relative mt-1 truncate text-xs text-white/46">{pickRoomName(device, runtime) || "Unassigned"}</div>
-      <div className="relative mt-3 flex items-center justify-between gap-2">
-        <span className={cn("text-[13px] font-semibold", stateText === "On" || stateText === "Online" || stateText === "Locked" ? "text-emerald-300" : "text-white/72")}>{stateText}</span>
-        <button type="button" onClick={(e) => { e.stopPropagation(); onPower(device); }} className="grid h-8 w-8 place-items-center rounded-full border border-white/10 bg-white/[0.06] text-white/72" aria-label="Toggle power"><Fan className="h-4 w-4" /></button>
-      </div>
-    </button>
-  );
-}
-
-function RoomCard({ room }: { room: { key: string; roomId: string; name: string; devices: AnyDevice[] } }) {
-  const router = useRouter();
-  return (
-    <button type="button" onClick={() => router.push(`/room?roomId=${encodeURIComponent(room.roomId)}`)} className="rounded-[22px] border border-white/[0.07] bg-[linear-gradient(145deg,rgba(255,255,255,0.042),rgba(255,255,255,0.012))] p-3.5 text-left shadow-[0_12px_36px_rgba(0,0,0,0.25)] backdrop-blur-2xl transition active:scale-[0.985]">
-      <div className="grid h-9 w-9 place-items-center rounded-full border border-sky-300/14 bg-sky-400/10 text-sky-200"><Home className="h-4.5 w-4.5" /></div>
-      <div className="mt-3 truncate text-[15px] font-semibold tracking-[-0.035em] text-white">{room.name}</div>
-      <div className="mt-1 text-xs text-white/48">{room.devices.length} device{room.devices.length === 1 ? "" : "s"}</div>
-    </button>
-  );
-}
 
 function UnassignedDeviceSheet({ device, room, setRoom, binding, onClose, onAssign }: { device: AnyDevice; room: string; setRoom: (value: string) => void; binding: boolean; onClose: () => void; onAssign: () => void }) {
   const Icon = deviceIcon(device);

@@ -20,6 +20,12 @@ const [
   chatFooter,
   composerRow,
   vercelConfig,
+  messages,
+  services,
+  profile,
+  roomsClient,
+  openStore,
+  openNav,
 ] = await Promise.all([
   source("src/app/components/BottomNav.tsx"),
   source("src/lib/moduleRegistry.ts"),
@@ -38,6 +44,12 @@ const [
   source("src/app/components/ChatFooter.tsx"),
   source("src/app/components/OyiComposerRow.tsx"),
   source("vercel.json"),
+  source("src/app/messages/page.tsx"),
+  source("src/app/services/page.tsx"),
+  source("src/app/profile/page.tsx"),
+  source("src/app/rooms/RoomsClient.tsx"),
+  source("src/store/useDeviceOpenRequestStore.ts"),
+  source("src/lib/deviceOpenNavigation.ts"),
 ]);
 
 assert.match(nav, /\["home", "spaces", "devices", "community", "activity"\]/, "footer nav group 1 must be restored");
@@ -45,7 +57,6 @@ assert.match(nav, /\["visitors", "wallet", "maintenance", "services", "profile"\
 assert.doesNotMatch(modules, /key: "utilities"/, "Utilities must not remain a Consumer menu destination");
 assert.match(utilities, /router\.replace\("\/services"\)/, "legacy Utilities links must resolve to Services");
 assert.match(spaces, /RoomsClient/, "Spaces must remain the canonical room collection");
-assert.match(devices, /\/room\?roomId=/, "Devices by room must resolve to canonical Room detail");
 assert.match(room, /ContextualOyiButton label=\{`Ask about \$\{title\}`\}/, "Room Oyi entry must use a resident label");
 assert.doesNotMatch(room, /\{vendor\}/, "Room rows must not expose provider labels");
 assert.match(contextual, /text\(search.get\("roomName"\)\)/, "Oyi labels must not fall back to Room IDs");
@@ -64,7 +75,7 @@ assert.doesNotMatch(room, /Turn on \{compatibleCount\} compatible/, "room bulk p
 assert.match(room, /toggleAll\(summary\.anyOn === 0\)/, "room must expose a single power switch derived from room state");
 
 // Room device rows must navigate to the canonical device surface (no second remote)
-assert.match(room, /router\.push\(`\/devices\?deviceId=\$\{encodeURIComponent\(sid\)\}`\)/, "room device rows must open the canonical device surface");
+assert.match(room, /openCanonicalDevice\(router, sid\)/, "room device rows must open the canonical device surface via the shared resolver");
 assert.doesNotMatch(room, /Status only/, "room device rows must not use a dead-end status-only label");
 
 // Devices header no longer carries its own Scenes shortcut; Scenes remains a real, separate module
@@ -101,5 +112,43 @@ assert.match(devices, /options\?\.alreadyAssigned/, "openDevice must support an 
 // Canonical header pattern: hamburger + title on the same row, no separate subtitle-heavy header block
 assert.match(devices, /flex min-w-0 items-center gap-2\.5">\s*<div className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white\/10 bg-white\/\[0\.03\][^"]*"><HamburgerMenu \/><\/div>\s*<h1/, "Devices header must place the hamburger and title on the same row");
 assert.doesNotMatch(devices, /<header className="flex items-end justify-between gap-3">/, "Devices must not keep a separate scrolled-in header row below the fixed hamburger bar");
+
+// Favorites: Home and Devices must resolve from the same canonical signal,
+// with no synthetic fallback that fabricates favorites when none exist
+assert.doesNotMatch(home, /hasSavedPreferences/, "Home must not fall back to showing non-favorited devices as if they were favorites");
+assert.match(home, /favoritePreference\(device\) === true/, "Home favorites must be gated on the real favorite flag, same as Devices");
+assert.match(devices, /category === "favorites"\s*\?\s*isFavoriteDevice\(d\)/, "Devices Favorites filter must use the canonical favorite flag");
+
+// One canonical cross-page device-open resolver, reused by Room and Home
+assert.match(openStore, /requestDeviceOpen: \(deviceId: string\) => void/, "a shared device-open-request store must exist");
+assert.match(openNav, /export function openCanonicalDevice/, "a shared canonical device-open navigation helper must exist");
+assert.match(room, /openCanonicalDevice\(router, sid\)/, "Room must use the shared canonical device-open resolver");
+assert.match(home, /openCanonicalDevice\(router, deviceId\)/, "Home favorites must use the shared canonical device-open resolver instead of a bare \/devices push");
+assert.doesNotMatch(home, /simple \? void toggleFavoriteDevice\(device\) : router\.push\("\/devices"\)/, "Home favorite tiles must not route a specific device open to the generic Devices landing page");
+assert.match(devices, /requestedDeviceId \|\| String\(searchParams\.get\("deviceId"\)/, "Devices must prefer the cross-page store request over the URL param race");
+assert.match(devices, /console\.warn\("\[consumer\.devices\] device deep-link target not found"/, "a failed device-open resolution must be logged in development, not silently dropped");
+
+// Devices reorg: no standalone Favorite Controls carousel or Devices-by-Room duplication of Spaces
+assert.doesNotMatch(devices, /Favorite Controls/, "Devices must not keep a separate Favorite Controls section (Favorites is a filter now)");
+assert.doesNotMatch(devices, /Devices by Room/, "Devices must not duplicate Spaces' room navigation");
+assert.match(devices, /key: "favorites", label: "Favorites"/, "Devices category rail must include a real Favorites filter");
+
+// Sticky module header lives in the shared shell, not hand-rolled per page
+assert.match(shell, /sticky top-0 z-30/, "ConsumerShell header must be sticky for every page that uses it");
+assert.doesNotMatch(shell, /stickyHeader/, "sticky header must be the shell's default behavior, not an opt-in prop");
+assert.match(roomsClient, /sticky top-0 z-30/, "Spaces header must be sticky like every other module");
+
+// Profile header adopts the canonical hamburger+title row
+assert.match(profile, /<h1 className="truncate text-\[24px\][^>]*>Profile<\/h1>/, "Profile title must move into the fixed header row");
+
+// Messages: no card-in-card nesting, composer is a single thin border
+assert.doesNotMatch(messages, /rounded-3xl border border-white\/10 bg-white\/5/, "Messages must not wrap the list/conversation in a heavy outer card");
+assert.doesNotMatch(messages, /rounded-\[24px\] border border-white\/10 bg-black\/25/, "Messages composer must not nest a second bordered input card");
+assert.match(messages, /Type a message/, "Messages composer copy must remain unchanged");
+
+// Services: one truthful status pill per card, no simultaneous Connected + Setup required
+assert.doesNotMatch(services, /disabled=\{busy \|\| !actionEnabled\}/, "service cards must not render a separate disabled status button");
+assert.match(services, /onClick=\{\(\) => \(actionEnabled \? onAction\(\) : onExplain\(explanation\)\)\}/, "the whole service card must be tappable, resolving to either the real action or a truthful explanation");
+assert.match(services, /const statusLabel = actionEnabled/, "service state must resolve to one authoritative label shared by the pill and the tap explanation");
 
 console.log("consumer P2 experience foundation smoke passed");

@@ -108,7 +108,7 @@ assert(/setPurchaseOpen\(true\)/.test(electricityHandler) && !/initiateTransacti
 assert(/title="Infrastructure Services"/.test(servicesPage) && !/stickyHeader/.test(servicesPage) && /hideStrip/.test(servicesPage), "services page uses the canonical shell without a page-specific sticky header treatment");
 assert(/serviceSummary/.test(servicesPage) && !/label: "Ready"/.test(servicesPage) && !/label: "Pending"/.test(servicesPage), "services page uses a lightweight inline service summary");
 assert(!/View details|View Service|View purchases/.test(servicesPage), "service cards do not expose duplicate resident details actions");
-assert(servicesPage.includes('aria-label={`${actionLabel} for ${item.title}`}') && /min-h-10/.test(servicesPage), "service actions are semantic touch-sized buttons");
+assert(/aria-label=\{actionEnabled \? `Open \$\{item\.title\}` : explanation\}/.test(servicesPage) && /px-3\.5 py-3/.test(servicesPage), "service cards are semantic touch-sized buttons");
 assert(/role="dialog"/.test(servicesPage) && /aria-modal="true"/.test(servicesPage) && /amountInputRef/.test(servicesPage) && /Quick amounts/.test(servicesPage), "electricity purchase opens as an accessible visible amount flow");
 assert(/document\.body\.style\.overflow = "hidden"/.test(servicesPage), "electricity purchase dialog locks background scroll");
 assert(/requestSeqRef/.test(servicesPage) && /requestSeq !== requestSeqRef\.current/.test(servicesPage), "services page rejects late responses after active-home changes");

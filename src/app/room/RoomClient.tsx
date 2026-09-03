@@ -10,6 +10,7 @@ import { deviceService, type DeviceRuntimeSummary } from "@/services/deviceServi
 import GangRingSwitch from "@/app/components/devices/GangRingSwitch";
 import ContextualOyiButton from "@/app/components/ContextualOyiButton";
 import { getDeviceFamily, getDeviceIcon } from "@/lib/devicePresentation";
+import { openCanonicalDevice } from "@/lib/deviceOpenNavigation";
 
 type AnyDevice = Record<string, any>;
 
@@ -430,7 +431,7 @@ export default function RoomClient() {
                 ? [onMap[sid] ?? null]
                 : Array.from({ length: gangCount }, () => null);
 
-            const openDevice = () => sid && router.push(`/devices?deviceId=${encodeURIComponent(sid)}`);
+            const openDevice = () => sid && openCanonicalDevice(router, sid);
 
             return (
               <div

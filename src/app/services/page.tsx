@@ -5,7 +5,7 @@ import ConsumerShell from "@/app/components/ConsumerShell";
 import useActiveContext from "@/hooks/useActiveContext";
 import { getSocket } from "@/services/socket";
 import { servicesService, type ElectricityQuote, type HomeServiceRegistry, type ServiceAccount, type ServiceConfig, type ServiceKey, type ServicePayment } from "@/services/servicesService";
-import { FiCreditCard, FiDroplet, FiTool, FiWifi, FiZap } from "react-icons/fi";
+import { FiChevronRight, FiCreditCard, FiDroplet, FiTool, FiWifi, FiZap } from "react-icons/fi";
 
 const SERVICE_CARDS: Array<{
   key: string;
@@ -50,7 +50,7 @@ function dateText(value?: string | null) {
 function toneFor(value?: string | null) {
   const text = String(value || "").toLowerCase();
   if (/ready|active|available|stable|online/.test(text)) return "text-emerald-200 border-emerald-300/20 bg-emerald-400/10";
-  if (/issue|failed|warning|blocked|degraded/.test(text)) return "text-amber-200 border-amber-300/20 bg-amber-400/10";
+  if (/issue|failed|warning|blocked|degraded|setup/.test(text)) return "text-amber-200 border-amber-300/20 bg-amber-400/10";
   if (/unsupported|offline|unavailable/.test(text)) return "text-rose-200 border-rose-300/20 bg-rose-400/10";
   return "text-white/78 border-white/10 bg-white/[0.06]";
 }
@@ -196,6 +196,7 @@ function GroupedServiceCard({
   latestPayment,
   busy,
   onAction,
+  onExplain,
   actionRef,
 }: {
   item: (typeof SERVICE_CARDS)[number];
@@ -204,6 +205,7 @@ function GroupedServiceCard({
   latestPayment?: ServicePayment | null;
   busy?: boolean;
   onAction: () => void;
+  onExplain: (reason: string) => void;
   actionRef?: Ref<HTMLButtonElement>;
 }) {
   const Icon = item.icon;
@@ -222,48 +224,49 @@ function GroupedServiceCard({
   const canTransact = hasImplementedAction && state.label === "Active";
   const actionEnabled = canTransact;
   const unavailableReason = entry?.unavailable_reason ? UNAVAILABLE_REASON_LABELS[entry.unavailable_reason] : null;
-  const actionLabel = actionEnabled
-    ? item.cta
+  // One authoritative status, resolved the same way regardless of whether
+  // it lands in the pill or explains a tap — a resident must never see
+  // "Connected" and "Setup required" presented as if they were two
+  // different facts about the same card.
+  const statusLabel = actionEnabled
+    ? "Connected"
     : hasImplementedAction && unavailableReason
       ? unavailableReason
       : !provisioned
-        ? "Not available"
+        ? "Not connected"
         : hasImplementedAction
           ? "Unavailable"
           : "Coming soon";
+  const explanation = hasImplementedAction
+    ? `${item.title}: ${statusLabel.toLowerCase()}.`
+    : `${item.title} payments are not available in Consumer yet.`;
 
   return (
-    <section className="rounded-[18px] border border-white/[0.075] bg-white/[0.026] px-3.5 py-3 shadow-[0_8px_22px_rgba(0,0,0,0.12)]">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="grid h-8 w-8 shrink-0 place-items-center rounded-[12px] border border-white/[0.08] bg-white/[0.035] text-white/72">
-            <Icon className="h-4 w-4" />
-          </div>
+    <button
+      type="button"
+      ref={actionRef}
+      disabled={busy}
+      onClick={() => (actionEnabled ? onAction() : onExplain(explanation))}
+      aria-label={actionEnabled ? `Open ${item.title}` : explanation}
+      className="flex w-full items-start gap-3 rounded-[18px] border border-white/[0.075] bg-white/[0.026] px-3.5 py-3 text-left shadow-[0_8px_22px_rgba(0,0,0,0.12)] transition active:scale-[0.99] disabled:opacity-60"
+    >
+      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-[12px] border border-white/[0.08] bg-white/[0.035] text-white/72">
+        <Icon className="h-4 w-4" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/42">{item.title}</h2>
-            <p className="mt-1 truncate text-[17px] font-semibold tracking-[-0.035em] text-white">{front.primary}</p>
+            <p className="mt-1 truncate text-[17px] font-semibold tracking-[-0.035em] text-white">{busy ? "Working…" : front.primary}</p>
             {front.secondary ? <p className="mt-0.5 truncate text-[11px] text-white/48">{front.secondary}</p> : null}
           </div>
+          <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium ${toneFor(statusLabel)}`}>
+            {statusLabel}
+          </span>
         </div>
-        <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium ${front.tone || toneFor(front.status)}`}>
-          {front.status}
-        </span>
       </div>
-
-      <div className="mt-3 flex items-center gap-2">
-        <button
-          ref={actionRef}
-          type="button"
-          onClick={onAction}
-          disabled={busy || !actionEnabled}
-          aria-label={`${actionLabel} for ${item.title}`}
-          title={actionEnabled ? actionLabel : hasImplementedAction ? `${item.title}: ${actionLabel.toLowerCase()}.` : `${item.title} payments are not available in Consumer yet.`}
-          className="min-h-10 rounded-full border border-white/10 bg-white px-4 text-[12px] font-semibold text-black transition active:scale-[0.98] disabled:bg-white/[0.08] disabled:text-white/42 disabled:opacity-100"
-        >
-          {busy ? "Working..." : actionLabel}
-        </button>
-      </div>
-    </section>
+      <FiChevronRight className="mt-1 shrink-0 text-white/28" />
+    </button>
   );
 }
 
@@ -615,6 +618,7 @@ export default function ServicesPage() {
                   latestPayment={latestPaymentForCard(item)}
                   busy={busyKey === item.key}
                   onAction={() => void handleCardAction(item)}
+                  onExplain={(reason) => setMessage(reason)}
                   actionRef={item.key === "electricity" ? electricityActionRef : item.key === "estate_fees" ? feeActionRef : undefined}
                 />
               ))}
