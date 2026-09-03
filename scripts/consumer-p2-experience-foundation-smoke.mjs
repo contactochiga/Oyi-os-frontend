@@ -29,6 +29,8 @@ const [
   securityStateLib,
   communityUnreadLib,
   sceneServiceSrc,
+  visitors,
+  doorPanel,
 ] = await Promise.all([
   source("src/app/components/BottomNav.tsx"),
   source("src/lib/moduleRegistry.ts"),
@@ -56,6 +58,8 @@ const [
   source("src/lib/securityState.ts"),
   source("src/lib/communityUnread.ts"),
   source("src/services/sceneService.ts"),
+  source("src/app/visitors/page.tsx"),
+  source("src/app/components/remotes/DoorPanel.tsx"),
 ]);
 
 assert.match(nav, /\["home", "spaces", "devices", "community", "activity"\]/, "footer nav group 1 must be restored");
@@ -179,5 +183,29 @@ assert.match(messages, /Type a message/, "Messages composer copy must remain unc
 assert.doesNotMatch(services, /disabled=\{busy \|\| !actionEnabled\}/, "service cards must not render a separate disabled status button");
 assert.match(services, /onClick=\{\(\) => \(actionEnabled \? onAction\(\) : onExplain\(explanation\)\)\}/, "the whole service card must be tappable, resolving to either the real action or a truthful explanation");
 assert.match(services, /const statusLabel = actionEnabled/, "service state must resolve to one authoritative label shared by the pill and the tap explanation");
+
+// Closure pass: visitor detail must not swallow a real backend failure into
+// a UI-side generic message -- the truthful error text comes from the
+// service layer's mapped/backend message, not a hardcoded fallback.
+assert.match(visitors, /visitorService\.getInfo\(id\)/, "visitor detail must call the real getInfo service");
+assert.doesNotMatch(visitors, /catch \{\s*setInfoErr\(["'`]Visitor could not be verified/, "visitor detail open must not hardcode a blanket verification-failure message over every error");
+
+// Closure pass: visitor status pills must never wrap to a second line
+assert.match(visitors, /whitespace-nowrap/, "visitor status pill must be non-wrapping");
+assert.match(visitors, /inline-flex shrink-0 items-center gap-1 whitespace-nowrap/, "visitor status Pill component must be shrink-proof so it never wraps under card pressure");
+
+// Closure pass: Room master switch must sit on the same row as the
+// online/offline/active summary line (not floating against a taller
+// two-line block that also contains Refresh), with an explicit ON/OFF label,
+// and Refresh must not be visually confusable with the toggle.
+assert.match(room, /\{summary\.anyOn > 0 \? "ON" : "OFF"\}/, "Room switch must show an explicit ON/OFF text state, not just a color change");
+assert.match(room, /<div className="flex items-center justify-between gap-3">\s*<div className="min-w-0 text-sm text-white\/60 truncate">/, "Room switch and the online/offline/active summary must share one row so the switch aligns with room state, not the Refresh button below it");
+
+// Closure pass: smart-access/lock capability surfaces must keep showing the
+// backend's real, per-capability reason -- never claim full lock control
+// exists when the provider mapping is unverified.
+assert.match(doorPanel, /function capabilityNote/, "DoorPanel must keep its capability-note truthful-blocker helper");
+assert.match(doorPanel, /evidence\.status === "verification_required"/, "DoorPanel must surface the verification_required blocker truthfully");
+assert.match(doorPanel, /evidence\.status === "mapping_missing"/, "DoorPanel must surface the mapping_missing blocker truthfully");
 
 console.log("consumer P2 experience foundation smoke passed");
