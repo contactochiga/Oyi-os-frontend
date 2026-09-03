@@ -103,16 +103,8 @@ export const sceneService = {
     const res = await API.delete(`/scenes/${encodeURIComponent(id)}`);
     return res.data;
   },
-  async runScene(id: string, name?: string): Promise<SceneRunResult> {
+  async runScene(id: string): Promise<SceneRunResult> {
     const res = await API.post(`/scenes/${encodeURIComponent(id)}/run`);
-    if (typeof window !== "undefined") {
-      const label = String(name || res.data?.scene?.name || res.data?.name || "").trim();
-      if (label) {
-        const detail = { id, name: label, at: new Date().toISOString() };
-        window.localStorage.setItem("oyi:last-scene", JSON.stringify(detail));
-        window.dispatchEvent(new CustomEvent("oyi:scene-activated", { detail }));
-      }
-    }
     return res.data as SceneRunResult;
   },
   async listSceneRuns(id: string): Promise<SceneRunResult[]> {

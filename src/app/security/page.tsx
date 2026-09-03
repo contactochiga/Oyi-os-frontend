@@ -8,17 +8,7 @@ import cameraService, { type CameraItem } from "@/services/cameraService";
 import { visitorService, type VisitorAccess } from "@/services/visitorService";
 import { Camera, ChevronRight, DoorOpen, KeyRound, ShieldCheck, UserPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
-
-function isSecurityDevice(device: any) {
-  const text = `${device?.name || ""} ${device?.type || ""} ${device?.category || ""} ${device?.device_type || ""}`.toLowerCase();
-  return ["lock", "door", "gate", "security", "access", "motion", "sensor"].some((x) => text.includes(x));
-}
-
-function isOnline(device: any) {
-  if (typeof device?.online === "boolean") return device.online;
-  const status = String(device?.status || device?.state || "").toLowerCase();
-  return ["online", "active", "connected", "on"].some((x) => status.includes(x));
-}
+import { isSecurityDevice, resolveSecurityState } from "@/lib/securityState";
 
 function Panel({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return <section className={`rounded-[22px] border border-white/[0.07] bg-white/[0.032] p-4 shadow-[0_16px_52px_rgba(0,0,0,0.28)] backdrop-blur-2xl ${className}`}>{children}</section>;
@@ -66,8 +56,8 @@ export default function SecurityPage() {
   const securityDevices = useMemo(() => devices.filter(isSecurityDevice), [devices]);
   const accessDevices = useMemo(() => securityDevices.filter((d) => `${d?.name || ""} ${d?.type || ""} ${d?.category || ""}`.toLowerCase().match(/lock|door|gate|access/)), [securityDevices]);
   const activeVisitors = visitors.filter((v) => ["active", "approved", "entered"].includes(String(v.status || "").toLowerCase()));
-  const offline = securityDevices.filter((d) => !isOnline(d));
-  const secure = offline.length === 0 && activeVisitors.length === 0;
+  const resolved = resolveSecurityState(devices, activeVisitors.length, loading);
+  const secure = resolved.secure === true;
 
   return (
     <ConsumerShell title="Security">
