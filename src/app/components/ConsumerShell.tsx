@@ -89,11 +89,11 @@ export default function ConsumerShell({
 
   return (
     <LayoutWrapper>
-      <main className="fixed inset-0 flex flex-col overflow-hidden bg-[#03070c] text-white md:left-[88px]">
+      <main className="fixed inset-0 flex flex-col overflow-hidden bg-[#03070c] text-white md:left-[108px]">
         <div className="oyi-ambient-bg" />
         <InviteSuggestionBridge />
 
-        <div ref={headerRef} className="fixed inset-x-0 z-[80] px-4 md:left-[88px] md:px-8" style={{ top: "calc(8px + var(--sat))" }}>
+        <div ref={headerRef} className="fixed inset-x-0 z-[80] px-4 md:left-[108px] md:px-8" style={{ top: "calc(8px + var(--sat))" }}>
           <div className={`mx-auto w-full ${wide ? "max-w-[860px] lg:max-w-[1180px] xl:max-w-[1400px]" : "max-w-[860px] lg:max-w-[920px] xl:max-w-[980px]"}`}>
             <div className="flex items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-2.5">

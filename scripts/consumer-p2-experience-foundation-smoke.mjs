@@ -293,7 +293,7 @@ assert.match(nav, /md:flex/, "BottomNav must render a persistent sidebar variant
 assert.match(nav, /md:hidden/, "the phone bottom nav must hide at the md breakpoint in favor of the sidebar, not stack both");
 assert.match(shell, /backHref \? \(/, "ConsumerShell must support an optional back-navigation affordance for detail pages");
 for (const [name, src] of [["home", home], ["devices", devices], ["profile", profile], ["ai", aiPage], ["rooms", roomsClient], ["scenes", scenes]]) {
-  assert.match(src, /md:left-\[88px\]/, `${name} page must offset its fixed layout for the iPad+ sidebar width`);
+  assert.match(src, /md:left-\[108px\]/, `${name} page must offset its fixed layout for the iPad+ sidebar width`);
 }
 
 // Mobile closure: Profile child pages share one arrow-only back pattern,
@@ -377,5 +377,24 @@ assert.match(profile, /lg:col-span-2/, "Log Out must span both columns as a clea
 // comfortable reading width instead of letting it stretch edge to edge.
 assert.match(aiPage, /max-w-\[680px\] shrink-0 px-5 lg:max-w-\[900px\] xl:max-w-\[1040px\]/, "Oyi header column must widen at desktop");
 assert.match(aiPage, /max-w-\[680px\] flex-1 flex-col px-5 lg:max-w-\[900px\] xl:max-w-\[1040px\]/, "Oyi conversation column must widen at desktop");
+
+// Large-screen visual polish: the persistent sidebar is legible (108px,
+// larger icon/label/touch targets) rather than cramped, while staying
+// visually lighter than Facility (no Facility styling copied in).
+assert.match(nav, /w-\[108px\]/, "sidebar must widen from the cramped 88px rail for legibility");
+assert.match(nav, /text-\[20px\]/, "sidebar icons must be sized up alongside the wider rail");
+assert.match(nav, /text-\[10\.5px\] font-medium">\{item\.label\}/, "sidebar labels must be sized up for legibility, not left at the original 9px");
+
+// Large-screen visual polish: Home is a centered dashboard, not an
+// operational grid -- it keeps the same restrained reading-width canvas as
+// Wallet/Security rather than the 1400px operational-grid tier, so its hero
+// and activity strip read as intentionally composed instead of stretched.
+assert.match(home, /md:max-w-\[720px\] lg:max-w-\[860px\] xl:max-w-\[980px\]/, "Home canvas must stay restrained like a centered dashboard, not stretch to the operational-grid width tier");
+assert.doesNotMatch(home, /xl:max-w-\[1400px\]/, "Home must not keep the wide operational-grid canvas cap");
+
+// Large-screen visual polish: Spaces' spatial map keeps growing into the
+// wider canvas, but its side summary panel is bounded to a sensible pixel
+// range at lg+ instead of stretching proportionally with the canvas.
+assert.match(roomsClient, /lg:grid-cols-\[minmax\(200px,280px\)_minmax\(0,1fr\)_42px\]/, "Spaces summary panel must be width-bounded at lg+ instead of growing proportionally with the canvas");
 
 console.log("consumer P2 experience foundation smoke passed");

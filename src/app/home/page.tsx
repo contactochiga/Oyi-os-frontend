@@ -669,13 +669,13 @@ export default function HomePage() {
 
   return (
     <LayoutWrapper>
-      <main className="fixed inset-0 isolate min-h-0 overflow-hidden bg-[#02060b] text-white md:left-[88px]">
+      <main className="fixed inset-0 isolate min-h-0 overflow-hidden bg-[#02060b] text-white md:left-[108px]">
         <div className="oyi-ambient-bg" />
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_15%,rgba(0,132,255,0.14),transparent_31%),radial-gradient(circle_at_50%_55%,rgba(0,92,185,0.08),transparent_33%),linear-gradient(180deg,rgba(4,12,22,0.2),rgba(0,0,0,0.92))]" />
         <div className="pointer-events-none absolute inset-x-10 top-[18%] h-[42%] rounded-full bg-sky-500/[0.028] blur-3xl" />
 
         <div
-          className="pointer-events-none fixed inset-x-0 z-[80] px-5 md:left-[88px]"
+          className="pointer-events-none fixed inset-x-0 z-[80] px-5 md:left-[108px]"
           style={{ top: "calc(10px + var(--sat))" }}
         >
           {canMountAuthedBridges ? (
@@ -683,7 +683,7 @@ export default function HomePage() {
               <InviteSuggestionBridge />
             </>
           ) : null}
-          <div className="pointer-events-auto mx-auto flex max-w-[430px] items-center justify-end md:max-w-[720px] lg:max-w-[1180px] xl:max-w-[1400px]">
+          <div className="pointer-events-auto mx-auto flex max-w-[430px] items-center justify-end md:max-w-[720px] lg:max-w-[860px] xl:max-w-[980px]">
             <div className="grid h-12 w-12 place-items-center rounded-full border border-white/10 bg-white/[0.028] shadow-[0_10px_32px_rgba(0,0,0,0.30)] backdrop-blur-2xl">
               <MessagesInboxButton />
             </div>
@@ -699,7 +699,7 @@ export default function HomePage() {
             WebkitOverflowScrolling: "touch",
           }}
         >
-          <div className="oyi-living-page oyi-page-fade mx-auto max-w-[430px] pb-5 transition duration-300 md:max-w-[720px] lg:max-w-[1180px] xl:max-w-[1400px]">
+          <div className="oyi-living-page oyi-page-fade mx-auto max-w-[430px] pb-5 transition duration-300 md:max-w-[720px] lg:max-w-[860px] xl:max-w-[980px]">
             <motion.section
               initial={reduceMotion ? false : { opacity: 0, y: 18 }}
               animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
@@ -772,7 +772,7 @@ export default function HomePage() {
               transition={{ duration: 0.48, delay: 0.18, ease: [0.22, 1, 0.36, 1] }}
             >
               <OyiContextRail
-                className="mt-5"
+                className="mt-5 lg:mt-8"
                 items={homeStateItems.map((item) => ({
                   label: item.label,
                   value: item.value,
@@ -787,7 +787,7 @@ export default function HomePage() {
               initial={reduceMotion ? false : { opacity: 0, y: 12 }}
               animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
               transition={{ duration: 0.48, delay: 0.28, ease: [0.22, 1, 0.36, 1] }}
-              className="mt-6"
+              className="mt-6 lg:mt-10"
             >
               <div className="mb-3.5 flex items-center justify-between">
                 <h2 className="text-[18px] font-medium tracking-[-0.04em] text-white/76">Quick controls</h2>
@@ -877,7 +877,7 @@ export default function HomePage() {
             )}
 
             {favoriteDevices.length ? (
-              <section className="mt-5 rounded-[24px] border border-white/[0.055] bg-white/[0.02] p-2.5 backdrop-blur-2xl">
+              <section className="mt-5 rounded-[24px] border border-white/[0.055] bg-white/[0.02] p-2.5 backdrop-blur-2xl lg:mt-8">
                 <div className="flex gap-2 overflow-x-auto">
                   {favoriteDevices.map((device) => {
                     const deviceId = pickDeviceId(device);

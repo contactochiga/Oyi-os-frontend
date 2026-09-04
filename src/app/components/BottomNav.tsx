@@ -292,9 +292,9 @@ export default function BottomNav() {
 
   return (
     <>
-      <nav className="fixed inset-y-0 left-0 z-[95] hidden w-[88px] flex-col border-r border-white/[0.07] bg-[#040911]/92 px-2 py-4 shadow-[12px_0_42px_rgba(0,0,0,0.28)] backdrop-blur-2xl md:flex" aria-label="Oyi Home navigation">
-        <div className="mb-3 grid h-10 place-items-center text-[11px] font-semibold tracking-[0.22em] text-sky-100/78">OYI</div>
-        <div className="flex min-h-0 flex-1 flex-col justify-around gap-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <nav className="fixed inset-y-0 left-0 z-[95] hidden w-[108px] flex-col border-r border-white/[0.07] bg-[#040911]/92 px-2.5 py-5 shadow-[12px_0_42px_rgba(0,0,0,0.28)] backdrop-blur-2xl md:flex" aria-label="Oyi Home navigation">
+        <div className="mb-4 grid h-10 place-items-center text-[12px] font-semibold tracking-[0.22em] text-sky-100/78">OYI</div>
+        <div className="flex min-h-0 flex-1 flex-col justify-around gap-1.5 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {ITEMS.map((item) => {
             const active = isActive(pathname, item);
             const Icon = item.icon;
@@ -308,14 +308,14 @@ export default function BottomNav() {
                   clearLocalDot(item.key as FooterBadgeKey);
                   router.push(item.href);
                 }}
-                className={`group relative flex min-h-[52px] flex-col items-center justify-center rounded-[18px] px-1 py-1.5 transition active:scale-[0.98] ${active ? "border border-sky-200/15 bg-sky-400/12 text-white shadow-[0_0_24px_rgba(56,189,248,0.13)]" : "text-white/46 hover:bg-white/[0.04] hover:text-white/78"}`}
+                className={`group relative flex min-h-[60px] flex-col items-center justify-center rounded-[18px] px-1.5 py-2 transition active:scale-[0.98] ${active ? "border border-sky-200/15 bg-sky-400/12 text-white shadow-[0_0_24px_rgba(56,189,248,0.13)]" : "text-white/46 hover:bg-white/[0.04] hover:text-white/78"}`}
                 aria-current={active ? "page" : undefined}
               >
-                <span className="relative grid h-7 w-7 place-items-center">
-                  {isProfile && avatarUrl ? <img src={avatarUrl} alt="Profile" className="h-6 w-6 rounded-full object-cover ring-1 ring-white/15" /> : <Icon className="text-[18px]" />}
+                <span className="relative grid h-8 w-8 place-items-center">
+                  {isProfile && avatarUrl ? <img src={avatarUrl} alt="Profile" className="h-7 w-7 rounded-full object-cover ring-1 ring-white/15" /> : <Icon className="text-[20px]" />}
                   {badge ? <span className="absolute right-0 top-0 h-2 w-2 rounded-full bg-sky-300 shadow-[0_0_10px_rgba(56,189,248,0.8)]" /> : null}
                 </span>
-                <span className="mt-0.5 max-w-full truncate text-[9px] font-medium">{item.label}</span>
+                <span className="mt-1 max-w-full truncate text-[10.5px] font-medium">{item.label}</span>
               </button>
             );
           })}

@@ -362,9 +362,9 @@ export default function RoomsClient() {
 
   return (
     <LayoutWrapper>
-      <main className="fixed inset-0 overflow-hidden bg-[#02060b] text-white md:left-[88px]">
+      <main className="fixed inset-0 overflow-hidden bg-[#02060b] text-white md:left-[108px]">
         <div className="oyi-ambient-bg" />
-        <div className="fixed inset-x-0 z-[80] px-4 md:left-[88px]" style={{ top: "calc(8px + var(--sat))" }}>
+        <div className="fixed inset-x-0 z-[80] px-4 md:left-[108px]" style={{ top: "calc(8px + var(--sat))" }}>
           <div className="mx-auto flex w-full max-w-[860px] items-center justify-between gap-3 lg:max-w-[1180px] xl:max-w-[1400px]">
             <div className="flex min-w-0 items-center gap-2.5">
               <h1 className="truncate text-[24px] font-semibold leading-none tracking-[-0.055em] text-white">Spaces</h1>
@@ -399,7 +399,7 @@ export default function RoomsClient() {
               <div className="absolute inset-3 rounded-[26px] border border-white/[0.045] bg-[#020812]/58" />
               <div className="absolute inset-3 opacity-[0.14] [background-image:linear-gradient(rgba(59,130,246,.45)_1px,transparent_1px),linear-gradient(90deg,rgba(59,130,246,.45)_1px,transparent_1px)] [background-size:30px_30px]" />
 
-              <div className="relative z-10 grid gap-3 md:min-h-[536px] md:grid-cols-[minmax(162px,30%)_minmax(0,1fr)_42px]">
+              <div className="relative z-10 grid gap-3 md:min-h-[536px] md:grid-cols-[minmax(162px,30%)_minmax(0,1fr)_42px] lg:grid-cols-[minmax(200px,280px)_minmax(0,1fr)_42px]">
                 <RoomSummaryPanel selectedLabel={selectedLabel} selectedRoom={selectedRoom} summary={summary} onDetails={() => setDetailsOpen(true)} />
 
                 <div className="relative h-[390px] min-w-0 overflow-hidden rounded-[26px] border border-white/[0.035] bg-black/10 md:h-auto">
