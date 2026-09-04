@@ -53,9 +53,9 @@ function switchCodes(device: AnyDevice, runtime: Partial<DeviceRuntimeSummary> |
 }
 
 function canPowerControl(device: AnyDevice, runtime: Partial<DeviceRuntimeSummary> | null | undefined, state: any) {
+  void state;
   const family = getDeviceFamily(runtime ? { ...device, ...runtime } : device);
-  if (!["switch", "plug", "light"].includes(family)) return false;
-  return switchCodes(device, runtime, state).length > 0;
+  return ["switch", "plug", "light"].includes(family);
 }
 
 function guessGangCount(device: AnyDevice, state: any, runtime?: Partial<DeviceRuntimeSummary> | null): 1 | 2 | 3 {
@@ -348,7 +348,7 @@ export default function RoomClient() {
   const subtitle = loading ? "Updating room state…" : `${summary.total} assigned ${summary.total === 1 ? "device" : "devices"}`;
 
   return (
-    <ConsumerShell title={title} subtitle={subtitle} hideStrip>
+    <ConsumerShell title={title} subtitle={subtitle} backHref="/spaces" hideStrip>
       {!roomId ? (
         <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/70">
           Missing roomId.
@@ -361,36 +361,34 @@ export default function RoomClient() {
         </div>
       ) : null}
 
-      <section className="mt-4 border-b border-white/[0.09] pb-4">
+      <section className="mt-4 rounded-[22px] border border-white/[0.08] bg-white/[0.025] px-4 py-4 shadow-[0_14px_40px_rgba(0,0,0,0.24)] backdrop-blur-xl">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0 text-sm text-white/60 truncate">
             {loading ? "Syncing room…" : `${summary.online} online${summary.offline ? ` · ${summary.offline} offline` : ""}${summary.anyOn ? ` · ${summary.anyOn} active` : ""}`}
           </div>
-          {compatibleCount ? (
-            <button
+          <button
               type="button"
               onClick={() => toggleAll(summary.anyOn === 0)}
-              disabled={busyId === "room-all" || loading}
+              disabled={busyId === "room-all" || loading || compatibleCount === 0}
               aria-label={summary.anyOn > 0 ? `Turn off ${title}` : `Turn on ${title}`}
               aria-pressed={summary.anyOn > 0}
-              className="flex shrink-0 items-center gap-2 disabled:opacity-50"
+              className="flex min-w-[84px] shrink-0 items-center justify-end gap-2 disabled:opacity-35"
             >
               <span className={`text-[11px] font-medium tracking-wide ${summary.anyOn > 0 ? "text-sky-200" : "text-white/45"}`}>
                 {summary.anyOn > 0 ? "ON" : "OFF"}
               </span>
               <span
-                className={`relative h-9 w-16 rounded-full border transition ${
+                className={`relative h-8 w-14 overflow-hidden rounded-full border transition ${
                   summary.anyOn > 0 ? "border-sky-300/40 bg-sky-400/30" : "border-white/12 bg-white/[0.06]"
                 }`}
               >
                 <span
-                  className={`absolute top-0.5 h-7 w-7 rounded-full bg-white shadow transition-transform ${
-                    summary.anyOn > 0 ? "translate-x-[30px]" : "translate-x-0.5"
+                  className={`absolute left-0.5 top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform ${
+                    summary.anyOn > 0 ? "translate-x-6" : "translate-x-0"
                   }`}
                 />
               </span>
             </button>
-          ) : null}
         </div>
         <button onClick={loadRoom} disabled={loading} className="mt-2 rounded-md border border-white/10 px-2.5 py-1.5 text-xs text-white/72 hover:bg-white/[0.06] disabled:opacity-50" type="button">Refresh</button>
       </section>

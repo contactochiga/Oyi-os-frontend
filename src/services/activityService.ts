@@ -144,6 +144,7 @@ function actionForNotification(item: any, category: ActivityCategory): ActivityA
   const postId = firstString(payload.post_id, payload.postId, payload.community_post_id, item.post_id, entityId && /community|post|announcement|notice/.test(typeText) ? entityId : "");
   const commentId = firstString(payload.comment_id, payload.commentId);
   const threadId = firstString(payload.thread_id, payload.threadId, payload.conversation_id, payload.message_thread_id, entityId && /message|thread|chat|inbox/.test(typeText) ? entityId : "");
+  const reportThreadId = firstString(payload.ai_thread_id, payload.aiThreadId, payload.report_thread_id, payload.conversation_id, entityId && /report|briefing|digest/.test(typeText) ? entityId : "");
   const inviteId = firstString(payload.invite_id, payload.inviteId, payload.invitation_id, entityId && /invite|invitation/.test(typeText) ? entityId : "");
   const visitorId = firstString(payload.visitor_id, payload.visitorId, entityId && /visitor|guest|gate/.test(typeText) ? entityId : "");
   const maintenanceId = firstString(payload.ticket_id, payload.ticketId, payload.maintenance_id, payload.maintenanceId, payload.request_id, entityId && /maintenance|repair|support/.test(typeText) ? entityId : "");
@@ -157,6 +158,7 @@ function actionForNotification(item: any, category: ActivityCategory): ActivityA
 
   if (inviteId) return { href: `/invites?inviteId=${encodeURIComponent(inviteId)}`, route: `/invites?inviteId=${encodeURIComponent(inviteId)}`, label: "Open invite", kind: "invite", entity_id: inviteId };
   if (postId) return { href: `/community?postId=${encodeURIComponent(postId)}${commentId ? `&commentId=${encodeURIComponent(commentId)}` : ""}`, route: `/community?postId=${encodeURIComponent(postId)}${commentId ? `&commentId=${encodeURIComponent(commentId)}` : ""}`, label: commentId ? "Open thread" : "Open post", kind: commentId ? "community_comment" : "community_post", entity_id: postId };
+  if (/report|briefing|digest/.test(typeText)) return { href: `/ai${reportThreadId ? `?threadId=${encodeURIComponent(reportThreadId)}` : ""}`, route: `/ai${reportThreadId ? `?threadId=${encodeURIComponent(reportThreadId)}` : ""}`, label: "Open briefing", kind: "ai_report", entity_id: reportThreadId || null };
   if (threadId) return { href: `/messages?threadId=${encodeURIComponent(threadId)}`, route: `/messages?threadId=${encodeURIComponent(threadId)}`, label: "Open thread", kind: "message", entity_id: threadId };
   if (visitorId) return { href: `/visitors?visitorId=${encodeURIComponent(visitorId)}`, route: `/visitors?visitorId=${encodeURIComponent(visitorId)}`, label: "Open visitor", kind: "visitor", entity_id: visitorId };
   if (maintenanceId) return { href: `/maintenance?requestId=${encodeURIComponent(maintenanceId)}`, route: `/maintenance?requestId=${encodeURIComponent(maintenanceId)}`, label: "Open request", kind: "maintenance", entity_id: maintenanceId };

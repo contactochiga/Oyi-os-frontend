@@ -1345,7 +1345,7 @@ function OyiAiCommandCenterContent() {
 
   return (
     <LayoutWrapper>
-      <main className="fixed inset-0 flex flex-col overflow-hidden bg-[#02060b] text-white">
+      <main className="fixed inset-0 flex flex-col overflow-hidden bg-[#02060b] text-white md:left-[88px]">
         <div className="oyi-ambient-bg" />
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_12%,rgba(0,132,255,0.16),transparent_32%),linear-gradient(180deg,rgba(4,12,22,0.12),rgba(0,0,0,0.94))]" />
 
@@ -1443,7 +1443,7 @@ function OyiAiCommandCenterContent() {
           </div>
         </section>
 
-        <form ref={composerRef} onSubmit={(event) => { event.preventDefault(); void handleSend(); }} className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-[680px] px-4" style={{ paddingBottom: "calc(12px + var(--sab) + var(--kb))" }}>
+        <form ref={composerRef} onSubmit={(event) => { event.preventDefault(); void handleSend(); }} className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-[680px] px-4 md:left-[88px]" style={{ paddingBottom: "calc(12px + var(--sab) + var(--kb))" }}>
           <div className={`rounded-[28px] border bg-[#040911]/92 p-2.5 shadow-[0_18px_70px_rgba(0,0,0,0.62)] backdrop-blur-2xl transition ${inputWake ? "border-sky-300/45 shadow-[0_0_42px_rgba(0,132,255,0.26)]" : "border-white/[0.08]"}`}>
             {recording ? (
               <div className="flex items-center gap-3 px-1.5 py-1">

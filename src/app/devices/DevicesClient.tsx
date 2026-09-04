@@ -1037,7 +1037,7 @@ export default function DeviceClient() {
     setLoading(true);
     setErr(null);
     try {
-      const runtimeDevices = await deviceService.getRuntimeDevices(homeId);
+      const runtimeDevices = await deviceService.getRuntimeDevicesWithPreferences(estateId, homeId);
       const nextList = Array.isArray(runtimeDevices) ? runtimeDevices : [];
       setItems(nextList);
       await hydrateStates(nextList, runtimeDevices);
@@ -1581,7 +1581,7 @@ export default function DeviceClient() {
       setItems((current) =>
         current.map((item) =>
           String(pickDbId(item) || "") === sid
-            ? { ...item, metadata: { ...(item?.metadata || {}), favorite } }
+            ? { ...item, favorite, is_favorite: favorite, metadata: { ...(item?.metadata || {}), favorite } }
             : item,
         ),
       );
@@ -1675,11 +1675,11 @@ export default function DeviceClient() {
 
   return (
     <LayoutWrapper>
-      <main className="fixed inset-0 overflow-hidden bg-[#02060b] text-white">
+      <main className="fixed inset-0 overflow-hidden bg-[#02060b] text-white md:left-[88px]">
         <div className="oyi-ambient-bg" />
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_76%_12%,rgba(0,132,255,0.16),transparent_30%),radial-gradient(circle_at_18%_38%,rgba(14,165,233,0.08),transparent_34%),linear-gradient(180deg,rgba(4,12,22,0.18),rgba(0,0,0,0.93))]" />
 
-        <div className="fixed inset-x-0 z-[80] px-5" style={{ top: "calc(8px + var(--sat))" }}>
+        <div className="fixed inset-x-0 z-[80] px-5 md:left-[88px]" style={{ top: "calc(8px + var(--sat))" }}>
           <div className="mx-auto flex max-w-[430px] items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2.5">
               <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.03] shadow-[0_8px_26px_rgba(0,0,0,0.28)] backdrop-blur-2xl"><HamburgerMenu /></div>
@@ -1699,7 +1699,7 @@ export default function DeviceClient() {
               <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {CATEGORIES.map((item) => {
                   const active = category === item.key;
-                  return <button key={item.key} type="button" onClick={() => setCategory(item.key)} className={cn("shrink-0 rounded-full border px-3.5 py-2 text-xs font-medium transition active:scale-[0.98]", active ? "border-sky-400/70 bg-sky-400/10 text-sky-200 shadow-[0_0_20px_rgba(0,132,255,0.18)]" : "border-white/[0.075] bg-white/[0.025] text-white/62 hover:bg-white/[0.05]")}>{item.label}</button>;
+                  return <button key={item.key} type="button" onClick={() => { setCategory(item.key); if (item.key !== "favorites") setEditingFavorites(false); }} className={cn("shrink-0 rounded-full border px-3.5 py-2 text-xs font-medium transition active:scale-[0.98]", active ? "border-sky-400/70 bg-sky-400/10 text-sky-200 shadow-[0_0_20px_rgba(0,132,255,0.18)]" : "border-white/[0.075] bg-white/[0.025] text-white/62 hover:bg-white/[0.05]")}>{item.label}</button>;
                 })}
               </div>
               <button type="button" onClick={openAddDevice} className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-sky-300/18 bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-100 shadow-[0_0_18px_rgba(0,132,255,0.14)] active:scale-[0.98]">
@@ -1719,10 +1719,9 @@ export default function DeviceClient() {
             <section className="mt-5">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <h2 className="text-[17px] font-semibold tracking-[-0.04em] text-white">{listTitle}</h2>
-                <div className="flex items-center gap-3">
+                {category === "favorites" ? (
                   <button type="button" onClick={() => setEditingFavorites((current) => !current)} className="text-xs text-sky-200/76">{editingFavorites ? "Done" : "Edit favorites"}</button>
-                  <button type="button" onClick={() => router.push("/activity")} className="inline-flex items-center gap-1 text-xs text-sky-200/80">Activity <ChevronRight className="h-3.5 w-3.5" /></button>
-                </div>
+                ) : null}
               </div>
               <label className="flex h-11 items-center gap-2 rounded-full border border-white/[0.075] bg-white/[0.035] px-4 text-white/70 shadow-[0_12px_34px_rgba(0,0,0,0.24)] backdrop-blur-2xl focus-within:border-sky-300/25 focus-within:bg-sky-400/[0.045]">
                 <Search className="h-4 w-4 text-white/36" />

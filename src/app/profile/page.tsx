@@ -634,11 +634,11 @@ export default function ProfilePage() {
 
   return (
     <LayoutWrapper>
-      <main className="fixed inset-0 overflow-hidden bg-[#02060b] text-white">
+      <main className="fixed inset-0 overflow-hidden bg-[#02060b] text-white md:left-[88px]">
         <div className="oyi-ambient-bg" />
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_78%_18%,rgba(0,132,255,0.16),transparent_28%),linear-gradient(180deg,rgba(4,12,22,0.18),rgba(0,0,0,0.92))]" />
 
-        <div className="fixed inset-x-0 z-[80] px-5" style={{ top: "calc(8px + var(--sat))" }}>
+        <div className="fixed inset-x-0 z-[80] px-5 md:left-[88px]" style={{ top: "calc(8px + var(--sat))" }}>
           <div className="mx-auto flex max-w-[430px] items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2.5">
               <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.03] shadow-[0_8px_26px_rgba(0,0,0,0.28)] backdrop-blur-2xl"><HamburgerMenu /></div>
@@ -690,7 +690,7 @@ export default function ProfilePage() {
               {menu.map((item, index) => {
                 const Icon = item.icon;
                 return (
-                  <button key={item.key} type="button" onClick={() => item.key === "integrations" ? router.push("/devices/integrations") : setPanel(item.key)} className={`flex w-full items-center gap-3 py-3 text-left ${index ? "border-t border-white/[0.055]" : ""}`}>
+                  <button key={item.key} type="button" onClick={() => item.key === "integrations" ? router.push("/devices/integrations") : item.key === "proximity" ? router.push("/profile/proximity") : setPanel(item.key)} className={`flex w-full items-center gap-3 py-3 text-left ${index ? "border-t border-white/[0.055]" : ""}`}>
                     <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/[0.035] ${item.color}`}><Icon className="h-5 w-5" /></span>
                     <span className="min-w-0 flex-1">
                       <span className="block text-[15px] font-semibold tracking-[-0.03em] text-white">{item.label}</span>

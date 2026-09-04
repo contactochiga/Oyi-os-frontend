@@ -220,7 +220,7 @@ export default function HomePage() {
     setDevicesBusy(true);
     setDevicesErr(null);
     try {
-      const assigned = await deviceService.getRuntimeDevices(homeId);
+      const assigned = await deviceService.getRuntimeDevicesWithPreferences(estateId, homeId);
       setAssignedDevices(asArray(assigned));
       setRegistryDevices([]);
     } catch (err: any) {
@@ -670,13 +670,13 @@ export default function HomePage() {
 
   return (
     <LayoutWrapper>
-      <main className="fixed inset-0 isolate min-h-0 overflow-hidden bg-[#02060b] text-white">
+      <main className="fixed inset-0 isolate min-h-0 overflow-hidden bg-[#02060b] text-white md:left-[88px]">
         <div className="oyi-ambient-bg" />
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_15%,rgba(0,132,255,0.14),transparent_31%),radial-gradient(circle_at_50%_55%,rgba(0,92,185,0.08),transparent_33%),linear-gradient(180deg,rgba(4,12,22,0.2),rgba(0,0,0,0.92))]" />
         <div className="pointer-events-none absolute inset-x-10 top-[18%] h-[42%] rounded-full bg-sky-500/[0.028] blur-3xl" />
 
         <div
-          className="pointer-events-none fixed inset-x-0 z-[80] px-5"
+          className="pointer-events-none fixed inset-x-0 z-[80] px-5 md:left-[88px]"
           style={{ top: "calc(10px + var(--sat))" }}
         >
           {canMountAuthedBridges ? (
@@ -797,7 +797,7 @@ export default function HomePage() {
                 <h2 className="text-[18px] font-medium tracking-[-0.04em] text-white/76">Quick controls</h2>
                 <button
                   type="button"
-                  onClick={() => router.push("/devices?edit=favorites")}
+                  onClick={() => router.push("/devices?category=favorites&edit=favorites")}
                   className="text-[14px] font-medium text-sky-300 transition hover:text-sky-200 active:scale-[0.98]"
                 >
                   Edit
