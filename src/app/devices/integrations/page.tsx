@@ -130,7 +130,7 @@ export default function DeviceIntegrationsPage() {
   }, [ready, token]);
 
   return (
-    <ConsumerShell title="Connected Systems">
+    <ConsumerShell title="Connected Systems" backHref="/profile">
       <section className="overflow-hidden rounded-[22px] border border-white/[0.07] bg-[linear-gradient(145deg,rgba(255,255,255,0.042),rgba(255,255,255,0.012))] shadow-[0_14px_48px_rgba(0,0,0,0.29)] backdrop-blur-2xl">
         {loading ? <div className="px-4 py-5 text-sm text-white/50">Loading integrations…</div> : null}
         {!loading && items.map((item, index) => {

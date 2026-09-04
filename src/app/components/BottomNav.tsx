@@ -325,15 +325,8 @@ export default function BottomNav() {
       <div className={`pointer-events-auto mx-auto overflow-hidden rounded-[28px] border border-white/[0.07] bg-[#040911]/86 px-2 shadow-[0_16px_54px_rgba(0,0,0,0.45)] backdrop-blur-2xl transition-all duration-300 ease-out ${collapsed ? "w-[70vw] max-w-[310px] py-1" : "w-[92vw] max-w-[430px] py-1.5"}`}>
         <div ref={railRef} onScroll={handlePageScroll} className="flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {NAV_GROUPS.map((group, groupIndex) => {
-            const activeIndex = group.findIndex((item) => isActive(pathname, item));
             return (
               <div key={groupIndex} className="relative grid w-full min-w-full shrink-0 snap-center grid-cols-5 gap-1 px-0.5">
-                {activeIndex >= 0 ? (
-                  <span
-                    className={`absolute bottom-1 top-1 rounded-[22px] border border-white/[0.105] bg-[radial-gradient(circle_at_35%_20%,rgba(255,255,255,0.18),rgba(56,189,248,0.14)_42%,rgba(255,255,255,0.055)_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.10),0_0_26px_rgba(56,189,248,0.24),0_10px_26px_rgba(0,0,0,0.28)] backdrop-blur-2xl transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${collapsed ? "mx-[8px]" : "mx-[3px]"}`}
-                    style={{ width: "20%", transform: `translateX(${activeIndex * 100}%)` }}
-                  />
-                ) : null}
                 {group.map((item) => {
                   const active = isActive(pathname, item);
                   const Icon = item.icon;
@@ -352,12 +345,17 @@ export default function BottomNav() {
                       aria-current={active ? "page" : undefined}
                     >
                       <div className="flex justify-center">
-                        <span className={`relative grid place-items-center overflow-visible rounded-[13px] transition-all duration-300 ${collapsed ? "h-9 w-9" : "h-7 w-7"} ${active ? "text-sky-100" : "text-white/52 group-hover:text-white/78"}`}>
-                          {isProfile && avatarUrl ? <img src={avatarUrl} alt="Profile" className="h-6 w-6 rounded-full object-cover ring-1 ring-white/15" /> : <Icon className={collapsed ? "text-[19px]" : "text-[18px]"} />}
+                        <span className={`relative grid place-items-center overflow-visible rounded-[13px] transition-all duration-300 ${collapsed ? "h-9 w-9" : "h-7 w-7"} ${active ? "text-sky-300 drop-shadow-[0_0_10px_rgba(56,189,248,0.55)]" : "text-white/52 group-hover:text-white/78"}`}>
+                          {isProfile && avatarUrl ? (
+                            <img src={avatarUrl} alt="Profile" className={`h-6 w-6 rounded-full object-cover ring-1 transition-all duration-300 ${active ? "ring-sky-300/70" : "ring-white/15"}`} />
+                          ) : (
+                            <Icon className={collapsed ? "text-[19px]" : "text-[18px]"} />
+                          )}
                           {badge ? <span className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-sky-300 shadow-[0_0_12px_rgba(56,189,248,0.8)]" /> : null}
                         </span>
                       </div>
                       <div className={`mt-0.5 truncate whitespace-nowrap text-[10px] font-medium tracking-[-0.025em] transition-all duration-300 ${collapsed ? "max-h-0 translate-y-1 opacity-0" : "max-h-4 translate-y-0 opacity-100"} ${active ? "text-white" : "text-white/48"}`}>{item.label}</div>
+                      <span className={`mx-auto mt-1 block h-[3px] rounded-full bg-sky-300 shadow-[0_0_8px_rgba(56,189,248,0.7)] transition-all duration-300 ${active ? "w-3.5 opacity-100" : "w-0 opacity-0"}`} />
                     </button>
                   );
                 })}

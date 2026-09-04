@@ -37,6 +37,7 @@ const [
   aiPage,
   proximityPage,
   supportPage,
+  integrationsPage,
 ] = await Promise.all([
   source("src/app/components/BottomNav.tsx"),
   source("src/lib/moduleRegistry.ts"),
@@ -72,6 +73,7 @@ const [
   source("src/app/ai/page.tsx"),
   source("src/app/profile/proximity/page.tsx"),
   source("src/app/support/page.tsx"),
+  source("src/app/devices/integrations/page.tsx"),
 ]);
 
 assert.match(nav, /\["home", "spaces", "devices", "community", "activity"\]/, "footer nav group 1 must be restored");
@@ -285,5 +287,45 @@ assert.match(shell, /backHref \? \(/, "ConsumerShell must support an optional ba
 for (const [name, src] of [["home", home], ["devices", devices], ["profile", profile], ["ai", aiPage], ["rooms", roomsClient], ["scenes", scenes]]) {
   assert.match(src, /md:left-\[88px\]/, `${name} page must offset its fixed layout for the iPad+ sidebar width`);
 }
+
+// Mobile closure: Profile child pages share one arrow-only back pattern,
+// never a large "<- Back" text pill, and every real child route falls back
+// to /profile when there's no useful history entry.
+assert.doesNotMatch(profile, />Back</, "Profile panel header must not render a text-label Back pill");
+assert.match(profile, /aria-label="Back" className="grid h-10 w-10 shrink-0 place-items-center rounded-full/, "Profile panel header must use the shared arrow-only back button");
+assert.match(profile, /<ChevronLeft className="h-5 w-5" \/>\s*<\/button>\s*<h2/, "Profile panel back arrow must sit before the title, not after it");
+assert.match(supportPage, /backHref="\/profile"/, "Help & Support must provide a real path back to Profile");
+assert.match(integrationsPage, /backHref="\/profile"/, "Connected Systems must provide a real path back to Profile");
+assert.match(proximityPage, /backHref="\/profile"/, "Proximity Awareness must provide a real path back to Profile");
+assert.match(shell, /window\.history\.length > 1\) router\.back\(\)/, "the shared back control must be browser-history-safe, not a blind push to a fixed route");
+assert.match(shell, /aria-label="Back"/, "the shared back control must expose an accessible Back label");
+assert.doesNotMatch(shell, />\s*Back\s*</, "the shared back control must stay icon-only, never a text-labelled pill");
+
+// Mobile closure: Oyi header keeps Back/Oyi title/history/new-chat in one
+// disciplined row instead of a large vertical gap between controls and title.
+assert.doesNotMatch(aiPage, /<ArrowLeft className="h-\[18px\] w-\[18px\]" \/> Back/, "Oyi header back control must not render as a text-labelled pill");
+assert.match(aiPage, /aria-label="Back" className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white\/10/, "Oyi header back control must be the shared arrow-only icon button");
+assert.doesNotMatch(aiPage, /<div className="mt-4 text-center">/, "Oyi title must not sit in a separate row below the header controls");
+assert.match(aiPage, /<div className="min-w-0 flex-1 text-center">\s*<div className="truncate text-\[18px\] font-semibold tracking-\[-0\.04em\]">Oyi<\/div>/, "Oyi title must occupy the same header row as Back/history/new-chat");
+assert.match(aiPage, /aria-label="Conversation history"/, "Oyi history action must remain reachable");
+assert.match(aiPage, /aria-label="New chat"/, "Oyi new-conversation action must remain reachable");
+
+// Mobile closure: Oyi table responses use available width instead of being
+// nested inside a narrow card inside a narrow bubble.
+assert.match(aiPage, /className=\{isTable \? "-mx-4" : "rounded-\[18px\] border border-white\/\[0\.07\] bg-black\/18 p-3"\}/, "table cards must bleed to the response bubble's edge instead of nesting a second border");
+assert.match(aiPage, /hasTableCard/, "messages with a table card must be detected so their bubble can widen");
+assert.match(aiPage, /hasTableCard \? "max-w-\[99%\]" : "max-w-\[94%\] sm:max-w-\[86%\]"/, "a table-bearing response bubble must widen close to the usable viewport width");
+assert.match(aiPage, /overflow-x-auto rounded-2xl border border-white\/\[0\.06\]/, "the table itself must keep its one real scroll/boundary surface");
+
+// Mobile closure: bottom nav active state is a bright icon/label signal, not
+// a large sliding capsule, and both nav groups (including Profile's avatar)
+// share the identical treatment.
+assert.doesNotMatch(nav, /absolute bottom-1 top-1 rounded-\[22px\][\s\S]{0,40}radial-gradient/, "the large sliding active capsule behind bottom-nav items must be removed");
+assert.doesNotMatch(nav, /const activeIndex = group\.findIndex/, "the capsule's activeIndex tracking must be removed along with the capsule itself");
+assert.match(nav, /active \? "text-sky-300 drop-shadow-\[0_0_10px_rgba\(56,189,248,0\.55\)\]" : "text-white\/52/, "active bottom-nav icons must use a bright cyan accent instead of a pill background");
+assert.match(nav, /active \? "ring-sky-300\/70" : "ring-white\/15"/, "Profile's avatar must use the same bright active accent as icon-based nav items, not a conflicting treatment");
+assert.match(nav, /\$\{active \? "w-3\.5 opacity-100" : "w-0 opacity-0"\}/, "active bottom-nav items must use a small subtle indicator, not a large pill");
+assert.match(nav, /const NAV_GROUPS: Item\[\]\[\] = \[/, "the two-group nav architecture must remain intact");
+assert.match(nav, /scrollToPage\(pageForKey\(item\.key\)\)/, "swipe/group-switch behavior must remain intact");
 
 console.log("consumer P2 experience foundation smoke passed");
