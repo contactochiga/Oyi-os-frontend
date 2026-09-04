@@ -339,7 +339,7 @@ export default function VisitorsPage() {
   );
 
   return (
-    <ConsumerShell title="Visitor Access" strip={strip} hideStrip preStripSlot={addVisitorAction}>
+    <ConsumerShell title="Visitor Access" strip={strip} hideStrip preStripSlot={addVisitorAction} wide>
       <div className="oyi-living-page space-y-3 pb-8">
       {err && (
         <div className="mb-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
@@ -464,7 +464,7 @@ export default function VisitorsPage() {
               : "No visitors yet."}
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
             {sortedTabItems.slice(0, 50).map((v) => (
               <VisitorCard
                 key={v.id}

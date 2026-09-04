@@ -1349,7 +1349,7 @@ function OyiAiCommandCenterContent() {
         <div className="oyi-ambient-bg" />
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_12%,rgba(0,132,255,0.16),transparent_32%),linear-gradient(180deg,rgba(4,12,22,0.12),rgba(0,0,0,0.94))]" />
 
-        <header className="relative z-20 mx-auto w-full max-w-[680px] shrink-0 px-5" style={{ paddingTop: "calc(12px + var(--sat))" }}>
+        <header className="relative z-20 mx-auto w-full max-w-[680px] shrink-0 px-5 lg:max-w-[900px] xl:max-w-[1040px]" style={{ paddingTop: "calc(12px + var(--sat))" }}>
           <div className="flex items-center justify-between gap-2">
             <button type="button" onClick={() => (window.history.length > 1 ? router.back() : router.push("/home"))} aria-label="Back" className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.03] text-white/78 backdrop-blur-2xl transition hover:bg-white/[0.06] hover:text-white active:scale-95">
               <ArrowLeft className="h-5 w-5" />
@@ -1364,9 +1364,9 @@ function OyiAiCommandCenterContent() {
             </div>
           </div>
         </header>
-        {targetError ? <div className="relative z-20 mx-auto mt-2 max-w-[680px] px-5"><p className="rounded-xl border border-amber-300/20 bg-amber-400/[0.08] px-3 py-2 text-xs text-amber-100">{targetError}</p></div> : null}
+        {targetError ? <div className="relative z-20 mx-auto mt-2 max-w-[680px] px-5 lg:max-w-[900px] xl:max-w-[1040px]"><p className="rounded-xl border border-amber-300/20 bg-amber-400/[0.08] px-3 py-2 text-xs text-amber-100">{targetError}</p></div> : null}
 
-        <section className="relative z-10 mx-auto flex min-h-0 w-full max-w-[680px] flex-1 flex-col px-5" style={{ paddingTop: 8 }}>
+        <section className="relative z-10 mx-auto flex min-h-0 w-full max-w-[680px] flex-1 flex-col px-5 lg:max-w-[900px] xl:max-w-[1040px]" style={{ paddingTop: 8 }}>
           <div
             ref={scrollerRef}
             className="min-h-0 flex-1 overflow-y-auto pr-1"
@@ -1396,7 +1396,7 @@ function OyiAiCommandCenterContent() {
                   const hasTableCard = message.role === "assistant" && Array.isArray(message.cards) && message.cards.some((card) => String((card as any)?.type || "") === "table");
                   return (
                   <div key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-                    <div className={`overflow-hidden rounded-[24px] px-4 py-3 text-sm leading-6 shadow-[0_16px_42px_rgba(0,0,0,0.24)] ${hasTableCard ? "max-w-[99%]" : "max-w-[94%] sm:max-w-[86%]"} ${message.role === "user" ? "rounded-br-[8px] bg-white text-black" : "rounded-bl-[8px] border border-white/[0.07] bg-white/[0.045] text-white/82 backdrop-blur-xl"}`}>
+                    <div className={`overflow-hidden rounded-[24px] px-4 py-3 text-sm leading-6 shadow-[0_16px_42px_rgba(0,0,0,0.24)] ${hasTableCard ? "max-w-[99%]" : "max-w-[94%] sm:max-w-[86%] lg:max-w-[620px]"} ${message.role === "user" ? "rounded-br-[8px] bg-white text-black" : "rounded-bl-[8px] border border-white/[0.07] bg-white/[0.045] text-white/82 backdrop-blur-xl"}`}>
                       <div className="whitespace-pre-wrap break-words">{message.pending ? <span className="inline-flex items-center gap-2"><Spinner /> {message.content}</span> : message.content}</div>
                       {!message.pending && message.role === "assistant" && (message.persistence_saved === false || message.warnings?.some((warning) => /not saved|history/i.test(warning))) ? (
                         <div className="mt-2 rounded-2xl border border-amber-300/18 bg-amber-400/[0.07] px-3 py-2 text-xs leading-5 text-amber-100/84">
@@ -1446,7 +1446,7 @@ function OyiAiCommandCenterContent() {
           </div>
         </section>
 
-        <form ref={composerRef} onSubmit={(event) => { event.preventDefault(); void handleSend(); }} className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-[680px] px-4 md:left-[88px]" style={{ paddingBottom: "calc(12px + var(--sab) + var(--kb))" }}>
+        <form ref={composerRef} onSubmit={(event) => { event.preventDefault(); void handleSend(); }} className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-[680px] px-4 md:left-[88px] lg:max-w-[900px] xl:max-w-[1040px]" style={{ paddingBottom: "calc(12px + var(--sab) + var(--kb))" }}>
           <div className={`rounded-[28px] border bg-[#040911]/92 p-2.5 shadow-[0_18px_70px_rgba(0,0,0,0.62)] backdrop-blur-2xl transition ${inputWake ? "border-sky-300/45 shadow-[0_0_42px_rgba(0,132,255,0.26)]" : "border-white/[0.08]"}`}>
             {recording ? (
               <div className="flex items-center gap-3 px-1.5 py-1">

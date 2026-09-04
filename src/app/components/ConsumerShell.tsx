@@ -6,7 +6,6 @@ import { ChevronLeft } from "lucide-react";
 
 import LayoutWrapper from "./LayoutWrapper";
 import InviteSuggestionBridge from "./InviteSuggestionBridge";
-import HamburgerMenu from "./HamburgerMenu";
 import MessagesInboxButton from "./MessagesInboxButton";
 import BottomNav from "./BottomNav";
 import useActiveContext from "@/hooks/useActiveContext";
@@ -24,6 +23,13 @@ export default function ConsumerShell({
   hideStrip = true,
   disableContentScroll = false,
   backHref,
+  // Operational/list-heavy modules (Community, Activity, Visitors,
+  // Maintenance, Cameras, Services, Messages) opt into more canvas at
+  // laptop/desktop widths; reading-focused pages (Wallet, Security,
+  // Support, Connected Systems, Proximity, Reports, Room, Watch) keep the
+  // narrower default so text/forms stay comfortable rather than stretching
+  // edge-to-edge.
+  wide = false,
 }: {
   children: ReactNode;
   title?: string;
@@ -33,6 +39,7 @@ export default function ConsumerShell({
   hideStrip?: boolean;
   disableContentScroll?: boolean;
   backHref?: string;
+  wide?: boolean;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -86,12 +93,12 @@ export default function ConsumerShell({
         <div className="oyi-ambient-bg" />
         <InviteSuggestionBridge />
 
-        <div ref={headerRef} className="fixed inset-x-0 z-[80] px-4 md:left-[88px]" style={{ top: "calc(8px + var(--sat))" }}>
-          <div className="mx-auto w-full max-w-[860px]">
+        <div ref={headerRef} className="fixed inset-x-0 z-[80] px-4 md:left-[88px] md:px-8" style={{ top: "calc(8px + var(--sat))" }}>
+          <div className={`mx-auto w-full ${wide ? "max-w-[860px] lg:max-w-[1180px] xl:max-w-[1400px]" : "max-w-[860px] lg:max-w-[920px] xl:max-w-[980px]"}`}>
             <div className="flex items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-2.5">
-                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.03] shadow-[0_8px_26px_rgba(0,0,0,0.28)] backdrop-blur-2xl">
-                  {backHref ? (
+                {backHref ? (
+                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.03] shadow-[0_8px_26px_rgba(0,0,0,0.28)] backdrop-blur-2xl">
                     <button
                       type="button"
                       onClick={() => {
@@ -103,8 +110,8 @@ export default function ConsumerShell({
                     >
                       <ChevronLeft className="h-5 w-5" />
                     </button>
-                  ) : <HamburgerMenu />}
-                </div>
+                  </div>
+                ) : null}
                 <div className="min-w-0">
                   <h1 className="truncate text-[24px] font-semibold leading-none tracking-[-0.055em] text-white">
                     {title || "Oyi Home"}
@@ -148,7 +155,7 @@ export default function ConsumerShell({
         </div>
 
         <div
-          className={`relative z-10 flex-1 overflow-x-hidden px-4 ${disableContentScroll ? "overflow-hidden" : "overflow-y-auto"}`}
+          className={`relative z-10 flex-1 overflow-x-hidden px-4 md:px-8 ${disableContentScroll ? "overflow-hidden" : "overflow-y-auto"}`}
           style={{
             paddingTop: `calc(${headerHeight}px + var(--sat))`,
             paddingBottom: disableContentScroll
@@ -157,7 +164,7 @@ export default function ConsumerShell({
             WebkitOverflowScrolling: "touch",
           }}
         >
-          <div className="oyi-living-page oyi-page-fade mx-auto w-full max-w-[860px]">
+          <div className={`oyi-living-page oyi-page-fade mx-auto w-full pb-6 md:pb-10 ${wide ? "max-w-[860px] lg:max-w-[1180px] xl:max-w-[1400px]" : "max-w-[860px] lg:max-w-[920px] xl:max-w-[980px]"}`}>
             {children}
           </div>
         </div>

@@ -53,7 +53,7 @@ export default function ReportsPage() {
   const activity = useMemo(() => notifications.slice(0, 8), [notifications]);
 
   return (
-    <ConsumerShell title="Reports">
+    <ConsumerShell title="Reports" backHref="/home">
       <div className="space-y-3 pb-8">
         {err ? <div className="rounded-[20px] border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">{err}</div> : null}
         <Panel className="bg-[radial-gradient(circle_at_80%_0%,rgba(14,165,233,0.13),transparent_34%),rgba(255,255,255,0.032)]">

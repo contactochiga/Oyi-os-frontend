@@ -22,7 +22,6 @@ import {
 
 import LayoutWrapper from "../components/LayoutWrapper";
 import InviteSuggestionBridge from "../components/InviteSuggestionBridge";
-import HamburgerMenu from "../components/HamburgerMenu";
 import MessagesInboxButton from "../components/MessagesInboxButton";
 import BottomNav from "../components/BottomNav";
 import OyiContextRail from "../components/OyiContextRail";
@@ -684,10 +683,7 @@ export default function HomePage() {
               <InviteSuggestionBridge />
             </>
           ) : null}
-          <div className="pointer-events-auto mx-auto flex max-w-[430px] items-center justify-between">
-            <div className="grid h-12 w-12 place-items-center rounded-full border border-white/10 bg-white/[0.03] shadow-[0_10px_32px_rgba(0,0,0,0.30)] backdrop-blur-2xl">
-              <HamburgerMenu />
-            </div>
+          <div className="pointer-events-auto mx-auto flex max-w-[430px] items-center justify-end md:max-w-[720px] lg:max-w-[1180px] xl:max-w-[1400px]">
             <div className="grid h-12 w-12 place-items-center rounded-full border border-white/10 bg-white/[0.028] shadow-[0_10px_32px_rgba(0,0,0,0.30)] backdrop-blur-2xl">
               <MessagesInboxButton />
             </div>
@@ -703,7 +699,7 @@ export default function HomePage() {
             WebkitOverflowScrolling: "touch",
           }}
         >
-          <div className="oyi-living-page oyi-page-fade mx-auto max-w-[430px] pb-5 transition duration-300">
+          <div className="oyi-living-page oyi-page-fade mx-auto max-w-[430px] pb-5 transition duration-300 md:max-w-[720px] lg:max-w-[1180px] xl:max-w-[1400px]">
             <motion.section
               initial={reduceMotion ? false : { opacity: 0, y: 18 }}
               animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}

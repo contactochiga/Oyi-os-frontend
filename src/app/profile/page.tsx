@@ -21,7 +21,6 @@ import {
 } from "lucide-react";
 
 import LayoutWrapper from "@/app/components/LayoutWrapper";
-import HamburgerMenu from "@/app/components/HamburgerMenu";
 import MessagesInboxButton from "@/app/components/MessagesInboxButton";
 import BottomNav from "@/app/components/BottomNav";
 import ActivityMetricsRail from "@/app/components/ActivityMetricsRail";
@@ -510,9 +509,8 @@ export default function ProfilePage() {
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_78%_18%,rgba(0,132,255,0.16),transparent_28%),linear-gradient(180deg,rgba(4,12,22,0.18),rgba(0,0,0,0.92))]" />
 
         <div className="fixed inset-x-0 z-[80] px-5 md:left-[88px]" style={{ top: "calc(8px + var(--sat))" }}>
-          <div className="mx-auto flex max-w-[430px] items-center justify-between gap-3">
+          <div className="mx-auto flex max-w-[430px] items-center justify-between gap-3 md:max-w-[720px] lg:max-w-[1100px] xl:max-w-[1300px]">
             <div className="flex min-w-0 items-center gap-2.5">
-              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.03] shadow-[0_8px_26px_rgba(0,0,0,0.28)] backdrop-blur-2xl"><HamburgerMenu /></div>
               <h1 className="truncate text-[24px] font-semibold leading-none tracking-[-0.055em] text-white">Profile</h1>
             </div>
             <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.028] shadow-[0_8px_26px_rgba(0,0,0,0.28)] backdrop-blur-2xl"><MessagesInboxButton /></div>
@@ -520,7 +518,7 @@ export default function ProfilePage() {
         </div>
 
         <div className="absolute inset-x-0 overflow-y-auto px-5" style={{ top: "calc(64px + var(--sat))", bottom: "calc(78px + var(--sab))", WebkitOverflowScrolling: "touch" }}>
-          <div className="mx-auto max-w-[430px] pb-5">
+          <div className="mx-auto max-w-[430px] pb-5 md:max-w-[720px] lg:max-w-[1100px] xl:max-w-[1300px]">
             <section className="grid grid-cols-[1fr_auto] items-center gap-4">
               <div className="min-w-0">
                 <div>
@@ -557,11 +555,11 @@ export default function ProfilePage() {
               }))}
             />
 
-            <section className="mt-4 overflow-hidden rounded-[24px] border border-white/[0.07] bg-[linear-gradient(145deg,rgba(255,255,255,0.042),rgba(255,255,255,0.012))] p-3 shadow-[0_14px_48px_rgba(0,0,0,0.29)] backdrop-blur-2xl">
+            <section className="mt-4 overflow-hidden rounded-[24px] border border-white/[0.07] bg-[linear-gradient(145deg,rgba(255,255,255,0.042),rgba(255,255,255,0.012))] p-3 shadow-[0_14px_48px_rgba(0,0,0,0.29)] backdrop-blur-2xl lg:grid lg:grid-cols-2 lg:gap-x-4">
               {menu.map((item, index) => {
                 const Icon = item.icon;
                 return (
-                  <button key={item.key} type="button" onClick={() => item.key === "integrations" ? router.push("/devices/integrations") : item.key === "proximity" ? router.push("/profile/proximity") : item.key === "support" ? router.push("/support") : setPanel(item.key)} className={`flex w-full items-center gap-3 py-3 text-left ${index ? "border-t border-white/[0.055]" : ""}`}>
+                  <button key={item.key} type="button" onClick={() => item.key === "integrations" ? router.push("/devices/integrations") : item.key === "proximity" ? router.push("/profile/proximity") : item.key === "support" ? router.push("/support") : setPanel(item.key)} className={`flex w-full items-center gap-3 py-3 text-left ${index ? "border-t border-white/[0.055]" : ""} ${index === 1 ? "lg:border-t-0" : ""}`}>
                     <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/[0.035] ${item.color}`}><Icon className="h-5 w-5" /></span>
                     <span className="min-w-0 flex-1">
                       <span className="block text-[15px] font-semibold tracking-[-0.03em] text-white">{item.label}</span>
@@ -571,7 +569,7 @@ export default function ProfilePage() {
                   </button>
                 );
               })}
-              <button type="button" onClick={() => setLogoutOpen(true)} className="flex w-full items-center gap-3 border-t border-white/[0.055] py-3 text-left">
+              <button type="button" onClick={() => setLogoutOpen(true)} className="flex w-full items-center gap-3 border-t border-white/[0.055] py-3 text-left lg:col-span-2">
                 <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-red-500/[0.08] text-red-300"><LogOut className="h-5 w-5" /></span>
                 <span className="min-w-0 flex-1"><span className="block text-[15px] font-semibold tracking-[-0.03em] text-white">Log Out</span><span className="mt-0.5 block text-[13px] text-white/50">Sign out of your account</span></span>
                 <ChevronRight className="h-[18px] w-[18px] text-white/38" />

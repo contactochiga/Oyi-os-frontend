@@ -60,7 +60,7 @@ export default function SecurityPage() {
   const secure = resolved.secure === true;
 
   return (
-    <ConsumerShell title="Security">
+    <ConsumerShell title="Security" backHref="/home">
       <div className="space-y-3 pb-8">
         {err ? <div className="rounded-[20px] border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">{err}</div> : null}
         {loading ? (

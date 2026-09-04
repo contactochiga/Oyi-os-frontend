@@ -25,7 +25,6 @@ import {
 } from "lucide-react";
 
 import LayoutWrapper from "@/app/components/LayoutWrapper";
-import HamburgerMenu from "@/app/components/HamburgerMenu";
 import MessagesInboxButton from "@/app/components/MessagesInboxButton";
 import BottomNav from "@/app/components/BottomNav";
 import useActiveContext from "@/hooks/useActiveContext";
@@ -366,9 +365,8 @@ export default function RoomsClient() {
       <main className="fixed inset-0 overflow-hidden bg-[#02060b] text-white md:left-[88px]">
         <div className="oyi-ambient-bg" />
         <div className="fixed inset-x-0 z-[80] px-4 md:left-[88px]" style={{ top: "calc(8px + var(--sat))" }}>
-          <div className="mx-auto flex w-full max-w-[860px] items-center justify-between gap-3">
+          <div className="mx-auto flex w-full max-w-[860px] items-center justify-between gap-3 lg:max-w-[1180px] xl:max-w-[1400px]">
             <div className="flex min-w-0 items-center gap-2.5">
-              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.03] shadow-[0_8px_26px_rgba(0,0,0,0.28)] backdrop-blur-2xl"><HamburgerMenu /></div>
               <h1 className="truncate text-[24px] font-semibold leading-none tracking-[-0.055em] text-white">Spaces</h1>
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
@@ -380,7 +378,7 @@ export default function RoomsClient() {
           </div>
         </div>
         <div className="relative z-10 h-full overflow-y-auto px-4 pb-[calc(118px+var(--sab))]" style={{ paddingTop: "calc(68px + var(--sat))" }}>
-          <div className="mx-auto w-full max-w-[860px] space-y-3.5">
+          <div className="mx-auto w-full max-w-[860px] space-y-3.5 lg:max-w-[1180px] xl:max-w-[1400px]">
             <div className="flex gap-1.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {chips.map(({ id, label, Icon }) => {
                 const active = selectedId === id;

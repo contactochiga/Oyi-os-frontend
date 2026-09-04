@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BatteryCharging, Check, ChevronDown, ChevronRight, Clock3, Film, Home, Lock, Moon, Pencil, Plane, Plus, ShieldCheck, Sparkles, SunMedium, Trash2, X, Zap } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { BatteryCharging, Check, ChevronDown, ChevronLeft, ChevronRight, Clock3, Film, Home, Lock, Moon, Pencil, Plane, Plus, ShieldCheck, Sparkles, SunMedium, Trash2, X, Zap } from "lucide-react";
 
 import BottomNav from "@/app/components/BottomNav";
-import HamburgerMenu from "@/app/components/HamburgerMenu";
 import LayoutWrapper from "@/app/components/LayoutWrapper";
 import MessagesInboxButton from "@/app/components/MessagesInboxButton";
 import useAuth from "@/hooks/useAuth";
@@ -248,6 +248,7 @@ function useSceneSurfaceLifecycle(active: boolean, onBack: () => void) {
 
 export default function ScenesPage() {
   useAuth();
+  const router = useRouter();
   const activeContext = useActiveContext();
   const estateId = activeContext.estate_id || "";
   const homeId = activeContext.home_id || "";
@@ -392,22 +393,34 @@ export default function ScenesPage() {
       <main className="fixed inset-0 overflow-hidden bg-[#02060b] text-white md:left-[88px]">
         <div className="oyi-ambient-bg" />
         <div className="fixed inset-x-0 z-[80] px-4 md:left-[88px]" style={{ top: "calc(8px + var(--sat))" }}>
-          <div className="mx-auto flex max-w-[430px] items-center justify-between gap-3">
+          <div className="mx-auto flex max-w-[430px] items-center justify-between gap-3 md:max-w-[860px] lg:max-w-[1180px] xl:max-w-[1400px]">
             <div className="flex min-w-0 items-center gap-2.5">
-              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.03] shadow-[0_8px_26px_rgba(0,0,0,0.28)] backdrop-blur-2xl"><HamburgerMenu /></div>
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.03] shadow-[0_8px_26px_rgba(0,0,0,0.28)] backdrop-blur-2xl">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (typeof window !== "undefined" && window.history.length > 1) router.back();
+                    else router.push("/home");
+                  }}
+                  aria-label="Back"
+                  className="grid h-full w-full place-items-center rounded-full text-white/78 transition hover:bg-white/[0.06] hover:text-white"
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </button>
+              </div>
               <h1 className="truncate text-[24px] font-semibold leading-none tracking-[-0.055em] text-white">{tab === "scenes" ? "Scenes" : "Automation"}</h1>
             </div>
             <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.028] shadow-[0_8px_26px_rgba(0,0,0,0.28)] backdrop-blur-2xl"><MessagesInboxButton /></div>
           </div>
         </div>
         <div className="relative z-10 h-full overflow-y-auto px-5 pb-[calc(104px+var(--sab))]" style={{ paddingTop: "calc(68px + var(--sat))" }}>
-          <div className="mx-auto max-w-[430px]">
+          <div className="mx-auto max-w-[430px] md:max-w-[860px] lg:max-w-[1180px] xl:max-w-[1400px]">
             <div className="mt-1 flex gap-2">
               {(["scenes", "automations"] as Tab[]).map((key) => (
                 <button key={key} type="button" onClick={() => setTab(key)} className={`rounded-full border px-3.5 py-2 text-xs font-medium capitalize ${tab === key ? "border-sky-300/55 bg-sky-400/12 text-sky-100" : "border-white/[0.07] bg-white/[0.025] text-white/52"}`}>{key}</button>
               ))}
             </div>
-            <button type="button" onClick={() => setPresentation({ mode: "editor", tab, scene: null, template: null })} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full bg-white px-4 py-3 text-sm font-semibold text-black shadow-[0_16px_40px_rgba(255,255,255,0.1)] active:scale-[0.99]">
+            <button type="button" onClick={() => setPresentation({ mode: "editor", tab, scene: null, template: null })} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full bg-white px-4 py-3 text-sm font-semibold text-black shadow-[0_16px_40px_rgba(255,255,255,0.1)] active:scale-[0.99] md:w-auto">
               <Plus className="h-4 w-4" /> Create {tab === "scenes" ? "scene" : "automation"}
             </button>
             <section className="mt-5">
@@ -417,7 +430,7 @@ export default function ScenesPage() {
               </div>
               {error ? <p className="mt-3 rounded-[18px] border border-red-300/14 bg-red-500/[0.06] p-3 text-xs text-red-100">{error}</p> : null}
               {loading ? <Empty title="Loading..." body="Syncing your living environment." /> : items.length ? (
-                <div className="mt-3 space-y-3">
+                <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {items.map((item) => {
                     const running = presentation.mode === "running" && presentation.sceneId === item.id;
                     const testing = presentation.mode === "testing" && presentation.automationId === item.id;
