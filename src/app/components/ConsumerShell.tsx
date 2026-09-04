@@ -92,7 +92,15 @@ export default function ConsumerShell({
               <div className="flex min-w-0 items-center gap-2.5">
                 <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.03] shadow-[0_8px_26px_rgba(0,0,0,0.28)] backdrop-blur-2xl">
                   {backHref ? (
-                    <button type="button" onClick={() => router.push(backHref)} aria-label="Go back" className="grid h-full w-full place-items-center rounded-full text-white/78 transition hover:bg-white/[0.06] hover:text-white">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (typeof window !== "undefined" && window.history.length > 1) router.back();
+                        else router.push(backHref);
+                      }}
+                      aria-label="Back"
+                      className="grid h-full w-full place-items-center rounded-full text-white/78 transition hover:bg-white/[0.06] hover:text-white"
+                    >
                       <ChevronLeft className="h-5 w-5" />
                     </button>
                   ) : <HamburgerMenu />}

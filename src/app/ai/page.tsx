@@ -453,7 +453,7 @@ function StructuredCards({ cards, onTarget }: { cards?: Array<Record<string, any
         const items = Array.isArray(card.items) ? card.items : [];
         const isTable = String(card.type || "") === "table";
         return (
-          <div key={`${card.type || card.title || "card"}-${index}`} className="rounded-[18px] border border-white/[0.07] bg-black/18 p-3">
+          <div key={`${card.type || card.title || "card"}-${index}`} className={isTable ? "-mx-4" : "rounded-[18px] border border-white/[0.07] bg-black/18 p-3"}>
             {!isTable ? <div className="text-[11px] uppercase tracking-[0.16em] text-sky-100/46">{card.type ? String(card.type).replace(/_/g, " ") : "Summary"}</div> : null}
             {!isTable ? <div className="mt-1 text-[13px] font-semibold text-white/90">{card.title || "Home update"}</div> : null}
             {!isTable && card.summary ? <div className="mt-1 text-xs leading-5 text-white/52">{String(card.summary)}</div> : null}
@@ -1350,18 +1350,18 @@ function OyiAiCommandCenterContent() {
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_12%,rgba(0,132,255,0.16),transparent_32%),linear-gradient(180deg,rgba(4,12,22,0.12),rgba(0,0,0,0.94))]" />
 
         <header className="relative z-20 mx-auto w-full max-w-[680px] shrink-0 px-5" style={{ paddingTop: "calc(12px + var(--sat))" }}>
-          <div className="flex items-center justify-between">
-            <button type="button" onClick={() => (window.history.length > 1 ? router.back() : router.push("/home"))} className="inline-flex h-10 items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.035] px-3.5 text-sm text-white/72 backdrop-blur-2xl transition active:scale-95" aria-label="Back">
-              <ArrowLeft className="h-[18px] w-[18px]" /> Back
+          <div className="flex items-center justify-between gap-2">
+            <button type="button" onClick={() => (window.history.length > 1 ? router.back() : router.push("/home"))} aria-label="Back" className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.03] text-white/78 backdrop-blur-2xl transition hover:bg-white/[0.06] hover:text-white active:scale-95">
+              <ArrowLeft className="h-5 w-5" />
             </button>
-            <div className="flex items-center gap-2">
+            <div className="min-w-0 flex-1 text-center">
+              <div className="truncate text-[18px] font-semibold tracking-[-0.04em]">Oyi</div>
+              <div className="truncate text-[10px] text-white/42">Living intelligence</div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
               <button type="button" onClick={() => { setHistoryError(null); setHistoryOpen(true); }} className="grid h-10 w-10 place-items-center rounded-full border border-sky-300/14 bg-sky-300/[0.055] text-sky-50/82 shadow-[0_0_24px_rgba(56,189,248,0.14)] transition active:scale-95" aria-label="Conversation history"><History className="h-4 w-4" /></button>
               <button type="button" onClick={startNewConversation} className="grid h-10 w-10 place-items-center rounded-full border border-white/[0.09] bg-white/[0.045] text-white/78 transition active:scale-95" aria-label="New chat"><Plus className="h-4 w-4" /></button>
             </div>
-          </div>
-          <div className="mt-4 text-center">
-            <div className="text-[18px] font-semibold tracking-[-0.04em]">Oyi</div>
-            <div className="mt-0.5 text-[11px] text-white/42">Living intelligence</div>
           </div>
         </header>
         {targetError ? <div className="relative z-20 mx-auto mt-2 max-w-[680px] px-5"><p className="rounded-xl border border-amber-300/20 bg-amber-400/[0.08] px-3 py-2 text-xs text-amber-100">{targetError}</p></div> : null}
@@ -1392,9 +1392,11 @@ function OyiAiCommandCenterContent() {
               </div>
             ) : (
               <div className="space-y-4 pt-4">
-                {messages.map((message) => (
+                {messages.map((message) => {
+                  const hasTableCard = message.role === "assistant" && Array.isArray(message.cards) && message.cards.some((card) => String((card as any)?.type || "") === "table");
+                  return (
                   <div key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-                    <div className={`max-w-[94%] overflow-hidden rounded-[24px] px-4 py-3 text-sm leading-6 shadow-[0_16px_42px_rgba(0,0,0,0.24)] sm:max-w-[86%] ${message.role === "user" ? "rounded-br-[8px] bg-white text-black" : "rounded-bl-[8px] border border-white/[0.07] bg-white/[0.045] text-white/82 backdrop-blur-xl"}`}>
+                    <div className={`overflow-hidden rounded-[24px] px-4 py-3 text-sm leading-6 shadow-[0_16px_42px_rgba(0,0,0,0.24)] ${hasTableCard ? "max-w-[99%]" : "max-w-[94%] sm:max-w-[86%]"} ${message.role === "user" ? "rounded-br-[8px] bg-white text-black" : "rounded-bl-[8px] border border-white/[0.07] bg-white/[0.045] text-white/82 backdrop-blur-xl"}`}>
                       <div className="whitespace-pre-wrap break-words">{message.pending ? <span className="inline-flex items-center gap-2"><Spinner /> {message.content}</span> : message.content}</div>
                       {!message.pending && message.role === "assistant" && (message.persistence_saved === false || message.warnings?.some((warning) => /not saved|history/i.test(warning))) ? (
                         <div className="mt-2 rounded-2xl border border-amber-300/18 bg-amber-400/[0.07] px-3 py-2 text-xs leading-5 text-amber-100/84">
@@ -1436,7 +1438,8 @@ function OyiAiCommandCenterContent() {
                       ) : null}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
                 <div ref={bottomRef} aria-hidden style={{ height: composerReserve }} />
               </div>
             )}

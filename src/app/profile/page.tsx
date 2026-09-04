@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Bell,
+  ChevronLeft,
   ChevronRight,
   Edit3,
   HelpCircle,
@@ -365,9 +366,11 @@ export default function ProfilePage() {
     return (
       <div className="fixed inset-0 z-[120] flex items-end bg-black/50 px-4 pb-[calc(12px+var(--sab))] backdrop-blur-md sm:items-center sm:justify-center">
         <section className="flex max-h-[min(74dvh,620px)] w-full max-w-[430px] flex-col overflow-hidden rounded-[24px] border border-white/[0.08] bg-[#050a12]/94 shadow-[0_24px_78px_rgba(0,0,0,0.58)]">
-          <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-white/[0.055] bg-[#050a12]/96 px-3.5 py-3 backdrop-blur-2xl">
-            <h2 className="text-[17px] font-semibold tracking-[-0.04em] text-white">{title}</h2>
-            <button type="button" onClick={() => setPanel(null)} className="rounded-full bg-white/[0.06] px-3 py-1.5 text-xs text-white/60">Back</button>
+          <div className="sticky top-0 z-10 flex shrink-0 items-center gap-2.5 border-b border-white/[0.055] bg-[#050a12]/96 px-3 py-2.5 backdrop-blur-2xl">
+            <button type="button" onClick={() => setPanel(null)} aria-label="Back" className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-white/78 transition hover:bg-white/[0.06] hover:text-white">
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+            <h2 className="min-w-0 truncate text-[17px] font-semibold tracking-[-0.04em] text-white">{title}</h2>
           </div>
           <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3.5 py-3 text-sm" style={{ WebkitOverflowScrolling: "touch" }}>
             {panel === "personal" ? (
