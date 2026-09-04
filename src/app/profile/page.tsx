@@ -504,11 +504,11 @@ export default function ProfilePage() {
 
   return (
     <LayoutWrapper>
-      <main className="fixed inset-0 overflow-hidden bg-[#02060b] text-white md:left-[88px]">
+      <main className="fixed inset-0 overflow-hidden bg-[#02060b] text-white md:left-[108px]">
         <div className="oyi-ambient-bg" />
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_78%_18%,rgba(0,132,255,0.16),transparent_28%),linear-gradient(180deg,rgba(4,12,22,0.18),rgba(0,0,0,0.92))]" />
 
-        <div className="fixed inset-x-0 z-[80] px-5 md:left-[88px]" style={{ top: "calc(8px + var(--sat))" }}>
+        <div className="fixed inset-x-0 z-[80] px-5 md:left-[108px]" style={{ top: "calc(8px + var(--sat))" }}>
           <div className="mx-auto flex max-w-[430px] items-center justify-between gap-3 md:max-w-[720px] lg:max-w-[1100px] xl:max-w-[1300px]">
             <div className="flex min-w-0 items-center gap-2.5">
               <h1 className="truncate text-[24px] font-semibold leading-none tracking-[-0.055em] text-white">Profile</h1>

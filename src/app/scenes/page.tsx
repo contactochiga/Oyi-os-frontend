@@ -390,9 +390,9 @@ export default function ScenesPage() {
 
   return (
     <LayoutWrapper>
-      <main className="fixed inset-0 overflow-hidden bg-[#02060b] text-white md:left-[88px]">
+      <main className="fixed inset-0 overflow-hidden bg-[#02060b] text-white md:left-[108px]">
         <div className="oyi-ambient-bg" />
-        <div className="fixed inset-x-0 z-[80] px-4 md:left-[88px]" style={{ top: "calc(8px + var(--sat))" }}>
+        <div className="fixed inset-x-0 z-[80] px-4 md:left-[108px]" style={{ top: "calc(8px + var(--sat))" }}>
           <div className="mx-auto flex max-w-[430px] items-center justify-between gap-3 md:max-w-[860px] lg:max-w-[1180px] xl:max-w-[1400px]">
             <div className="flex min-w-0 items-center gap-2.5">
               <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.03] shadow-[0_8px_26px_rgba(0,0,0,0.28)] backdrop-blur-2xl">
