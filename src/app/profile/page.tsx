@@ -31,8 +31,6 @@ import { homeAccessService, type HomeAccessMember } from "@/services/homeAccessS
 import { walletService } from "@/services/walletService";
 import { listMyNotifications, type AppNotification } from "@/services/notificationsService";
 import { notificationPreferencesService, type NotificationPreference } from "@/services/notificationPreferencesService";
-import { replayOnboardingTour } from "@/services/onboardingTour";
-import { DEFAULT_PROXIMITY_SETTINGS, proximityService, type ProximitySettings } from "@/services/proximityService";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import API from "@/services/api";
 import pkg from "../../../package.json";
@@ -98,16 +96,6 @@ function appCommitHash() {
   return raw ? raw.slice(0, 7) : "";
 }
 
-function proximityStatusLabel(state?: string | null) {
-  const value = String(state || "").toLowerCase();
-  if (value === "near_home") return "Near Home";
-  if (value === "leaving_home") return "Away";
-  if (value === "away") return "Away";
-  if (value === "approaching_estate") return "Near Estate";
-  if (value === "inside_estate") return "Inside Estate";
-  return "Not checked yet";
-}
-
 export default function ProfilePage() {
   const router = useRouter();
   const { user, token, logout, ready, setSession } = useAuth() as any;
@@ -123,9 +111,6 @@ export default function ProfilePage() {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreference[]>([]);
   const [notificationPreferenceBusy, setNotificationPreferenceBusy] = useState("");
-  const [proximitySettings, setProximitySettings] = useState<ProximitySettings>(DEFAULT_PROXIMITY_SETTINGS);
-  const [proximityBusy, setProximityBusy] = useState("");
-  const [proximityMessage, setProximityMessage] = useState<string | null>(null);
   const [residentContext, setResidentContext] = useState<ResidentVerificationContext | null>(null);
   const [panel, setPanel] = useState<PanelKey>(null);
   const [logoutOpen, setLogoutOpen] = useState(false);
@@ -189,12 +174,11 @@ export default function ProfilePage() {
     if (!ready || !token || !active.ready) return;
     let cancelled = false;
     async function load() {
-      const [memberRes, walletRes, notificationRes, contextRes, proximityRes, notificationPreferenceRes] = await Promise.allSettled([
+      const [memberRes, walletRes, notificationRes, contextRes, notificationPreferenceRes] = await Promise.allSettled([
         active.home_id ? homeAccessService.listHomeUsers(active.home_id) : Promise.resolve([]),
         walletService.getWallet(),
         listMyNotifications(),
         API.get("/me/context"),
-        proximityService.getSettings(),
         notificationPreferencesService.list(),
       ]);
       if (cancelled) return;
@@ -207,7 +191,6 @@ export default function ProfilePage() {
         const payload = (contextRes.value as any)?.data?.data ?? (contextRes.value as any)?.data ?? null;
         setResidentContext(payload);
       }
-      if (proximityRes.status === "fulfilled") setProximitySettings(proximityRes.value);
       if (notificationPreferenceRes.status === "fulfilled") setNotificationPreferences(notificationPreferenceRes.value);
     }
     void load();
@@ -362,44 +345,6 @@ export default function ProfilePage() {
     }
   }
 
-  async function saveProximitySettings(patch: Partial<ProximitySettings>, successMessage: string) {
-    setProximityBusy("save");
-    setProximityMessage(null);
-    try {
-      const next = await proximityService.updateSettings(patch);
-      setProximitySettings(next);
-      setProximityMessage(successMessage);
-      if (typeof window !== "undefined") window.dispatchEvent(new Event("oyi:proximity-settings-changed"));
-    } catch (error: any) {
-      setProximityMessage(error?.response?.data?.error || error?.message || "Proximity settings could not be updated.");
-    } finally {
-      setProximityBusy("");
-    }
-  }
-
-  async function saveCurrentLocationFor(target: "home" | "estate") {
-    setProximityBusy(target);
-    setProximityMessage(null);
-    if (typeof window === "undefined" || !("geolocation" in navigator)) {
-      setProximityBusy("");
-      setProximityMessage("Location is not available on this device.");
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const patch = target === "home"
-          ? { home_lat: position.coords.latitude, home_lng: position.coords.longitude }
-          : { estate_lat: position.coords.latitude, estate_lng: position.coords.longitude };
-        void saveProximitySettings(patch, target === "home" ? "Home location saved." : "Estate approach location saved.");
-      },
-      () => {
-        setProximityBusy("");
-        setProximityMessage("Location permission is required to save this point.");
-      },
-      { enableHighAccuracy: false, maximumAge: 60_000, timeout: 20_000 }
-    );
-  }
-
   async function updateNotificationPreference(category: string, patch: Partial<NotificationPreference>) {
     setNotificationPreferenceBusy(category);
     try {
@@ -539,74 +484,6 @@ export default function ProfilePage() {
                 </div>
               </>
             ) : null}
-            {panel === "proximity" ? (
-              <>
-                <div className="rounded-[18px] border border-sky-300/12 bg-sky-400/[0.045] p-3">
-                  <div className="text-sm font-semibold text-sky-100">Opt-in home awareness</div>
-                  <p className="mt-1 text-xs leading-5 text-white/50">
-                    Oyi can check your home status when you approach or leave. Your location is not shared with Facility, and Oyi does not store a movement trail.
-                  </p>
-                </div>
-                <InfoRow label="Current Status" value={proximitySettings.enabled ? "Active" : "Disabled"} detail={proximitySettings.enabled ? `✓ ${proximityStatusLabel(proximitySettings.last_state)}` : "Turn this on when you want Oyi to check your home near your estate."} />
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void saveProximitySettings({ enabled: true }, "Proximity Awareness enabled.")}
-                    disabled={proximityBusy === "save" || proximitySettings.enabled}
-                    className="rounded-full bg-white px-4 py-2.5 text-sm font-semibold text-black disabled:opacity-45"
-                  >
-                    {proximitySettings.enabled ? "✓ Active" : "Enable"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void saveProximitySettings({ enabled: false }, "Proximity Awareness disabled.")}
-                    disabled={proximityBusy === "save" || !proximitySettings.enabled}
-                    className="rounded-full border border-white/10 bg-white/[0.05] px-4 py-2.5 text-sm text-white/70 disabled:opacity-45"
-                  >
-                    Disable
-                  </button>
-                </div>
-                <div className="rounded-[18px] border border-white/[0.06] bg-white/[0.025] px-3.5 py-3">
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-white/34">Awareness Distance</div>
-                  <div className="mt-2 grid grid-cols-4 gap-1.5">
-                    {[20, 100, 500, 1000].map((radius) => (
-                      <button
-                        key={radius}
-                        type="button"
-                        onClick={() => void saveProximitySettings({ radius_meters: radius as ProximitySettings["radius_meters"] }, `Radius set to ${radius === 1000 ? "1km" : `${radius}m`}.`)}
-                        className={`rounded-full px-2 py-2 text-xs font-semibold ${proximitySettings.radius_meters === radius ? "bg-sky-300 text-black" : "border border-white/[0.08] bg-white/[0.035] text-white/62"}`}
-                      >
-                        {radius === 1000 ? "1km" : `${radius}m`}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void saveCurrentLocationFor("home")}
-                    disabled={Boolean(proximityBusy)}
-                    className="rounded-[18px] border border-white/[0.07] bg-white/[0.035] px-3.5 py-3 text-left text-sm font-medium text-white/82 disabled:opacity-45"
-                  >
-                    <span className="block text-white">Set Home Point</span>
-                    <span className="mt-1 block text-xs text-white/42">{proximitySettings.home_lat && proximitySettings.home_lng ? "Saved" : "Not set"}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void saveCurrentLocationFor("estate")}
-                    disabled={Boolean(proximityBusy)}
-                    className="rounded-[18px] border border-white/[0.07] bg-white/[0.035] px-3.5 py-3 text-left text-sm font-medium text-white/82 disabled:opacity-45"
-                  >
-                    <span className="block text-white">Set Estate Point</span>
-                    <span className="mt-1 block text-xs text-white/42">{proximitySettings.estate_lat && proximitySettings.estate_lng ? "Saved" : "Not set"}</span>
-                  </button>
-                </div>
-                <div className="rounded-[18px] border border-white/[0.06] bg-white/[0.025] px-3.5 py-3 text-xs leading-5 text-white/48">
-                  Location permission is requested only when you save a point or when Proximity Awareness is enabled. Activity entries never include raw coordinates.
-                </div>
-                {proximityMessage ? <div className="rounded-[14px] border border-white/[0.06] bg-white/[0.025] px-3 py-2 text-xs text-white/58">{proximityMessage}</div> : null}
-              </>
-            ) : null}
             {panel === "preferences" ? (
               <>
                 <InfoRow label="Appearance" value={darkMode ? "Dark" : "Light"} />
@@ -615,15 +492,6 @@ export default function ProfilePage() {
                 <InfoRow label="Units" value={(user as any)?.units || "Metric"} />
                 <InfoRow label="Temperature" value={(user as any)?.temperature_unit || "Celsius"} />
                 <InfoRow label="Timezone" value={Intl.DateTimeFormat().resolvedOptions().timeZone} />
-              </>
-            ) : null}
-            {panel === "support" ? (
-              <>
-                <button type="button" onClick={() => { replayOnboardingTour(); router.push("/onboarding"); }} className="w-full rounded-[18px] border border-white/[0.06] bg-white/[0.025] px-3.5 py-3 text-left text-sm font-medium text-white/82 transition hover:bg-white/[0.05]">Replay Home Tour</button>
-                <button type="button" onClick={() => router.push("/reports")} className="w-full rounded-[18px] border border-white/[0.06] bg-white/[0.025] px-3.5 py-3 text-left text-sm font-medium text-white/82 transition hover:bg-white/[0.05]">Documentation</button>
-                <button type="button" onClick={() => router.push("/maintenance")} className="w-full rounded-[18px] border border-white/[0.06] bg-white/[0.025] px-3.5 py-3 text-left text-sm font-medium text-white/82 transition hover:bg-white/[0.05]">Contact Support</button>
-                <button type="button" onClick={() => router.push("/maintenance")} className="w-full rounded-[18px] border border-white/[0.06] bg-white/[0.025] px-3.5 py-3 text-left text-sm font-medium text-white/82 transition hover:bg-white/[0.05]">Report Issue</button>
-                <button type="button" onClick={() => router.push("/community")} className="w-full rounded-[18px] border border-white/[0.06] bg-white/[0.025] px-3.5 py-3 text-left text-sm font-medium text-white/82 transition hover:bg-white/[0.05]">FAQ</button>
               </>
             ) : null}
           </div>
@@ -690,7 +558,7 @@ export default function ProfilePage() {
               {menu.map((item, index) => {
                 const Icon = item.icon;
                 return (
-                  <button key={item.key} type="button" onClick={() => item.key === "integrations" ? router.push("/devices/integrations") : item.key === "proximity" ? router.push("/profile/proximity") : setPanel(item.key)} className={`flex w-full items-center gap-3 py-3 text-left ${index ? "border-t border-white/[0.055]" : ""}`}>
+                  <button key={item.key} type="button" onClick={() => item.key === "integrations" ? router.push("/devices/integrations") : item.key === "proximity" ? router.push("/profile/proximity") : item.key === "support" ? router.push("/support") : setPanel(item.key)} className={`flex w-full items-center gap-3 py-3 text-left ${index ? "border-t border-white/[0.055]" : ""}`}>
                     <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/[0.035] ${item.color}`}><Icon className="h-5 w-5" /></span>
                     <span className="min-w-0 flex-1">
                       <span className="block text-[15px] font-semibold tracking-[-0.03em] text-white">{item.label}</span>

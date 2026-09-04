@@ -31,6 +31,12 @@ const [
   sceneServiceSrc,
   visitors,
   doorPanel,
+  hamburgerMenu,
+  deviceServiceSrc,
+  activityServiceSrc,
+  aiPage,
+  proximityPage,
+  supportPage,
 ] = await Promise.all([
   source("src/app/components/BottomNav.tsx"),
   source("src/lib/moduleRegistry.ts"),
@@ -60,6 +66,12 @@ const [
   source("src/services/sceneService.ts"),
   source("src/app/visitors/page.tsx"),
   source("src/app/components/remotes/DoorPanel.tsx"),
+  source("src/app/components/HamburgerMenu.tsx"),
+  source("src/services/deviceService.ts"),
+  source("src/services/activityService.ts"),
+  source("src/app/ai/page.tsx"),
+  source("src/app/profile/proximity/page.tsx"),
+  source("src/app/support/page.tsx"),
 ]);
 
 assert.match(nav, /\["home", "spaces", "devices", "community", "activity"\]/, "footer nav group 1 must be restored");
@@ -207,5 +219,71 @@ assert.match(room, /<div className="flex items-center justify-between gap-3">\s*
 assert.match(doorPanel, /function capabilityNote/, "DoorPanel must keep its capability-note truthful-blocker helper");
 assert.match(doorPanel, /evidence\.status === "verification_required"/, "DoorPanel must surface the verification_required blocker truthfully");
 assert.match(doorPanel, /evidence\.status === "mapping_missing"/, "DoorPanel must surface the mapping_missing blocker truthfully");
+
+// Final closure pass: Favorites -- one canonical merged source (runtime truth
+// + registry-stored favorite preference) shared by Home and Devices, never
+// two independent favorite states.
+assert.match(deviceServiceSrc, /async getRuntimeDevicesWithPreferences/, "deviceService must expose one canonical runtime+favorite-preference merge function");
+assert.match(deviceServiceSrc, /favorite: savedFavorite\(registry\)/, "the merge must read the favorite flag from the registry row, not fabricate it");
+assert.match(home, /getRuntimeDevicesWithPreferences\(estateId, homeId\)/, "Home must load devices through the canonical favorite-aware merge");
+assert.match(devices, /getRuntimeDevicesWithPreferences\(estateId, homeId\)/, "Devices must load devices through the same canonical favorite-aware merge as Home");
+assert.match(home, /favoritePreference\(device\) === true/, "Home favorites must gate on the real favorite flag");
+assert.match(devices, /Boolean\(device\?\.favorite \|\| device\?\.is_favorite \|\| device\?\.pinned/, "Devices favorite check must read the same underlying flags as Home");
+
+// Devices: category rail matches the requested minimal set, Edit Favorites
+// only while Favorites is selected, no standalone Activity shortcut, no
+// permanent "Favorite Controls" block, no Devices-by-Room duplication of Spaces.
+assert.match(devices, /\{ key: "all", label: "All" \}/, "Devices category rail must include All");
+assert.match(devices, /\{ key: "favorites", label: "Favorites" \}/, "Devices category rail must include Favorites");
+assert.doesNotMatch(devices, /Favorite Controls/, "Devices must not keep a permanent standalone Favorite Controls block");
+assert.doesNotMatch(devices, /No favorite controls yet/, "Devices must not keep a permanent standalone empty-favorites block");
+assert.doesNotMatch(devices, /Devices by Room/, "Devices must not duplicate Spaces' room navigation");
+assert.match(devices, /category === "favorites" \? \(/, "Edit favorites action must only render while the Favorites category is selected");
+assert.doesNotMatch(devices, /router\.push\("\/activity"\)\}[^<]*className="inline-flex items-center gap-1 text-xs text-sky-200\/80">Activity/, "Devices must not keep a standalone Activity shortcut duplicating the Activity module");
+assert.match(devices, /openAddDevice/, "Add Device must stay reachable from the device-navigation area");
+
+// Room: reusable master switch is truthful, never hidden inconsistently,
+// disabled (not absent) when a room has zero controllable devices, and
+// every device row opens its real control surface via the canonical resolver.
+assert.match(room, /disabled=\{busyId === "room-all" \|\| loading \|\| compatibleCount === 0\}/, "room switch must be a truthful disabled state when no device is controllable, not hidden");
+assert.doesNotMatch(room, /\{compatibleCount \? \(\s*<button/, "room switch must not be conditionally unmounted based on compatible device count");
+assert.match(room, /openCanonicalDevice\(router, sid\)/, "every room device row must open its real control surface via the shared canonical resolver");
+assert.match(room, /backHref="\/spaces"/, "Room header must provide real back navigation to Spaces");
+
+// Proximity Awareness: dedicated page reuses the real proximityService (no
+// duplicate settings store), and the old profile in-panel implementation is
+// gone rather than left as an unreachable duplicate.
+assert.match(proximityPage, /proximityService\.getSettings\(/, "Proximity Awareness page must read real stored settings via proximityService");
+assert.match(proximityPage, /proximityService\.updateSettings\(/, "Proximity Awareness page must persist changes via the real service");
+assert.match(proximityPage, /oyi:proximity-settings-changed/, "Proximity Awareness page must keep dispatching the shared settings-changed event GeoFenceBridge listens for");
+assert.doesNotMatch(profile, /panel === "proximity"/, "profile page must not keep an unreachable duplicate Proximity Awareness panel");
+assert.match(profile, /router\.push\("\/profile\/proximity"\)/, "Profile's Proximity Awareness menu item must open the dedicated canonical page");
+
+// Help & Support: routes to the real existing /support page, not a dead
+// in-panel duplicate with mismatched destinations, and not a nonexistent
+// /help or /docs route.
+assert.doesNotMatch(profile, /panel === "support"/, "profile page must not keep an unreachable duplicate Help & Support panel");
+assert.match(profile, /item\.key === "support" \? router\.push\("\/support"\)/, "Profile's Help & Support menu item must open the real, existing /support page");
+assert.doesNotMatch(supportPage, /href="\/help"|href="\/docs"|router\.push\("\/help"\)|router\.push\("\/docs"\)/, "Help & Support must not link to a nonexistent /help or /docs route");
+
+// Reports -> Oyi proactive intelligence: removed as a primary hamburger
+// destination without deleting the underlying report capability/route/API,
+// and report-type notifications deep-link into the Oyi conversation surface
+// instead of forcing a standalone Reports dashboard.
+assert.doesNotMatch(hamburgerMenu, /"reports"/, "Reports must be removed from the primary hamburger destination list");
+assert.match(modules, /key: "reports", label: "Reports", href: "\/reports"/, "the Reports module route and permission gate must remain registered, not deleted");
+assert.match(reports, /maintenanceService\.listMyTickets|servicesService\.history|listMyNotifications/, "the underlying Reports archive data (maintenance/payments/activity) must remain real, not deleted");
+assert.match(activityServiceSrc, /\/report\|briefing\|digest\//, "report/briefing-type notifications must be detected for proactive Oyi routing");
+assert.match(activityServiceSrc, /href: `\/ai\$\{reportThreadId/, "report-type notifications must deep-link into the Oyi conversation surface, not a standalone Reports dashboard");
+assert.match(aiPage, /restoreThreadById/, "the Oyi Command Center must keep its real threadId restore path that report notifications rely on");
+
+// Responsive navigation: one shared ITEMS/NAV_GROUPS source of truth presented
+// as phone bottom nav and iPad+ left sidebar, not two independent nav systems.
+assert.match(nav, /md:flex/, "BottomNav must render a persistent sidebar variant at the md breakpoint");
+assert.match(nav, /md:hidden/, "the phone bottom nav must hide at the md breakpoint in favor of the sidebar, not stack both");
+assert.match(shell, /backHref \? \(/, "ConsumerShell must support an optional back-navigation affordance for detail pages");
+for (const [name, src] of [["home", home], ["devices", devices], ["profile", profile], ["ai", aiPage], ["rooms", roomsClient], ["scenes", scenes]]) {
+  assert.match(src, /md:left-\[88px\]/, `${name} page must offset its fixed layout for the iPad+ sidebar width`);
+}
 
 console.log("consumer P2 experience foundation smoke passed");
