@@ -85,7 +85,7 @@ export default function WalletPaymentReturnPage() {
   const canViewReceipt = Boolean(result?.receipt || result?.transaction?.receipt_available);
 
   return (
-    <ConsumerShell title={title} subtitle={subtitle} strip={strip}>
+    <ConsumerShell title={title} subtitle={subtitle} strip={strip} backHref="/wallet">
       <div className="oyi-living-page space-y-3 pb-8">
         <section className="rounded-[24px] border border-white/10 bg-white/[0.035] p-4">
           <div className="text-sm font-medium text-white">{title}</div>

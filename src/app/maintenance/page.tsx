@@ -370,6 +370,7 @@ export default function MaintenancePage() {
       strip={strip}
       hideStrip
       preStripSlot={requestAction}
+      wide
     >
       <div className="oyi-living-page space-y-2.5 pb-8">
       {err ? <div className="rounded-[18px] border border-red-300/16 bg-red-500/10 px-3.5 py-3 text-xs text-red-100">{err}</div> : null}
@@ -395,7 +396,7 @@ export default function MaintenancePage() {
             No requests yet. Maintenance, diagnostics and technician updates will appear here.
           </div>
         ) : (
-          <div className="mt-2.5 space-y-2">
+          <div className="mt-2.5 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
             {ongoingTickets.map((t) => (
               <RequestFeatureCard key={t.id} ticket={t} onOpen={() => setSelectedTicket(t)} />
             ))}
@@ -406,7 +407,7 @@ export default function MaintenancePage() {
       {recentTickets.length ? (
         <section>
           <div className="px-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/38">Recent requests</div>
-          <div className="mt-2.5 space-y-2">
+          <div className="mt-2.5 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
             {recentTickets.map((t) => (
               <RecentRequestCard key={t.id} ticket={t} onOpen={() => setSelectedTicket(t)} />
             ))}

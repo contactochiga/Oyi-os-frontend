@@ -40,7 +40,7 @@ function WatchFace({ title, detail, icon: Icon, tone = "text-sky-100 bg-sky-300/
 
 export default function OyiWatchPage() {
   return (
-    <ConsumerShell title="Watch Concept Preview" subtitle="Reference only · native watch app powers real sync">
+    <ConsumerShell title="Watch Concept Preview" subtitle="Reference only · native watch app powers real sync" backHref="/home">
       <div className="space-y-3 pb-8">
         <section className="oyi-glass relative overflow-hidden rounded-[28px] p-5">
           <div className="absolute -right-24 -top-20 h-64 w-64 rounded-full bg-blue-400/12 blur-3xl" />

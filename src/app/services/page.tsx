@@ -577,6 +577,7 @@ export default function ServicesPage() {
     <ConsumerShell
       title="Infrastructure Services"
       hideStrip
+      wide
     >
       <div className="space-y-3 pb-8">
         {error ? (
@@ -608,7 +609,7 @@ export default function ServicesPage() {
           </section>
         ) : groupedSections.map((section) => (
           <section key={section.title} className="space-y-3">
-            <div className="space-y-3">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {section.cards.map((item) => (
                 <GroupedServiceCard
                   key={item.key}

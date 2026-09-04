@@ -1,8 +1,8 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { Camera, ChevronRight, Image as ImageIcon, Radio, RefreshCw } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { Camera, ChevronRight, Image as ImageIcon, RefreshCw } from "lucide-react";
 import ConsumerShell from "@/app/components/ConsumerShell";
 import CameraLivePlayer from "@/app/components/cameras/CameraLivePlayer";
 import useActiveContext from "@/hooks/useActiveContext";
@@ -20,12 +20,11 @@ const eventLabel = (event: CameraEvent | CameraDetection) => String(event.type |
 const activityTime = (item: CameraEvent | CameraDetection) => ("sourceTimestamp" in item ? item.sourceTimestamp : null) || ("observedAt" in item ? item.observedAt : null) || item.createdAt || new Date(0).toISOString();
 
 export default function CamerasPage() {
-  return <Suspense fallback={<ConsumerShell title="Cameras" hideStrip><div className="py-10 text-sm text-white/55">Loading cameras…</div></ConsumerShell>}><CamerasContent /></Suspense>;
+  return <Suspense fallback={<ConsumerShell title="Cameras" hideStrip wide backHref="/security"><div className="py-10 text-sm text-white/55">Loading cameras…</div></ConsumerShell>}><CamerasContent /></Suspense>;
 }
 
 function CamerasContent() {
   const active = useActiveContext();
-  const router = useRouter();
   const search = useSearchParams();
   const [cameras, setCameras] = useState<CameraItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -64,7 +63,7 @@ function CamerasContent() {
     try { const access = item.accessUrl ? item : await cameraService.getMediaAccess(item.id); if (access.accessUrl) window.open(access.accessUrl, "_blank", "noopener,noreferrer"); } catch { /* access remains intentionally silent and resident-safe */ }
   }
 
-  return <ConsumerShell title="Cameras" hideStrip>
+  return <ConsumerShell title="Cameras" hideStrip wide backHref="/security">
     <div className="space-y-4 pb-6">
       <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-3">
         <p className="text-sm text-white/55">{loading ? "Loading cameras…" : `${cameras.length} authorized ${cameras.length === 1 ? "camera" : "cameras"}`}</p>
@@ -85,7 +84,6 @@ function CamerasContent() {
           </div>
         </section> : null}
       </div> : null}
-      <button onClick={() => router.push("/security")} className="inline-flex items-center gap-1.5 text-sm text-sky-100/85 hover:text-white"><Radio className="h-4 w-4" />Back to Security</button>
     </div>
   </ConsumerShell>;
 }

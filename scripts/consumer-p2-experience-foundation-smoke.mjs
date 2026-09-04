@@ -38,6 +38,10 @@ const [
   proximityPage,
   supportPage,
   integrationsPage,
+  maintenance,
+  watch,
+  walletReturn,
+  activity,
 ] = await Promise.all([
   source("src/app/components/BottomNav.tsx"),
   source("src/lib/moduleRegistry.ts"),
@@ -74,6 +78,10 @@ const [
   source("src/app/profile/proximity/page.tsx"),
   source("src/app/support/page.tsx"),
   source("src/app/devices/integrations/page.tsx"),
+  source("src/app/maintenance/page.tsx"),
+  source("src/app/watch/page.tsx"),
+  source("src/app/wallet/payment/return/page.tsx"),
+  source("src/app/activity/page.tsx"),
 ]);
 
 assert.match(nav, /\["home", "spaces", "devices", "community", "activity"\]/, "footer nav group 1 must be restored");
@@ -133,9 +141,9 @@ assert.match(vercelConfig, /"missing": \[\{ "type": "header", "key": "rsc" \}\]/
 assert.match(devices, /openDevice\(target, \{ alreadyAssigned: true \}\)/, "Room-originated device deep link must bypass the assign-to-room flow");
 assert.match(devices, /options\?\.alreadyAssigned/, "openDevice must support an alreadyAssigned override for canonical home-scoped devices");
 
-// Canonical header pattern: hamburger + title on the same row, no separate subtitle-heavy header block
-assert.match(devices, /flex min-w-0 items-center gap-2\.5">\s*<div className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white\/10 bg-white\/\[0\.03\][^"]*"><HamburgerMenu \/><\/div>\s*<h1/, "Devices header must place the hamburger and title on the same row");
-assert.doesNotMatch(devices, /<header className="flex items-end justify-between gap-3">/, "Devices must not keep a separate scrolled-in header row below the fixed hamburger bar");
+// Canonical header pattern: title sits flush in its row, no separate subtitle-heavy header block
+assert.match(devices, /flex min-w-0 items-center gap-2\.5">\s*<h1 className="truncate text-\[24px\]/, "Devices header must place the title flush in its row");
+assert.doesNotMatch(devices, /<header className="flex items-end justify-between gap-3">/, "Devices must not keep a separate scrolled-in header row below the fixed title bar");
 
 // Favorites: Home and Devices must resolve from the same canonical signal,
 // with no synthetic fallback that fabricates favorites when none exist
@@ -314,7 +322,7 @@ assert.match(aiPage, /aria-label="New chat"/, "Oyi new-conversation action must 
 // nested inside a narrow card inside a narrow bubble.
 assert.match(aiPage, /className=\{isTable \? "-mx-4" : "rounded-\[18px\] border border-white\/\[0\.07\] bg-black\/18 p-3"\}/, "table cards must bleed to the response bubble's edge instead of nesting a second border");
 assert.match(aiPage, /hasTableCard/, "messages with a table card must be detected so their bubble can widen");
-assert.match(aiPage, /hasTableCard \? "max-w-\[99%\]" : "max-w-\[94%\] sm:max-w-\[86%\]"/, "a table-bearing response bubble must widen close to the usable viewport width");
+assert.match(aiPage, /hasTableCard \? "max-w-\[99%\]" : "max-w-\[94%\] sm:max-w-\[86%\] lg:max-w-\[620px\]"/, "a table-bearing response bubble must widen close to the usable viewport width, while ordinary text stays capped for readability at desktop");
 assert.match(aiPage, /overflow-x-auto rounded-2xl border border-white\/\[0\.06\]/, "the table itself must keep its one real scroll/boundary surface");
 
 // Mobile closure: bottom nav active state is a bright icon/label signal, not
@@ -327,5 +335,47 @@ assert.match(nav, /active \? "ring-sky-300\/70" : "ring-white\/15"/, "Profile's 
 assert.match(nav, /\$\{active \? "w-3\.5 opacity-100" : "w-0 opacity-0"\}/, "active bottom-nav items must use a small subtle indicator, not a large pill");
 assert.match(nav, /const NAV_GROUPS: Item\[\]\[\] = \[/, "the two-group nav architecture must remain intact");
 assert.match(nav, /scrollToPage\(pageForKey\(item\.key\)\)/, "swipe/group-switch behavior must remain intact");
+
+// Responsive pass: one shared shell exposes a `wide` opt-in for
+// operational/list-heavy modules, and a single canonical navigation
+// component (BottomNav) supplies both the phone bar and the desktop
+// sidebar -- ConsumerShell must never render its own second nav system.
+assert.match(shell, /wide = false/, "ConsumerShell must expose a wide canvas opt-in for operational pages");
+assert.match(shell, /wide \? "max-w-\[860px\] lg:max-w-\[1180px\] xl:max-w-\[1400px\]" : "max-w-\[860px\] lg:max-w-\[920px\] xl:max-w-\[980px\]"/, "ConsumerShell content canvas must widen responsively instead of staying phone-width at desktop");
+for (const [name, src] of [["activity", activity], ["cameras", cameras], ["maintenance", maintenance], ["services", services], ["visitors", visitors], ["messages", messages]]) {
+  assert.match(src, / wide(?:\s|>)/, `${name} must opt into the wide ConsumerShell canvas as an operational/list-heavy module`);
+}
+
+// Responsive pass: the hamburger drawer is gone from every live Consumer
+// surface (it had become a redirect-only Utilities link plus a Security
+// entry already reachable from Home) -- ConsumerShell falls back to no
+// leading button rather than an empty hamburger, and every secondary page
+// that isn't a primary bottom-nav/sidebar destination gets a real backHref
+// instead.
+assert.doesNotMatch(shell, /HamburgerMenu/, "ConsumerShell must not fall back to the hamburger drawer");
+for (const [name, src] of [["home", home], ["devices", devices], ["profile", profile], ["roomsClient", roomsClient], ["scenes", scenes]]) {
+  assert.doesNotMatch(src, /HamburgerMenu/, `${name} must not render the removed hamburger drawer`);
+}
+assert.match(security, /backHref="\/home"/, "Security is reached from Home's quick control, so it needs a real back path rather than a hamburger");
+assert.match(cameras, /backHref="\/security"/, "Cameras must back to its real parent, Security, instead of duplicating an inline back link");
+assert.doesNotMatch(cameras, /Back to Security/, "Cameras must not keep a redundant inline back-to-Security link once the header provides one");
+assert.match(watch, /backHref="\/home"/, "Watch must provide a real back path");
+assert.match(reports, /backHref="\/home"/, "Reports must provide a real back path now that it is not a primary nav destination");
+assert.match(messages, /backHref="\/home"/, "Messages must provide a real back path");
+assert.match(walletReturn, /backHref="\/wallet"/, "the wallet payment-return page must back to Wallet");
+assert.match(modules, /key: "reports", label: "Reports", href: "\/reports"/, "the Reports module route/permission gate must remain registered even though the hamburger no longer lists it");
+
+// Responsive pass: Profile recomposes into a two-column menu grid at lg+
+// (personal|access, security|notifications, proximity|integrations,
+// preferences|support -- the exact existing menu order, not reshuffled
+// data) while keeping every click handler and destination unchanged.
+assert.match(profile, /lg:grid lg:grid-cols-2 lg:gap-x-4/, "Profile menu must recompose into two columns at desktop widths");
+assert.match(profile, /lg:col-span-2/, "Log Out must span both columns as a clear closing action in the desktop grid");
+
+// Responsive pass: Oyi widens its conversation column and lets
+// table-bearing responses use it, while capping ordinary prose at a
+// comfortable reading width instead of letting it stretch edge to edge.
+assert.match(aiPage, /max-w-\[680px\] shrink-0 px-5 lg:max-w-\[900px\] xl:max-w-\[1040px\]/, "Oyi header column must widen at desktop");
+assert.match(aiPage, /max-w-\[680px\] flex-1 flex-col px-5 lg:max-w-\[900px\] xl:max-w-\[1040px\]/, "Oyi conversation column must widen at desktop");
 
 console.log("consumer P2 experience foundation smoke passed");
