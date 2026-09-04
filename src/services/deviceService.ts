@@ -52,6 +52,43 @@ const runtimeDevicesCache = new Map<string, RuntimeDevicesCacheEntry>();
 const deviceStateInFlight = new Map<string, Promise<DeviceStateResponse>>();
 const deviceViewReleaseInFlight = new Map<string, Promise<void>>();
 
+function deviceIdentityValues(device: Record<string, any>) {
+  return [device?.id, device?.device_id, device?.deviceId, device?.external_id, device?.externalId, device?.dev_id]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+}
+
+function savedFavorite(device: Record<string, any>) {
+  const values = [
+    device?.favorite,
+    device?.is_favorite,
+    device?.pinned,
+    device?.metadata?.favorite,
+    device?.metadata?.is_favorite,
+    device?.metadata?.pinned,
+  ];
+  const explicit = values.find((value) => typeof value === "boolean");
+  return explicit ?? false;
+}
+
+function mergeRuntimeWithRegistry(runtimeRows: DeviceRuntimeSummary[], registryRows: Record<string, any>[], homeId?: string | null) {
+  const registryByIdentity = new Map<string, Record<string, any>>();
+  registryRows.forEach((device) => deviceIdentityValues(device).forEach((identity) => registryByIdentity.set(identity, device)));
+
+  return runtimeRows.map((runtime) => {
+    const registry = deviceIdentityValues(runtime).map((identity) => registryByIdentity.get(identity)).find(Boolean);
+    if (!registry) return runtime;
+    const mergedHomeId = runtime.home_id || registry.home_id || null;
+    return {
+      ...registry,
+      ...runtime,
+      home_id: mergedHomeId,
+      metadata: { ...(registry.metadata || {}), ...(runtime.metadata || {}) },
+      favorite: savedFavorite(registry),
+    } as DeviceRuntimeSummary;
+  }).filter((device) => !homeId || !device.home_id || String(device.home_id) === String(homeId));
+}
+
 export type IrProfileOption = {
   key: string;
   label?: string;
@@ -366,6 +403,19 @@ export const deviceService = {
       runtimeDevicesCache.delete(cacheKey);
       throw normalizeDeviceListError(err);
     }
+  },
+
+  /**
+   * Runtime truth plus registry preferences. Runtime rows intentionally focus on
+   * live state, while favorite/pinned preferences are stored on the registry.
+   */
+  async getRuntimeDevicesWithPreferences(estateId?: string | null, homeId?: string | null, options: RuntimeDevicesOptions = {}) {
+    if (!estateId) return this.getRuntimeDevices(homeId, options);
+    const [runtimeRows, registryRows] = await Promise.all([
+      this.getRuntimeDevices(homeId, options),
+      this.getAssignedDevices(estateId),
+    ]);
+    return mergeRuntimeWithRegistry(runtimeRows, Array.isArray(registryRows) ? registryRows : [], homeId);
   },
 
   /**

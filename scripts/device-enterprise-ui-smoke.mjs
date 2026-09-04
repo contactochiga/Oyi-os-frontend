@@ -83,8 +83,13 @@ reject(
 );
 expect(
   "src/app/home/page.tsx",
-  /deviceService\.getRuntimeDevices\(homeId\)/,
+  /deviceService\.getRuntimeDevicesWithPreferences\(estateId, homeId\)/,
   "Home quick devices must use Runtime V2 for assigned/current devices",
+);
+expect(
+  "src/services/deviceService.ts",
+  /async getRuntimeDevicesWithPreferences[\s\S]*this\.getRuntimeDevices\(homeId, options\)/,
+  "getRuntimeDevicesWithPreferences must still source its device truth from Runtime V2, only merging in the stored favorite preference",
 );
 reject(
   "src/app/home/page.tsx",

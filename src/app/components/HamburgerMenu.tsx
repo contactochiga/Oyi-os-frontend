@@ -11,14 +11,12 @@ import { XMarkIcon, Bars3Icon } from "@heroicons/react/24/outline";
 import { decodeToken } from "@/lib/auth";
 
 // ✅ NEW: menu icons
-import { FiBarChart2, FiGrid, FiHelpCircle, FiShield, FiDroplet } from "react-icons/fi";
+import { FiGrid, FiShield, FiDroplet } from "react-icons/fi";
 import { CONSUMER_MODULES, visibleModules, type ModuleDefinition } from "@/lib/moduleRegistry";
 
 const MODULE_ICONS: Record<string, any> = {
   security: FiShield,
   utilities: FiDroplet,
-  reports: FiBarChart2,
-  support: FiHelpCircle,
 };
 
 type MenuItem = ModuleDefinition & { icon: any };
@@ -156,8 +154,7 @@ export default function HamburgerMenu() {
         ...item,
         icon: MODULE_ICONS[item.key] || FiGrid,
       }))
-      .filter((item) => ["reports", "utilities", "security"].includes(item.key))
-      .concat([{ key: "support", label: "Help & Support", href: "/support", icon: FiHelpCircle } as MenuItem]),
+      .filter((item) => ["utilities", "security"].includes(item.key)),
     [user],
   );
 

@@ -1,7 +1,8 @@
 "use client";
 
 import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { ChevronLeft } from "lucide-react";
 
 import LayoutWrapper from "./LayoutWrapper";
 import InviteSuggestionBridge from "./InviteSuggestionBridge";
@@ -22,6 +23,7 @@ export default function ConsumerShell({
   // Pages opt into a strip only when its metrics support a resident decision.
   hideStrip = true,
   disableContentScroll = false,
+  backHref,
 }: {
   children: ReactNode;
   title?: string;
@@ -30,8 +32,10 @@ export default function ConsumerShell({
   preStripSlot?: ReactNode;
   hideStrip?: boolean;
   disableContentScroll?: boolean;
+  backHref?: string;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const activeContext = useActiveContext();
   const latestAwareness = useRuntimeIntelligenceStore((state) => state.latestAwareness);
   const latestRecommendations = useRuntimeIntelligenceStore((state) => state.latestRecommendations);
@@ -78,16 +82,20 @@ export default function ConsumerShell({
 
   return (
     <LayoutWrapper>
-      <main className="fixed inset-0 flex flex-col overflow-hidden bg-[#03070c] text-white">
+      <main className="fixed inset-0 flex flex-col overflow-hidden bg-[#03070c] text-white md:left-[88px]">
         <div className="oyi-ambient-bg" />
         <InviteSuggestionBridge />
 
-        <div ref={headerRef} className="fixed inset-x-0 z-[80] px-4" style={{ top: "calc(8px + var(--sat))" }}>
+        <div ref={headerRef} className="fixed inset-x-0 z-[80] px-4 md:left-[88px]" style={{ top: "calc(8px + var(--sat))" }}>
           <div className="mx-auto w-full max-w-[860px]">
             <div className="flex items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-2.5">
                 <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.03] shadow-[0_8px_26px_rgba(0,0,0,0.28)] backdrop-blur-2xl">
-                  <HamburgerMenu />
+                  {backHref ? (
+                    <button type="button" onClick={() => router.push(backHref)} aria-label="Go back" className="grid h-full w-full place-items-center rounded-full text-white/78 transition hover:bg-white/[0.06] hover:text-white">
+                      <ChevronLeft className="h-5 w-5" />
+                    </button>
+                  ) : <HamburgerMenu />}
                 </div>
                 <div className="min-w-0">
                   <h1 className="truncate text-[24px] font-semibold leading-none tracking-[-0.055em] text-white">
