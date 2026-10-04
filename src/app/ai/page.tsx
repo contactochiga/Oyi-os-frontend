@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, ArrowUp, Ban, Check, CircleDashed, Clock3, Copy, History, Mic, Plus, Search, Square, ThumbsUp, Volume2, X } from "lucide-react";
+import { ArrowLeft, ArrowUp, Check, CircleDashed, Clock3, Copy, History, Mic, Plus, Search, Square, ThumbsUp, Volume2, X } from "lucide-react";
 
 import LayoutWrapper from "@/app/components/LayoutWrapper";
 import useAuth from "@/hooks/useAuth";
@@ -11,7 +11,9 @@ import { aiService, type AiChatResponse } from "@/services/aiService";
 import { deriveConsumerOperationalObject, deriveConsumerTarget } from "@/services/operationalObjectContext";
 import { isTerminalOyiWorkflowStatus, normalizeOyiActiveWorkflow, oyiService, type OyiActiveWorkflow, type OyiThread, type OyiThreadMessage } from "@/services/oyiService";
 import { resolveConsumerOyiTarget } from "@/services/oyiTargetRegistry";
-import { actionTruthView, messageStateForActionView, type OyiActionTruthView } from "@/lib/oyiActionTruth";
+import { actionResultView, confirmationProposal, emptyResponseText, latestAssistantMessage, normalizeOyiThreads, orbStateForView, OYI_WORKING_TEXT, OyiActionResult, OyiConfirmation, OyiOrb, useOyiConnectivity, useOyiInteraction } from "oyi-interaction";
+import "oyi-interaction/styles.css";
+import { consumerMessageStateForAction, createConsumerSurfaceAdapter } from "@/oyi/consumerSurfaceAdapter";
 import type { OyiTarget } from "@/services/oyiService";
 import {
   operationalObjectFromActiveContext,
@@ -92,7 +94,7 @@ function navigationRouteFromResponse(resp: AiChatResponse) {
 
 type Suggestion = { label: string; prompt?: string; href?: string; tone?: "blue" | "green" | "amber" | "violet" };
 type VoiceMode = "idle" | "recording" | "conversation";
-type VoiceStatus = "Listening" | "Thinking" | "Speaking" | "Done" | "Failed";
+type VoiceStatus = "Listening" | "Working" | "Speaking" | "Done" | "Failed";
 type Conversation = {
   id: string;
   title: string;
@@ -116,17 +118,6 @@ function shouldRenderSupport(displayMode?: string) {
   return SUPPORT_DISPLAY_MODES.has(String(displayMode || "conversation"));
 }
 
-const DEFAULT_SUGGESTIONS: Suggestion[] = [
-  { label: "What can you do?", prompt: "What can you do?", tone: "blue" },
-  { label: "What’s happening?", prompt: "What’s happening?", tone: "green" },
-  { label: "Show device status", prompt: "Show device status", tone: "blue" },
-  { label: "Offline devices", prompt: "Show offline devices", tone: "amber" },
-  { label: "Pending visitors", prompt: "Show pending visitors", tone: "green" },
-  { label: "Wallet balance", prompt: "Show wallet balance", tone: "violet" },
-  { label: "Home summary", prompt: "Generate today’s home summary", tone: "blue" },
-  { label: "Turn off living room light", prompt: "Turn off living room light", tone: "amber" },
-  { label: "Scenes", href: "/scenes", tone: "violet" },
-];
 
 function contextualSuggestions(module: string, starter?: string | null): Suggestion[] {
   const first = starter ? [{ label: starter, prompt: starter, tone: "green" as const }] : [];
@@ -251,7 +242,7 @@ function responseState(resp: AiChatResponse): AiMessage["state"] {
   if (resp.confirmations?.length || resp.requiresConfirmation) return "approval_required";
   // Canonical action truth (execution.action) decides first: only a
   // verified ("confirmed") action is ever action_confirmed.
-  const actionState = messageStateForActionView(actionTruthView(resp));
+  const actionState = consumerMessageStateForAction(actionResultView(resp));
   if (actionState) return actionState;
   const results = Array.isArray(resp.execution?.results) ? resp.execution.results : [];
   if (results.some((result) => result?.status === "pending_confirmation")) return "approval_required";
@@ -308,18 +299,6 @@ function awarenessCards(resp: AiChatResponse) {
   return [primaryCard, ...remaining];
 }
 
-function thinkingTextFor(command: string) {
-  const value = command.toLowerCase();
-  if (value.includes("light") || value.includes("ac") || value.includes("device")) return "Searching devices…";
-  if (value.includes("living") || value.includes("bedroom") || value.includes("kitchen")) return "Looking through rooms…";
-  if (value.includes("permission") || value.includes("unlock") || value.includes("gate") || value.includes("lock")) return "Validating permissions…";
-  if (value.includes("scene")) return "Checking scenes…";
-  if (value.includes("automation")) return "Checking automations…";
-  if (value.includes("visitor")) return "Checking visitor activity…";
-  if (value.includes("security")) return "Checking home security…";
-  return "Checking home status…";
-}
-
 function toneClass(tone?: Suggestion["tone"]) {
   if (tone === "green") return "border-emerald-300/20 bg-emerald-400/[0.07] text-emerald-50";
   if (tone === "amber") return "border-amber-300/20 bg-amber-400/[0.07] text-amber-50";
@@ -368,7 +347,7 @@ function messageFromThread(row: OyiThreadMessage): AiMessage {
     id: row.id,
     role: row.role === "user" ? "user" : "assistant",
     content: row.content || "",
-    state: row.role === "user" ? undefined : (messageStateForActionView(actionTruthView({ execution })) || (metadata.display_mode === "report" ? "report_ready" : "informational")),
+    state: row.role === "user" ? undefined : (consumerMessageStateForAction(actionResultView({ execution })) || (metadata.display_mode === "report" ? "report_ready" : "informational")),
     cards,
     sources,
     suggested_actions: row.suggested_actions || [],
@@ -498,7 +477,7 @@ function StructuredCards({ cards, onTarget }: { cards?: Array<Record<string, any
 
 function OperatingStatus({ execution }: { intent?: string; understood?: string; execution?: Record<string, any> }) {
   // The canonical action card owns action truth when it is present.
-  if (actionTruthView({ execution })) return null;
+  if (actionResultView({ execution })) return null;
   const results = Array.isArray(execution?.results) ? execution.results : [];
   const first = results[0] || {};
   const rawStatus = String(first.status || "").replace(/_/g, " ");
@@ -554,45 +533,13 @@ function ReviewCard({ workflow }: { workflow?: Record<string, any> | null }) {
   );
 }
 
-const ACTION_TRUTH_TONE: Record<OyiActionTruthView["tone"], string> = {
-  awaiting: "border-amber-300/16 bg-amber-400/[0.06] text-amber-50/82",
-  progress: "border-sky-300/14 bg-sky-400/[0.055] text-sky-50/82",
-  verified: "border-emerald-300/16 bg-emerald-400/[0.06] text-emerald-50/82",
-  unverified: "border-sky-300/14 bg-sky-400/[0.045] text-sky-50/80",
-  failed: "border-rose-300/16 bg-rose-400/[0.06] text-rose-50/82",
-  closed: "border-white/[0.08] bg-white/[0.035] text-white/70",
-};
-
-function ActionTruthIcon({ view }: { view: OyiActionTruthView }) {
-  if (view.tone === "verified") return <Check className="h-4 w-4" />;
-  if (view.tone === "failed") return <X className="h-4 w-4" />;
-  if (view.tone === "closed") return <Ban className="h-4 w-4" />;
-  if (view.tone === "unverified") return <CircleDashed className="h-4 w-4" />;
-  return <Clock3 className="h-4 w-4" />;
-}
-
 function ActionLifecycleCard({ execution, hasConfirmationPrompt = false }: { execution?: Record<string, any>; hasConfirmationPrompt?: boolean }) {
-  // Canonical action truth (execution.action): only "confirmed" is verified.
-  const truthView = actionTruthView({ execution });
+  // Canonical action truth (execution.action) through the shared
+  // interaction foundation: only "confirmed" is verified.
+  const truthView = actionResultView({ execution });
   // A pending approval is presented once, by the ConfirmationCard.
   if (truthView?.awaiting_user && hasConfirmationPrompt) return null;
-  if (truthView) {
-    return (
-      <div className={`mt-3 rounded-[20px] border p-3.5 ${ACTION_TRUTH_TONE[truthView.tone]}`} data-terminal-action={truthView.terminal ? "true" : "false"} data-action-status={truthView.status} data-action-verified={truthView.verified ? "true" : "false"}>
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-[11px] uppercase tracking-[0.18em] opacity-70">{truthView.label}</div>
-            <div className="mt-1 text-sm font-semibold text-white/90">{truthView.target_label || "Oyi action"}</div>
-          </div>
-          <div className="grid h-8 w-8 place-items-center rounded-full bg-white/[0.08]">
-            <ActionTruthIcon view={truthView} />
-          </div>
-        </div>
-        <div className="mt-2 text-xs leading-5 opacity-82">{truthView.detail}</div>
-        {truthView.terminal ? <div className="mt-2 text-[11px] leading-5 opacity-70">This historical action is terminal. Confirm and Cancel controls are not reusable.</div> : null}
-      </div>
-    );
-  }
+  if (truthView) return <div className="mt-3"><OyiActionResult view={truthView} showTerminalNote /></div>;
   const action = execution?.action && typeof execution.action === "object" ? execution.action as Record<string, any> : null;
   const workflow = execution?.workflow && typeof execution.workflow === "object" ? execution.workflow as Record<string, any> : null;
   if (!action && !workflow) return null;
@@ -739,39 +686,13 @@ function ComposerWaveform({ active, levels }: { active: boolean; levels?: number
   );
 }
 
-function OyiOrb({ size = "large", state = "idle", onClick }: { size?: "large" | "small"; state?: "idle" | "listening" | "thinking" | "responding" | "failed" | "offline"; onClick?: () => void }) {
-  const sizeClass = size === "large" ? "h-32 w-32 text-[26px]" : "h-11 w-11 text-[13px]";
-  const stateClass =
-    state === "listening"
-      ? "border-sky-200/70 shadow-[0_0_60px_rgba(0,132,255,0.72)] animate-pulse"
-      : state === "thinking"
-        ? "border-sky-300/46 shadow-[0_0_42px_rgba(0,132,255,0.42)] animate-pulse"
-        : state === "responding"
-          ? "border-sky-200/58 shadow-[0_0_52px_rgba(56,189,248,0.52)]"
-          : state === "failed"
-            ? "border-amber-200/45 shadow-[0_0_34px_rgba(251,191,36,0.30)]"
-            : state === "offline"
-              ? "border-white/12 opacity-55 shadow-none"
-              : "border-sky-300/38 shadow-[0_0_30px_rgba(0,132,255,0.30)]";
-  return (
-    <button type="button" onClick={onClick} disabled={!onClick} className={`relative grid shrink-0 place-items-center rounded-full border bg-[radial-gradient(circle_at_center,rgba(32,129,255,0.30),rgba(3,8,16,0.96)_68%)] transition active:scale-95 ${sizeClass} ${stateClass}`} aria-label="Talk to Oyi">
-      <span className="absolute inset-[-14px] rounded-full bg-sky-400/10 blur-2xl" />
-      <span className="relative font-semibold tracking-[-0.08em]">Oyi</span>
-    </button>
-  );
-}
-
 function ConfirmationCard({ confirmation, onDecision, disabled }: { confirmation: Record<string, any>; onDecision: (confirmation: Record<string, any>, decision: "confirm" | "cancel") => void; disabled: boolean }) {
   const referenceId = String(confirmation?.workflow_id || confirmation?.action_id || confirmation?.ledger_id || confirmation?.id || confirmation?.command_id || "");
+  // Shared proposal primitive: approval, never verification.
+  const { proposal, targetLabel } = confirmationProposal(confirmation);
   return (
-    <div className="mt-3 rounded-[20px] border border-amber-200/14 bg-amber-300/[0.055] p-3.5">
-      <div className="text-[11px] uppercase tracking-[0.18em] text-amber-100/60">Confirm action?</div>
-      <div className="mt-1.5 text-sm font-semibold text-white">{confirmation?.summary || confirmation?.prompt || confirmation?.label || "Approve this action?"}</div>
-      <div className="mt-1 text-xs leading-5 text-amber-50/70">Nothing has been sent yet. Confirming approves the action; Oyi reports the verified result separately.</div>
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        <button type="button" disabled={disabled || !referenceId} onClick={() => onDecision(confirmation, "cancel")} className="rounded-full border border-white/10 bg-white/[0.045] px-3 py-2 text-xs text-white/70 disabled:opacity-45">Cancel</button>
-        <button type="button" disabled={disabled || !referenceId} onClick={() => onDecision(confirmation, "confirm")} className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-black disabled:opacity-45">Confirm</button>
-      </div>
+    <div className="mt-3">
+      <OyiConfirmation proposal={proposal} targetLabel={targetLabel} disabled={disabled || !referenceId} onConfirm={() => onDecision(confirmation, "confirm")} onCancel={() => onDecision(confirmation, "cancel")} />
     </div>
   );
 }
@@ -797,6 +718,10 @@ function OyiAiCommandCenterContent() {
   const [restoringThreadId, setRestoringThreadId] = useState<string | null>(null);
   const [voiceMode, setVoiceMode] = useState<VoiceMode>("idle");
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>("Listening");
+  // Shared Oyi interaction state: local facts (voice, connectivity, turn in
+  // flight) + canonical truth of the current turn. The orb renders it.
+  const [interaction, dispatchInteraction] = useOyiInteraction();
+  useOyiConnectivity(dispatchInteraction);
   const [voiceError, setVoiceError] = useState("");
   const [helpfulResponses, setHelpfulResponses] = useState<Record<string, boolean>>({});
   const [transcript, setTranscript] = useState("");
@@ -904,23 +829,35 @@ function OyiAiCommandCenterContent() {
     [activeContext.estate_id, activeContext.home_id, latestRegisteredContext, moduleContext, pathname, searchParams, user],
   );
 
+  // Consumer surface adapter: context, permission-filtered navigation,
+  // starter seeds, operational object, history policy. No authority.
+  const surfaceAdapter = useMemo(() => createConsumerSurfaceAdapter({
+    user: user as any,
+    estateId: context.estate_id,
+    homeId: context.home_id,
+    homeLabel: activeContext.home?.name || null,
+    operationalObject: (context.operational_object as Record<string, unknown> | null) || null,
+    voiceEntry: true,
+  }), [activeContext.home?.name, context.estate_id, context.home_id, context.operational_object, user]);
+
   const suggestions = useMemo(() => {
-    const byLabel = new Map(DEFAULT_SUGGESTIONS.map((item) => [item.label, item]));
+    const seeds = surfaceAdapter.starterSeeds() as Suggestion[];
+    const byLabel = new Map(seeds.map((item) => [item.label, item]));
     const ranked = Object.entries(usage)
       .sort((a, b) => b[1] - a[1])
       .map(([label]) => byLabel.get(label))
       .filter(Boolean) as Suggestion[];
     const contextual = contextualSuggestions(moduleContext, searchParams.get("starter"));
-    const filled = [...contextual, ...ranked, ...DEFAULT_SUGGESTIONS.filter((item) => !ranked.some((rankedItem) => rankedItem.label === item.label) && !contextual.some((ctx) => ctx.label === item.label))];
+    const filled = [...contextual, ...ranked, ...seeds.filter((item) => !ranked.some((rankedItem) => rankedItem.label === item.label) && !contextual.some((ctx) => ctx.label === item.label))];
     return filled.slice(0, 5);
-  }, [moduleContext, searchParams, usage]);
+  }, [moduleContext, searchParams, surfaceAdapter, usage]);
 
   const chatMode = messages.length > 0;
   const canonicalActiveThreadId = activeConversation.threadId || backendThreadId || searchParams.get("threadId");
   const recording = voiceMode === "recording";
   const voiceConversation = voiceMode === "conversation";
   const inputWake = input.toLowerCase().includes("oyi") || transcript.toLowerCase().includes("oyi");
-  const orbState = voiceConversation || recording ? "listening" : busy ? "thinking" : voiceStatus === "Failed" ? "failed" : "idle";
+  const orbState = orbStateForView(interaction);
   const composerReserve = `calc(${composerHeight + 24}px + var(--sab) + var(--kb))`;
 
   useEffect(() => {
@@ -956,7 +893,10 @@ function OyiAiCommandCenterContent() {
           limit: 24,
         });
         if (cancelled) return;
-        const rows = res.threads || [];
+        // Shape canonical GET /oyi/threads rows through the shared history
+        // normalizer (dedupe, ordering, safe titles) before presentation.
+        const normalized = new Set(normalizeOyiThreads(res.threads || []).map((thread) => thread.id));
+        const rows = (res.threads || []).filter((thread) => normalized.has(String(thread.id)));
         setConversations(rows.map((thread) => ({
           id: `backend:${thread.id}`,
           backendThreadId: thread.id,
@@ -1047,13 +987,15 @@ function OyiAiCommandCenterContent() {
 
     const pendingId = createId();
     const userMessage: AiMessage = { id: createId(), role: "user", content: command };
-    const pendingMessage: AiMessage = { id: pendingId, role: "assistant", content: thinkingTextFor(command), state: "executing", pending: true };
+    const pendingMessage: AiMessage = { id: pendingId, role: "assistant", content: OYI_WORKING_TEXT, state: "executing", pending: true };
     const baseMessages = [...messages, userMessage, pendingMessage];
 
+    const turnId = pendingId;
+    dispatchInteraction({ type: "turn.submitted", turnId });
     setBusy(true);
     setInput("");
     setTranscript("");
-    if (options?.fromVoice) setVoiceStatus("Thinking");
+    if (options?.fromVoice) setVoiceStatus("Working");
     setMessages(baseMessages);
 
     try {
@@ -1083,7 +1025,8 @@ function OyiAiCommandCenterContent() {
         setConversationId(`backend:${nextThreadId}`);
         setThreadRoute(nextThreadId);
       }
-      const content = replyFromResponse(resp) || "Done.";
+      dispatchInteraction({ type: "turn.response", turnId, response: resp });
+      const content = replyFromResponse(resp) || emptyResponseText(resp);
       const state = responseState(resp);
       if (["informational", "report_ready", "recommendation", "action_confirmed"].includes(String(state))) remember(options?.usageLabel || command);
       const navigationRoute = navigationRouteFromResponse(resp);
@@ -1095,11 +1038,15 @@ function OyiAiCommandCenterContent() {
           if (!cancelledNavigationRef.current.has(pendingId)) router.push(navigationRoute);
         }, 1400);
       }
+      let speaking = false;
       if (options?.fromVoice) {
         setVoiceStatus(state === "failed" || state === "action_failed" || state === "denied" ? "Failed" : "Speaking");
-        if (state !== "failed" && state !== "action_failed" && state !== "denied") speakResponse(content, true);
+        if (state !== "failed" && state !== "action_failed" && state !== "denied") speaking = speakResponse(content, true, () => dispatchInteraction({ type: "turn.presented", turnId }));
       }
+      // Responding lasts only while the reply is actually being spoken.
+      if (!speaking) dispatchInteraction({ type: "turn.presented", turnId });
     } catch {
+      dispatchInteraction({ type: "turn.failed", turnId, reason: typeof navigator !== "undefined" && navigator.onLine === false ? "offline" : "network" });
       const nextMessages = baseMessages.map((item) => item.id === pendingId ? { ...item, pending: false, state: "failed" as const, content: "Oyi could not respond right now." } : item);
       setMessages(nextMessages);
       persistConversation(nextMessages);
@@ -1115,16 +1062,17 @@ function OyiAiCommandCenterContent() {
     await navigator.clipboard?.writeText(text);
   }
 
-  function speakResponse(text: string, fromVoiceConversation = false) {
-    if (!text || typeof window === "undefined" || !("speechSynthesis" in window)) return;
+  function speakResponse(text: string, fromVoiceConversation = false, onDone?: () => void) {
+    if (!text || typeof window === "undefined" || !("speechSynthesis" in window)) return false;
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.rate = 0.96;
     if (fromVoiceConversation) {
-      utterance.onend = () => setVoiceStatus("Done");
-      utterance.onerror = () => setVoiceStatus("Done");
+      utterance.onend = () => { setVoiceStatus("Done"); onDone?.(); };
+      utterance.onerror = () => { setVoiceStatus("Done"); onDone?.(); };
     }
     window.speechSynthesis.speak(utterance);
+    return true;
   }
 
   function markHelpful(message: AiMessage) {
@@ -1190,6 +1138,7 @@ function OyiAiCommandCenterContent() {
   }
 
   function stopVoiceCapture() {
+    if (recognitionRef.current) dispatchInteraction({ type: "voice.ended" });
     try { recognitionRef.current?.stop?.(); } catch {}
     recognitionRef.current = null;
     if (timerRef.current) window.clearInterval(timerRef.current);
@@ -1227,13 +1176,16 @@ function OyiAiCommandCenterContent() {
         setTranscript(text);
         if (mode === "recording") setInput(text);
         const finalResult = Array.from(event?.results || []).some((result: any) => Boolean(result?.isFinal));
+        dispatchInteraction(finalResult ? { type: "voice.final", text } : { type: "voice.interim", text });
         if (mode === "conversation" && finalResult && text) void handleSend(text, { fromVoice: true });
       };
       recognition.onerror = () => {
+        dispatchInteraction({ type: "voice.error", message: "I could not hear clearly." });
         setVoiceError("I could not hear clearly. Try again or type your command.");
         setVoiceStatus("Failed");
       };
       recognition.onend = () => {
+        dispatchInteraction({ type: "voice.ended" });
         recognitionRef.current = null;
         if (timerRef.current) window.clearInterval(timerRef.current);
         timerRef.current = null;
@@ -1242,6 +1194,7 @@ function OyiAiCommandCenterContent() {
       };
       setVoiceMode(mode);
       setVoiceStatus("Listening");
+      dispatchInteraction({ type: "voice.listening" });
       startTimer();
       if (mode === "recording") void startAudioMeter();
       recognition.start();
@@ -1335,6 +1288,7 @@ function OyiAiCommandCenterContent() {
       if (Number(res.thread?.message_count || 0) > 0 && rows.length === 0) throw new Error("thread_message_count_mismatch");
       const nextMessages = rows.map(messageFromThread);
       const restoredWorkflow = activeWorkflowFromThread(res.thread);
+      dispatchInteraction({ type: "thread.restored", latestAssistant: latestAssistantMessage(rows) });
       setMessages(nextMessages);
       setBackendThreadId(requestedThreadId);
       setConversationId(`backend:${requestedThreadId}`);
@@ -1389,6 +1343,7 @@ function OyiAiCommandCenterContent() {
       });
     }
     restoreSequenceRef.current += 1;
+    dispatchInteraction({ type: "conversation.reset" });
     setConversationId(createId());
     setBackendThreadId(null);
     setActiveConversation({ threadId: null, status: "blank", source: "new", activeWorkflow: null });
@@ -1446,6 +1401,8 @@ function OyiAiCommandCenterContent() {
         {targetError ? <div className="relative z-20 mx-auto mt-2 max-w-[680px] px-5 lg:max-w-[900px] xl:max-w-[1040px]"><p className="rounded-xl border border-amber-300/20 bg-amber-400/[0.08] px-3 py-2 text-xs text-amber-100">{targetError}</p></div> : null}
 
         <section className="relative z-10 mx-auto flex min-h-0 w-full max-w-[680px] flex-1 flex-col px-5 lg:max-w-[900px] xl:max-w-[1040px]" style={{ paddingTop: 8 }}>
+          {/* Interaction state for assistive tech: the orb is never the only carrier of state. */}
+          <span className="oyi-visually-hidden" role="status" aria-live="polite">{interaction.label}</span>
           <div
             ref={scrollerRef}
             className="min-h-0 flex-1 overflow-y-auto pr-1"
@@ -1457,7 +1414,7 @@ function OyiAiCommandCenterContent() {
           >
             {!chatMode ? (
               <div className="flex min-h-full flex-col items-center justify-center text-center">
-                <OyiOrb state={voiceConversation ? "listening" : "idle"} onClick={() => startVoiceCapture("conversation")} />
+                <OyiOrb size="large" state={orbState} actionLabel="Talk to Oyi" onActivate={() => startVoiceCapture("conversation")} />
                 <h1 className="mt-6 text-[29px] font-semibold tracking-[-0.06em]">{voiceConversation ? voiceStatus : "How can I help?"}</h1>
                 <p className="mt-2 max-w-[280px] text-[14px] leading-5 text-white/50">Ask about your home, run safe commands, open scenes, or check what needs attention.</p>
                 {voiceError ? <p className="mt-4 rounded-full border border-amber-300/14 bg-amber-400/[0.06] px-3 py-2 text-xs text-amber-100/80">{voiceError}</p> : null}
@@ -1532,7 +1489,7 @@ function OyiAiCommandCenterContent() {
           <div className={`rounded-[28px] border bg-[#040911]/92 p-2.5 shadow-[0_18px_70px_rgba(0,0,0,0.62)] backdrop-blur-2xl transition ${inputWake ? "border-sky-300/45 shadow-[0_0_42px_rgba(0,132,255,0.26)]" : "border-white/[0.08]"}`}>
             {recording ? (
               <div className="flex items-center gap-3 px-1.5 py-1">
-                <OyiOrb size="small" state="listening" />
+                <OyiOrb size="small" state={orbState} />
                 <div className="min-w-0 flex-1">
                   <div className="mb-0.5 flex items-center justify-between text-[10px] text-white/42"><span>Listening</span><span>{recordingSeconds}s</span></div>
                   <ComposerWaveform active levels={audioLevels} />
@@ -1543,7 +1500,7 @@ function OyiAiCommandCenterContent() {
               </div>
             ) : (
               <div className="flex items-center gap-2">
-                <OyiOrb size="small" state={orbState} onClick={() => startVoiceCapture("conversation")} />
+                <OyiOrb size="small" state={orbState} actionLabel="Talk to Oyi" onActivate={() => startVoiceCapture("conversation")} />
                 <textarea
                   value={input}
                   onChange={(event) => setInput(event.target.value)}

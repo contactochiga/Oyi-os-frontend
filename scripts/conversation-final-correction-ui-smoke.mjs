@@ -201,8 +201,11 @@ await check("clarification and approval have dedicated presentation paths", () =
   assert.match(aiPage, /clarification_required/);
   assert.match(aiPage, /resolved_turn/);
   assert.match(aiPage, /function ConfirmationCard/);
-  assert.match(aiPage, /Confirm action\?/);
-  assert.match(aiPage, /Nothing has been sent yet\./);
+  // The approval copy now lives in the shared interaction primitive.
+  assert.match(aiPage, /<OyiConfirmation/);
+  const sharedConfirmation = fs.readFileSync(path.join(root, "node_modules/oyi-interaction/dist/react/OyiConfirmation.js"), "utf8");
+  assert.match(sharedConfirmation, /Confirm action\?/);
+  assert.match(sharedConfirmation, /Nothing has been sent yet\./);
   assert.match(aiPage, /Cancel/);
   assert.match(aiPage, /Confirm/);
 });
