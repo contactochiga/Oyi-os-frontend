@@ -201,7 +201,8 @@ await check("clarification and approval have dedicated presentation paths", () =
   assert.match(aiPage, /clarification_required/);
   assert.match(aiPage, /resolved_turn/);
   assert.match(aiPage, /function ConfirmationCard/);
-  assert.match(aiPage, /Confirmation required/);
+  assert.match(aiPage, /Confirm action\?/);
+  assert.match(aiPage, /Nothing has been sent yet\./);
   assert.match(aiPage, /Cancel/);
   assert.match(aiPage, /Confirm/);
 });

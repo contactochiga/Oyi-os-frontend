@@ -12,6 +12,8 @@
     "build:native-web": "next build",
     "start": "next start",
     "lint": "eslint . --ext .ts,.tsx",
+    "smoke:oyi-action-truth-contract": "node scripts/oyi-action-truth-contract-smoke.mjs",
+    "smoke:oyi-action-truth-surface": "node scripts/oyi-action-truth-surface-smoke.mjs",
     "cap:init": "npx cap init Ochiga com.ochiga.app",
     "cap:add:android": "npx cap add android",
     "cap:add:ios": "npx cap add ios",

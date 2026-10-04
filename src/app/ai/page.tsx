@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, ArrowUp, Check, Clock3, Copy, History, Mic, Plus, Search, Square, ThumbsUp, Volume2, X } from "lucide-react";
+import { ArrowLeft, ArrowUp, Ban, Check, CircleDashed, Clock3, Copy, History, Mic, Plus, Search, Square, ThumbsUp, Volume2, X } from "lucide-react";
 
 import LayoutWrapper from "@/app/components/LayoutWrapper";
 import useAuth from "@/hooks/useAuth";
@@ -11,6 +11,7 @@ import { aiService, type AiChatResponse } from "@/services/aiService";
 import { deriveConsumerOperationalObject, deriveConsumerTarget } from "@/services/operationalObjectContext";
 import { isTerminalOyiWorkflowStatus, normalizeOyiActiveWorkflow, oyiService, type OyiActiveWorkflow, type OyiThread, type OyiThreadMessage } from "@/services/oyiService";
 import { resolveConsumerOyiTarget } from "@/services/oyiTargetRegistry";
+import { actionTruthView, messageStateForActionView, type OyiActionTruthView } from "@/lib/oyiActionTruth";
 import type { OyiTarget } from "@/services/oyiService";
 import {
   operationalObjectFromActiveContext,
@@ -248,6 +249,10 @@ function responseState(resp: AiChatResponse): AiMessage["state"] {
   const intent = String(resp.intent || "").toLowerCase();
   const operationClass = String((resp.context as any)?.request_contract?.operation_class || (resp.context as any)?.canonical_request_contract?.operation_class || "").toLowerCase();
   if (resp.confirmations?.length || resp.requiresConfirmation) return "approval_required";
+  // Canonical action truth (execution.action) decides first: only a
+  // verified ("confirmed") action is ever action_confirmed.
+  const actionState = messageStateForActionView(actionTruthView(resp));
+  if (actionState) return actionState;
   const results = Array.isArray(resp.execution?.results) ? resp.execution.results : [];
   if (results.some((result) => result?.status === "pending_confirmation")) return "approval_required";
   if (results.some((result) => result?.status === "denied")) return "denied";
@@ -256,7 +261,10 @@ function responseState(resp: AiChatResponse): AiMessage["state"] {
   if ((resp.tools || []).some((tool) => tool.status === "failed")) return "action_failed";
   const executionStatus = String(resp.execution?.status || resp.execution?.final_status || "").toLowerCase();
   if (/failed|rejected|timed_out|mismatch/.test(executionStatus)) return "action_failed";
-  if (/executed|state_confirmed|action_confirmed/.test(executionStatus) && !/read_only/.test(executionStatus)) return "action_confirmed";
+  if (/state_confirmed|action_confirmed/.test(executionStatus) && !/read_only/.test(executionStatus)) return "action_confirmed";
+  // A legacy "executed" status means the command was dispatched, not that
+  // the result was verified.
+  if (/executed/.test(executionStatus)) return "partial";
   if (resp.display_mode === "report" || intent === "report") return "report_ready";
   if (/recommend/.test(intent)) return "recommendation";
   if (/clarification/.test(intent)) return "clarification_required";
@@ -339,21 +347,34 @@ function toTimestamp(value?: string | null) {
   return Number.isFinite(time) && time > 0 ? time : Date.now();
 }
 
+function restoredExecution(row: OyiThreadMessage): Record<string, any> | undefined {
+  const metadata = row.metadata || {};
+  if (metadata.execution && typeof metadata.execution === "object") return metadata.execution as Record<string, any>;
+  // Persistence stores the canonical action/workflow beside the message
+  // rather than as an execution object; rebuild the same shape the live
+  // response used so restored truth matches the live turn.
+  if (row.role !== "user" && metadata.action && typeof metadata.action === "object" && Object.keys(metadata.action).length) {
+    return { action: metadata.action, workflow: metadata.workflow && typeof metadata.workflow === "object" && Object.keys(metadata.workflow).length ? metadata.workflow : null };
+  }
+  return undefined;
+}
+
 function messageFromThread(row: OyiThreadMessage): AiMessage {
   const metadata = row.metadata || {};
+  const execution = restoredExecution(row);
   const cards = (row.cards || []).filter((card) => !containsInternalConversationText(JSON.stringify(card)));
   const sources = (row.sources || []).filter((source) => !containsInternalConversationText(JSON.stringify(source)));
   return {
     id: row.id,
     role: row.role === "user" ? "user" : "assistant",
     content: row.content || "",
-    state: row.role === "user" ? undefined : (metadata.display_mode === "report" ? "report_ready" : "informational"),
+    state: row.role === "user" ? undefined : (messageStateForActionView(actionTruthView({ execution })) || (metadata.display_mode === "report" ? "report_ready" : "informational")),
     cards,
     sources,
     suggested_actions: row.suggested_actions || [],
     intent: typeof metadata.intent === "string" ? metadata.intent : undefined,
     understood: typeof metadata.understood === "string" ? metadata.understood : undefined,
-    execution: metadata.execution && typeof metadata.execution === "object" ? metadata.execution as Record<string, any> : undefined,
+    execution,
     display_mode: typeof metadata.display_mode === "string" ? metadata.display_mode as AiMessage["display_mode"] : "conversation",
     warnings: Array.isArray(metadata.warnings) ? metadata.warnings.map(String) : [],
     persistence_saved: typeof metadata.persistence_saved === "boolean" ? metadata.persistence_saved : undefined,
@@ -476,6 +497,8 @@ function StructuredCards({ cards, onTarget }: { cards?: Array<Record<string, any
 }
 
 function OperatingStatus({ execution }: { intent?: string; understood?: string; execution?: Record<string, any> }) {
+  // The canonical action card owns action truth when it is present.
+  if (actionTruthView({ execution })) return null;
   const results = Array.isArray(execution?.results) ? execution.results : [];
   const first = results[0] || {};
   const rawStatus = String(first.status || "").replace(/_/g, " ");
@@ -487,7 +510,7 @@ function OperatingStatus({ execution }: { intent?: string; understood?: string; 
       : /confirmation|pending/.test(rawStatus)
         ? "Confirmation needed"
         : /executed|success/.test(rawStatus)
-          ? "Action completed"
+          ? "Command sent · not verified"
           : "Action update";
   const tone =
     /denied|failed|error/.test(status)
@@ -531,7 +554,45 @@ function ReviewCard({ workflow }: { workflow?: Record<string, any> | null }) {
   );
 }
 
-function ActionLifecycleCard({ execution }: { execution?: Record<string, any> }) {
+const ACTION_TRUTH_TONE: Record<OyiActionTruthView["tone"], string> = {
+  awaiting: "border-amber-300/16 bg-amber-400/[0.06] text-amber-50/82",
+  progress: "border-sky-300/14 bg-sky-400/[0.055] text-sky-50/82",
+  verified: "border-emerald-300/16 bg-emerald-400/[0.06] text-emerald-50/82",
+  unverified: "border-sky-300/14 bg-sky-400/[0.045] text-sky-50/80",
+  failed: "border-rose-300/16 bg-rose-400/[0.06] text-rose-50/82",
+  closed: "border-white/[0.08] bg-white/[0.035] text-white/70",
+};
+
+function ActionTruthIcon({ view }: { view: OyiActionTruthView }) {
+  if (view.tone === "verified") return <Check className="h-4 w-4" />;
+  if (view.tone === "failed") return <X className="h-4 w-4" />;
+  if (view.tone === "closed") return <Ban className="h-4 w-4" />;
+  if (view.tone === "unverified") return <CircleDashed className="h-4 w-4" />;
+  return <Clock3 className="h-4 w-4" />;
+}
+
+function ActionLifecycleCard({ execution, hasConfirmationPrompt = false }: { execution?: Record<string, any>; hasConfirmationPrompt?: boolean }) {
+  // Canonical action truth (execution.action): only "confirmed" is verified.
+  const truthView = actionTruthView({ execution });
+  // A pending approval is presented once, by the ConfirmationCard.
+  if (truthView?.awaiting_user && hasConfirmationPrompt) return null;
+  if (truthView) {
+    return (
+      <div className={`mt-3 rounded-[20px] border p-3.5 ${ACTION_TRUTH_TONE[truthView.tone]}`} data-terminal-action={truthView.terminal ? "true" : "false"} data-action-status={truthView.status} data-action-verified={truthView.verified ? "true" : "false"}>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-[11px] uppercase tracking-[0.18em] opacity-70">{truthView.label}</div>
+            <div className="mt-1 text-sm font-semibold text-white/90">{truthView.target_label || "Oyi action"}</div>
+          </div>
+          <div className="grid h-8 w-8 place-items-center rounded-full bg-white/[0.08]">
+            <ActionTruthIcon view={truthView} />
+          </div>
+        </div>
+        <div className="mt-2 text-xs leading-5 opacity-82">{truthView.detail}</div>
+        {truthView.terminal ? <div className="mt-2 text-[11px] leading-5 opacity-70">This historical action is terminal. Confirm and Cancel controls are not reusable.</div> : null}
+      </div>
+    );
+  }
   const action = execution?.action && typeof execution.action === "object" ? execution.action as Record<string, any> : null;
   const workflow = execution?.workflow && typeof execution.workflow === "object" ? execution.workflow as Record<string, any> : null;
   if (!action && !workflow) return null;
@@ -546,20 +607,23 @@ function ActionLifecycleCard({ execution }: { execution?: Record<string, any> })
   const status = String(action?.status || workflow?.status || "");
   const target = action?.target && typeof action.target === "object" ? action.target as Record<string, any> : workflow?.target && typeof workflow.target === "object" ? workflow.target as Record<string, any> : {};
   const terminal = terminalActionStatus(status);
+  const verified = status === "confirmed";
   const tone = terminal
     ? /failed|rejected|timed_out/.test(status)
       ? "border-rose-300/16 bg-rose-400/[0.06] text-rose-50/82"
-      : "border-emerald-300/16 bg-emerald-400/[0.06] text-emerald-50/82"
+      : verified
+        ? "border-emerald-300/16 bg-emerald-400/[0.06] text-emerald-50/82"
+        : "border-white/[0.08] bg-white/[0.035] text-white/70"
     : "border-amber-300/16 bg-amber-400/[0.06] text-amber-50/82";
   return (
     <div className={`mt-3 rounded-[20px] border p-3.5 ${tone}`} data-terminal-action={terminal ? "true" : "false"}>
       <div className="flex items-center justify-between gap-3">
         <div>
-          <div className="text-[11px] uppercase tracking-[0.18em] opacity-70">{terminal ? "Action closed" : "Action pending"}</div>
+          <div className="text-[11px] uppercase tracking-[0.18em] opacity-70">{terminal ? (verified ? "Verified" : "Action ended · not verified") : "Action pending"}</div>
           <div className="mt-1 text-sm font-semibold text-white/90">{target.label || action?.requested_operation || workflow?.capability_key || "Oyi action"}</div>
         </div>
         <div className="grid h-8 w-8 place-items-center rounded-full bg-white/[0.08]">
-          {terminal && /failed|rejected|timed_out/.test(status) ? <X className="h-4 w-4" /> : terminal ? <Check className="h-4 w-4" /> : <Clock3 className="h-4 w-4" />}
+          {terminal && /failed|rejected|timed_out/.test(status) ? <X className="h-4 w-4" /> : terminal && verified ? <Check className="h-4 w-4" /> : terminal ? <CircleDashed className="h-4 w-4" /> : <Clock3 className="h-4 w-4" />}
         </div>
       </div>
       <div className="mt-2 text-xs leading-5 opacity-82">Status: {status ? status.replace(/_/g, " ") : "waiting"}</div>
@@ -701,8 +765,9 @@ function ConfirmationCard({ confirmation, onDecision, disabled }: { confirmation
   const referenceId = String(confirmation?.workflow_id || confirmation?.action_id || confirmation?.ledger_id || confirmation?.id || confirmation?.command_id || "");
   return (
     <div className="mt-3 rounded-[20px] border border-amber-200/14 bg-amber-300/[0.055] p-3.5">
-      <div className="text-[11px] uppercase tracking-[0.18em] text-amber-100/60">Confirmation required</div>
-      <div className="mt-1.5 text-sm font-semibold text-white">{confirmation?.summary || confirmation?.prompt || "Approve this action?"}</div>
+      <div className="text-[11px] uppercase tracking-[0.18em] text-amber-100/60">Confirm action?</div>
+      <div className="mt-1.5 text-sm font-semibold text-white">{confirmation?.summary || confirmation?.prompt || confirmation?.label || "Approve this action?"}</div>
+      <div className="mt-1 text-xs leading-5 text-amber-50/70">Nothing has been sent yet. Confirming approves the action; Oyi reports the verified result separately.</div>
       <div className="mt-3 grid grid-cols-2 gap-2">
         <button type="button" disabled={disabled || !referenceId} onClick={() => onDecision(confirmation, "cancel")} className="rounded-full border border-white/10 bg-white/[0.045] px-3 py-2 text-xs text-white/70 disabled:opacity-45">Cancel</button>
         <button type="button" disabled={disabled || !referenceId} onClick={() => onDecision(confirmation, "confirm")} className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-black disabled:opacity-45">Confirm</button>
@@ -1208,14 +1273,28 @@ function OyiAiCommandCenterContent() {
     const ledgerId = String(confirmation?.ledger_id || confirmation?.id || confirmation?.command_id || "").trim();
     if (!ledgerId) return;
     const pendingId = createId();
-    const pendingMessage: AiMessage = { id: pendingId, role: "assistant", content: decision === "confirm" ? "Executing command…" : "Cancelling…", state: "executing", pending: true };
+    const pendingMessage: AiMessage = { id: pendingId, role: "assistant", content: decision === "confirm" ? "Sending your approval…" : "Cancelling…", state: "executing", pending: true };
     const baseMessages = [...messages, pendingMessage];
     setBusy(true);
     setMessages(baseMessages);
     try {
       const result = decision === "confirm" ? await aiService.confirm(ledgerId) : await aiService.cancel(ledgerId);
+      // The legacy confirmation ledger reports dispatch (execution_status),
+      // never a verified physical result -- so approval is never presented
+      // as a completed or verified action.
+      const ledgerStatus = String(result?.record?.execution_status || "").toLowerCase();
+      const ledgerFailed = decision === "confirm" && (result?.ok === false || /failed|denied|rejected|error/.test(ledgerStatus));
       const nextMessages = baseMessages.map((item) => item.id === pendingId
-        ? { ...item, pending: false, state: decision === "confirm" ? "action_confirmed" as const : "denied" as const, content: result?.record?.result_summary || (decision === "confirm" ? "Command approved and processed." : "Cancelled. No action was executed.") }
+        ? {
+            ...item,
+            pending: false,
+            state: decision === "cancel" ? "denied" as const : ledgerFailed ? "action_failed" as const : "partial" as const,
+            content: decision === "cancel"
+              ? "Cancelled. Nothing was sent."
+              : ledgerFailed
+                ? "That action could not be completed. Nothing is confirmed as changed."
+                : `${result?.record?.result_summary ? `${String(result.record.result_summary).trim().replace(/\.?$/, ".")} ` : ""}Approved and sent. Oyi has not verified the result.`,
+          }
         : item);
       setMessages(nextMessages);
       persistConversation(nextMessages);
@@ -1409,7 +1488,7 @@ function OyiAiCommandCenterContent() {
                             <StructuredCards cards={message.cards} onTarget={openTarget} />
                             <OperatingStatus execution={message.execution} />
                             <ReviewCard workflow={message.execution?.workflow as Record<string, any> | undefined} />
-                            <ActionLifecycleCard execution={message.execution} />
+                            <ActionLifecycleCard execution={message.execution} hasConfirmationPrompt={Boolean(message.confirmations?.length)} />
                             <ExecutionAccountability
                               executionSummary={message.executionSummary}
                               executionHistory={message.executionHistory}
@@ -1425,7 +1504,10 @@ function OyiAiCommandCenterContent() {
                             />
                             <SourceLabels sources={message.sources} />
                             <SuggestedActions actions={message.suggested_actions} onOpen={(route) => router.push(route)} onTarget={openTarget} />
-                          </> : null}
+                          </> : message.presentation_policy?.primary === "execution" ? (
+                            // An action outcome turn: the canonical action truth is its status.
+                            <ActionLifecycleCard execution={message.execution} hasConfirmationPrompt={Boolean(message.confirmations?.length)} />
+                          ) : null}
                         </>
                       ) : null}
                       {shouldRenderSupport(message.display_mode) && message.confirmations?.length ? message.confirmations.map((confirmation, index) => <ConfirmationCard key={String(confirmation?.ledger_id || confirmation?.id || index)} confirmation={confirmation} disabled={busy} onDecision={decideConfirmation} />) : null}
