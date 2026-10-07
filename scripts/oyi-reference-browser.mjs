@@ -80,12 +80,12 @@ try {
     await context.addInitScript(() => {
       window.SpeechRecognition = class {
         constructor() { window.__speechFixture = this; }
-        start() {}
-        stop() { this.onend?.(); }
+        start() { if (window.__fixtureDenied) this.onerror?.({ error: "not-allowed" }); else this.onstart?.(); }
+        stop() { /* final results and end are emitted explicitly by the fixture */ }
         abort() {}
       };
-      window.__fixtureSpeech = (text) => {
-        const result = [{ transcript: text }]; result.isFinal = false;
+      window.__fixtureSpeech = (text, final = false) => {
+        const result = [{ transcript: text }]; result.isFinal = final;
         window.__speechFixture?.onresult?.({ results: [result] });
       };
       if (navigator.mediaDevices) navigator.mediaDevices.getUserMedia = async () => { throw new Error("No real microphone in presentation fixture"); };
@@ -107,6 +107,10 @@ try {
     await check(`${width}: idle, minimal controls, responsive shell, reduced motion`, async () => {
       await noOverflow();
       assert.equal(await page.getByRole("button", { name: "Speak to Oyi" }).count(), 1);
+      assert.ok(await page.getByRole("button", { name: "Send message", exact: true }).isDisabled());
+      assert.equal(await page.locator('.oyi-send-button svg').evaluate((el) => getComputedStyle(el).transform), "matrix(0, -1, 1, 0, 0, 0)", "send arrow points up");
+      assert.ok(await page.getByRole("button", { name: "Attachments unavailable" }).isDisabled());
+      assert.equal(await page.locator('input[type="file"]').count(), 0, "no invented upload contract");
       assert.equal(await page.locator(".oyi-orb[data-size=large]").count(), 1);
       const body = await page.locator("body").innerText();
       assert.doesNotMatch(body, /Living intelligence|How can I help\?|Thinking|Working on your request/);
@@ -139,18 +143,49 @@ try {
       await page.getByRole("button", { name: "New conversation", exact: true }).filter({ visible: true }).first().click();
     });
     await check(`${width}: voice fixture, interim transcript, cancellation`, async () => {
+      await page.getByRole("textbox", { name: "Message Oyi" }).fill("Preserved draft");
       await page.getByRole("button", { name: "Speak to Oyi" }).click();
       await page.getByRole("button", { name: "Stop voice input" }).waitFor();
       await page.evaluate(() => window.__fixtureSpeech("Synthetic voice draft"));
+      await page.waitForFunction(() => document.querySelector('.oyi-composer-timer')?.textContent !== '0:00');
       await shot("listening");
       await page.getByRole("button", { name: "Cancel voice input" }).click();
-      assert.equal(await page.getByRole("textbox", { name: "Message Oyi" }).inputValue(), "");
+      assert.equal(await page.getByRole("textbox", { name: "Message Oyi" }).inputValue(), "Preserved draft");
       assert.equal(requests.length, 0);
+      await shot("cancel-preserved-draft");
+    });
+    await check(`${width}: Stop finalizes without sending and appends to existing editable text`, async () => {
+      await page.getByRole("button", { name: "Speak to Oyi" }).click();
+      const cancel = await page.getByRole("button", { name: "Cancel voice input" }).boundingBox();
+      const stop = await page.getByRole("button", { name: "Stop voice input" }).boundingBox();
+      assert.ok(cancel.x < stop.x, "cancel must lead recording controls");
+      await page.evaluate(() => window.__fixtureSpeech("unfinished", false));
+      await page.getByRole("button", { name: "Stop voice input" }).click();
+      assert.ok(await page.getByRole("button", { name: "Stop voice input" }).isDisabled());
+      await noOverflow(); await shot("finalizing");
+      await page.evaluate(() => { window.__fixtureSpeech("Final transcript", true); window.__speechFixture.onend(); });
+      const input = page.getByRole("textbox", { name: "Message Oyi" });
+      await input.waitFor();
+      assert.equal(await input.inputValue(), "Preserved draft Final transcript");
+      assert.equal(requests.length, 0, "Stop must not submit");
+      await input.fill("Edited transcription");
+      assert.ok(await page.getByRole("button", { name: "Speak to Oyi" }).isVisible());
+      assert.ok(await page.getByRole("button", { name: "Send message", exact: true }).isEnabled());
+      await shot("transcribed-editable");
+    });
+    await check(`${width}: permission rejection is honest and preserves typed text`, async () => {
+      await page.evaluate(() => { window.__fixtureDenied = true; });
+      await page.getByRole("button", { name: "Speak to Oyi" }).click();
+      await page.getByText("Microphone or speech permission was denied. Allow access in browser settings or type your message.", { exact: true }).waitFor();
+      assert.equal(await page.getByRole("textbox", { name: "Message Oyi" }).inputValue(), "Edited transcription");
+      assert.equal(requests.length, 0);
+      await shot("permission-denied");
+      await page.evaluate(() => { window.__fixtureDenied = false; });
     });
     await check(`${width}: typing, real request-in-flight, duplicate-send guard, long response`, async () => {
       const input = page.getByRole("textbox", { name: "Message Oyi" });
       await input.fill("A synthetic long-response request");
-      assert.equal(await page.getByRole("button", { name: "Speak to Oyi" }).count(), 0);
+      assert.equal(await page.getByRole("button", { name: "Speak to Oyi" }).count(), 1);
       await shot("typing");
       reply = { reply: "Synthetic response paragraph. ".repeat(70), persistence_saved: true, execution: { status: "read_only" } };
       hold = true;
@@ -202,7 +237,7 @@ try {
     });
     await context.close(); activePage = null;
   }
-} catch (error) {
+} catch {
   if (activePage) await activePage.screenshot({ path: path.join(output, "failure.png") }).catch(() => {});
   process.exitCode = 1;
 } finally {

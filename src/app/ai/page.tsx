@@ -10,9 +10,10 @@ import { aiService, type AiChatResponse } from "@/services/aiService";
 import { deriveConsumerOperationalObject, deriveConsumerTarget } from "@/services/operationalObjectContext";
 import { isTerminalOyiWorkflowStatus, normalizeOyiActiveWorkflow, oyiService, type OyiActiveWorkflow, type OyiThread, type OyiThreadMessage } from "@/services/oyiService";
 import { resolveConsumerOyiTarget } from "@/services/oyiTargetRegistry";
-import { actionResultView, confirmationProposal, emptyResponseText, latestAssistantMessage, normalizeOyiThreads, orbStateForView, OYI_WORKING_TEXT, OyiActionResult, OyiConfirmation, OyiOrb, useOyiConnectivity, useOyiInteraction, useOyiLayout, useOyiReducedMotion, OyiShell, OyiComposer, OyiCaption, OyiSuggestions, OyiHistory, OyiNotice, normalizeOyiSuggestions, oyiHistoryView } from "oyi-interaction";
+import { actionResultView, confirmationProposal, emptyResponseText, latestAssistantMessage, normalizeOyiThreads, orbStateForView, OYI_WORKING_TEXT, OyiActionResult, OyiConfirmation, OyiOrb, useOyiConnectivity, useOyiInteraction, useOyiLayout, useOyiReducedMotion, voiceSnapshotEvents, type OyiVoiceAdapter, OyiShell, OyiComposer, OyiCaption, OyiSuggestions, OyiHistory, OyiNotice, normalizeOyiSuggestions, oyiHistoryView } from "oyi-interaction";
 import "oyi-interaction/styles.css";
 import "./oyi-reference.css";
+import { createConsumerVoiceAdapter } from "@/oyi/consumerVoiceAdapter";
 import { consumerMessageStateForAction, createConsumerSurfaceAdapter } from "@/oyi/consumerSurfaceAdapter";
 import type { OyiTarget } from "@/services/oyiService";
 import {
@@ -679,8 +680,11 @@ function OyiAiCommandCenterContent() {
   const [voiceError, setVoiceError] = useState("");
   const [helpfulResponses, setHelpfulResponses] = useState<Record<string, boolean>>({});
   const [transcript, setTranscript] = useState("");
-  const [, setRecordingSeconds] = useState(0);
-  const recognitionRef = useRef<any>(null);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const voiceAdapterRef = useRef<OyiVoiceAdapter | null>(null);
+  const voiceDraftRef = useRef("");
+  const [voiceStopping, setVoiceStopping] = useState(false);
+  const [voiceStarting, setVoiceStarting] = useState(false);
   const timerRef = useRef<number | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -823,7 +827,6 @@ function OyiAiCommandCenterContent() {
   }, [messages]);
 
   useEffect(() => {
-    setVoiceAvailable(Boolean((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition));
     setUsage(loadJson<Record<string, number>>(USAGE_KEY, {}));
     setHelpfulResponses(loadJson<Record<string, boolean>>(FEEDBACK_KEY, {}));
   }, []);
@@ -889,9 +892,34 @@ function OyiAiCommandCenterContent() {
   }, [messages, reducedMotion]);
 
   useEffect(() => {
-    return () => stopVoiceCapture();
+    const adapter = createConsumerVoiceAdapter(window);
+    voiceAdapterRef.current = adapter;
+    setVoiceAvailable(adapter.getSnapshot().available);
+    let previous = adapter.getSnapshot();
+    const unsubscribe = adapter.subscribe((next) => {
+      for (const event of voiceSnapshotEvents(previous, next)) dispatchInteraction(event);
+      const starting = next.permissionState === "prompt" && next.status === "idle";
+      setVoiceStarting(starting);
+      setVoiceStopping(next.status === "transcribing");
+      setVoiceMode(starting || next.status === "listening" || next.status === "transcribing" ? "recording" : "idle");
+      setTranscript(next.interimTranscript || next.finalTranscript);
+      setVoiceError(next.error || "");
+      if (next.status === "listening" && previous.status !== "listening") { startTimer(); void startAudioMeter(); }
+      if (next.status !== "listening") {
+        if (timerRef.current) window.clearInterval(timerRef.current);
+        timerRef.current = null;
+        stopAudioMeter();
+      }
+      if (next.status === "idle" && next.finalTranscript && (previous.status === "listening" || previous.status === "transcribing")) {
+        setInput([voiceDraftRef.current, next.finalTranscript].filter(Boolean).join(voiceDraftRef.current && !/\s$/.test(voiceDraftRef.current) ? " " : ""));
+      }
+      previous = next;
+    });
+    return () => { unsubscribe(); adapter.cancelListening(); voiceAdapterRef.current = null; if (timerRef.current) window.clearInterval(timerRef.current); stopAudioMeter(); };
+    // Meter/timer helpers read only stable refs/setters. Resubscribing per render
+    // would cancel a recording when an interim transcript updates the page.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [dispatchInteraction]);
 
   function persistConversation(nextMessages: AiMessage[], threadId = backendThreadId, activeWorkflow = activeConversation.activeWorkflow || null) {
     const firstUser = nextMessages.find((item) => item.role === "user")?.content || "Oyi conversation";
@@ -1073,73 +1101,23 @@ function OyiAiCommandCenterContent() {
   }
 
   function stopVoiceCapture() {
-    if (recognitionRef.current) dispatchInteraction({ type: "voice.ended" });
-    try { recognitionRef.current?.stop?.(); } catch {}
-    recognitionRef.current = null;
+    voiceAdapterRef.current?.cancelListening();
     if (timerRef.current) window.clearInterval(timerRef.current);
     timerRef.current = null;
     stopAudioMeter();
   }
 
   function stopRecordingForReview() {
-    stopVoiceCapture();
-    setVoiceMode("idle");
+    // stop() waits for final results/onend; it never sends the conversation.
+    void voiceAdapterRef.current?.stopListening();
   }
 
-  function startVoiceCapture(mode: VoiceMode) {
-    if (busy || typeof window === "undefined") return;
-    setVoiceError("");
+  function startVoiceCapture() {
+    if (busy || typeof window === "undefined" || recording) return;
+    voiceDraftRef.current = input;
+    setRecordingSeconds(0);
     setAudioLevels([]);
-    setTranscript("");
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      setVoiceError("Voice capture is not available in this build. Type your command below.");
-      setVoiceMode("idle");
-      return;
-    }
-
-    try {
-      const recognition = new SpeechRecognition();
-      recognitionRef.current = recognition;
-      recognition.lang = "en-US";
-      recognition.interimResults = true;
-      recognition.maxAlternatives = 1;
-      recognition.onresult = (event: any) => {
-        const text = Array.from(event?.results || [])
-          .map((result: any) => String(result?.[0]?.transcript || ""))
-          .join(" ")
-          .trim();
-        setTranscript(text);
-        if (mode === "recording") setInput(text);
-        const finalResult = Array.from(event?.results || []).some((result: any) => Boolean(result?.isFinal));
-        dispatchInteraction(finalResult ? { type: "voice.final", text } : { type: "voice.interim", text });
-        if (mode === "conversation" && finalResult && text) void handleSend(text, { fromVoice: true });
-      };
-      recognition.onerror = () => {
-        stopAudioMeter();
-        setVoiceMode("idle");
-        dispatchInteraction({ type: "voice.error", message: "I could not hear clearly." });
-        setVoiceError("I could not hear clearly. Try again or type your command.");
-        setVoiceStatus("Failed");
-      };
-      recognition.onend = () => {
-        dispatchInteraction({ type: "voice.ended" });
-        recognitionRef.current = null;
-        if (timerRef.current) window.clearInterval(timerRef.current);
-        timerRef.current = null;
-        stopAudioMeter();
-        if (mode === "recording") setVoiceMode("idle");
-      };
-      setVoiceMode(mode);
-      setVoiceStatus("Listening");
-      dispatchInteraction({ type: "voice.listening" });
-      startTimer();
-      if (mode === "recording") void startAudioMeter();
-      recognition.start();
-    } catch {
-      setVoiceMode("idle");
-      setVoiceError("Voice capture could not start. Type your command below.");
-    }
+    void voiceAdapterRef.current?.startListening();
   }
 
   async function decideConfirmation(confirmation: Record<string, any>, decision: "confirm" | "cancel") {
@@ -1433,7 +1411,7 @@ function OyiAiCommandCenterContent() {
         mainCanvas={<>
           <span className="oyi-visually-hidden" role="status" aria-live="polite">{interaction.label}</span>
           <OyiOrb size="large" state={orbState} />
-          {recording ? <OyiCaption entries={[{ kind: "truth_note", text: transcript || "I'm listening…" }]} /> : null}
+          {recording ? <OyiCaption entries={[{ kind: "truth_note", text: voiceStarting ? "Waiting for microphone permission…" : voiceStopping ? "Finalizing transcription…" : transcript || "I'm listening…" }]} /> : null}
         </>}
         caption={<>
           {!interaction.online ? <OyiNotice tone="offline">You’re offline. Reconnect to send a message.</OyiNotice> : null}
@@ -1448,20 +1426,17 @@ function OyiAiCommandCenterContent() {
         </>}
         suggestions={!chatMode && !recording ? <OyiSuggestions items={normalizeOyiSuggestions(suggestions.slice(0, 3), { source: "seed" })} onSelect={(item) => { if (!controlsBusy && interaction.online) submitSuggestion({ label: item.label, prompt: item.prompt || undefined, href: item.href || undefined }); }} /> : null}
         composer={<OyiComposer
+          controlsLayout="expanded"
+          capabilitySlot={<span title="Attachments are not supported in Oyi conversations yet."><button type="button" className="oyi-icon-button" disabled aria-label="Attachments unavailable" aria-describedby="oyi-attachment-help"><Plus size={20} /></button><span id="oyi-attachment-help" className="oyi-visually-hidden">Files and images cannot be attached to Oyi conversations yet. No file will be selected or uploaded.</span></span>}
           value={input} onChange={setInput} onSubmit={(value) => { void handleSend(value); }}
           turnInFlight={busy} disabled={!interaction.online || Boolean(restoringThreadId)}
           confirmationPending={Boolean(interaction.action?.awaiting_user) || interaction.canonical?.kind === "confirmation"}
           voiceAvailable={voiceAvailable} voiceActive={recording} voiceInterim={transcript} voiceLevels={audioLevels}
-          voiceStatusLabel={transcript ? "Transcribing…" : "I'm listening…"}
-          onStartVoice={() => startVoiceCapture("recording")}
+          voiceStatusLabel={voiceStarting ? "Allow microphone…" : voiceStopping ? "Finalizing…" : "Recording"}
+          voiceElapsedSeconds={recordingSeconds} voiceStopping={voiceStarting || voiceStopping}
+          onStartVoice={startVoiceCapture}
           onStopVoice={stopRecordingForReview}
-          onCancelVoice={() => {
-            const recognition = recognitionRef.current;
-            if (recognition) { recognition.onresult = null; recognition.onend = null; recognition.onerror = null; }
-            stopVoiceCapture();
-            try { recognition?.abort?.(); } catch {}
-            setVoiceMode("idle"); setTranscript(""); setInput(""); setAudioLevels([]);
-          }}
+          onCancelVoice={() => { stopVoiceCapture(); setTranscript(""); setAudioLevels([]); }}
         />}
       />
     </div>

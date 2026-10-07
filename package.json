@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "smoke:oyi-reference": "node scripts/oyi-reference-surface-smoke.mjs",
+    "smoke:oyi-composer-voice": "node scripts/oyi-composer-voice-smoke.mjs",
     "test:oyi-reference-browser": "node scripts/oyi-reference-browser.mjs",
     "smoke:camera-runtime-canonicalization": "node scripts/camera-runtime-canonicalization-smoke.mjs",
     "smoke:cameras-experience": "node scripts/cameras-experience-smoke.mjs",
@@ -190,7 +191,7 @@
     "mqtt": "^4.3.7",
     "next": "^15.1.7",
     "next-auth": "^4.24.7",
-    "oyi-interaction": "git+https://github.com/contactochiga/oyi-interaction.git#feff2ed401edd904183e309d5b92c2c64d0fcdc3",
+    "oyi-interaction": "git+https://github.com/contactochiga/oyi-interaction.git#c44fa387550874fdae677c41cb6b54e6ff143812",
     "qrcode": "^1.5.3",
     "react": "19.1.0",
     "react-dom": "19.1.0",

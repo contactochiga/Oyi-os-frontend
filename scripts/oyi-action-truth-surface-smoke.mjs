@@ -136,7 +136,7 @@ check("page is wired to the shared foundation", () => {
   for (const needle of [
     'useOyiInteraction()', 'useOyiConnectivity(dispatchInteraction)', 'orbStateForView(interaction)',
     '{ type: "turn.submitted", turnId }', '{ type: "turn.response", turnId, response: resp }', '{ type: "turn.presented", turnId }', 'type: "turn.failed"',
-    '{ type: "voice.listening" }', 'type: "voice.final", text', 'type: "voice.interim", text', 'type: "voice.error"', '{ type: "voice.ended" }',
+    'createConsumerVoiceAdapter(window)', 'voiceSnapshotEvents(previous, next)', 'dispatchInteraction(event)',
     'type: "thread.restored", latestAssistant: latestAssistantMessage(rows)', '{ type: "conversation.reset" }',
     '<OyiActionResult view={truthView} showTerminalNote />', '<OyiConfirmation', 'confirmationProposal(confirmation)',
     '<OyiOrb size="large" state={orbState}', 'createConsumerSurfaceAdapter(', 'surfaceAdapter.starterSeeds()', 'role="status" aria-live="polite">{interaction.label}</span>',

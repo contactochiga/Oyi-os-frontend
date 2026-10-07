@@ -44,6 +44,7 @@
 .oyi-reference .oyi-suggestion { padding: 8px 0; font-size: 13px; }
 .oyi-reference .oyi-composer { min-height: 58px; border-radius: 24px; background: #0b1420; box-shadow: 0 8px 30px rgba(0,0,0,.14); }
 .oyi-reference .oyi-composer-input { font-size: 16px; line-height: 24px; min-height: 40px; }
+.oyi-reference .oyi-send-button svg { transform: rotate(-90deg); }
 @media (min-width: 1024px) {
   .oyi-reference { --oyi-sidebar-width: 272px; }
   .oyi-reference .oyi-shell { --oyi-sidebar-width: 272px; --oyi-column-max: 760px; }

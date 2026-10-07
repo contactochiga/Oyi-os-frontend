@@ -14,8 +14,8 @@ check("reference mounts shared presentation, never shadow primitives", () => {
     assert.match(page, new RegExp(`<${name}\\b`));
     assert.doesNotMatch(page, new RegExp(`function ${name}\\(`));
   }
-  assert.equal(installed.version, "0.2.0");
-  assert.match(pkg.dependencies["oyi-interaction"], /#feff2ed401edd904183e309d5b92c2c64d0fcdc3$/);
+  assert.equal(installed.version, "0.3.0");
+  assert.match(pkg.dependencies["oyi-interaction"], /#c44fa387550874fdae677c41cb6b54e6ff143812$/);
 });
 check("navigation is registry-derived; canvas never gets old rail or footer", () => {
   assert.match(page, /const navigation = surfaceAdapter\.navigation\(\)/);
@@ -25,8 +25,8 @@ check("navigation is registry-derived; canvas never gets old rail or footer", ()
 check("hero is not a second microphone; captions are real response content", () => {
   assert.match(page, /<OyiOrb size="large" state=\{orbState\} \/>/);
   assert.match(page, /text: message\.content/);
-  assert.match(page, /onStartVoice=\{\(\) => startVoiceCapture\("recording"\)\}/);
-  assert.match(page, /recognition\.onresult = null/);
+  assert.match(page, /onStartVoice=\{startVoiceCapture\}/);
+  assert.match(page, /voiceAdapterRef\.current\?\.cancelListening\(\)/);
   assert.match(page, /epoch !== audioMeterEpoch\.current/);
   assert.doesNotMatch(page, /Array\.from\(\{ length: 28 \}, \(\) => 0\.2\)/);
 });
