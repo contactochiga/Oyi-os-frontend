@@ -35,12 +35,17 @@ await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 const origin = `http://127.0.0.1:${server.address().port}`;
 const browser = await chromium.launch({ headless: true });
 const results = [];
+let browserVoiceProbe;
 let activePage;
 async function check(name, fn) {
   try { await fn(); results.push({ name, status: "PASS" }); console.log(`PASS ${name}`); }
   catch (error) { results.push({ name, status: "FAIL", error: error.message }); console.error(`FAIL ${name}: ${error.message}`); throw error; }
 }
 try {
+  const probe = await browser.newPage();
+  await probe.goto(`${origin}/voice-probe.html`); // Empty local 404, no application scripts.
+  browserVoiceProbe = await probe.evaluate(async () => ({ speechApiExposed: Boolean(window.SpeechRecognition || window.webkitSpeechRecognition), mediaCaptureExposed: Boolean(navigator.mediaDevices?.getUserMedia), microphonePermission: await navigator.permissions.query({name:'microphone'}).then(p=>p.state).catch(()=> 'unknown'), realCapture: 'NOT_RUN: headless automation; no interactive microphone approval or audio fixture for real speech service' }));
+  await probe.close();
   for (const width of [390, 768, 1024, 1440]) {
     const context = await browser.newContext({ viewport: { width, height: 900 }, reducedMotion: "reduce", serviceWorkers: "block" });
     const errors = [], failedRequests = [], deniedOrigins = [], requests = [];
@@ -88,7 +93,14 @@ try {
         const result = [{ transcript: text }]; result.isFinal = final;
         window.__speechFixture?.onresult?.({ results: [result] });
       };
-      if (navigator.mediaDevices) navigator.mediaDevices.getUserMedia = async () => { throw new Error("No real microphone in presentation fixture"); };
+      window.__fixtureSegments = (segments) => window.__speechFixture?.onresult?.({ results: segments.map(([text, final]) => { const r = [{ transcript: text }]; r.isFinal = final; return r; }) });
+      // Deterministic measured-level API fixture, not real microphone audio.
+      if (navigator.mediaDevices) navigator.mediaDevices.getUserMedia = async () => ({ getTracks: () => [{ stop() {} }] });
+      window.AudioContext = class {
+        createAnalyser() { return { fftSize: 256, frequencyBinCount: 128, getByteTimeDomainData(a) { for(let i=0;i<a.length;i++) a[i]=128+(i%7)*5; } }; }
+        createMediaStreamSource() { return { connect() {} }; }
+        async close() {}
+      };
       localStorage.setItem("oyi_ai_conversations_v1", JSON.stringify([{ id: "backend:synthetic-history", backendThreadId: "synthetic-history", title: "Synthetic restored action", updatedAt: 1790848800000, messageCount: 2, messages: [] }]));
     });
     const page = await context.newPage(); activePage = page;
@@ -102,7 +114,7 @@ try {
     async function noOverflow() {
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "horizontal overflow");
       const box = await page.locator(".oyi-composer").boundingBox();
-      assert.ok(box && box.x >= 0 && box.x + box.width <= width + 1 && box.y + box.height <= (await page.viewportSize()).height + 1, "composer clipped");
+      assert.ok(box && box.height > 0 && box.y >= 0 && box.x >= 0 && box.x + box.width <= width + 1 && box.y + box.height <= (await page.viewportSize()).height + 1, "composer clipped");
     }
     await check(`${width}: idle, minimal controls, responsive shell, reduced motion`, async () => {
       await noOverflow();
@@ -148,7 +160,23 @@ try {
       await page.getByRole("button", { name: "Stop voice input" }).waitFor();
       await page.evaluate(() => window.__fixtureSpeech("Synthetic voice draft"));
       await page.waitForFunction(() => document.querySelector('.oyi-composer-timer')?.textContent !== '0:00');
+      assert.equal(await page.locator('.oyi-composer-voice-label').count(), 0);
+      assert.ok(await page.getByRole('meter', { name: 'Microphone input level' }).isVisible());
+      assert.ok(await page.getByRole('button', { name: 'Finalize and send voice message' }).isVisible());
+      assert.equal(await page.locator('.oyi-composer-voice-dot').evaluate(el => getComputedStyle(el).animationName), 'none');
+      if (width === 390) {
+        await page.emulateMedia({reducedMotion:'no-preference'});
+        assert.equal(await page.locator('.oyi-composer-voice-dot').evaluate(el => getComputedStyle(el).animationName), 'oyi-recording-blink');
+        await page.emulateMedia({reducedMotion:'reduce'});
+      }
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      await noOverflow();
       await shot("listening");
+      await page.setViewportSize({width,height:450});
+      await page.waitForFunction(() => document.documentElement.style.getPropertyValue('--vvh') === '450px');
+      await noOverflow(); await shot('listening-short-viewport');
+      await page.setViewportSize({width,height:900});
+      await page.waitForFunction(() => document.documentElement.style.getPropertyValue('--vvh') === '900px');
       await page.getByRole("button", { name: "Cancel voice input" }).click();
       assert.equal(await page.getByRole("textbox", { name: "Message Oyi" }).inputValue(), "Preserved draft");
       assert.equal(requests.length, 0);
@@ -160,8 +188,13 @@ try {
       const stop = await page.getByRole("button", { name: "Stop voice input" }).boundingBox();
       assert.ok(cancel.x < stop.x, "cancel must lead recording controls");
       await page.evaluate(() => window.__fixtureSpeech("unfinished", false));
-      await page.getByRole("button", { name: "Stop voice input" }).click();
+      await page.evaluate(() => {
+        document.querySelector('[aria-label="Stop voice input"]').click();
+        document.querySelector('[aria-label="Finalize and send voice message"]')?.click();
+      });
       assert.ok(await page.getByRole("button", { name: "Stop voice input" }).isDisabled());
+      assert.ok(await page.getByRole("button", { name: "Finalize and send voice message" }).isDisabled());
+      await page.getByRole("button", { name: "Finalize and send voice message" }).evaluate(el => el.click());
       await noOverflow(); await shot("finalizing");
       await page.evaluate(() => { window.__fixtureSpeech("Final transcript", true); window.__speechFixture.onend(); });
       const input = page.getByRole("textbox", { name: "Message Oyi" });
@@ -182,7 +215,66 @@ try {
       await shot("permission-denied");
       await page.evaluate(() => { window.__fixtureDenied = false; });
     });
+    await check(`${width}: voice Send waits for all final segments and submits exactly once`, async () => {
+      const before = requests.length;
+      await page.getByRole('textbox', { name: 'Message Oyi' }).fill('Existing draft');
+      await page.getByRole('button', { name: 'Speak to Oyi' }).click();
+      await page.evaluate(() => window.__fixtureSegments([['first segment', true], ['pending tail', false]]));
+      hold = true;
+      await page.evaluate(() => {
+        const send=document.querySelector('[aria-label="Finalize and send voice message"]');
+        send.click();send.click();
+        document.querySelector('[aria-label="Stop voice input"]')?.click();
+      });
+      await page.getByRole('button', { name: 'Stop voice input' }).evaluate(el => el.click());
+      assert.equal(requests.length, before);
+      await shot('voice-send-finalizing');
+      await page.evaluate(() => {
+        const speech=window.__speechFixture, late=speech.onend;
+        window.__fixtureSegments([['first segment', true], ['second segment', true]]);
+        speech.onend(); late();
+      });
+      await page.getByText('Working on your request…', { exact: true }).filter({visible:true}).first().waitFor();
+      assert.equal(requests.length, before+1);
+      assert.equal(requests.at(-1).message, 'Existing draft first segment second segment');
+      await shot('voice-send-working');
+      hold=false;releaseResponse();
+      await page.locator('.oyi-reference-message[data-role="assistant"]').filter({hasText:'Synthetic test response.'}).waitFor();
+      assert.equal(requests.length, before+1);
+    });
+    await check(`${width}: voice failures never send blank or partial text; draft remains recoverable`, async () => {
+      const before=requests.length;
+      for (const failure of ['empty','partial','network','timeout']) {
+        const input=page.getByRole('textbox',{name:'Message Oyi'});
+        await input.fill('Saved draft');
+        await page.getByRole('button',{name:'Speak to Oyi'}).click();
+        if (failure==='partial') await page.evaluate(() => window.__fixtureSegments([['final prefix',true],['unfinished tail',false]]));
+        if (failure==='network' || failure==='timeout') await page.evaluate(() => window.__fixtureSpeech('recoverable words',false));
+        await page.getByRole('button',{name:'Finalize and send voice message'}).click();
+        if(failure==='network') await page.evaluate(() => window.__speechFixture.onerror({error:'network'}));
+        else if(failure!=='timeout') await page.evaluate(() => window.__speechFixture.onend());
+        else await page.evaluate(() => { window.__lateResult=window.__speechFixture.onresult;window.__lateEnd=window.__speechFixture.onend; });
+        await input.waitFor({timeout:8000});
+        assert.ok((await input.inputValue()).startsWith('Saved draft'));
+        if(failure==='partial') assert.equal(await input.inputValue(),'Saved draft final prefix unfinished tail');
+        if(failure==='network' || failure==='timeout') assert.equal(await input.inputValue(),'Saved draft recoverable words');
+        if(failure==='timeout') await page.evaluate(() => { const r=[{transcript:'too late'}];r.isFinal=true;window.__lateResult({results:[r]});window.__lateEnd(); });
+        assert.equal(requests.length,before);
+      }
+      await shot('voice-error-recoverable');
+    });
+    await check(`${width}: cancel during finalization invalidates pending auto-send`, async () => {
+      const before=requests.length;
+      const input=page.getByRole('textbox',{name:'Message Oyi'});await input.fill('Keep only this');
+      await page.getByRole('button',{name:'Speak to Oyi'}).click();
+      await page.evaluate(() => { window.__fixtureSpeech('discarded words',true);window.__lateEnd=window.__speechFixture.onend; });
+      await page.getByRole('button',{name:'Finalize and send voice message'}).click();
+      await page.getByRole('button',{name:'Cancel voice input'}).click();
+      await page.evaluate(() => window.__lateEnd());
+      assert.equal(await input.inputValue(),'Keep only this');assert.equal(requests.length,before);
+    });
     await check(`${width}: typing, real request-in-flight, duplicate-send guard, long response`, async () => {
+      const before=requests.length;
       const input = page.getByRole("textbox", { name: "Message Oyi" });
       await input.fill("A synthetic long-response request");
       assert.equal(await page.getByRole("button", { name: "Speak to Oyi" }).count(), 1);
@@ -192,7 +284,7 @@ try {
       await page.getByRole("button", { name: "Send message", exact: true }).click();
       await page.getByText("Working on your request…", { exact: true }).filter({ visible: true }).first().waitFor();
       await input.fill("Draft while pending"); await input.press("Enter");
-      assert.equal(requests.length, 1);
+      assert.equal(requests.length, before + 1);
       await shot("working");
       hold = false; releaseResponse();
       await page.getByRole("button", { name: "Show more" }).waitFor();
@@ -242,7 +334,7 @@ try {
   process.exitCode = 1;
 } finally {
   await browser.close(); await new Promise((resolve) => server.close(resolve));
-  const report = { mode: "isolated presentation fixtures; no authenticated identity or real execution", authenticated_backend: "BLOCKED: no approved test identity/configuration available", results, screenshots: output };
+  const report = { mode: "isolated presentation fixtures; no authenticated identity or real execution", authenticated_backend: "BLOCKED: no approved test identity/configuration available", browserVoiceProbe, results, screenshots: output };
   fs.writeFileSync(path.join(output, "results.json"), JSON.stringify(report, null, 2));
   console.log(JSON.stringify({ output, pass: results.filter((r) => r.status === "PASS").length, fail: results.filter((r) => r.status === "FAIL").length }));
 }

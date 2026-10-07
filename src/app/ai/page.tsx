@@ -683,6 +683,8 @@ function OyiAiCommandCenterContent() {
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const voiceAdapterRef = useRef<OyiVoiceAdapter | null>(null);
   const voiceDraftRef = useRef("");
+  const voiceFinishIntentRef = useRef<"review" | "send" | null>(null);
+  const voiceSubmitRef = useRef<(text: string) => void>(() => undefined);
   const [voiceStopping, setVoiceStopping] = useState(false);
   const [voiceStarting, setVoiceStarting] = useState(false);
   const timerRef = useRef<number | null>(null);
@@ -892,6 +894,17 @@ function OyiAiCommandCenterContent() {
   }, [messages, reducedMotion]);
 
   useEffect(() => {
+    // Use the latest committed conversation/scope, without restarting capture.
+    voiceSubmitRef.current = (text) => {
+      if (!navigator.onLine || busy || restoringThreadId) {
+        setVoiceError("Your voice draft is ready, but could not be sent. Review it and retry when connected.");
+        return;
+      }
+      void handleSend(text);
+    };
+  });
+
+  useEffect(() => {
     const adapter = createConsumerVoiceAdapter(window);
     voiceAdapterRef.current = adapter;
     setVoiceAvailable(adapter.getSnapshot().available);
@@ -911,11 +924,19 @@ function OyiAiCommandCenterContent() {
         stopAudioMeter();
       }
       if (next.status === "idle" && next.finalTranscript && (previous.status === "listening" || previous.status === "transcribing")) {
-        setInput([voiceDraftRef.current, next.finalTranscript].filter(Boolean).join(voiceDraftRef.current && !/\s$/.test(voiceDraftRef.current) ? " " : ""));
+        const text = [voiceDraftRef.current, next.finalTranscript].filter(Boolean).join(voiceDraftRef.current && !/\s$/.test(voiceDraftRef.current) ? " " : "");
+        const shouldSend = voiceFinishIntentRef.current === "send";
+        voiceFinishIntentRef.current = null;
+        setInput(text);
+        if (shouldSend) voiceSubmitRef.current(text);
+      } else if (next.status === "error") {
+        voiceFinishIntentRef.current = null;
+        // Recover recognized words for manual review, not automatic submission.
+        if (next.finalTranscript || next.interimTranscript) setInput([voiceDraftRef.current, next.finalTranscript, next.interimTranscript].filter(Boolean).join(" "));
       }
       previous = next;
     });
-    return () => { unsubscribe(); adapter.cancelListening(); voiceAdapterRef.current = null; if (timerRef.current) window.clearInterval(timerRef.current); stopAudioMeter(); };
+    return () => { unsubscribe(); voiceFinishIntentRef.current = null; adapter.cancelListening(); voiceAdapterRef.current = null; if (timerRef.current) window.clearInterval(timerRef.current); stopAudioMeter(); };
     // Meter/timer helpers read only stable refs/setters. Resubscribing per render
     // would cancel a recording when an interim transcript updates the page.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1101,6 +1122,7 @@ function OyiAiCommandCenterContent() {
   }
 
   function stopVoiceCapture() {
+    voiceFinishIntentRef.current = null;
     voiceAdapterRef.current?.cancelListening();
     if (timerRef.current) window.clearInterval(timerRef.current);
     timerRef.current = null;
@@ -1108,13 +1130,21 @@ function OyiAiCommandCenterContent() {
   }
 
   function stopRecordingForReview() {
-    // stop() waits for final results/onend; it never sends the conversation.
-    void voiceAdapterRef.current?.stopListening();
+    finishVoiceCapture("review");
+  }
+
+  function finishVoiceCapture(intent: "review" | "send") {
+    const adapter = voiceAdapterRef.current;
+    // Synchronous first-wins latch also covers rapid clicks before React renders.
+    if (!adapter || adapter.getSnapshot().status !== "listening" || voiceFinishIntentRef.current) return;
+    voiceFinishIntentRef.current = intent;
+    void adapter.stopListening();
   }
 
   function startVoiceCapture() {
     if (busy || typeof window === "undefined" || recording) return;
     voiceDraftRef.current = input;
+    voiceFinishIntentRef.current = null;
     setRecordingSeconds(0);
     setAudioLevels([]);
     void voiceAdapterRef.current?.startListening();
@@ -1436,6 +1466,7 @@ function OyiAiCommandCenterContent() {
           voiceElapsedSeconds={recordingSeconds} voiceStopping={voiceStarting || voiceStopping}
           onStartVoice={startVoiceCapture}
           onStopVoice={stopRecordingForReview}
+          onSendVoice={() => finishVoiceCapture("send")}
           onCancelVoice={() => { stopVoiceCapture(); setTranscript(""); setAudioLevels([]); }}
         />}
       />

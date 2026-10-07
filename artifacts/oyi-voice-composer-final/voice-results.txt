@@ -1,0 +1,22 @@
+
+> ochiga-frontend@0.1.0 smoke:oyi-composer-voice
+> node scripts/oyi-composer-voice-smoke.mjs
+
+PASS start follows actual onstart; final results wait for end
+PASS cancel discards transcript and ignores captured late callbacks
+PASS cancel before microphone grant is terminal
+PASS permission denial and late end never become success
+PASS network failure is explicit
+PASS interim-only ending is not fabricated final text
+PASS natural end retains real final text
+PASS cumulative final segments retain order without duplication
+PASS final prefix plus unfinished tail is error, never partial success
+PASS empty end fails; repeated Stop cannot restart finalization
+PASS error preserves available words without promoting them to success
+PASS unsupported browser and native are honest
+PASS constructor/start failure is explicit
+PASS constructor failure cannot recover an older session transcript
+PASS unsubscribe prevents notifications
+PASS unmount cleanup invalidates pending finalization and late callbacks
+PASS stop deadline fails honestly; late result cannot restore success
+17 voice contract checks passed

@@ -63,7 +63,8 @@ check("broad prompts become home-scope hints", () => {
 });
 
 check("voice still uses the canonical handleSend pipeline", () => {
-  assert.match(aiPage, /setInput\(\[voiceDraftRef.current, next.finalTranscript\]/);
+  assert.match(aiPage, /const text = \[voiceDraftRef.current, next.finalTranscript\]/);
+  assert.match(aiPage, /if \(shouldSend\) voiceSubmitRef.current\(text\)/);
   assert.match(aiPage, /onSubmit=\{\(value\) => \{ void handleSend\(value\); \}\}/);
   assert.doesNotMatch(aiPage, /voice.*oyiService\.chat/s);
 });

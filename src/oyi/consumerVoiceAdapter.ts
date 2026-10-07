@@ -19,7 +19,8 @@ export function createConsumerVoiceAdapter(host: any = globalThis): OyiVoiceAdap
     recognition = null;
     if (old) { old.onstart = null; old.onresult = null; old.onerror = null; old.onend = null; try { old.abort(); } catch {} }
   };
-  const fail = (message: string, permissionState = snapshot.permissionState) => { detach(); emit({ status: "error", error: message, permissionState, interimTranscript: "", finalTranscript: "" }); };
+  // Failed/unfinished words may be recovered into an editable draft, never sent.
+  const fail = (message: string, permissionState = snapshot.permissionState) => { detach(); emit({ status: "error", error: message, permissionState }); };
   return {
     kind: available ? "web_speech" : "unavailable",
     getSnapshot: () => snapshot,
@@ -29,10 +30,11 @@ export function createConsumerVoiceAdapter(host: any = globalThis): OyiVoiceAdap
       if (!available) { fail("Browser transcription is unavailable here. Native voice is not implemented; please type your message.", "unsupported"); return; }
       detach();
       const session = epoch;
+      // Reset the prior session even if constructing the browser API throws.
+      emit({ status: "idle", permissionState: "prompt", error: null, finalTranscript: "", interimTranscript: "" });
       try {
         const current = new Recognition(); recognition = current;
         current.lang = "en-US"; current.interimResults = true; current.continuous = true;
-        emit({ status: "idle", permissionState: "prompt", error: null, finalTranscript: "", interimTranscript: "" });
         current.onstart = () => { if (session !== epoch) return; if (deadline) clearTimeout(deadline); deadline = null; emit({ status: "listening", permissionState: "granted" }); };
         current.onresult = (event: any) => {
           if (session !== epoch) return;
@@ -48,7 +50,7 @@ export function createConsumerVoiceAdapter(host: any = globalThis): OyiVoiceAdap
           if (session !== epoch) return;
           const finalTranscript = snapshot.finalTranscript;
           detach();
-          if (!finalTranscript) emit({ status: "error", interimTranscript: "", error: "No final transcription was received. Your typed text is unchanged; please try again." });
+          if (!finalTranscript || snapshot.interimTranscript) emit({ status: "error", error: "Transcription was incomplete. Nothing was sent; review the available draft or try again." });
           else emit({ status: "idle", interimTranscript: "", finalTranscript });
         };
         deadline = setTimeout(() => { if (session === epoch) fail("Microphone start was not confirmed. Please retry or type your message."); }, 10000);
@@ -56,7 +58,7 @@ export function createConsumerVoiceAdapter(host: any = globalThis): OyiVoiceAdap
       } catch { fail("Voice capture could not start. Please type your message."); }
     },
     stopListening() {
-      if (!recognition) return;
+      if (!recognition || snapshot.status !== "listening") return;
       emit({ status: "transcribing" });
       if (deadline) clearTimeout(deadline);
       const session = epoch;

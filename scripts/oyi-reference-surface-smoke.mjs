@@ -14,8 +14,8 @@ check("reference mounts shared presentation, never shadow primitives", () => {
     assert.match(page, new RegExp(`<${name}\\b`));
     assert.doesNotMatch(page, new RegExp(`function ${name}\\(`));
   }
-  assert.equal(installed.version, "0.3.0");
-  assert.match(pkg.dependencies["oyi-interaction"], /#c44fa387550874fdae677c41cb6b54e6ff143812$/);
+  assert.equal(installed.version, "0.4.0");
+  assert.match(pkg.dependencies["oyi-interaction"], /#54d50158320159904453151edc4b448637e6f597$/);
 });
 check("navigation is registry-derived; canvas never gets old rail or footer", () => {
   assert.match(page, /const navigation = surfaceAdapter\.navigation\(\)/);
