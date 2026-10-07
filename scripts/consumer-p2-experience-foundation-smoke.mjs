@@ -292,9 +292,13 @@ assert.match(aiPage, /restoreThreadById/, "the Oyi Command Center must keep its 
 assert.match(nav, /md:flex/, "BottomNav must render a persistent sidebar variant at the md breakpoint");
 assert.match(nav, /md:hidden/, "the phone bottom nav must hide at the md breakpoint in favor of the sidebar, not stack both");
 assert.match(shell, /backHref \? \(/, "ConsumerShell must support an optional back-navigation affordance for detail pages");
-for (const [name, src] of [["home", home], ["devices", devices], ["profile", profile], ["ai", aiPage], ["rooms", roomsClient], ["scenes", scenes]]) {
+for (const [name, src] of [["home", home], ["devices", devices], ["profile", profile], ["rooms", roomsClient], ["scenes", scenes]]) {
   assert.match(src, /md:left-\[108px\]/, `${name} page must offset its fixed layout for the iPad+ sidebar width`);
 }
+// The Oyi reference canvas now owns an in-flow shared sidebar, not BottomNav.
+assert.match(aiPage, /<OyiShell/);
+assert.match(aiPage, /surfaceAdapter\.navigation\(\)/);
+assert.doesNotMatch(aiPage, /md:left-\[108px\]|<BottomNav/);
 
 // Mobile closure: Profile child pages share one arrow-only back pattern,
 // never a large "<- Back" text pill, and every real child route falls back
@@ -309,20 +313,18 @@ assert.match(shell, /window\.history\.length > 1\) router\.back\(\)/, "the share
 assert.match(shell, /aria-label="Back"/, "the shared back control must expose an accessible Back label");
 assert.doesNotMatch(shell, />\s*Back\s*</, "the shared back control must stay icon-only, never a text-labelled pill");
 
-// Mobile closure: Oyi header keeps Back/Oyi title/history/new-chat in one
-// disciplined row instead of a large vertical gap between controls and title.
+// Slice 3 replaces the old Back/centred-title header with the shared top rail.
 assert.doesNotMatch(aiPage, /<ArrowLeft className="h-\[18px\] w-\[18px\]" \/> Back/, "Oyi header back control must not render as a text-labelled pill");
-assert.match(aiPage, /aria-label="Back" className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white\/10/, "Oyi header back control must be the shared arrow-only icon button");
+assert.match(aiPage, /aria-label=\{layout === "desktop" \? "Toggle sidebar" : "Open navigation"\}/, "Oyi exposes its permission-aware navigation through the hamburger");
 assert.doesNotMatch(aiPage, /<div className="mt-4 text-center">/, "Oyi title must not sit in a separate row below the header controls");
-assert.match(aiPage, /<div className="min-w-0 flex-1 text-center">\s*<div className="truncate text-\[18px\] font-semibold tracking-\[-0\.04em\]">Oyi<\/div>/, "Oyi title must occupy the same header row as Back/history/new-chat");
+assert.match(aiPage, /<OyiOrb[^>]*size="icon"/, "Oyi identity uses the small shared Orb, not oversized branding");
 assert.match(aiPage, /aria-label="Conversation history"/, "Oyi history action must remain reachable");
-assert.match(aiPage, /aria-label="New chat"/, "Oyi new-conversation action must remain reachable");
+assert.match(aiPage, /aria-label="New conversation"/, "Oyi new-conversation action must remain reachable");
 
 // Mobile closure: Oyi table responses use available width instead of being
 // nested inside a narrow card inside a narrow bubble.
-assert.match(aiPage, /className=\{isTable \? "-mx-4" : "rounded-\[18px\] border border-white\/\[0\.07\] bg-black\/18 p-3"\}/, "table cards must bleed to the response bubble's edge instead of nesting a second border");
-assert.match(aiPage, /hasTableCard/, "messages with a table card must be detected so their bubble can widen");
-assert.match(aiPage, /hasTableCard \? "max-w-\[99%\]" : "max-w-\[94%\] sm:max-w-\[86%\] lg:max-w-\[620px\]"/, "a table-bearing response bubble must widen close to the usable viewport width, while ordinary text stays capped for readability at desktop");
+assert.match(aiPage, /className=\{isTable \? "min-w-0 w-full"/, "table cards use available caption width without obsolete negative bubble margins");
+assert.match(aiPage, /<OyiCaption/, "responses use shared selectable captions rather than nested narrow bubbles");
 assert.match(aiPage, /overflow-x-auto rounded-2xl border border-white\/\[0\.06\]/, "the table itself must keep its one real scroll/boundary surface");
 
 // Mobile closure: bottom nav active state is a bright icon/label signal, not
@@ -372,11 +374,10 @@ assert.match(modules, /key: "reports", label: "Reports", href: "\/reports"/, "th
 assert.match(profile, /lg:grid lg:grid-cols-2 lg:gap-x-4/, "Profile menu must recompose into two columns at desktop widths");
 assert.match(profile, /lg:col-span-2/, "Log Out must span both columns as a clear closing action in the desktop grid");
 
-// Responsive pass: Oyi widens its conversation column and lets
-// table-bearing responses use it, while capping ordinary prose at a
-// comfortable reading width instead of letting it stretch edge to edge.
-assert.match(aiPage, /max-w-\[680px\] shrink-0 px-5 lg:max-w-\[900px\] xl:max-w-\[1040px\]/, "Oyi header column must widen at desktop");
-assert.match(aiPage, /max-w-\[680px\] flex-1 flex-col px-5 lg:max-w-\[900px\] xl:max-w-\[1040px\]/, "Oyi conversation column must widen at desktop");
+// Slice 3: shared shell owns the responsive column, independently of the
+// dashboard rail. Actual column/table bounds are exercised in the browser suite.
+assert.match(aiPage, /<OyiShell/, "Oyi responsive column must use the shared shell");
+assert.doesNotMatch(aiPage, /md:left-\[108px\]/, "Oyi must not retain a phantom dashboard-rail gutter");
 
 // Large-screen visual polish: the persistent sidebar is legible (108px,
 // larger icon/label/touch targets) rather than cramped, while staying

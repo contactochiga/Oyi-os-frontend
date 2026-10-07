@@ -127,7 +127,7 @@ check("history -> canonical threads normalized; local fallback kept only for uns
   assert.match(aiPage, /normalizeOyiThreads\(res\.threads \|\| \[\]\)/);
   // Audited fallback: on-device copy only for signed-out use / unsaved turns.
   assert.match(aiPage, /if \(!\(user as any\)\?\.id \|\| !threadId\) saveJson\(CONVERSATIONS_KEY, next\);/);
-  assert.match(aiPage, /if \(!cancelled\) setConversations\(localFallback\);/);
+  assert.match(aiPage, /if \(!cancelled\) \{\s*setConversations\(localFallback\);\s*setHistoryError/);
 });
 
 check("page is wired to the shared foundation", () => {

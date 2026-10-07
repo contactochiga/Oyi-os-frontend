@@ -127,12 +127,12 @@ await check("duplicate/internal cards and sources are filtered", () => {
   assert.match(aiPage, /row\.cards \|\| \[\]\)\.filter/);
 });
 
-await check("composer reserve is dynamic and applied to the scroller", () => {
-  assert.match(aiPage, /ResizeObserver/);
-  assert.match(aiPage, /composerReserve = `calc\(\$\{composerHeight \+ 24\}px \+ var\(--sab\) \+ var\(--kb\)\)`/);
-  assert.match(aiPage, /scrollPaddingBottom: composerReserve/);
-  assert.match(aiPage, /height: composerReserve/);
-  assert.match(aiPage, /fixed inset-0 flex flex-col overflow-hidden/);
+await check("shared shell reserves composer space in flow rather than overlapping fixed content", () => {
+  assert.match(aiPage, /<OyiShell/);
+  assert.match(aiPage, /composer=\{<OyiComposer/);
+  const css = fs.readFileSync(path.join(root, "src/app/ai/oyi-reference.css"), "utf8");
+  assert.match(css, /height: var\(--vvh, 100dvh\)/);
+  assert.doesNotMatch(aiPage, /md:left-\[108px\]|composerReserve|fixed inset-x-0 bottom-0/);
 });
 
 await check("route and history restoration use one active thread state", () => {
@@ -156,14 +156,14 @@ await check("history click waits for hydration before closing", () => {
   assert.match(aiPage, /await restoreThreadById\(threadId, "history"\)/);
   assert.match(aiPage, /setHistoryOpen\(false\)/);
   assert.match(aiPage, /setRestoringThreadId\(requestedThreadId\)/);
-  assert.match(aiPage, /restoringThreadId === conversation\.backendThreadId/);
+  assert.match(aiPage, /restoringThreadId=\{restoringThreadId\}/);
 });
 
 await check("compact searchable history list replaces oversized cards", () => {
   assert.match(aiPage, /historyQuery/);
   assert.match(aiPage, /Search conversations/);
-  assert.match(aiPage, /min-h-\[46px\]/);
-  assert.match(aiPage, /groupedConversations/);
+  assert.match(aiPage, /<OyiHistory view=\{historyView\}/);
+  assert.match(aiPage, /filteredConversations\.flatMap/);
   assert.doesNotMatch(aiPage, /No messages yet/);
   assert.doesNotMatch(aiPage, /Previous Oyi interactions across your signed-in devices/);
 });
@@ -414,7 +414,7 @@ await check("domain UI supports compact restored tables previews and composer cl
   assert.match(aiPage, /ConversationTable/);
   assert.match(aiPage, /rows\.slice\(0, 20\)/);
   assert.match(aiPage, /overflow-x-auto/);
-  assert.match(aiPage, /composerReserve/);
+  assert.match(aiPage, /composer=\{<OyiComposer/);
   assert.match(aiPage, /bottomRef/);
 });
 

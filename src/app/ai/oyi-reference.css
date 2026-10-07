@@ -1,0 +1,58 @@
+/* Consumer composition only. Primitives and interaction state live in the
+   pinned shared package; scope/navigation come from the surface adapter. */
+.oyi-reference {
+  position: fixed;
+  inset: 0;
+  height: var(--vvh, 100dvh);
+  overflow: hidden;
+  color-scheme: dark;
+  --oyi-keyboard-inset: 0px; /* --vvh already excludes the keyboard. */
+  --oyi-attention: #a8cfff;
+  --oyi-attention-soft: rgba(168, 207, 255, .1);
+}
+.oyi-reference .oyi-shell-stage {
+  background: radial-gradient(ellipse at 50% 35%, rgba(28, 94, 170, .08), transparent 60%);
+}
+.oyi-reference .oyi-shell-rail { position: relative; z-index: 1; }
+.oyi-reference .oyi-shell-stage-inner { padding-top: 38px; padding-bottom: 28px; }
+.oyi-reference .oyi-shell-main { padding: 28px 0; }
+.oyi-reference-identity { display: inline-flex; align-items: center; gap: 9px; font-size: 17px; font-weight: 600; letter-spacing: -.035em; white-space: nowrap; }
+.oyi-reference-sidebar-heading, .oyi-reference-section-heading { display: flex; align-items: center; justify-content: space-between; min-height: 40px; gap: 8px; margin-bottom: 16px; }
+.oyi-reference-section-heading { margin: 0 0 10px; }
+.oyi-reference-section-heading h2 { color: var(--oyi-text-muted); font-size: 12px; font-weight: 500; letter-spacing: .04em; }
+.oyi-reference-context { margin: 16px 10px 8px; color: var(--oyi-text-muted); font-size: 12px; overflow-wrap: anywhere; }
+.oyi-reference-navigation { display: grid; gap: 2px; margin: 10px 0 18px; }
+.oyi-reference-navigation a { display: block; border-radius: 8px; padding: 9px 12px; color: var(--oyi-text-muted); font-size: 13px; text-decoration: none; }
+.oyi-reference-navigation a:hover, .oyi-reference-navigation a[aria-current="page"] { background: var(--oyi-surface-hover); color: var(--oyi-text); }
+.oyi-reference a:focus-visible, .oyi-reference button:focus-visible, .oyi-reference summary:focus-visible, .oyi-reference input:focus-visible { outline: 2px solid var(--oyi-accent-strong); outline-offset: 3px; }
+.oyi-reference-account { display: flex; align-items: center; gap: 10px; padding: 12px; color: var(--oyi-text-muted); font-size: 13px; text-decoration: none; border-top: 1px solid var(--oyi-border); }
+.oyi-reference-search { display: flex; align-items: center; gap: 8px; padding: 8px 10px; margin-bottom: 10px; border: 1px solid var(--oyi-border); border-radius: 10px; color: var(--oyi-text-muted); }
+.oyi-reference-search input { width: 100%; min-width: 0; background: transparent; border: 0; color: var(--oyi-text); font: inherit; font-size: 13px; }
+.oyi-reference-search input::placeholder { color: var(--oyi-text-muted); }
+.oyi-reference-hint { font-size: 12px; color: var(--oyi-text-muted); padding: 10px; }
+.oyi-reference-replies { width: 100%; min-width: 0; }
+.oyi-reference-message { width: 100%; margin-bottom: 20px; }
+.oyi-reference-message-body { min-width: 0; overflow-wrap: anywhere; }
+.oyi-reference-message[data-role="user"] .oyi-caption { color: var(--oyi-text-muted); font-size: 13px; }
+.oyi-reference .oyi-caption-line { white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.oyi-reference-message[data-role="assistant"] .oyi-caption { font-size: 15px; line-height: 1.75; }
+.oyi-reference-message .oyi-notice { margin-top: 12px; }
+.oyi-reference-earlier { margin-bottom: 22px; }
+.oyi-reference-earlier summary { color: var(--oyi-text-muted); cursor: pointer; font-size: 12px; margin-bottom: 18px; }
+.oyi-reference .oyi-shell-dock { padding-top: 8px; }
+.oyi-reference .oyi-suggestions { gap: 0; }
+.oyi-reference .oyi-suggestion { padding: 8px 0; font-size: 13px; }
+.oyi-reference .oyi-composer { min-height: 58px; border-radius: 24px; background: #0b1420; box-shadow: 0 8px 30px rgba(0,0,0,.14); }
+.oyi-reference .oyi-composer-input { font-size: 16px; line-height: 24px; min-height: 40px; }
+@media (min-width: 1024px) {
+  .oyi-reference { --oyi-sidebar-width: 272px; }
+  .oyi-reference .oyi-shell { --oyi-sidebar-width: 272px; --oyi-column-max: 760px; }
+  .oyi-reference-mobile-only { display: none !important; }
+  .oyi-reference .oyi-shell-rail { min-height: 68px; padding-inline: 24px; }
+  .oyi-reference .oyi-shell-dock { padding-bottom: 26px; }
+}
+@media (max-height: 560px) {
+  .oyi-reference .oyi-shell-main { padding: 8px 0; }
+  .oyi-reference .oyi-orb[data-size="large"] { --oyi-orb-size: 88px; }
+  .oyi-reference .oyi-shell-stage-inner { padding-block: 14px; }
+}

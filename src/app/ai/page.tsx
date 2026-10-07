@@ -2,17 +2,17 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, ArrowUp, Check, CircleDashed, Clock3, Copy, History, Mic, Plus, Search, Square, ThumbsUp, Volume2, X } from "lucide-react";
+import { Check, CircleDashed, Clock3, Copy, History, Menu, Plus, Search, ThumbsUp, UserRound, Volume2, X } from "lucide-react";
 
-import LayoutWrapper from "@/app/components/LayoutWrapper";
 import useAuth from "@/hooks/useAuth";
 import useActiveContext from "@/hooks/useActiveContext";
 import { aiService, type AiChatResponse } from "@/services/aiService";
 import { deriveConsumerOperationalObject, deriveConsumerTarget } from "@/services/operationalObjectContext";
 import { isTerminalOyiWorkflowStatus, normalizeOyiActiveWorkflow, oyiService, type OyiActiveWorkflow, type OyiThread, type OyiThreadMessage } from "@/services/oyiService";
 import { resolveConsumerOyiTarget } from "@/services/oyiTargetRegistry";
-import { actionResultView, confirmationProposal, emptyResponseText, latestAssistantMessage, normalizeOyiThreads, orbStateForView, OYI_WORKING_TEXT, OyiActionResult, OyiConfirmation, OyiOrb, useOyiConnectivity, useOyiInteraction } from "oyi-interaction";
+import { actionResultView, confirmationProposal, emptyResponseText, latestAssistantMessage, normalizeOyiThreads, orbStateForView, OYI_WORKING_TEXT, OyiActionResult, OyiConfirmation, OyiOrb, useOyiConnectivity, useOyiInteraction, useOyiLayout, useOyiReducedMotion, OyiShell, OyiComposer, OyiCaption, OyiSuggestions, OyiHistory, OyiNotice, normalizeOyiSuggestions, oyiHistoryView } from "oyi-interaction";
 import "oyi-interaction/styles.css";
+import "./oyi-reference.css";
 import { consumerMessageStateForAction, createConsumerSurfaceAdapter } from "@/oyi/consumerSurfaceAdapter";
 import type { OyiTarget } from "@/services/oyiService";
 import {
@@ -299,13 +299,6 @@ function awarenessCards(resp: AiChatResponse) {
   return [primaryCard, ...remaining];
 }
 
-function toneClass(tone?: Suggestion["tone"]) {
-  if (tone === "green") return "border-emerald-300/20 bg-emerald-400/[0.07] text-emerald-50";
-  if (tone === "amber") return "border-amber-300/20 bg-amber-400/[0.07] text-amber-50";
-  if (tone === "violet") return "border-violet-300/20 bg-violet-400/[0.07] text-violet-50";
-  return "border-sky-300/22 bg-sky-400/[0.08] text-sky-50";
-}
-
 function loadJson<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
   try {
@@ -365,28 +358,6 @@ function messageFromThread(row: OyiThreadMessage): AiMessage {
   };
 }
 
-function groupConversationTime(timestamp: number) {
-  const now = new Date();
-  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const startYesterday = startToday - 24 * 60 * 60 * 1000;
-  if (timestamp >= startToday) return "Today";
-  if (timestamp >= startYesterday) return "Yesterday";
-  return "Earlier";
-}
-
-function formatTime(timestamp: number) {
-  if (!Number.isFinite(timestamp) || timestamp <= 0) return "Time unavailable";
-  const date = new Date(timestamp);
-  const now = new Date();
-  const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  if (date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate()) return time;
-  const yesterday = new Date(now);
-  yesterday.setDate(now.getDate() - 1);
-  if (date.getFullYear() === yesterday.getFullYear() && date.getMonth() === yesterday.getMonth() && date.getDate() === yesterday.getDate()) return `Yesterday, ${time}`;
-  if (date.getFullYear() === now.getFullYear()) return date.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-  return date.toLocaleString([], { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
-}
-
 function formatSnapshotTime(timestamp: number) {
   if (!Number.isFinite(timestamp) || timestamp <= 0) return "Time unavailable";
   const date = new Date(timestamp);
@@ -398,10 +369,6 @@ function formatSnapshotTime(timestamp: number) {
   if (timestamp >= startYesterday) return `Yesterday, ${time}`;
   if (date.getFullYear() === now.getFullYear()) return date.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
   return date.toLocaleString([], { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
-}
-
-function Spinner() {
-  return <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border border-white/18 border-t-sky-200 align-[-2px]" />;
 }
 
 function ConversationTable({ card }: { card: Record<string, any> }) {
@@ -453,7 +420,7 @@ function StructuredCards({ cards, onTarget }: { cards?: Array<Record<string, any
         const items = Array.isArray(card.items) ? card.items : [];
         const isTable = String(card.type || "") === "table";
         return (
-          <div key={`${card.type || card.title || "card"}-${index}`} className={isTable ? "-mx-4" : "rounded-[18px] border border-white/[0.07] bg-black/18 p-3"}>
+          <div key={`${card.type || card.title || "card"}-${index}`} className={isTable ? "min-w-0 w-full" : "rounded-[18px] border border-white/[0.07] bg-black/18 p-3"}>
             {!isTable ? <div className="text-[11px] uppercase tracking-[0.16em] text-sky-100/46">{card.type ? String(card.type).replace(/_/g, " ") : "Summary"}</div> : null}
             {!isTable ? <div className="mt-1 text-[13px] font-semibold text-white/90">{card.title || "Home update"}</div> : null}
             {!isTable && card.summary ? <div className="mt-1 text-xs leading-5 text-white/52">{String(card.summary)}</div> : null}
@@ -667,25 +634,6 @@ function NavigationTransition({ route, onStay, onContinue }: { route?: string | 
   );
 }
 
-function ComposerWaveform({ active, levels }: { active: boolean; levels?: number[] }) {
-  const bars = levels?.length ? levels : Array.from({ length: 28 }).map((_, index) => 0.18 + (((index * 5) % 18) / 24));
-  return (
-    <div className="flex h-8 items-center gap-[3px] overflow-hidden" aria-hidden="true">
-      {bars.slice(-28).map((level, index) => (
-        <span
-          key={index}
-          className="w-[2px] rounded-full bg-sky-200/80 shadow-[0_0_8px_rgba(56,189,248,0.38)]"
-          style={{
-            height: `${Math.max(5, Math.min(24, 5 + level * 26))}px`,
-            opacity: active ? 0.82 : 0.32,
-            transition: "height 90ms ease, opacity 120ms ease",
-          }}
-        />
-      ))}
-    </div>
-  );
-}
-
 function ConfirmationCard({ confirmation, onDecision, disabled }: { confirmation: Record<string, any>; onDecision: (confirmation: Record<string, any>, decision: "confirm" | "cancel") => void; disabled: boolean }) {
   const referenceId = String(confirmation?.workflow_id || confirmation?.action_id || confirmation?.ledger_id || confirmation?.id || confirmation?.command_id || "");
   // Shared proposal primitive: approval, never verification.
@@ -713,11 +661,17 @@ function OyiAiCommandCenterContent() {
   const [backendThreadId, setBackendThreadId] = useState<string | null>(null);
   const [activeConversation, setActiveConversation] = useState<ActiveConversationState>({ threadId: null, status: "blank", source: "new" });
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyReload, setHistoryReload] = useState(0);
+  const layout = useOyiLayout();
+  const reducedMotion = useOyiReducedMotion();
   const [historyQuery, setHistoryQuery] = useState("");
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [restoringThreadId, setRestoringThreadId] = useState<string | null>(null);
   const [voiceMode, setVoiceMode] = useState<VoiceMode>("idle");
-  const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>("Listening");
+  const [, setVoiceStatus] = useState<VoiceStatus>("Listening");
   // Shared Oyi interaction state: local facts (voice, connectivity, turn in
   // flight) + canonical truth of the current turn. The orb renders it.
   const [interaction, dispatchInteraction] = useOyiInteraction();
@@ -725,20 +679,19 @@ function OyiAiCommandCenterContent() {
   const [voiceError, setVoiceError] = useState("");
   const [helpfulResponses, setHelpfulResponses] = useState<Record<string, boolean>>({});
   const [transcript, setTranscript] = useState("");
-  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [, setRecordingSeconds] = useState(0);
   const recognitionRef = useRef<any>(null);
   const timerRef = useRef<number | null>(null);
-  const scrollerRef = useRef<HTMLDivElement | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
+  const audioMeterEpoch = useRef(0);
   const meterRafRef = useRef<number | null>(null);
-  const composerRef = useRef<HTMLFormElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const routeThreadRestoreRef = useRef<string | null>(null);
   const restoreSequenceRef = useRef(0);
   const cancelledNavigationRef = useRef<Set<string>>(new Set());
-  const [audioLevels, setAudioLevels] = useState<number[]>(Array.from({ length: 28 }, () => 0.2));
-  const [composerHeight, setComposerHeight] = useState(132);
+  const [audioLevels, setAudioLevels] = useState<number[]>([]);
+  const [voiceAvailable, setVoiceAvailable] = useState(false);
   const [targetError, setTargetError] = useState<string | null>(null);
   const moduleContext = searchParams.get("module") || "ai";
   const [registeredContext, setRegisteredContext] = useState<ActiveIntelligenceContext | null>(() => readPersistedActiveIntelligenceContext());
@@ -855,10 +808,7 @@ function OyiAiCommandCenterContent() {
   const chatMode = messages.length > 0;
   const canonicalActiveThreadId = activeConversation.threadId || backendThreadId || searchParams.get("threadId");
   const recording = voiceMode === "recording";
-  const voiceConversation = voiceMode === "conversation";
-  const inputWake = input.toLowerCase().includes("oyi") || transcript.toLowerCase().includes("oyi");
   const orbState = orbStateForView(interaction);
-  const composerReserve = `calc(${composerHeight + 24}px + var(--sab) + var(--kb))`;
 
   useEffect(() => {
     if (process.env.NODE_ENV !== "development") return;
@@ -873,6 +823,7 @@ function OyiAiCommandCenterContent() {
   }, [messages]);
 
   useEffect(() => {
+    setVoiceAvailable(Boolean((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition));
     setUsage(loadJson<Record<string, number>>(USAGE_KEY, {}));
     setHelpfulResponses(loadJson<Record<string, boolean>>(FEEDBACK_KEY, {}));
   }, []);
@@ -880,9 +831,12 @@ function OyiAiCommandCenterContent() {
   useEffect(() => {
     let cancelled = false;
     async function loadConversations() {
+      setHistoryLoading(true);
+      setHistoryError(null);
       const localFallback = loadJson<Conversation[]>(CONVERSATIONS_KEY, []);
       if (!(user as any)?.id) {
         setConversations(localFallback);
+        setHistoryLoading(false);
         return;
       }
       try {
@@ -908,12 +862,17 @@ function OyiAiCommandCenterContent() {
           messages: [],
         })));
       } catch {
-        if (!cancelled) setConversations(localFallback);
+        if (!cancelled) {
+          setConversations(localFallback);
+          setHistoryError("Saved history is unavailable. Any conversations shown below are cached on this device.");
+        }
+      } finally {
+        if (!cancelled) setHistoryLoading(false);
       }
     }
     void loadConversations();
     return () => { cancelled = true; };
-  }, [user, context.estate_id, context.home_id]);
+  }, [user, context.estate_id, context.home_id, historyReload]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -923,38 +882,11 @@ function OyiAiCommandCenterContent() {
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    let frame = 0;
-    const measure = () => {
-      const height = Math.ceil(composerRef.current?.getBoundingClientRect().height || 132);
-      setComposerHeight((current) => (Math.abs(current - height) > 2 ? height : current));
-    };
-    measure();
-    const observer = typeof ResizeObserver !== "undefined" && composerRef.current ? new ResizeObserver(measure) : null;
-    if (observer && composerRef.current) observer.observe(composerRef.current);
-    const schedule = () => {
-      window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(measure);
-    };
-    window.addEventListener("resize", schedule);
-    window.visualViewport?.addEventListener("resize", schedule);
-    window.visualViewport?.addEventListener("scroll", schedule);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      observer?.disconnect();
-      window.removeEventListener("resize", schedule);
-      window.visualViewport?.removeEventListener("resize", schedule);
-      window.visualViewport?.removeEventListener("scroll", schedule);
-    };
-  }, [recording, inputWake]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
     const frame = window.requestAnimationFrame(() => {
-      bottomRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+      bottomRef.current?.scrollIntoView({ block: "nearest", behavior: reducedMotion ? "auto" : "smooth" });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [messages, composerHeight]);
+  }, [messages, reducedMotion]);
 
   useEffect(() => {
     return () => stopVoiceCapture();
@@ -1099,6 +1031,7 @@ function OyiAiCommandCenterContent() {
   }
 
   function stopAudioMeter() {
+    audioMeterEpoch.current += 1;
     if (meterRafRef.current) window.cancelAnimationFrame(meterRafRef.current);
     meterRafRef.current = null;
     mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
@@ -1109,11 +1042,13 @@ function OyiAiCommandCenterContent() {
 
   async function startAudioMeter() {
     if (typeof window === "undefined" || !navigator.mediaDevices?.getUserMedia) return;
+    const epoch = ++audioMeterEpoch.current;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (epoch !== audioMeterEpoch.current) { stream.getTracks().forEach((track) => track.stop()); return; }
       mediaStreamRef.current = stream;
       const Ctx = window.AudioContext || (window as any).webkitAudioContext;
-      if (!Ctx) return;
+      if (!Ctx) { stopAudioMeter(); return; }
       const ctx = new Ctx();
       audioContextRef.current = ctx;
       const analyser = ctx.createAnalyser();
@@ -1128,7 +1063,7 @@ function OyiAiCommandCenterContent() {
           sum += centered * centered;
         }
         const rms = Math.min(1, Math.sqrt(sum / data.length) * 4);
-        setAudioLevels((current) => [...current.slice(-27), Math.max(0.12, rms)]);
+        setAudioLevels((current) => [...current.slice(-27), rms]);
         meterRafRef.current = window.requestAnimationFrame(tick);
       };
       tick();
@@ -1154,6 +1089,7 @@ function OyiAiCommandCenterContent() {
   function startVoiceCapture(mode: VoiceMode) {
     if (busy || typeof window === "undefined") return;
     setVoiceError("");
+    setAudioLevels([]);
     setTranscript("");
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
@@ -1180,6 +1116,8 @@ function OyiAiCommandCenterContent() {
         if (mode === "conversation" && finalResult && text) void handleSend(text, { fromVoice: true });
       };
       recognition.onerror = () => {
+        stopAudioMeter();
+        setVoiceMode("idle");
         dispatchInteraction({ type: "voice.error", message: "I could not hear clearly." });
         setVoiceError("I could not hear clearly. Try again or type your command.");
         setVoiceStatus("Failed");
@@ -1304,7 +1242,8 @@ function OyiAiCommandCenterContent() {
       } : item));
       setThreadRoute(requestedThreadId);
       setHistoryOpen(false);
-      window.requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ block: "end", behavior: "smooth" }));
+      setSidebarOpen(false);
+      window.requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ block: "end", behavior: reducedMotion ? "auto" : "smooth" }));
       return true;
     } catch (error) {
       if (restoreSequenceRef.current !== restoreSeq) return false;
@@ -1329,7 +1268,9 @@ function OyiAiCommandCenterContent() {
     setBackendThreadId(null);
     setActiveConversation({ threadId: null, status: "blank", source: "history", activeWorkflow: conversation.activeWorkflow || null });
     setMessages(conversation.messages || []);
+    dispatchInteraction({ type: "thread.restored", latestAssistant: [...(conversation.messages || [])].reverse().find((message) => message.role === "assistant") || null });
     setThreadRoute(null);
+    setSidebarOpen(false);
     setHistoryOpen(false);
   }
 
@@ -1348,6 +1289,9 @@ function OyiAiCommandCenterContent() {
     setBackendThreadId(null);
     setActiveConversation({ threadId: null, status: "blank", source: "new", activeWorkflow: null });
     setMessages([]);
+    stopVoiceCapture();
+    setVoiceMode("idle");
+    setSidebarOpen(false);
     setHistoryOpen(false);
     setHistoryError(null);
     setRestoringThreadId(null);
@@ -1375,69 +1319,42 @@ function OyiAiCommandCenterContent() {
     if (!query) return conversations;
     return conversations.filter((item) => `${item.title || ""} ${item.preview || ""}`.toLowerCase().includes(query));
   }, [conversations, historyQuery]);
-  const groupedConversations = ["Today", "Yesterday", "Earlier"].map((group) => ({ group, items: filteredConversations.filter((item) => groupConversationTime(item.updatedAt) === group) })).filter((section) => section.items.length);
 
-  return (
-    <LayoutWrapper>
-      <main className="fixed inset-0 flex flex-col overflow-hidden bg-[#02060b] text-white md:left-[108px]">
-        <div className="oyi-ambient-bg" />
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_12%,rgba(0,132,255,0.16),transparent_32%),linear-gradient(180deg,rgba(4,12,22,0.12),rgba(0,0,0,0.94))]" />
-
-        <header className="relative z-20 mx-auto w-full max-w-[680px] shrink-0 px-5 lg:max-w-[900px] xl:max-w-[1040px]" style={{ paddingTop: "calc(12px + var(--sat))" }}>
-          <div className="flex items-center justify-between gap-2">
-            <button type="button" onClick={() => (window.history.length > 1 ? router.back() : router.push("/home"))} aria-label="Back" className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.03] text-white/78 backdrop-blur-2xl transition hover:bg-white/[0.06] hover:text-white active:scale-95">
-              <ArrowLeft className="h-5 w-5" />
-            </button>
-            <div className="min-w-0 flex-1 text-center">
-              <div className="truncate text-[18px] font-semibold tracking-[-0.04em]">Oyi</div>
-              <div className="truncate text-[10px] text-white/42">Living intelligence</div>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <button type="button" onClick={() => { setHistoryError(null); setHistoryOpen(true); }} className="grid h-10 w-10 place-items-center rounded-full border border-sky-300/14 bg-sky-300/[0.055] text-sky-50/82 shadow-[0_0_24px_rgba(56,189,248,0.14)] transition active:scale-95" aria-label="Conversation history"><History className="h-4 w-4" /></button>
-              <button type="button" onClick={startNewConversation} className="grid h-10 w-10 place-items-center rounded-full border border-white/[0.09] bg-white/[0.045] text-white/78 transition active:scale-95" aria-label="New chat"><Plus className="h-4 w-4" /></button>
-            </div>
-          </div>
-        </header>
-        {targetError ? <div className="relative z-20 mx-auto mt-2 max-w-[680px] px-5 lg:max-w-[900px] xl:max-w-[1040px]"><p className="rounded-xl border border-amber-300/20 bg-amber-400/[0.08] px-3 py-2 text-xs text-amber-100">{targetError}</p></div> : null}
-
-        <section className="relative z-10 mx-auto flex min-h-0 w-full max-w-[680px] flex-1 flex-col px-5 lg:max-w-[900px] xl:max-w-[1040px]" style={{ paddingTop: 8 }}>
-          {/* Interaction state for assistive tech: the orb is never the only carrier of state. */}
-          <span className="oyi-visually-hidden" role="status" aria-live="polite">{interaction.label}</span>
-          <div
-            ref={scrollerRef}
-            className="min-h-0 flex-1 overflow-y-auto pr-1"
-            style={{
-              WebkitOverflowScrolling: "touch",
-              paddingBottom: composerReserve,
-              scrollPaddingBottom: composerReserve,
-            }}
-          >
-            {!chatMode ? (
-              <div className="flex min-h-full flex-col items-center justify-center text-center">
-                <OyiOrb size="large" state={orbState} actionLabel="Talk to Oyi" onActivate={() => startVoiceCapture("conversation")} />
-                <h1 className="mt-6 text-[29px] font-semibold tracking-[-0.06em]">{voiceConversation ? voiceStatus : "How can I help?"}</h1>
-                <p className="mt-2 max-w-[280px] text-[14px] leading-5 text-white/50">Ask about your home, run safe commands, open scenes, or check what needs attention.</p>
-                {voiceError ? <p className="mt-4 rounded-full border border-amber-300/14 bg-amber-400/[0.06] px-3 py-2 text-xs text-amber-100/80">{voiceError}</p> : null}
-                <div className="mt-7 flex w-full max-w-[390px] flex-wrap justify-center gap-2.5">
-                  {suggestions.map((item) => (
-                    <button key={item.label} type="button" onClick={() => submitSuggestion(item)} className={`rounded-full border px-3.5 py-2 text-xs font-medium backdrop-blur-xl transition active:scale-95 ${toneClass(item.tone)}`}>
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-4 pt-4">
-                {messages.map((message) => {
-                  const hasTableCard = message.role === "assistant" && Array.isArray(message.cards) && message.cards.some((card) => String((card as any)?.type || "") === "table");
+  const historyThreads = filteredConversations.flatMap((conversation) => normalizeOyiThreads([{
+    id: conversation.backendThreadId || conversation.id,
+    title: conversation.title,
+    preview: conversation.preview,
+    updatedAt: conversation.updatedAt,
+    messageCount: conversation.messageCount || conversation.messages.length,
+  }], { activeThreadId: canonicalActiveThreadId || conversationId, source: conversation.backendThreadId ? "backend" : "local" }));
+  const navigation = surfaceAdapter.navigation();
+  const historyView = oyiHistoryView({ threads: historyThreads, loading: historyLoading, error: historyError, activeThreadId: canonicalActiveThreadId });
+  const controlsBusy = busy || Boolean(restoringThreadId);
+  const closeDrawers = () => { setSidebarOpen(false); setHistoryOpen(false); };
+  const newConversation = () => { if (!controlsBusy) startNewConversation(); };
+  const historyContent = (
+    <div className="oyi-reference-history">
+      <div className="oyi-reference-section-heading">
+        <h2>Conversations</h2>
+        <button type="button" className="oyi-icon-button oyi-reference-mobile-only" aria-label="Close history" onClick={closeDrawers}><X size={18} /></button>
+      </div>
+      <label className="oyi-reference-search"><Search size={16} aria-hidden="true" /><input aria-label="Search conversations" placeholder="Search conversations" value={historyQuery} onChange={(event) => setHistoryQuery(event.target.value)} /></label>
+      {historyQuery && !historyThreads.length && !historyLoading && !historyError ? <p className="oyi-reference-hint">No matching conversations.</p> : null}
+      <div inert={controlsBusy}>
+        <OyiHistory view={historyView} restoringThreadId={restoringThreadId} onRetry={() => setHistoryReload((value) => value + 1)} onSelect={(thread) => {
+          const conversation = conversations.find((item) => (item.backendThreadId || item.id) === thread.id);
+          if (conversation && !controlsBusy) void restoreConversation(conversation);
+        }} />
+      </div>
+    </div>
+  );
+  const renderMessage = (message: AiMessage) => {
                   return (
-                  <div key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-                    <div className={`overflow-hidden rounded-[24px] px-4 py-3 text-sm leading-6 shadow-[0_16px_42px_rgba(0,0,0,0.24)] ${hasTableCard ? "max-w-[99%]" : "max-w-[94%] sm:max-w-[86%] lg:max-w-[620px]"} ${message.role === "user" ? "rounded-br-[8px] bg-white text-black" : "rounded-bl-[8px] border border-white/[0.07] bg-white/[0.045] text-white/82 backdrop-blur-xl"}`}>
-                      <div className="whitespace-pre-wrap break-words">{message.pending ? <span className="inline-flex items-center gap-2"><Spinner /> {message.content}</span> : message.content}</div>
+                  <article key={message.id} className="oyi-reference-message" data-role={message.role}>
+                    <div className="oyi-reference-message-body">
+                      {message.pending ? <OyiNotice>{message.content}</OyiNotice> : <OyiCaption key={message.id} live={message === messages[messages.length - 1]} collapseAfter={900} entries={[{ kind: message.role === "user" ? "user_final" : message.state === "clarification_required" ? "clarification" : "oyi_response", text: message.content }]} />}
                       {!message.pending && message.role === "assistant" && (message.persistence_saved === false || message.warnings?.some((warning) => /not saved|history/i.test(warning))) ? (
-                        <div className="mt-2 rounded-2xl border border-amber-300/18 bg-amber-400/[0.07] px-3 py-2 text-xs leading-5 text-amber-100/84">
-                          This response could not be saved to History.
-                        </div>
+                        <OyiNotice tone="warning">This response could not be saved to History.</OyiNotice>
                       ) : null}
                       {!message.pending && message.role === "assistant" ? (
                         <>
@@ -1467,7 +1384,7 @@ function OyiAiCommandCenterContent() {
                           ) : null}
                         </>
                       ) : null}
-                      {shouldRenderSupport(message.display_mode) && message.confirmations?.length ? message.confirmations.map((confirmation, index) => <ConfirmationCard key={String(confirmation?.ledger_id || confirmation?.id || index)} confirmation={confirmation} disabled={busy} onDecision={decideConfirmation} />) : null}
+                      {shouldRenderSupport(message.display_mode) && message.confirmations?.length ? message.confirmations.map((confirmation, index) => <ConfirmationCard key={String(confirmation?.ledger_id || confirmation?.id || index)} confirmation={confirmation} disabled={busy || message !== messages[messages.length - 1]} onDecision={decideConfirmation} />) : null}
                       {message.role === "assistant" && !message.pending ? (
                         <div className="mt-2.5 flex items-center gap-1.5 border-t border-white/[0.055] pt-2">
                           <button type="button" onClick={() => void copyResponse(message.content)} className="grid h-7 w-7 place-items-center rounded-full text-white/30 transition hover:bg-white/[0.055] hover:text-white/72 active:scale-95" aria-label="Copy Oyi response"><Copy className="h-3.5 w-3.5" /></button>
@@ -1476,117 +1393,78 @@ function OyiAiCommandCenterContent() {
                         </div>
                       ) : null}
                     </div>
-                  </div>
+                  </article>
                   );
-                })}
-                <div ref={bottomRef} aria-hidden style={{ height: composerReserve }} />
-              </div>
-            )}
-          </div>
-        </section>
+                };
 
-        <form ref={composerRef} onSubmit={(event) => { event.preventDefault(); void handleSend(); }} className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-[680px] px-4 md:left-[108px] lg:max-w-[900px] xl:max-w-[1040px]" style={{ paddingBottom: "calc(12px + var(--sab) + var(--kb))" }}>
-          <div className={`rounded-[28px] border bg-[#040911]/92 p-2.5 shadow-[0_18px_70px_rgba(0,0,0,0.62)] backdrop-blur-2xl transition ${inputWake ? "border-sky-300/45 shadow-[0_0_42px_rgba(0,132,255,0.26)]" : "border-white/[0.08]"}`}>
-            {recording ? (
-              <div className="flex items-center gap-3 px-1.5 py-1">
-                <OyiOrb size="small" state={orbState} />
-                <div className="min-w-0 flex-1">
-                  <div className="mb-0.5 flex items-center justify-between text-[10px] text-white/42"><span>Listening</span><span>{recordingSeconds}s</span></div>
-                  <ComposerWaveform active levels={audioLevels} />
-                </div>
-                <button type="button" onClick={stopRecordingForReview} className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-red-400/14 text-red-100" aria-label="Stop recording">
-                  <Square className="h-4 w-4 fill-current" />
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <OyiOrb size="small" state={orbState} actionLabel="Talk to Oyi" onActivate={() => startVoiceCapture("conversation")} />
-                <textarea
-                  value={input}
-                  onChange={(event) => setInput(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && !event.shiftKey) {
-                      event.preventDefault();
-                      void handleSend();
-                    }
-                  }}
-                  rows={1}
-                  placeholder="Message Oyi…"
-                  className="max-h-28 min-h-11 min-w-0 flex-1 resize-none bg-transparent px-2 py-3 text-[15px] leading-5 text-white outline-none placeholder:text-white/32"
-                />
-                {input ? <button type="button" onClick={() => setInput("")} className="grid h-9 w-9 place-items-center rounded-full bg-white/[0.05] text-white/45" aria-label="Clear"><X className="h-4 w-4" /></button> : null}
-                {input.trim() ? (
-                  <button type="submit" disabled={busy} className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white text-black transition active:scale-95 disabled:bg-white/20 disabled:text-white/35" aria-label="Send">
-                    {busy ? <Check className="h-4 w-4" /> : <ArrowUp className="h-[18px] w-[18px]" />}
-                  </button>
-                ) : (
-                  <button type="button" onClick={() => startVoiceCapture("recording")} className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-sky-300/20 bg-sky-400/[0.09] text-sky-100 transition active:scale-95" aria-label="Record voice command">
-                    <Mic className="h-[18px] w-[18px]" />
-                  </button>
-                )}
-              </div>
-            )}
+  return (
+    <div className="oyi-reference" data-has-conversation={chatMode}>
+      <OyiShell
+        label="Oyi conversation"
+        sidebarOpen={sidebarOpen}
+        sidebarCollapsed={sidebarCollapsed}
+        historyOpen={historyOpen}
+        onDismissSidebar={() => setSidebarOpen(false)}
+        onDismissHistory={() => setHistoryOpen(false)}
+        topRail={<>
+          <button type="button" className="oyi-icon-button" aria-label={layout === "desktop" ? "Toggle sidebar" : "Open navigation"} aria-expanded={layout === "desktop" ? !sidebarCollapsed : sidebarOpen} onClick={() => {
+            setHistoryOpen(false);
+            if (layout === "desktop") setSidebarCollapsed((value) => !value);
+            else setSidebarOpen((value) => !value);
+          }}><Menu size={20} /></button>
+          <span className="oyi-reference-identity"><OyiOrb size="icon" state="idle" /><span>Oyi</span></span>
+        </>}
+        topRailEnd={<>
+          <button type="button" className="oyi-icon-button oyi-reference-mobile-only" aria-label="Conversation history" aria-expanded={historyOpen} onClick={() => { setSidebarOpen(false); setHistoryOpen((value) => !value); }}><History size={20} /></button>
+          <button type="button" className="oyi-icon-button" aria-label="New conversation" disabled={controlsBusy} onClick={newConversation}><Plus size={20} /></button>
+        </>}
+        surfaceNavigation={<>
+          <div className="oyi-reference-sidebar-heading">
+            <span className="oyi-reference-identity"><OyiOrb size="icon" state="idle" /><span>Oyi</span></span>
+            <button type="button" className="oyi-icon-button oyi-reference-mobile-only" aria-label="Close navigation" onClick={closeDrawers}><X size={18} /></button>
           </div>
-        </form>
-
-        {historyOpen ? (
-          <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/55 px-4 pb-[calc(14px+var(--sab))] backdrop-blur-md sm:items-center">
-            <button type="button" className="absolute inset-0" onClick={() => setHistoryOpen(false)} aria-label="Close recent conversations" />
-            <section className="relative flex max-h-[76dvh] w-full max-w-[420px] flex-col overflow-hidden rounded-[24px] border border-white/[0.08] bg-[#050a12]/97 shadow-[0_26px_90px_rgba(0,0,0,0.68)]">
-              <div className="border-b border-white/[0.06] px-3.5 py-3">
-                <div className="flex items-center justify-between gap-3">
-                  <h2 className="text-[15px] font-semibold tracking-[-0.035em]">Recent Conversations</h2>
-                  <button type="button" onClick={() => setHistoryOpen(false)} className="grid h-8 w-8 place-items-center rounded-full bg-white/[0.055] text-white/55"><X className="h-4 w-4" /></button>
-                </div>
-                <label className="mt-2 flex h-9 items-center gap-2 rounded-full border border-white/[0.065] bg-white/[0.035] px-3 text-xs text-white/45">
-                  <Search className="h-3.5 w-3.5 shrink-0" />
-                  <input
-                    value={historyQuery}
-                    onChange={(event) => setHistoryQuery(event.target.value)}
-                    placeholder="Search conversations"
-                    className="min-w-0 flex-1 bg-transparent text-[13px] text-white/78 outline-none placeholder:text-white/32"
-                  />
-                </label>
-                {historyError ? <div className="mt-2 rounded-xl border border-amber-300/18 bg-amber-400/[0.07] px-3 py-2 text-xs text-amber-100/82">{historyError}</div> : null}
-              </div>
-              <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2" style={{ WebkitOverflowScrolling: "touch" }}>
-                {groupedConversations.length ? groupedConversations.map((section) => (
-                  <div key={section.group} className="mb-2">
-                    <div className="px-2 pb-1.5 pt-2 text-[10px] font-medium uppercase tracking-[0.18em] text-sky-100/42">{section.group}</div>
-                    <div className="space-y-0.5">
-                      {section.items.map((conversation) => (
-                        <button
-                          key={conversation.id}
-                          type="button"
-                          onClick={() => void restoreConversation(conversation)}
-                          className={`flex min-h-[46px] w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left transition active:scale-[0.99] ${conversation.backendThreadId && conversation.backendThreadId === canonicalActiveThreadId ? "bg-sky-300/[0.09] text-white" : "text-white/78 hover:bg-white/[0.045]"}`}
-                        >
-                          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${conversation.backendThreadId && conversation.backendThreadId === canonicalActiveThreadId ? "bg-sky-200" : "bg-transparent"}`} />
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-[13px] font-medium leading-5">{conversation.title}</span>
-                            <span className="block truncate text-[11px] leading-4 text-white/34">
-                              {conversation.messageCount || conversation.messages.length ? `${conversation.messageCount || conversation.messages.length} messages` : conversation.preview ? "Saved conversation" : "Conversation"}
-                              {conversation.preview ? ` · ${conversation.preview}` : ""}
-                            </span>
-                          </span>
-                          <span className="shrink-0 text-[11px] text-white/36">{restoringThreadId === conversation.backendThreadId ? <Spinner /> : formatTime(conversation.updatedAt)}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )) : (
-                  <div className="px-6 py-12 text-center">
-                    <Clock3 className="mx-auto h-5 w-5 text-sky-200/55" />
-                    <div className="mt-2 text-sm font-semibold">{historyQuery.trim() ? "No matching conversations." : "No conversations yet."}</div>
-                    <div className="mt-1 text-xs leading-5 text-white/42">{historyQuery.trim() ? "Try another title or phrase." : "Your Oyi conversations will appear here."}</div>
-                  </div>
-                )}
-              </div>
-            </section>
+          <button type="button" className="oyi-history-new" disabled={controlsBusy} onClick={newConversation}><Plus size={18} />New conversation</button>
+          {surfaceAdapter.context().scopeLabel ? <p className="oyi-reference-context">{surfaceAdapter.context().scopeLabel}</p> : null}
+          <nav className="oyi-reference-navigation" aria-label="Consumer modules">{navigation.map((item) => <a key={item.key} href={item.href} aria-current={item.href === pathname ? "page" : undefined} onClick={closeDrawers}>{item.label}</a>)}</nav>
+          {user ? <a className="oyi-reference-account" href="/profile"><UserRound size={17} /><span>Account</span></a> : null}
+        </>}
+        sidebar={historyContent}
+        history={historyContent}
+        mainCanvas={<>
+          <span className="oyi-visually-hidden" role="status" aria-live="polite">{interaction.label}</span>
+          <OyiOrb size="large" state={orbState} />
+          {recording ? <OyiCaption entries={[{ kind: "truth_note", text: transcript || "I'm listening…" }]} /> : null}
+        </>}
+        caption={<>
+          {!interaction.online ? <OyiNotice tone="offline">You’re offline. Reconnect to send a message.</OyiNotice> : null}
+          {targetError ? <OyiNotice tone="warning">{targetError}</OyiNotice> : null}
+          {voiceError ? <OyiNotice tone="warning">{voiceError}</OyiNotice> : null}
+          {restoringThreadId ? <OyiNotice>Loading conversation…</OyiNotice> : null}
+          <div className="oyi-reference-replies">
+            {messages.length > 2 ? <details className="oyi-reference-earlier"><summary>Earlier messages</summary>{messages.slice(0, -2).map(renderMessage)}</details> : null}
+            {messages.slice(-2).map(renderMessage)}
+            <div ref={bottomRef} aria-hidden="true" />
           </div>
-        ) : null}
-      </main>
-    </LayoutWrapper>
+        </>}
+        suggestions={!chatMode && !recording ? <OyiSuggestions items={normalizeOyiSuggestions(suggestions.slice(0, 3), { source: "seed" })} onSelect={(item) => { if (!controlsBusy && interaction.online) submitSuggestion({ label: item.label, prompt: item.prompt || undefined, href: item.href || undefined }); }} /> : null}
+        composer={<OyiComposer
+          value={input} onChange={setInput} onSubmit={(value) => { void handleSend(value); }}
+          turnInFlight={busy} disabled={!interaction.online || Boolean(restoringThreadId)}
+          confirmationPending={Boolean(interaction.action?.awaiting_user) || interaction.canonical?.kind === "confirmation"}
+          voiceAvailable={voiceAvailable} voiceActive={recording} voiceInterim={transcript} voiceLevels={audioLevels}
+          voiceStatusLabel={transcript ? "Transcribing…" : "I'm listening…"}
+          onStartVoice={() => startVoiceCapture("recording")}
+          onStopVoice={stopRecordingForReview}
+          onCancelVoice={() => {
+            const recognition = recognitionRef.current;
+            if (recognition) { recognition.onresult = null; recognition.onend = null; recognition.onerror = null; }
+            stopVoiceCapture();
+            try { recognition?.abort?.(); } catch {}
+            setVoiceMode("idle"); setTranscript(""); setInput(""); setAudioLevels([]);
+          }}
+        />}
+      />
+    </div>
   );
 }
 

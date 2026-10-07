@@ -4,6 +4,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, useReducedMotion } from "framer-motion";
+import { OyiOrb } from "oyi-interaction";
+import "oyi-interaction/styles.css";
 import {
   ChevronDown,
   Check,
@@ -724,18 +726,7 @@ export default function HomePage() {
                 aria-label="Open Oyi intelligence"
                 className="group relative mx-auto mt-6 grid h-[166px] w-[166px] place-items-center rounded-full transition active:scale-[0.985] sm:h-[182px] sm:w-[182px]"
               >
-                <span className="absolute inset-[-20px] rounded-full bg-sky-500/9 blur-2xl transition group-active:bg-sky-400/14" />
-                <motion.span
-                  aria-hidden="true"
-                  className="absolute inset-[-6px] rounded-full border border-sky-300/45"
-                  animate={{ opacity: [0.45, 0.9, 0.45], scale: [0.98, 1.035, 0.98] }}
-                  transition={{ duration: 5.2, repeat: Infinity, ease: "easeInOut" }}
-                />
-                <span className="absolute inset-0 rounded-full border border-sky-300/68 bg-[radial-gradient(circle_at_42%_28%,rgba(255,255,255,0.18),transparent_15%),radial-gradient(circle_at_50%_58%,rgba(22,111,255,0.38),rgba(2,7,14,0.95)_68%)] shadow-[inset_0_0_34px_rgba(255,255,255,0.05),0_0_36px_rgba(0,132,255,0.46),0_30px_66px_rgba(0,0,0,0.55)]" />
-                <span className="absolute -bottom-7 h-10 w-[74%] rounded-[100%] bg-sky-500/16 blur-xl" />
-                <span className="relative text-[36px] font-semibold tracking-[-0.08em] text-white sm:text-[40px]">
-                  Oyi
-                </span>
+                <OyiOrb size="large" state="idle" />
               </button>
 
               <div className="mt-10">
