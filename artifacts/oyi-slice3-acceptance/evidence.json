@@ -1,0 +1,1183 @@
+{
+  "date": "2026-10-07",
+  "consumer_sha": "55b0d1745cf778f47a5533b1fe0983566002eb4d",
+  "shared_sha": "feff2ed401edd904183e309d5b92c2c64d0fcdc3",
+  "browser": {
+    "mode": "isolated presentation fixtures; no authenticated identity or real execution",
+    "authenticated_backend": "BLOCKED: no approved test identity/configuration available",
+    "results": [
+      {
+        "name": "390: idle, minimal controls, responsive shell, reduced motion",
+        "status": "PASS"
+      },
+      {
+        "name": "390: navigation drawer traps focus and returns it on Escape",
+        "status": "PASS"
+      },
+      {
+        "name": "390: shared history restores action truth through the existing HTTP contract",
+        "status": "PASS"
+      },
+      {
+        "name": "390: voice fixture, interim transcript, cancellation",
+        "status": "PASS"
+      },
+      {
+        "name": "390: typing, real request-in-flight, duplicate-send guard, long response",
+        "status": "PASS"
+      },
+      {
+        "name": "390: wide table stays inside the response with its own scroll boundary",
+        "status": "PASS"
+      },
+      {
+        "name": "390: confirmation remains separate; unobservable and not-saved are honest",
+        "status": "PASS"
+      },
+      {
+        "name": "390: offline and short visual viewport keep composer accessible",
+        "status": "PASS"
+      },
+      {
+        "name": "390: no hydration/console errors, unexpected requests or external access",
+        "status": "PASS"
+      },
+      {
+        "name": "768: idle, minimal controls, responsive shell, reduced motion",
+        "status": "PASS"
+      },
+      {
+        "name": "768: navigation drawer traps focus and returns it on Escape",
+        "status": "PASS"
+      },
+      {
+        "name": "768: shared history restores action truth through the existing HTTP contract",
+        "status": "PASS"
+      },
+      {
+        "name": "768: voice fixture, interim transcript, cancellation",
+        "status": "PASS"
+      },
+      {
+        "name": "768: typing, real request-in-flight, duplicate-send guard, long response",
+        "status": "PASS"
+      },
+      {
+        "name": "768: wide table stays inside the response with its own scroll boundary",
+        "status": "PASS"
+      },
+      {
+        "name": "768: confirmation remains separate; unobservable and not-saved are honest",
+        "status": "PASS"
+      },
+      {
+        "name": "768: offline and short visual viewport keep composer accessible",
+        "status": "PASS"
+      },
+      {
+        "name": "768: no hydration/console errors, unexpected requests or external access",
+        "status": "PASS"
+      },
+      {
+        "name": "1024: idle, minimal controls, responsive shell, reduced motion",
+        "status": "PASS"
+      },
+      {
+        "name": "1024: shared history restores action truth through the existing HTTP contract",
+        "status": "PASS"
+      },
+      {
+        "name": "1024: voice fixture, interim transcript, cancellation",
+        "status": "PASS"
+      },
+      {
+        "name": "1024: typing, real request-in-flight, duplicate-send guard, long response",
+        "status": "PASS"
+      },
+      {
+        "name": "1024: wide table stays inside the response with its own scroll boundary",
+        "status": "PASS"
+      },
+      {
+        "name": "1024: confirmation remains separate; unobservable and not-saved are honest",
+        "status": "PASS"
+      },
+      {
+        "name": "1024: offline and short visual viewport keep composer accessible",
+        "status": "PASS"
+      },
+      {
+        "name": "1024: no hydration/console errors, unexpected requests or external access",
+        "status": "PASS"
+      },
+      {
+        "name": "1440: idle, minimal controls, responsive shell, reduced motion",
+        "status": "PASS"
+      },
+      {
+        "name": "1440: shared history restores action truth through the existing HTTP contract",
+        "status": "PASS"
+      },
+      {
+        "name": "1440: voice fixture, interim transcript, cancellation",
+        "status": "PASS"
+      },
+      {
+        "name": "1440: typing, real request-in-flight, duplicate-send guard, long response",
+        "status": "PASS"
+      },
+      {
+        "name": "1440: wide table stays inside the response with its own scroll boundary",
+        "status": "PASS"
+      },
+      {
+        "name": "1440: confirmation remains separate; unobservable and not-saved are honest",
+        "status": "PASS"
+      },
+      {
+        "name": "1440: offline and short visual viewport keep composer accessible",
+        "status": "PASS"
+      },
+      {
+        "name": "1440: no hydration/console errors, unexpected requests or external access",
+        "status": "PASS"
+      }
+    ],
+    "screenshots": "screenshots/"
+  },
+  "screenshots": [
+    "1024-confirmation.png",
+    "1024-history.png",
+    "1024-idle.png",
+    "1024-listening.png",
+    "1024-long-response.png",
+    "1024-offline.png",
+    "1024-restored-unobservable.png",
+    "1024-short-viewport.png",
+    "1024-table-response.png",
+    "1024-typing.png",
+    "1024-unobservable-not-saved.png",
+    "1024-working.png",
+    "1440-confirmation.png",
+    "1440-history.png",
+    "1440-idle.png",
+    "1440-listening.png",
+    "1440-long-response.png",
+    "1440-offline.png",
+    "1440-restored-unobservable.png",
+    "1440-short-viewport.png",
+    "1440-table-response.png",
+    "1440-typing.png",
+    "1440-unobservable-not-saved.png",
+    "1440-working.png",
+    "390-confirmation.png",
+    "390-history.png",
+    "390-idle.png",
+    "390-listening.png",
+    "390-long-response.png",
+    "390-navigation.png",
+    "390-offline.png",
+    "390-restored-unobservable.png",
+    "390-short-viewport.png",
+    "390-table-response.png",
+    "390-typing.png",
+    "390-unobservable-not-saved.png",
+    "390-working.png",
+    "768-confirmation.png",
+    "768-history.png",
+    "768-idle.png",
+    "768-listening.png",
+    "768-long-response.png",
+    "768-navigation.png",
+    "768-offline.png",
+    "768-restored-unobservable.png",
+    "768-short-viewport.png",
+    "768-table-response.png",
+    "768-typing.png",
+    "768-unobservable-not-saved.png",
+    "768-working.png"
+  ],
+  "lint": {
+    "groups": {
+      "@typescript-eslint/no-unused-vars": 13,
+      "react-hooks/exhaustive-deps": 15,
+      "@next/next/no-img-element": 9,
+      "unused-disable": 5
+    },
+    "warnings": [
+      {
+        "file": "scripts/oyi-reference-browser.mjs",
+        "line": 205,
+        "rule": "@typescript-eslint/no-unused-vars",
+        "message": "'error' is defined but never used."
+      },
+      {
+        "file": "src/app/activity/page.tsx",
+        "line": 35,
+        "rule": "@typescript-eslint/no-unused-vars",
+        "message": "'runtimeSourceLabel' is defined but never used."
+      },
+      {
+        "file": "src/app/activity/page.tsx",
+        "line": 211,
+        "rule": "react-hooks/exhaustive-deps",
+        "message": "React Hook useEffect has missing dependencies: 'load' and 'scope'. Either include them or remove the dependency array."
+      },
+      {
+        "file": "src/app/community/page.tsx",
+        "line": 276,
+        "rule": "react-hooks/exhaustive-deps",
+        "message": "React Hook useEffect has a missing dependency: 'load'. Either include it or remove the dependency array."
+      },
+      {
+        "file": "src/app/community/page.tsx",
+        "line": 294,
+        "rule": "react-hooks/exhaustive-deps",
+        "message": "React Hook useEffect has missing dependencies: 'estateId' and 'load'. Either include them or remove the dependency array."
+      },
+      {
+        "file": "src/app/community/page.tsx",
+        "line": 450,
+        "rule": "@next/next/no-img-element",
+        "message": "Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element"
+      },
+      {
+        "file": "src/app/community/page.tsx",
+        "line": 576,
+        "rule": "@next/next/no-img-element",
+        "message": "Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element"
+      },
+      {
+        "file": "src/app/community/page.tsx",
+        "line": 604,
+        "rule": "@next/next/no-img-element",
+        "message": "Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element"
+      },
+      {
+        "file": "src/app/components/BottomNav.tsx",
+        "line": 315,
+        "rule": "@next/next/no-img-element",
+        "message": "Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element"
+      },
+      {
+        "file": "src/app/components/BottomNav.tsx",
+        "line": 350,
+        "rule": "@next/next/no-img-element",
+        "message": "Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element"
+      },
+      {
+        "file": "src/app/components/ChatFooter.tsx",
+        "line": 168,
+        "rule": null,
+        "message": "Unused eslint-disable directive (no problems were reported from 'react-hooks/exhaustive-deps')."
+      },
+      {
+        "file": "src/app/components/HamburgerMenu.tsx",
+        "line": 220,
+        "rule": "@next/next/no-img-element",
+        "message": "Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element"
+      },
+      {
+        "file": "src/app/components/LayoutWrapper.tsx",
+        "line": 4,
+        "rule": "@typescript-eslint/no-unused-vars",
+        "message": "'menuOpen' is assigned a value but never used."
+      },
+      {
+        "file": "src/app/components/ai-console/AiConsoleSheet.tsx",
+        "line": 193,
+        "rule": "@typescript-eslint/no-unused-vars",
+        "message": "'setDevicesTab' is assigned a value but never used."
+      },
+      {
+        "file": "src/app/components/ai-console/AiConsoleSheet.tsx",
+        "line": 194,
+        "rule": "@typescript-eslint/no-unused-vars",
+        "message": "'devicesBusy' is assigned a value but never used."
+      },
+      {
+        "file": "src/app/components/ai-console/AiConsoleSheet.tsx",
+        "line": 195,
+        "rule": "@typescript-eslint/no-unused-vars",
+        "message": "'devicesErr' is assigned a value but never used."
+      },
+      {
+        "file": "src/app/components/community/LiveBroadcastComposer.tsx",
+        "line": 163,
+        "rule": "react-hooks/exhaustive-deps",
+        "message": "React Hook useEffect has missing dependencies: 'acquireStream' and 'facingMode'. Either include them or remove the dependency array."
+      },
+      {
+        "file": "src/app/components/community/LiveSessionPlayer.tsx",
+        "line": 354,
+        "rule": "react-hooks/exhaustive-deps",
+        "message": "React Hook useEffect has missing dependencies: 'acquireGuestStream' and 'createPublisherOffer'. Either include them or remove the dependency array."
+      },
+      {
+        "file": "src/app/components/remotes/AcPanel.tsx",
+        "line": 137,
+        "rule": null,
+        "message": "Unused eslint-disable directive (no problems were reported from 'react-hooks/exhaustive-deps')."
+      },
+      {
+        "file": "src/app/components/remotes/CommunityPanel.tsx",
+        "line": 23,
+        "rule": "@typescript-eslint/no-unused-vars",
+        "message": "'_lastUpdated' is defined but never used."
+      },
+      {
+        "file": "src/app/components/remotes/CommunityPanel.tsx",
+        "line": 24,
+        "rule": "@typescript-eslint/no-unused-vars",
+        "message": "'_onInteraction' is defined but never used."
+      },
+      {
+        "file": "src/app/components/remotes/RemotePanelRenderer.tsx",
+        "line": 132,
+        "rule": "react-hooks/exhaustive-deps",
+        "message": "React Hook useEffect has missing dependencies: 'activeContext.estate_id' and 'activeContext.home_id'. Either include them or remove the dependency array."
+      },
+      {
+        "file": "src/app/components/remotes/VisitorPanel.tsx",
+        "line": 99,
+        "rule": null,
+        "message": "Unused eslint-disable directive (no problems were reported from 'react-hooks/exhaustive-deps')."
+      },
+      {
+        "file": "src/app/components/remotes/VisitorPanel.tsx",
+        "line": 105,
+        "rule": null,
+        "message": "Unused eslint-disable directive (no problems were reported from 'react-hooks/exhaustive-deps')."
+      },
+      {
+        "file": "src/app/devices/DevicesClient.tsx",
+        "line": 1594,
+        "rule": "@typescript-eslint/no-unused-vars",
+        "message": "'viewFriendlyDetails' is defined but never used."
+      },
+      {
+        "file": "src/app/devices/DevicesClient.tsx",
+        "line": 2271,
+        "rule": "@typescript-eslint/no-unused-vars",
+        "message": "'deviceId' is assigned a value but never used."
+      },
+      {
+        "file": "src/app/devices/DevicesClient.tsx",
+        "line": 2303,
+        "rule": "react-hooks/exhaustive-deps",
+        "message": "React Hook useEffect has missing dependencies: 'activeContext.estate_id' and 'activeContext.home_id'. Either include them or remove the dependency array."
+      },
+      {
+        "file": "src/app/home/page.tsx",
+        "line": 204,
+        "rule": "@typescript-eslint/no-unused-vars",
+        "message": "'dashBusy' is assigned a value but never used."
+      },
+      {
+        "file": "src/app/home/page.tsx",
+        "line": 344,
+        "rule": "react-hooks/exhaustive-deps",
+        "message": "React Hook useEffect has missing dependencies: 'refreshDashboardData' and 'refreshDevicePanelData'. Either include them or remove the dependency array."
+      },
+      {
+        "file": "src/app/home/page.tsx",
+        "line": 351,
+        "rule": "react-hooks/exhaustive-deps",
+        "message": "React Hook useEffect has a missing dependency: 'refreshDevicePanelData'. Either include it or remove the dependency array."
+      },
+      {
+        "file": "src/app/messages/page.tsx",
+        "line": 405,
+        "rule": "@next/next/no-img-element",
+        "message": "Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element"
+      },
+      {
+        "file": "src/app/messages/page.tsx",
+        "line": 631,
+        "rule": "@next/next/no-img-element",
+        "message": "Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element"
+      },
+      {
+        "file": "src/app/profile/page.tsx",
+        "line": 200,
+        "rule": "react-hooks/exhaustive-deps",
+        "message": "React Hook useEffect has a missing dependency: 'active.home_id'. Either include it or remove the dependency array."
+      },
+      {
+        "file": "src/app/profile/page.tsx",
+        "line": 618,
+        "rule": "@next/next/no-img-element",
+        "message": "Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element"
+      },
+      {
+        "file": "src/app/scenes/page.tsx",
+        "line": 310,
+        "rule": "react-hooks/exhaustive-deps",
+        "message": "React Hook useEffect has a missing dependency: 'refresh'. Either include it or remove the dependency array."
+      },
+      {
+        "file": "src/app/security/page.tsx",
+        "line": 54,
+        "rule": "react-hooks/exhaustive-deps",
+        "message": "React Hook useEffect has a missing dependency: 'load'. Either include it or remove the dependency array."
+      },
+      {
+        "file": "src/app/visitors/page.tsx",
+        "line": 215,
+        "rule": null,
+        "message": "Unused eslint-disable directive (no problems were reported from 'react-hooks/exhaustive-deps')."
+      },
+      {
+        "file": "src/hooks/useAuth.tsx",
+        "line": 146,
+        "rule": "react-hooks/exhaustive-deps",
+        "message": "React Hook useMemo has a missing dependency: 'logout'. Either include it or remove the dependency array."
+      },
+      {
+        "file": "src/hooks/useDeviceLiveState.ts",
+        "line": 136,
+        "rule": "react-hooks/exhaustive-deps",
+        "message": "React Hook useEffect has missing dependencies: 'activeContext.estate_id' and 'activeContext.home_id'. Either include them or remove the dependency array."
+      },
+      {
+        "file": "src/hooks/useSignalStream.ts",
+        "line": 49,
+        "rule": "react-hooks/exhaustive-deps",
+        "message": "React Hook useEffect has missing dependencies: 'activeContext.estate_id' and 'activeContext.home_id'. Either include them or remove the dependency array."
+      },
+      {
+        "file": "src/services/homeAccessService.ts",
+        "line": 20,
+        "rule": "@typescript-eslint/no-unused-vars",
+        "message": "'_homeId' is defined but never used."
+      },
+      {
+        "file": "src/store/useEventStore.ts",
+        "line": 18,
+        "rule": "@typescript-eslint/no-unused-vars",
+        "message": "'get' is defined but never used."
+      }
+    ]
+  },
+  "audit": {
+    "counts": {
+      "info": 0,
+      "low": 0,
+      "moderate": 9,
+      "high": 20,
+      "critical": 5,
+      "total": 34
+    },
+    "packages": [
+      {
+        "name": "@capacitor/android",
+        "severity": "critical",
+        "versions": [
+          "6.2.1"
+        ],
+        "devDependencyOnly": true,
+        "advisories": [
+          {
+            "title": "Capacitor Android and iOS: remote content can be loaded at the app origin via the internal HTTP proxy path",
+            "url": "https://github.com/advisories/GHSA-rvm3-566m-v7fv"
+          }
+        ]
+      },
+      {
+        "name": "@capacitor/cli",
+        "severity": "high",
+        "versions": [
+          "6.2.1"
+        ],
+        "devDependencyOnly": true,
+        "advisories": []
+      },
+      {
+        "name": "@capacitor/ios",
+        "severity": "critical",
+        "versions": [
+          "6.2.1"
+        ],
+        "devDependencyOnly": true,
+        "advisories": [
+          {
+            "title": "Capacitor Android and iOS: remote content can be loaded at the app origin via the internal HTTP proxy path",
+            "url": "https://github.com/advisories/GHSA-rvm3-566m-v7fv"
+          }
+        ]
+      },
+      {
+        "name": "@firebase/auth",
+        "severity": "moderate",
+        "versions": [
+          "1.7.9"
+        ],
+        "devDependencyOnly": false,
+        "advisories": []
+      },
+      {
+        "name": "@firebase/auth-compat",
+        "severity": "moderate",
+        "versions": [
+          "0.5.14"
+        ],
+        "devDependencyOnly": false,
+        "advisories": []
+      },
+      {
+        "name": "@firebase/firestore",
+        "severity": "high",
+        "versions": [
+          "4.7.3"
+        ],
+        "devDependencyOnly": false,
+        "advisories": []
+      },
+      {
+        "name": "@firebase/firestore-compat",
+        "severity": "high",
+        "versions": [
+          "0.3.38"
+        ],
+        "devDependencyOnly": false,
+        "advisories": []
+      },
+      {
+        "name": "@firebase/functions",
+        "severity": "moderate",
+        "versions": [
+          "0.11.8"
+        ],
+        "devDependencyOnly": false,
+        "advisories": []
+      },
+      {
+        "name": "@firebase/functions-compat",
+        "severity": "moderate",
+        "versions": [
+          "0.3.14"
+        ],
+        "devDependencyOnly": false,
+        "advisories": []
+      },
+      {
+        "name": "@firebase/storage",
+        "severity": "moderate",
+        "versions": [
+          "0.13.2"
+        ],
+        "devDependencyOnly": false,
+        "advisories": []
+      },
+      {
+        "name": "@firebase/storage-compat",
+        "severity": "moderate",
+        "versions": [
+          "0.3.12"
+        ],
+        "devDependencyOnly": false,
+        "advisories": []
+      },
+      {
+        "name": "@grpc/grpc-js",
+        "severity": "high",
+        "versions": [
+          "1.9.16"
+        ],
+        "devDependencyOnly": false,
+        "advisories": [
+          {
+            "title": "@grpc/grpc-js: In certain configurations, getAuthContext can return unauthorized certificates as though they were authorized",
+            "url": "https://github.com/advisories/GHSA-m9gg-hp2v-232j"
+          },
+          {
+            "title": "@grpc/grpc-js: The server transmits some error messages thrown by method handlers to the client in status messages",
+            "url": "https://github.com/advisories/GHSA-f596-whhp-79r4"
+          }
+        ]
+      },
+      {
+        "name": "@humanfs/node",
+        "severity": "moderate",
+        "versions": [
+          "0.16.7"
+        ],
+        "devDependencyOnly": true,
+        "advisories": [
+          {
+            "title": "humanfs: Recursive copy follows symlinked files and copies data from outside the source tree",
+            "url": "https://github.com/advisories/GHSA-p498-v437-472g"
+          }
+        ]
+      },
+      {
+        "name": "@next/eslint-plugin-next",
+        "severity": "high",
+        "versions": [
+          "15.5.9"
+        ],
+        "devDependencyOnly": true,
+        "advisories": []
+      },
+      {
+        "name": "@xmldom/xmldom",
+        "severity": "high",
+        "versions": [
+          "0.8.13"
+        ],
+        "devDependencyOnly": true,
+        "advisories": [
+          {
+            "title": "xmldom: XML fragment injection via invalid EntityReference.nodeName during requireWellFormed serialization",
+            "url": "https://github.com/advisories/GHSA-6gmq-8vp8-gcm6"
+          },
+          {
+            "title": "xmldom: Element name injection via createElement() bypasses requireWellFormed",
+            "url": "https://github.com/advisories/GHSA-w2rr-34g9-rvrj"
+          },
+          {
+            "title": "xmldom: Attribute name injection via setAttribute() bypasses requireWellFormed",
+            "url": "https://github.com/advisories/GHSA-4w3w-2rp5-g8jm"
+          },
+          {
+            "title": "xmldom: Processing Instruction Target Injection Bypasses requireWellFormed",
+            "url": "https://github.com/advisories/GHSA-c7q8-3ch8-vqpv"
+          },
+          {
+            "title": "xmldom: DocType `name` Injection Bypasses requireWellFormed",
+            "url": "https://github.com/advisories/GHSA-27p8-2357-5qqv"
+          },
+          {
+            "title": "xmldom: Parser silently accepts a not-well-formed end tag whose name is followed by a line break and trailing content",
+            "url": "https://github.com/advisories/GHSA-6h8r-xr42-gp59"
+          },
+          {
+            "title": "xmldom: Quadratic-time attribute deduplication",
+            "url": "https://github.com/advisories/GHSA-8344-3jmq-59r6"
+          },
+          {
+            "title": "xmldom: End-tag Whitespace-Trim Regex ReDoS — quadratic backtracking in the 0.8.x end-tag parser",
+            "url": "https://github.com/advisories/GHSA-x4fp-j954-r2f4"
+          },
+          {
+            "title": "xmldom: Quadratic-memory consumption",
+            "url": "https://github.com/advisories/GHSA-965w-775f-mr7g"
+          },
+          {
+            "title": "xmldom: Quadratic-time parsing via the malformed-input recovery path — `parseElementStartPart` re-scan and `normalize()` adjacent-text merge",
+            "url": "https://github.com/advisories/GHSA-93r5-fhx6-vmg9"
+          }
+        ]
+      },
+      {
+        "name": "axios",
+        "severity": "high",
+        "versions": [
+          "1.18.1"
+        ],
+        "devDependencyOnly": false,
+        "advisories": [
+          {
+            "title": "Axios: Prototype pollution gadget in fetch adapter can alter outbound requests",
+            "url": "https://github.com/advisories/GHSA-vh66-26gq-q6x8"
+          },
+          {
+            "title": "Axios: Prototype-Pollution Gadget in the Default Instance Allows Inherited Object.prototype.method to Override HTTP Method",
+            "url": "https://github.com/advisories/GHSA-9fr6-4gfg-395g"
+          },
+          {
+            "title": "Axios: ReDoS in fromDataURI data: URL parser freezes the Node event loop (DoS)",
+            "url": "https://github.com/advisories/GHSA-c29m-xwm3-cm6r"
+          },
+          {
+            "title": "Axios: ReDoS (O(N²)) in shouldBypassProxy host normalization, reachable via untrusted redirect Location",
+            "url": "https://github.com/advisories/GHSA-mghh-pgcx-3jjj"
+          },
+          {
+            "title": "Axios: Prototype Pollution Gadget in axios toFormData Options",
+            "url": "https://github.com/advisories/GHSA-x97p-jq2g-jp4f"
+          },
+          {
+            "title": "Axios: HTTP/2 adapter bypasses configured DNS lookup and proxy controls",
+            "url": "https://github.com/advisories/GHSA-3pq3-5fj3-cg6v"
+          },
+          {
+            "title": "Axios: Denial of Service via Unhandled 'error' Event in HTTP/2 ClientHttp2Session Initialization",
+            "url": "https://github.com/advisories/GHSA-542g-h47m-68v8"
+          },
+          {
+            "title": "Axios: Header Injection via Inherited headers After Minimal Interceptor",
+            "url": "https://github.com/advisories/GHSA-j8rh-479h-cp32"
+          },
+          {
+            "title": "Axios: Fetch Adapter Header Injection via Inherited FormData getHeaders",
+            "url": "https://github.com/advisories/GHSA-4hqw-qxg8-jxx2"
+          },
+          {
+            "title": "Axios: Node HTTP adapter prototype-pollution gadget allows request socket hijack via inherited createConnection",
+            "url": "https://github.com/advisories/GHSA-m8m8-qj5v-23w3"
+          },
+          {
+            "title": "Axios: CIDR-form NO_PROXY entries are ignored, causing proxy exclusion bypass for internal IP ranges",
+            "url": "https://github.com/advisories/GHSA-44g4-m2mj-wpvx"
+          },
+          {
+            "title": "Axios: maxRedirects: 0 is not enforced by the fetch adapter, allowing redirect-based SSRF",
+            "url": "https://github.com/advisories/GHSA-r4gj-5m52-g5wh"
+          }
+        ]
+      },
+      {
+        "name": "baseline-browser-mapping",
+        "severity": "moderate",
+        "versions": [
+          "2.9.15"
+        ],
+        "devDependencyOnly": true,
+        "advisories": [
+          {
+            "title": "baseline-browser-mapping process termination on invalid input causes denial of service",
+            "url": "https://github.com/advisories/GHSA-w5vr-8v7q-w6rv"
+          }
+        ]
+      },
+      {
+        "name": "brace-expansion",
+        "severity": "high",
+        "versions": [
+          "2.1.2",
+          "1.1.16"
+        ],
+        "devDependencyOnly": false,
+        "advisories": [
+          {
+            "title": "brace-expansion: DoS via unbounded expansion length causing an out-of-memory process crash",
+            "url": "https://github.com/advisories/GHSA-mh99-v99m-4gvg"
+          },
+          {
+            "title": "brace-expansion: DoS via unbounded expansion length causing an out-of-memory process crash",
+            "url": "https://github.com/advisories/GHSA-mh99-v99m-4gvg"
+          },
+          {
+            "title": "brace-expansion: DoS via unbounded intermediate arrays, bypassing the CVE-2026-14257 mitigation",
+            "url": "https://github.com/advisories/GHSA-rgw5-rvv9-x895"
+          },
+          {
+            "title": "brace-expansion: DoS via unbounded intermediate arrays, bypassing the CVE-2026-14257 mitigation",
+            "url": "https://github.com/advisories/GHSA-rgw5-rvv9-x895"
+          },
+          {
+            "title": "brace-expansion: Quadratic-time expansion of the `{a},b}` rewrite causes CPU denial of service",
+            "url": "https://github.com/advisories/GHSA-q2hr-2g5m-vwhr"
+          },
+          {
+            "title": "brace-expansion: Quadratic-time expansion of the `{a},b}` rewrite causes CPU denial of service",
+            "url": "https://github.com/advisories/GHSA-q2hr-2g5m-vwhr"
+          },
+          {
+            "title": "brace-expansion: DoS via uncontrolled recursion on nested brace groups causing stack exhaustion",
+            "url": "https://github.com/advisories/GHSA-qhr7-859c-m2p7"
+          },
+          {
+            "title": "brace-expansion: DoS via uncontrolled recursion on nested brace groups causing stack exhaustion",
+            "url": "https://github.com/advisories/GHSA-qhr7-859c-m2p7"
+          },
+          {
+            "title": "brace-expansion: DoS via uncontrolled recursion in parseCommaParts causing stack exhaustion",
+            "url": "https://github.com/advisories/GHSA-6j4f-fj2g-mc7p"
+          },
+          {
+            "title": "brace-expansion: DoS via uncontrolled recursion in parseCommaParts causing stack exhaustion",
+            "url": "https://github.com/advisories/GHSA-6j4f-fj2g-mc7p"
+          }
+        ]
+      },
+      {
+        "name": "braces",
+        "severity": "high",
+        "versions": [
+          "3.0.3"
+        ],
+        "devDependencyOnly": true,
+        "advisories": [
+          {
+            "title": "braces vulnerable to stack-exhaustion denial of service through deeply nested patterns",
+            "url": "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm"
+          }
+        ]
+      },
+      {
+        "name": "browserslist",
+        "severity": "high",
+        "versions": [
+          "4.28.1"
+        ],
+        "devDependencyOnly": true,
+        "advisories": [
+          {
+            "title": "Browserslist: Unbounded memory growth (no cache eviction) via distinct query results, leading to eventual OOM",
+            "url": "https://github.com/advisories/GHSA-c83g-rgw3-j3cx"
+          },
+          {
+            "title": "Browserslist: Uncaught crash / prototype write via untrusted browserslist-stats.json custom stats (normalizeStats)",
+            "url": "https://github.com/advisories/GHSA-73wf-gq98-2v4g"
+          }
+        ]
+      },
+      {
+        "name": "eslint-config-next",
+        "severity": "high",
+        "versions": [
+          "15.5.9"
+        ],
+        "devDependencyOnly": true,
+        "advisories": []
+      },
+      {
+        "name": "fast-glob",
+        "severity": "high",
+        "versions": [
+          "3.3.1"
+        ],
+        "devDependencyOnly": true,
+        "advisories": []
+      },
+      {
+        "name": "firebase",
+        "severity": "high",
+        "versions": [
+          "10.14.1"
+        ],
+        "devDependencyOnly": false,
+        "advisories": []
+      },
+      {
+        "name": "js-yaml",
+        "severity": "high",
+        "versions": [
+          "4.3.0"
+        ],
+        "devDependencyOnly": true,
+        "advisories": [
+          {
+            "title": "JS-YAML: Quadratic CPU consumption in !!omap resolution (3.x and 4.x) — CVE-2026-59870 fix not backported",
+            "url": "https://github.com/advisories/GHSA-5p4m-2wfm-xmqj"
+          },
+          {
+            "title": "js-yaml: maxTotalMergeKeys does not limit CPU use for empty merge sources",
+            "url": "https://github.com/advisories/GHSA-2883-xcg3-v3hh"
+          }
+        ]
+      },
+      {
+        "name": "micromatch",
+        "severity": "high",
+        "versions": [
+          "4.0.8"
+        ],
+        "devDependencyOnly": true,
+        "advisories": []
+      },
+      {
+        "name": "nanoid",
+        "severity": "high",
+        "versions": [
+          "3.3.16"
+        ],
+        "devDependencyOnly": false,
+        "advisories": [
+          {
+            "title": "nanoid: custom generators can loop indefinitely when size is zero",
+            "url": "https://github.com/advisories/GHSA-2v37-7h3g-55p8"
+          }
+        ]
+      },
+      {
+        "name": "next",
+        "severity": "critical",
+        "versions": [
+          "15.5.20"
+        ],
+        "devDependencyOnly": false,
+        "advisories": [
+          {
+            "title": "Next.js: Denial of Service in App Router using Server Actions",
+            "url": "https://github.com/advisories/GHSA-m99w-x7hq-7vfj"
+          },
+          {
+            "title": "Next.js: Server-Side Request Forgery in Server Actions on custom servers",
+            "url": "https://github.com/advisories/GHSA-89xv-2m56-2m9x"
+          },
+          {
+            "title": "Next.js: Cache confusion of response bodies for requests with bodies",
+            "url": "https://github.com/advisories/GHSA-68g3-v927-f742"
+          },
+          {
+            "title": "Next.js: Cache confusion of response bodies for requests with bodies containing invalid UTF-8 byte sequences",
+            "url": "https://github.com/advisories/GHSA-4633-3j49-mh5q"
+          },
+          {
+            "title": "Next.js: Unbounded Server Action payload in Edge runtime",
+            "url": "https://github.com/advisories/GHSA-4c39-4ccg-62r3"
+          },
+          {
+            "title": "Next.js: Server-Side Request Forgery in rewrites via attacker-controlled destination hostname",
+            "url": "https://github.com/advisories/GHSA-p9j2-gv94-2wf4"
+          },
+          {
+            "title": "Next.js: Denial of Service in the Image Optimization API using SVGs",
+            "url": "https://github.com/advisories/GHSA-q8wf-6r8g-63ch"
+          },
+          {
+            "title": "Next.js: Unauthenticated disclosure of internal Server Function endpoints",
+            "url": "https://github.com/advisories/GHSA-955p-x3mx-jcvp"
+          },
+          {
+            "title": "Next.js: Unauthenticated Remote Code Execution on windows-hosted servers",
+            "url": "https://github.com/advisories/GHSA-p293-qw3h-jr36"
+          },
+          {
+            "title": "Next.js: Unauthenticated Remote Code Execution in Image Optimization API when AVIF files are used",
+            "url": "https://github.com/advisories/GHSA-2xp9-vwfh-vxw4"
+          }
+        ]
+      },
+      {
+        "name": "next-auth",
+        "severity": "critical",
+        "versions": [
+          "4.24.14"
+        ],
+        "devDependencyOnly": false,
+        "advisories": [
+          {
+            "title": "Auth.js: Email normalizer validates the address before Unicode normalization, allowing a homoglyph @ bypass",
+            "url": "https://github.com/advisories/GHSA-7rqj-j65f-68wh"
+          },
+          {
+            "title": "Auth.js: getToken() throws an uncaught exception on malformed Bearer authorization headers",
+            "url": "https://github.com/advisories/GHSA-xmf8-cvqr-rfgj"
+          },
+          {
+            "title": "Auth.js: OAuth state, nonce, and PKCE check cookies are not bound to the provider that created them",
+            "url": "https://github.com/advisories/GHSA-x445-f3h2-j279"
+          }
+        ]
+      },
+      {
+        "name": "postcss",
+        "severity": "high",
+        "versions": [
+          "8.4.31",
+          "8.5.19"
+        ],
+        "devDependencyOnly": false,
+        "advisories": [
+          {
+            "title": "PostCSS has XSS via Unescaped </style> in its CSS Stringify Output",
+            "url": "https://github.com/advisories/GHSA-qx2v-qp2m-jg93"
+          },
+          {
+            "title": "PostCSS: Arbitrary file read and information disclosure via attacker-controlled sourceMappingURL in CSS comments",
+            "url": "https://github.com/advisories/GHSA-6g55-p6wh-862q"
+          },
+          {
+            "title": "PostCSS: incomplete fix of GHSA-6g55-p6wh-862q — attacker-controlled sourceMappingURL reads arbitrary .map files when `from` is unset",
+            "url": "https://github.com/advisories/GHSA-fxqj-rqcc-2cmp"
+          },
+          {
+            "title": "PostCSS: Path Traversal in Previous Source Map Auto-Loading (sourceMappingURL) leads to Arbitrary .map File Disclosure",
+            "url": "https://github.com/advisories/GHSA-r28c-9q8g-f849"
+          }
+        ]
+      },
+      {
+        "name": "sharp",
+        "severity": "high",
+        "versions": [
+          "0.34.5"
+        ],
+        "devDependencyOnly": false,
+        "advisories": [
+          {
+            "title": "sharp inherited vulnerabilities in libvips: CVE-2026-33327, CVE-2026-33328, CVE-2026-35590, CVE-2026-35591",
+            "url": "https://github.com/advisories/GHSA-f88m-g3jw-g9cj"
+          },
+          {
+            "title": "sharp: Vulnerabilities in libheif: GHSA-g89c-p67h-r497 and GHSA-2jg2-4ch7-h545",
+            "url": "https://github.com/advisories/GHSA-rgj7-g3m4-5g8c"
+          },
+          {
+            "title": "sharp : Vulnerability in librsvg dependency CVE-2026-96889",
+            "url": "https://github.com/advisories/GHSA-wq5f-xc86-pv6w"
+          }
+        ]
+      },
+      {
+        "name": "source-map-js",
+        "severity": "high",
+        "versions": [
+          "1.2.1"
+        ],
+        "devDependencyOnly": false,
+        "advisories": [
+          {
+            "title": "source-map-js allows event-loop denial of service through indexed source-map section offsets",
+            "url": "https://github.com/advisories/GHSA-68fv-2mgg-jv7q"
+          }
+        ]
+      },
+      {
+        "name": "tar",
+        "severity": "critical",
+        "versions": [
+          "6.2.1"
+        ],
+        "devDependencyOnly": true,
+        "advisories": [
+          {
+            "title": "node-tar Vulnerable to Arbitrary File Creation/Overwrite via Hardlink Path Traversal",
+            "url": "https://github.com/advisories/GHSA-34x7-hfp2-rc4v"
+          },
+          {
+            "title": "node-tar is Vulnerable to Arbitrary File Overwrite and Symlink Poisoning via Insufficient Path Sanitization",
+            "url": "https://github.com/advisories/GHSA-8qq5-rm4j-mr97"
+          },
+          {
+            "title": "Arbitrary File Read/Write via Hardlink Target Escape Through Symlink Chain in node-tar Extraction",
+            "url": "https://github.com/advisories/GHSA-83g3-92jg-28cx"
+          },
+          {
+            "title": "tar has Hardlink Path Traversal via Drive-Relative Linkpath",
+            "url": "https://github.com/advisories/GHSA-qffp-2rhf-9h96"
+          },
+          {
+            "title": "node-tar Symlink Path Traversal via Drive-Relative Linkpath",
+            "url": "https://github.com/advisories/GHSA-9ppj-qmqm-q256"
+          },
+          {
+            "title": "Race Condition in node-tar Path Reservations via Unicode Ligature Collisions on macOS APFS",
+            "url": "https://github.com/advisories/GHSA-r6q2-hw4h-h46w"
+          },
+          {
+            "title": "node-tar applies PAX size override to intermediary GNU long-name/long-link headers, causing tar parser interpretation differential (file smuggling)",
+            "url": "https://github.com/advisories/GHSA-vmf3-w455-68vh"
+          },
+          {
+            "title": "node-tar: Process crash via PAX numeric path type confusion",
+            "url": "https://github.com/advisories/GHSA-w8wr-v893-vjvp"
+          },
+          {
+            "title": "node-tar: Decompression/parse DoS via unlimited input",
+            "url": "https://github.com/advisories/GHSA-23hp-3jrh-7fpw"
+          },
+          {
+            "title": "node-tar: Negative tar entry size causes infinite loop in archive replace",
+            "url": "https://github.com/advisories/GHSA-8x88-c5mf-7j5w"
+          },
+          {
+            "title": "node-tar: Uncaught Exception DoS via NUL byte in PAX path/linkpath records",
+            "url": "https://github.com/advisories/GHSA-gvwx-54wh-qm9j"
+          },
+          {
+            "title": "node-tar: Uncontrolled recursion in mapHas/filesFilter allows uncatchable stack-overflow DoS via crafted long-path tar with member selection",
+            "url": "https://github.com/advisories/GHSA-r292-9mhp-454m"
+          }
+        ]
+      },
+      {
+        "name": "undici",
+        "severity": "high",
+        "versions": [
+          "6.19.7"
+        ],
+        "devDependencyOnly": false,
+        "advisories": [
+          {
+            "title": "Use of Insufficiently Random Values in undici",
+            "url": "https://github.com/advisories/GHSA-c76h-2ccp-4975"
+          },
+          {
+            "title": "Undici has an unbounded decompression chain in HTTP responses on Node.js Fetch API via Content-Encoding leads to resource exhaustion",
+            "url": "https://github.com/advisories/GHSA-g9mf-h72j-4rw9"
+          },
+          {
+            "title": "undici Denial of Service attack via bad certificate data",
+            "url": "https://github.com/advisories/GHSA-cxrh-j4jr-qwg3"
+          },
+          {
+            "title": "Undici: Malicious WebSocket 64-bit length overflows parser and crashes the client",
+            "url": "https://github.com/advisories/GHSA-f269-vfmq-vjvj"
+          },
+          {
+            "title": "Undici has an HTTP Request/Response Smuggling issue",
+            "url": "https://github.com/advisories/GHSA-2mjp-6q6p-2qxm"
+          },
+          {
+            "title": "Undici has Unbounded Memory Consumption in WebSocket permessage-deflate Decompression",
+            "url": "https://github.com/advisories/GHSA-vrm6-8vpv-qv8q"
+          },
+          {
+            "title": "Undici has Unhandled Exception in WebSocket Client Due to Invalid server_max_window_bits Validation",
+            "url": "https://github.com/advisories/GHSA-v9p9-hfj2-hcw8"
+          },
+          {
+            "title": "Undici has CRLF Injection in undici via `upgrade` option",
+            "url": "https://github.com/advisories/GHSA-4992-7rv2-5pvq"
+          },
+          {
+            "title": "undici vulnerable to HTTP header injection via Set-Cookie percent-decoding",
+            "url": "https://github.com/advisories/GHSA-p88m-4jfj-68fv"
+          },
+          {
+            "title": "undici WebSocket client vulnerable to denial of service via fragment count bypass",
+            "url": "https://github.com/advisories/GHSA-vxpw-j846-p89q"
+          },
+          {
+            "title": "undici vulnerable to Set-Cookie SameSite attribute downgrade via permissive substring matching",
+            "url": "https://github.com/advisories/GHSA-g8m3-5g58-fq7m"
+          },
+          {
+            "title": "undici vulnerable to downstream response desynchronization via retry interceptor",
+            "url": "https://github.com/advisories/GHSA-8xcm-r25x-g524"
+          },
+          {
+            "title": "undici vulnerable to CRLF Injection via blob-like body 'type' property",
+            "url": "https://github.com/advisories/GHSA-m8rv-5g2x-5cg5"
+          },
+          {
+            "title": "undici vulnerable to cookie attribute injection via unsanitized domain and unparsed setCookie fields",
+            "url": "https://github.com/advisories/GHSA-v3r7-h72x-cjcm"
+          },
+          {
+            "title": "undici vulnerable to HTTP response queue poisoning via keep-alive socket reuse",
+            "url": "https://github.com/advisories/GHSA-35p6-xmwp-9g52"
+          },
+          {
+            "title": "undici vulnerable to downstream response splitting via retry interceptor",
+            "url": "https://github.com/advisories/GHSA-r53p-7pc4-xj5r"
+          },
+          {
+            "title": "undici vulnerable to Denial of Service via unrequested WebSocket subprotocol",
+            "url": "https://github.com/advisories/GHSA-rfgv-xxqx-mfg5"
+          }
+        ]
+      },
+      {
+        "name": "uuid",
+        "severity": "moderate",
+        "versions": [
+          "8.3.2",
+          "9.0.1"
+        ],
+        "devDependencyOnly": false,
+        "advisories": [
+          {
+            "title": "uuid: Missing buffer bounds check in v3/v5/v6 when buf is provided",
+            "url": "https://github.com/advisories/GHSA-w5hq-g745-h8pq"
+          }
+        ]
+      }
+    ]
+  }
+}
