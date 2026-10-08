@@ -2,7 +2,7 @@ import type { OyiVoiceAdapter, OyiVoiceSnapshot } from "oyi-interaction";
 
 // Browser host implementation of the existing shared contract. No uploads,
 // automatic submission, native-plugin claim, or invented final transcript.
-export function createConsumerVoiceAdapter(host: any = globalThis): OyiVoiceAdapter {
+export function createConsumerVoiceAdapter(host: any = globalThis, options: { singleUtterance?: boolean } = {}): OyiVoiceAdapter {
   const Recognition = host.SpeechRecognition || host.webkitSpeechRecognition;
   const available = Boolean(Recognition && !host.Capacitor?.isNativePlatform?.());
   let snapshot: OyiVoiceSnapshot = { available, permissionState: available ? "unknown" : "unsupported", status: "idle", interimTranscript: "", finalTranscript: "", audioLevel: null, error: null };
@@ -34,12 +34,20 @@ export function createConsumerVoiceAdapter(host: any = globalThis): OyiVoiceAdap
       emit({ status: "idle", permissionState: "prompt", error: null, finalTranscript: "", interimTranscript: "" });
       try {
         const current = new Recognition(); recognition = current;
-        current.lang = "en-US"; current.interimResults = true; current.continuous = true;
+        current.lang = "en-US"; current.interimResults = true; current.continuous = !options.singleUtterance;
         current.onstart = () => { if (session !== epoch) return; if (deadline) clearTimeout(deadline); deadline = null; emit({ status: "listening", permissionState: "granted" }); };
         current.onresult = (event: any) => {
           if (session !== epoch) return;
           const rows = Array.from(event.results || []) as any[];
           emit({ interimTranscript: rows.filter(r => !r.isFinal).map(r => String(r[0]?.transcript || "")).join(" ").trim(), finalTranscript: rows.filter(r => r.isFinal).map(r => String(r[0]?.transcript || "")).join(" ").trim() });
+          // Bound browsers that produce a final segment but never end capture.
+          // Single-utterance mode waits for onend; interim tails still fail closed.
+          if (options.singleUtterance && snapshot.finalTranscript && !snapshot.interimTranscript && snapshot.status === "listening") {
+            emit({ status: "transcribing" });
+            if (deadline) clearTimeout(deadline);
+            deadline = setTimeout(() => { if (session === epoch) fail("Transcription did not finish. Please retry or type your message."); }, 5000);
+            try { current.stop(); } catch { fail("Recording could not finalize. Please retry or type."); }
+          }
         };
         current.onerror = (event: any) => {
           if (session !== epoch) return;

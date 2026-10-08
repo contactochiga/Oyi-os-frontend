@@ -14,6 +14,8 @@ import { actionResultView, confirmationProposal, emptyResponseText, latestAssist
 import "oyi-interaction/styles.css";
 import "./oyi-reference.css";
 import { createConsumerVoiceAdapter } from "@/oyi/consumerVoiceAdapter";
+import { createConsumerSpeechOutput } from "@/oyi/consumerSpeechOutput";
+import { createOyiLiveVoiceSession, OyiLiveVoiceHub, type OyiLiveVoiceSnapshot } from "oyi-interaction";
 import { consumerMessageStateForAction, createConsumerSurfaceAdapter } from "@/oyi/consumerSurfaceAdapter";
 import type { OyiTarget } from "@/services/oyiService";
 import {
@@ -678,6 +680,11 @@ function OyiAiCommandCenterContent() {
   const [interaction, dispatchInteraction] = useOyiInteraction();
   useOyiConnectivity(dispatchInteraction);
   const [voiceError, setVoiceError] = useState("");
+  const [liveVoice, setLiveVoice] = useState<OyiLiveVoiceSnapshot>({ phase: "closed", caption: "", requestPending: false });
+  const liveSessionRef = useRef<ReturnType<typeof createOyiLiveVoiceSession> | null>(null);
+  const liveSubmitRef = useRef<(text: string) => Promise<string>>(async () => { throw new Error("Conversation not ready"); });
+  const turnSendingRef = useRef(false);
+  const liveOpen = liveVoice.phase !== "closed";
   const [helpfulResponses, setHelpfulResponses] = useState<Record<string, boolean>>({});
   const [transcript, setTranscript] = useState("");
   const [recordingSeconds, setRecordingSeconds] = useState(0);
@@ -895,6 +902,12 @@ function OyiAiCommandCenterContent() {
 
   useEffect(() => {
     // Use the latest committed conversation/scope, without restarting capture.
+    liveSubmitRef.current = async (text) => {
+      if (!navigator.onLine || busy || restoringThreadId) throw new Error("Conversation unavailable");
+      const reply = await handleSend(text, { preserveDraft: true });
+      if (!reply) throw new Error("No conversation response");
+      return reply;
+    };
     voiceSubmitRef.current = (text) => {
       if (!navigator.onLine || busy || restoringThreadId) {
         setVoiceError("Your voice draft is ready, but could not be sent. Review it and retry when connected.");
@@ -903,6 +916,34 @@ function OyiAiCommandCenterContent() {
       void handleSend(text);
     };
   });
+
+  useEffect(() => {
+    const session = createOyiLiveVoiceSession({
+      input: createConsumerVoiceAdapter(window, { singleUtterance: true }),
+      output: createConsumerSpeechOutput(window),
+      submit: (text) => liveSubmitRef.current(text),
+    });
+    liveSessionRef.current = session;
+    let listening = false;
+    const unsubscribe = session.subscribe((state) => {
+      setLiveVoice(state);
+      if (state.phase === "listening" && !listening) void startAudioMeter();
+      if (state.phase !== "listening" && listening) stopAudioMeter();
+      listening = state.phase === "listening";
+    });
+    const hidden = () => { if (document.hidden) session.mute("Live Voice paused while the app is hidden. Resume when ready."); };
+    const offline = () => session.mute("You’re offline. Reconnect, then resume Live Voice.");
+    document.addEventListener("visibilitychange", hidden);
+    window.addEventListener("offline", offline);
+    return () => { unsubscribe(); session.dispose(); liveSessionRef.current = null; stopAudioMeter(); document.removeEventListener("visibilitychange", hidden); window.removeEventListener("offline", offline); };
+    // Stable transport lifetime; latest scope/request is supplied via liveSubmitRef.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    // A session must not carry speech across a changed authority/object scope.
+    liveSessionRef.current?.end();
+  }, [context.home_id, context.estate_id, context.room_id, moduleContext, registeredContext?.context_id, user?.id]);
 
   useEffect(() => {
     const adapter = createConsumerVoiceAdapter(window);
@@ -962,9 +1003,11 @@ function OyiAiCommandCenterContent() {
     });
   }
 
-  async function handleSend(text?: string, options?: { usageLabel?: string; fromVoice?: boolean; workflowOverride?: OyiActiveWorkflow | null; threadIdOverride?: string | null }) {
+  async function handleSend(text?: string, options?: { usageLabel?: string; fromVoice?: boolean; preserveDraft?: boolean; workflowOverride?: OyiActiveWorkflow | null; threadIdOverride?: string | null }) {
     const command = (text ?? input).trim();
-    if (!command || busy) return;
+    if (!command || busy || turnSendingRef.current) return;
+    turnSendingRef.current = true;
+    if (!options?.preserveDraft) liveSessionRef.current?.mute("Microphone muted while you use the message composer.");
 
     const pendingId = createId();
     const userMessage: AiMessage = { id: createId(), role: "user", content: command };
@@ -974,7 +1017,7 @@ function OyiAiCommandCenterContent() {
     const turnId = pendingId;
     dispatchInteraction({ type: "turn.submitted", turnId });
     setBusy(true);
-    setInput("");
+    if (!options?.preserveDraft) setInput("");
     setTranscript("");
     if (options?.fromVoice) setVoiceStatus("Working");
     setMessages(baseMessages);
@@ -1026,6 +1069,7 @@ function OyiAiCommandCenterContent() {
       }
       // Responding lasts only while the reply is actually being spoken.
       if (!speaking) dispatchInteraction({ type: "turn.presented", turnId });
+      return content;
     } catch {
       dispatchInteraction({ type: "turn.failed", turnId, reason: typeof navigator !== "undefined" && navigator.onLine === false ? "offline" : "network" });
       const nextMessages = baseMessages.map((item) => item.id === pendingId ? { ...item, pending: false, state: "failed" as const, content: "Oyi could not respond right now." } : item);
@@ -1033,6 +1077,7 @@ function OyiAiCommandCenterContent() {
       persistConversation(nextMessages);
       if (options?.fromVoice) setVoiceStatus("Failed");
     } finally {
+      turnSendingRef.current = false;
       setBusy(false);
       if (options?.fromVoice) window.setTimeout(() => setVoiceMode("idle"), 900);
     }
@@ -1045,6 +1090,7 @@ function OyiAiCommandCenterContent() {
 
   function speakResponse(text: string, fromVoiceConversation = false, onDone?: () => void) {
     if (!text || typeof window === "undefined" || !("speechSynthesis" in window)) return false;
+    liveSessionRef.current?.mute("Live microphone paused for response playback.");
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.rate = 0.96;
@@ -1104,7 +1150,11 @@ function OyiAiCommandCenterContent() {
       analyser.fftSize = 256;
       ctx.createMediaStreamSource(stream).connect(analyser);
       const data = new Uint8Array(analyser.frequencyBinCount);
-      const tick = () => {
+      let lastSample = -Infinity;
+      const tick = (now = performance.now()) => {
+        if (epoch !== audioMeterEpoch.current) return;
+        if (now - lastSample < 80) { meterRafRef.current = window.requestAnimationFrame(tick); return; }
+        lastSample = now;
         analyser.getByteTimeDomainData(data);
         let sum = 0;
         for (const value of data) {
@@ -1142,6 +1192,7 @@ function OyiAiCommandCenterContent() {
   }
 
   function startVoiceCapture() {
+    if (liveSessionRef.current?.getSnapshot().phase !== "closed") return;
     if (busy || typeof window === "undefined" || recording) return;
     voiceDraftRef.current = input;
     voiceFinishIntentRef.current = null;
@@ -1207,6 +1258,7 @@ function OyiAiCommandCenterContent() {
   }
 
   async function restoreThreadById(threadId: string, source: "history" | "route") {
+    liveSessionRef.current?.end();
     const requestedThreadId = String(threadId || "").trim();
     if (!requestedThreadId) return false;
     const restoreSeq = restoreSequenceRef.current + 1;
@@ -1266,6 +1318,7 @@ function OyiAiCommandCenterContent() {
   }
 
   async function restoreConversation(conversation: Conversation) {
+    liveSessionRef.current?.end();
     const threadId = conversation.backendThreadId || null;
     if (threadId) {
       setThreadRoute(threadId);
@@ -1283,6 +1336,7 @@ function OyiAiCommandCenterContent() {
   }
 
   function startNewConversation() {
+    liveSessionRef.current?.end();
     if (activeConversation.status === "loading_thread" || activeConversation.status === "active_thread") {
       console.debug("conversation_blank_state_suppressed_for_active_thread", {
         thread_id: activeConversation.threadId,
@@ -1438,12 +1492,12 @@ function OyiAiCommandCenterContent() {
         </>}
         sidebar={historyContent}
         history={historyContent}
-        mainCanvas={<>
+        mainCanvas={!chatMode && !liveOpen ? <>
           <span className="oyi-visually-hidden" role="status" aria-live="polite">{interaction.label}</span>
           <OyiOrb size="large" state={orbState} />
-          {recording ? <OyiCaption entries={[{ kind: "truth_note", text: voiceStarting ? "Waiting for microphone permission…" : voiceStopping ? "Finalizing transcription…" : transcript || "I'm listening…" }]} /> : null}
-        </>}
+        </> : null}
         caption={<>
+          {recording ? <OyiCaption entries={[{ kind: "truth_note", text: voiceStarting ? "Waiting for microphone permission…" : voiceStopping ? "Finalizing transcription…" : transcript || "I'm listening…" }]} /> : null}
           {!interaction.online ? <OyiNotice tone="offline">You’re offline. Reconnect to send a message.</OyiNotice> : null}
           {targetError ? <OyiNotice tone="warning">{targetError}</OyiNotice> : null}
           {voiceError ? <OyiNotice tone="warning">{voiceError}</OyiNotice> : null}
@@ -1454,7 +1508,11 @@ function OyiAiCommandCenterContent() {
             <div ref={bottomRef} aria-hidden="true" />
           </div>
         </>}
-        suggestions={!chatMode && !recording ? <OyiSuggestions items={normalizeOyiSuggestions(suggestions.slice(0, 3), { source: "seed" })} onSelect={(item) => { if (!controlsBusy && interaction.online) submitSuggestion({ label: item.label, prompt: item.prompt || undefined, href: item.href || undefined }); }} /> : null}
+        suggestions={!chatMode && !recording && !liveOpen ? <OyiSuggestions items={normalizeOyiSuggestions(suggestions.slice(0, 3), { source: "seed" })} onSelect={(item) => { if (!controlsBusy && interaction.online) submitSuggestion({ label: item.label, prompt: item.prompt || undefined, href: item.href || undefined }); }} /> : null}
+        voiceHub={liveOpen ? <OyiLiveVoiceHub state={liveVoice} levels={audioLevels} onEnd={() => {
+          liveSessionRef.current?.end();
+          window.requestAnimationFrame(() => (document.querySelector('.oyi-composer textarea') as HTMLTextAreaElement | null)?.focus());
+        }} onMute={() => liveSessionRef.current?.mute()} onResume={() => { if (navigator.onLine && !controlsBusy) liveSessionRef.current?.resume(); }} /> : null}
         composer={<OyiComposer
           controlsLayout="expanded"
           capabilitySlot={<span title="Attachments are not supported in Oyi conversations yet."><button type="button" className="oyi-icon-button" disabled aria-label="Attachments unavailable" aria-describedby="oyi-attachment-help"><Plus size={20} /></button><span id="oyi-attachment-help" className="oyi-visually-hidden">Files and images cannot be attached to Oyi conversations yet. No file will be selected or uploaded.</span></span>}
@@ -1464,7 +1522,15 @@ function OyiAiCommandCenterContent() {
           voiceAvailable={voiceAvailable} voiceActive={recording} voiceInterim={transcript} voiceLevels={audioLevels}
           voiceStatusLabel={voiceStarting ? "Allow microphone…" : voiceStopping ? "Finalizing…" : "Recording"}
           voiceElapsedSeconds={recordingSeconds} voiceStopping={voiceStarting || voiceStopping}
-          onStartVoice={startVoiceCapture}
+          onStartVoice={liveOpen ? undefined : startVoiceCapture}
+          liveVoiceActive={liveOpen}
+          onStartLiveVoice={() => {
+            if (controlsBusy || recording || !interaction.online) return;
+            const capture = voiceAdapterRef.current?.getSnapshot();
+            if (capture?.status === "listening" || capture?.status === "transcribing" || capture?.permissionState === "prompt") return;
+            window.speechSynthesis?.cancel();
+            liveSessionRef.current?.start();
+          }}
           onStopVoice={stopRecordingForReview}
           onSendVoice={() => finishVoiceCapture("send")}
           onCancelVoice={() => { stopVoiceCapture(); setTranscript(""); setAudioLevels([]); }}

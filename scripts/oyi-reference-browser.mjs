@@ -89,6 +89,11 @@ try {
         stop() { /* final results and end are emitted explicitly by the fixture */ }
         abort() {}
       };
+      window.SpeechSynthesisUtterance = class { constructor(text) { this.text = text; } };
+      Object.defineProperty(window, 'speechSynthesis', { configurable: true, value: {
+        cancel() { window.__speechOutput = null; },
+        speak(utterance) { window.__speechOutput = utterance; },
+      } });
       window.__fixtureSpeech = (text, final = false) => {
         const result = [{ transcript: text }]; result.isFinal = final;
         window.__speechFixture?.onresult?.({ results: [result] });
@@ -119,8 +124,8 @@ try {
     await check(`${width}: idle, minimal controls, responsive shell, reduced motion`, async () => {
       await noOverflow();
       assert.equal(await page.getByRole("button", { name: "Speak to Oyi" }).count(), 1);
-      assert.ok(await page.getByRole("button", { name: "Send message", exact: true }).isDisabled());
-      assert.equal(await page.locator('.oyi-send-button svg').evaluate((el) => getComputedStyle(el).transform), "matrix(0, -1, 1, 0, 0, 0)", "send arrow points up");
+      assert.ok(await page.getByRole("button", { name: "Start Live Voice", exact: true }).isVisible());
+      assert.equal(await page.getByRole("button", { name: "Send message", exact: true }).count(), 0);
       assert.ok(await page.getByRole("button", { name: "Attachments unavailable" }).isDisabled());
       assert.equal(await page.locator('input[type="file"]').count(), 0, "no invented upload contract");
       assert.equal(await page.locator(".oyi-orb[data-size=large]").count(), 1);
@@ -334,9 +339,62 @@ try {
       assert.equal(await page.locator('[data-action-verified="true"]').count(), 0);
       await noOverflow(); await shot("unobservable-not-saved");
     });
+    await check(`${width}: live hub is above unchanged composer, actual speech events and thread synchronization`, async () => {
+      await page.getByRole('button',{name:'New conversation',exact:true}).filter({visible:true}).first().click();
+      const input=page.getByRole('textbox',{name:'Message Oyi'});
+      const before=requests.length;
+      const geometry=await page.locator('.oyi-composer').boundingBox();
+      await page.getByRole('button',{name:'Start Live Voice',exact:true}).click();
+      await page.locator('.oyi-live-voice-hub[data-phase="listening"]').waitFor();
+      assert.equal(await page.locator('.oyi-live-voice-label').innerText(),'Live Voice · Listening');
+      const hub=await page.locator('.oyi-live-voice-hub').boundingBox(), composer=await page.locator('.oyi-composer').boundingBox();
+      assert.ok(hub.y+hub.height<=composer.y && composer.y-hub.y-hub.height<=20,'hub immediately above composer');
+      assert.ok(hub.height<220 && hub.width<=420.1);assert.deepEqual(composer,geometry,'composer unchanged');
+      assert.equal(await page.getByRole('button',{name:'End Live Voice',exact:true}).count(),1);
+      assert.ok(await page.getByRole('button',{name:'Speak to Oyi',exact:true}).isDisabled());
+      await input.fill('Keep this typed draft');await noOverflow();await page.waitForFunction(()=>document.querySelectorAll('.oyi-live-voice-hub .oyi-voice-level span').length>=6);await shot('live-listening');
+      reply={reply:'Actual synthetic live response.',thread_id:'synthetic-live',persistence_saved:true,execution:{status:'read_only'}};hold=true;
+      await page.evaluate(()=>{window.__fixtureSegments([['First',true],['live utterance',true]]);window.__lateLiveEnd=window.__speechFixture.onend;window.__speechFixture.onend();window.__lateLiveEnd();});
+      await page.locator('.oyi-live-voice-hub[data-phase="working"]').waitFor();
+      assert.equal(requests.length,before+1);assert.equal(requests.at(-1).message,'First live utterance');
+      assert.equal(await page.locator('.oyi-orb[data-size="large"]').count(),0,'hero disappears after message');await shot('live-working');
+      hold=false;releaseResponse();
+      await page.waitForFunction(()=>Boolean(window.__speechOutput));
+      assert.equal(await page.evaluate(()=>window.__speechOutput.text),'Actual synthetic live response.');
+      assert.equal(await input.inputValue(),'Keep this typed draft');
+      await page.evaluate(()=>window.__speechOutput.onstart());await page.locator('.oyi-live-voice-hub[data-phase="speaking"]').waitFor();assert.equal(await page.locator('.oyi-live-voice-label').innerText(),'Live Voice · Speaking');await shot('live-speaking');
+      await page.evaluate(()=>window.__speechOutput.onend());await page.locator('.oyi-live-voice-hub[data-phase="listening"]').waitFor();
+      reply={...example('A'),reply:'Review this synthetic voice action.',thread_id:'synthetic-live',display_mode:'detail',confirmations:[{workflow_id:'live-workflow',action_id:'live-action',status:'awaiting_confirmation',proposal:'Test action',target:{label:'Fixture only'}}],persistence_saved:true};
+      await page.evaluate(()=>{window.__fixtureSpeech('Propose an isolated action',true);window.__speechFixture.onend();});
+      await page.getByRole('button',{name:'Confirm',exact:true}).waitFor();
+      assert.equal(requests.at(-1).thread_id,'synthetic-live');assert.ok(await page.getByText('Nothing has been sent yet.').count());
+      await page.waitForFunction(()=>Boolean(window.__speechOutput));await page.evaluate(()=>{window.__speechOutput.onstart();window.__speechOutput.onend();});
+      await page.locator('.oyi-live-voice-hub[data-phase="listening"]').waitFor();
+      assert.equal(requests.length,before+2,'no automatic action confirmation');await shot('live-confirmation');
+    });
+    await check(`${width}: live mute, late input, keyboard, end and permission recovery`, async()=>{
+      const before=requests.length;
+      await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));});
+      await page.locator('.oyi-live-voice-hub[data-phase="muted"]').waitFor();
+      await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:false});document.dispatchEvent(new Event('visibilitychange'));});
+      assert.equal(await page.locator('.oyi-live-voice-hub').getAttribute('data-phase'),'muted','visibility return must not restart capture');
+      await page.getByRole('button',{name:'Resume live microphone'}).click();await page.locator('.oyi-live-voice-hub[data-phase="listening"]').waitFor();
+      await page.evaluate(()=>{window.__lateLiveResult=window.__speechFixture.onresult;window.__lateLiveEnd=window.__speechFixture.onend;});
+      await page.getByRole('button',{name:'Mute live microphone',exact:true}).click();
+      await page.evaluate(()=>{const row=[{transcript:'must not submit'}];row.isFinal=true;window.__lateLiveResult({results:[row]});window.__lateLiveEnd();});
+      assert.equal(requests.length,before);await page.locator('.oyi-live-voice-hub[data-phase="muted"]').waitFor();
+      await page.setViewportSize({width,height:450});await page.waitForFunction(()=>document.documentElement.style.getPropertyValue('--vvh')==='450px');
+      await noOverflow();const hub=await page.locator('.oyi-live-voice-hub').boundingBox(),box=await page.locator('.oyi-composer').boundingBox();assert.ok(hub.y+hub.height<=box.y && hub.y>60);await shot('live-keyboard-muted');
+      await page.setViewportSize({width,height:900});await page.waitForFunction(()=>document.documentElement.style.getPropertyValue('--vvh')==='900px');
+      await page.getByRole('button',{name:'Resume live microphone'}).click();await page.locator('.oyi-live-voice-hub[data-phase="listening"]').waitFor();
+      await page.getByRole('button',{name:'End Live Voice',exact:true}).focus();await page.keyboard.press('Escape');assert.equal(await page.locator('.oyi-live-voice-hub').count(),0);assert.equal(await page.getByRole('textbox',{name:'Message Oyi'}).inputValue(),'Keep this typed draft');
+      await page.getByRole('textbox',{name:'Message Oyi'}).fill('');await page.evaluate(()=>{window.__fixtureDenied=true;});await page.getByRole('button',{name:'Start Live Voice',exact:true}).click();await page.locator('.oyi-live-voice-hub[data-phase="error"]').waitFor();await shot('live-permission-error');assert.equal(requests.length,before);
+      await page.evaluate(()=>{window.__fixtureDenied=false;});await page.getByRole('button',{name:'Resume live microphone'}).click();await page.locator('.oyi-live-voice-hub[data-phase="listening"]').waitFor();
+    });
     await check(`${width}: offline and short visual viewport keep composer accessible`, async () => {
       await page.evaluate(() => { Object.defineProperty(navigator, "onLine", { configurable: true, get: () => false }); window.dispatchEvent(new Event("offline")); });
       await page.getByText("You’re offline. Reconnect to send a message.", { exact: true }).waitFor();
+      await page.locator('.oyi-live-voice-hub[data-phase="muted"]').waitFor();
       assert.ok(await page.getByRole("textbox", { name: "Message Oyi" }).isDisabled());
       await shot("offline");
       await page.setViewportSize({ width, height: 450 });

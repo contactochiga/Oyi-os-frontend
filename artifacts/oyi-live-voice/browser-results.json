@@ -1,0 +1,261 @@
+{
+  "mode": "isolated presentation fixtures; no authenticated identity or real execution",
+  "authenticated_backend": "BLOCKED: no approved test identity/configuration available",
+  "browserVoiceProbe": {
+    "speechApiExposed": true,
+    "mediaCaptureExposed": true,
+    "microphonePermission": "prompt",
+    "realCapture": "NOT_RUN: headless automation; no interactive microphone approval or audio fixture for real speech service"
+  },
+  "results": [
+    {
+      "name": "390: idle, minimal controls, responsive shell, reduced motion",
+      "status": "PASS"
+    },
+    {
+      "name": "390: navigation drawer traps focus and returns it on Escape",
+      "status": "PASS"
+    },
+    {
+      "name": "390: shared history restores action truth through the existing HTTP contract",
+      "status": "PASS"
+    },
+    {
+      "name": "390: voice fixture, interim transcript, cancellation",
+      "status": "PASS"
+    },
+    {
+      "name": "390: Stop finalizes without sending and appends to existing editable text",
+      "status": "PASS"
+    },
+    {
+      "name": "390: permission rejection is honest and preserves typed text",
+      "status": "PASS"
+    },
+    {
+      "name": "390: voice Send waits for all final segments and submits exactly once",
+      "status": "PASS"
+    },
+    {
+      "name": "390: voice failures never send blank or partial text; draft remains recoverable",
+      "status": "PASS"
+    },
+    {
+      "name": "390: cancel during finalization invalidates pending auto-send",
+      "status": "PASS"
+    },
+    {
+      "name": "390: typing, real request-in-flight, duplicate-send guard, long response",
+      "status": "PASS"
+    },
+    {
+      "name": "390: wide table stays inside the response with its own scroll boundary",
+      "status": "PASS"
+    },
+    {
+      "name": "390: confirmation remains separate; unobservable and not-saved are honest",
+      "status": "PASS"
+    },
+    {
+      "name": "390: live hub is above unchanged composer, actual speech events and thread synchronization",
+      "status": "PASS"
+    },
+    {
+      "name": "390: live mute, late input, keyboard, end and permission recovery",
+      "status": "PASS"
+    },
+    {
+      "name": "390: offline and short visual viewport keep composer accessible",
+      "status": "PASS"
+    },
+    {
+      "name": "390: no hydration/console errors, unexpected requests or external access",
+      "status": "PASS"
+    },
+    {
+      "name": "768: idle, minimal controls, responsive shell, reduced motion",
+      "status": "PASS"
+    },
+    {
+      "name": "768: navigation drawer traps focus and returns it on Escape",
+      "status": "PASS"
+    },
+    {
+      "name": "768: shared history restores action truth through the existing HTTP contract",
+      "status": "PASS"
+    },
+    {
+      "name": "768: voice fixture, interim transcript, cancellation",
+      "status": "PASS"
+    },
+    {
+      "name": "768: Stop finalizes without sending and appends to existing editable text",
+      "status": "PASS"
+    },
+    {
+      "name": "768: permission rejection is honest and preserves typed text",
+      "status": "PASS"
+    },
+    {
+      "name": "768: voice Send waits for all final segments and submits exactly once",
+      "status": "PASS"
+    },
+    {
+      "name": "768: voice failures never send blank or partial text; draft remains recoverable",
+      "status": "PASS"
+    },
+    {
+      "name": "768: cancel during finalization invalidates pending auto-send",
+      "status": "PASS"
+    },
+    {
+      "name": "768: typing, real request-in-flight, duplicate-send guard, long response",
+      "status": "PASS"
+    },
+    {
+      "name": "768: wide table stays inside the response with its own scroll boundary",
+      "status": "PASS"
+    },
+    {
+      "name": "768: confirmation remains separate; unobservable and not-saved are honest",
+      "status": "PASS"
+    },
+    {
+      "name": "768: live hub is above unchanged composer, actual speech events and thread synchronization",
+      "status": "PASS"
+    },
+    {
+      "name": "768: live mute, late input, keyboard, end and permission recovery",
+      "status": "PASS"
+    },
+    {
+      "name": "768: offline and short visual viewport keep composer accessible",
+      "status": "PASS"
+    },
+    {
+      "name": "768: no hydration/console errors, unexpected requests or external access",
+      "status": "PASS"
+    },
+    {
+      "name": "1024: idle, minimal controls, responsive shell, reduced motion",
+      "status": "PASS"
+    },
+    {
+      "name": "1024: shared history restores action truth through the existing HTTP contract",
+      "status": "PASS"
+    },
+    {
+      "name": "1024: voice fixture, interim transcript, cancellation",
+      "status": "PASS"
+    },
+    {
+      "name": "1024: Stop finalizes without sending and appends to existing editable text",
+      "status": "PASS"
+    },
+    {
+      "name": "1024: permission rejection is honest and preserves typed text",
+      "status": "PASS"
+    },
+    {
+      "name": "1024: voice Send waits for all final segments and submits exactly once",
+      "status": "PASS"
+    },
+    {
+      "name": "1024: voice failures never send blank or partial text; draft remains recoverable",
+      "status": "PASS"
+    },
+    {
+      "name": "1024: cancel during finalization invalidates pending auto-send",
+      "status": "PASS"
+    },
+    {
+      "name": "1024: typing, real request-in-flight, duplicate-send guard, long response",
+      "status": "PASS"
+    },
+    {
+      "name": "1024: wide table stays inside the response with its own scroll boundary",
+      "status": "PASS"
+    },
+    {
+      "name": "1024: confirmation remains separate; unobservable and not-saved are honest",
+      "status": "PASS"
+    },
+    {
+      "name": "1024: live hub is above unchanged composer, actual speech events and thread synchronization",
+      "status": "PASS"
+    },
+    {
+      "name": "1024: live mute, late input, keyboard, end and permission recovery",
+      "status": "PASS"
+    },
+    {
+      "name": "1024: offline and short visual viewport keep composer accessible",
+      "status": "PASS"
+    },
+    {
+      "name": "1024: no hydration/console errors, unexpected requests or external access",
+      "status": "PASS"
+    },
+    {
+      "name": "1440: idle, minimal controls, responsive shell, reduced motion",
+      "status": "PASS"
+    },
+    {
+      "name": "1440: shared history restores action truth through the existing HTTP contract",
+      "status": "PASS"
+    },
+    {
+      "name": "1440: voice fixture, interim transcript, cancellation",
+      "status": "PASS"
+    },
+    {
+      "name": "1440: Stop finalizes without sending and appends to existing editable text",
+      "status": "PASS"
+    },
+    {
+      "name": "1440: permission rejection is honest and preserves typed text",
+      "status": "PASS"
+    },
+    {
+      "name": "1440: voice Send waits for all final segments and submits exactly once",
+      "status": "PASS"
+    },
+    {
+      "name": "1440: voice failures never send blank or partial text; draft remains recoverable",
+      "status": "PASS"
+    },
+    {
+      "name": "1440: cancel during finalization invalidates pending auto-send",
+      "status": "PASS"
+    },
+    {
+      "name": "1440: typing, real request-in-flight, duplicate-send guard, long response",
+      "status": "PASS"
+    },
+    {
+      "name": "1440: wide table stays inside the response with its own scroll boundary",
+      "status": "PASS"
+    },
+    {
+      "name": "1440: confirmation remains separate; unobservable and not-saved are honest",
+      "status": "PASS"
+    },
+    {
+      "name": "1440: live hub is above unchanged composer, actual speech events and thread synchronization",
+      "status": "PASS"
+    },
+    {
+      "name": "1440: live mute, late input, keyboard, end and permission recovery",
+      "status": "PASS"
+    },
+    {
+      "name": "1440: offline and short visual viewport keep composer accessible",
+      "status": "PASS"
+    },
+    {
+      "name": "1440: no hydration/console errors, unexpected requests or external access",
+      "status": "PASS"
+    }
+  ],
+  "screenshots": "/var/folders/7c/lrz04f6j5z95p5fyk9qlp7pr0000gn/T/oyi-reference-browser-ThrHHr"
+}
