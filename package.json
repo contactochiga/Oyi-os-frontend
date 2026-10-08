@@ -191,7 +191,7 @@
     "mqtt": "^4.3.7",
     "next": "^15.1.7",
     "next-auth": "^4.24.7",
-    "oyi-interaction": "git+https://github.com/contactochiga/oyi-interaction.git#2326e20011420c3194c2e8c1eeff5186b88828dd",
+    "oyi-interaction": "git+https://github.com/contactochiga/oyi-interaction.git#03d58e83d567f688d0de3d9b214e6a874838023a",
     "qrcode": "^1.5.3",
     "react": "19.1.0",
     "react-dom": "19.1.0",

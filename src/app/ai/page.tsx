@@ -924,12 +924,8 @@ function OyiAiCommandCenterContent() {
       submit: (text) => liveSubmitRef.current(text),
     });
     liveSessionRef.current = session;
-    let listening = false;
     const unsubscribe = session.subscribe((state) => {
       setLiveVoice(state);
-      if (state.phase === "listening" && !listening) void startAudioMeter();
-      if (state.phase !== "listening" && listening) stopAudioMeter();
-      listening = state.phase === "listening";
     });
     const hidden = () => { if (document.hidden) session.mute("Live Voice paused while the app is hidden. Resume when ready."); };
     const offline = () => session.mute("You’re offline. Reconnect, then resume Live Voice.");
@@ -937,7 +933,6 @@ function OyiAiCommandCenterContent() {
     window.addEventListener("offline", offline);
     return () => { unsubscribe(); session.dispose(); liveSessionRef.current = null; stopAudioMeter(); document.removeEventListener("visibilitychange", hidden); window.removeEventListener("offline", offline); };
     // Stable transport lifetime; latest scope/request is supplied via liveSubmitRef.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -1392,6 +1387,10 @@ function OyiAiCommandCenterContent() {
   const navigation = surfaceAdapter.navigation();
   const historyView = oyiHistoryView({ threads: historyThreads, loading: historyLoading, error: historyError, activeThreadId: canonicalActiveThreadId });
   const controlsBusy = busy || Boolean(restoringThreadId);
+  const endLiveVoice = () => {
+    liveSessionRef.current?.end();
+    window.requestAnimationFrame(() => (document.querySelector('.oyi-composer textarea') as HTMLTextAreaElement | null)?.focus());
+  };
   const closeDrawers = () => { setSidebarOpen(false); setHistoryOpen(false); };
   const newConversation = () => { if (!controlsBusy) startNewConversation(); };
   const historyContent = (
@@ -1509,10 +1508,7 @@ function OyiAiCommandCenterContent() {
           </div>
         </>}
         suggestions={!chatMode && !recording && !liveOpen ? <OyiSuggestions items={normalizeOyiSuggestions(suggestions.slice(0, 3), { source: "seed" })} onSelect={(item) => { if (!controlsBusy && interaction.online) submitSuggestion({ label: item.label, prompt: item.prompt || undefined, href: item.href || undefined }); }} /> : null}
-        voiceHub={liveOpen ? <OyiLiveVoiceHub state={liveVoice} levels={audioLevels} onEnd={() => {
-          liveSessionRef.current?.end();
-          window.requestAnimationFrame(() => (document.querySelector('.oyi-composer textarea') as HTMLTextAreaElement | null)?.focus());
-        }} onMute={() => liveSessionRef.current?.mute()} onResume={() => { if (navigator.onLine && !controlsBusy) liveSessionRef.current?.resume(); }} /> : null}
+        voiceHub={liveOpen ? <OyiLiveVoiceHub state={liveVoice} onEnd={endLiveVoice} onResume={() => { if (navigator.onLine && !controlsBusy) liveSessionRef.current?.resume(); }} /> : null}
         composer={<OyiComposer
           controlsLayout="expanded"
           capabilitySlot={<span title="Attachments are not supported in Oyi conversations yet."><button type="button" className="oyi-icon-button" disabled aria-label="Attachments unavailable" aria-describedby="oyi-attachment-help"><Plus size={20} /></button><span id="oyi-attachment-help" className="oyi-visually-hidden">Files and images cannot be attached to Oyi conversations yet. No file will be selected or uploaded.</span></span>}
@@ -1524,6 +1520,7 @@ function OyiAiCommandCenterContent() {
           voiceElapsedSeconds={recordingSeconds} voiceStopping={voiceStarting || voiceStopping}
           onStartVoice={liveOpen ? undefined : startVoiceCapture}
           liveVoiceActive={liveOpen}
+          onEndLiveVoice={endLiveVoice}
           onStartLiveVoice={() => {
             if (controlsBusy || recording || !interaction.online) return;
             const capture = voiceAdapterRef.current?.getSnapshot();
