@@ -1420,7 +1420,7 @@ function OyiAiCommandCenterContent() {
             if (layout === "desktop") setSidebarCollapsed((value) => !value);
             else setSidebarOpen((value) => !value);
           }}><Menu size={20} /></button>
-          <span className="oyi-reference-identity"><OyiOrb size="icon" state="idle" /><span>Oyi</span></span>
+          <span className="oyi-reference-identity"><OyiOrb size="identity" state="idle" /></span>
         </>}
         topRailEnd={<>
           <button type="button" className="oyi-icon-button oyi-reference-mobile-only" aria-label="Conversation history" aria-expanded={historyOpen} onClick={() => { setSidebarOpen(false); setHistoryOpen((value) => !value); }}><History size={20} /></button>
@@ -1428,7 +1428,7 @@ function OyiAiCommandCenterContent() {
         </>}
         surfaceNavigation={<>
           <div className="oyi-reference-sidebar-heading">
-            <span className="oyi-reference-identity"><OyiOrb size="icon" state="idle" /><span>Oyi</span></span>
+            <span className="oyi-reference-identity"><OyiOrb size="identity" state="idle" /></span>
             <button type="button" className="oyi-icon-button oyi-reference-mobile-only" aria-label="Close navigation" onClick={closeDrawers}><X size={18} /></button>
           </div>
           <button type="button" className="oyi-history-new" disabled={controlsBusy} onClick={newConversation}><Plus size={18} />New conversation</button>

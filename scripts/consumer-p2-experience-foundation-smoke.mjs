@@ -317,7 +317,7 @@ assert.doesNotMatch(shell, />\s*Back\s*</, "the shared back control must stay ic
 assert.doesNotMatch(aiPage, /<ArrowLeft className="h-\[18px\] w-\[18px\]" \/> Back/, "Oyi header back control must not render as a text-labelled pill");
 assert.match(aiPage, /aria-label=\{layout === "desktop" \? "Toggle sidebar" : "Open navigation"\}/, "Oyi exposes its permission-aware navigation through the hamburger");
 assert.doesNotMatch(aiPage, /<div className="mt-4 text-center">/, "Oyi title must not sit in a separate row below the header controls");
-assert.match(aiPage, /<OyiOrb[^>]*size="icon"/, "Oyi identity uses the small shared Orb, not oversized branding");
+assert.match(aiPage, /<OyiOrb[^>]*size="identity"/, "Oyi identity uses the compact shared Orb with internal lettering");
 assert.match(aiPage, /aria-label="Conversation history"/, "Oyi history action must remain reachable");
 assert.match(aiPage, /aria-label="New conversation"/, "Oyi new-conversation action must remain reachable");
 

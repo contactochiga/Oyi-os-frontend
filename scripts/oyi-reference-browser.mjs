@@ -127,6 +127,25 @@ try {
       const body = await page.locator("body").innerText();
       assert.doesNotMatch(body, /Living intelligence|How can I help\?|Thinking|Working on your request/);
       assert.equal(await page.locator(".oyi-orb-core").first().evaluate((el) => getComputedStyle(el).animationName), "none");
+      const logo = page.locator('.oyi-shell-rail-start .oyi-orb[data-size="identity"]');
+      assert.equal(await logo.getAttribute('aria-label'), 'Oyi');
+      assert.equal(await page.locator('.oyi-shell-rail-start .oyi-reference-identity').innerText(), 'Oyi', 'no external wordmark');
+      assert.equal(await page.locator('.oyi-reference-identity > span:not(.oyi-orb)').count(), 0);
+      const bounds = await logo.boundingBox();
+      const lettering = await logo.locator('.oyi-orb-wordmark').boundingBox();
+      assert.ok(Math.abs(bounds.width-44)<0.1 && Math.abs(bounds.height-44)<0.1, '44px circular identity (subpixel tolerance)');
+      assert.ok(bounds.x>=0 && bounds.y>=0 && bounds.x+bounds.width<=width, 'logo clipped');
+      assert.ok(Math.abs(lettering.x+lettering.width/2-bounds.x-22)<1 && Math.abs(lettering.y+lettering.height/2-bounds.y-22)<1, 'wordmark not centered');
+      assert.ok(lettering.width<44 && lettering.height<44);
+      const hamburger = await page.locator('.oyi-shell-rail-start > button').boundingBox();
+      assert.ok(Math.abs(hamburger.y+hamburger.height/2-bounds.y-22)<1, 'top controls misaligned');
+      const styles = await page.evaluate(() => {
+        const logo=document.querySelector('.oyi-shell-rail-start .oyi-orb'), hero=document.querySelector('.oyi-orb[data-size="large"]');
+        return [logo,hero].map(el=>({background:getComputedStyle(el).backgroundImage,core:getComputedStyle(el.querySelector('.oyi-orb-core')).backgroundImage,color:getComputedStyle(el.querySelector('.oyi-orb-wordmark')).color}));
+      });
+      assert.deepEqual(styles[0],styles[1], 'identity must share hero gradient and lettering color');
+      const hero=await page.locator('.oyi-orb[data-size="large"]').boundingBox();
+      assert.ok(Math.abs(hero.width-(width>=1024?176:136))<0.1,'hero size unchanged');
       if (width >= 1024) {
         assert.ok(await page.getByRole("navigation", { name: "Consumer modules" }).isVisible());
         const sidebar = await page.locator(".oyi-shell-sidebar").boundingBox();

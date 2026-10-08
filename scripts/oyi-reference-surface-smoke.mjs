@@ -14,8 +14,8 @@ check("reference mounts shared presentation, never shadow primitives", () => {
     assert.match(page, new RegExp(`<${name}\\b`));
     assert.doesNotMatch(page, new RegExp(`function ${name}\\(`));
   }
-  assert.equal(installed.version, "0.4.0");
-  assert.match(pkg.dependencies["oyi-interaction"], /#54d50158320159904453151edc4b448637e6f597$/);
+  assert.equal(installed.version, "0.5.0");
+  assert.match(pkg.dependencies["oyi-interaction"], /#5b09ec3ee7f0c7574490f6cfcda8afaa3f4b95af$/);
 });
 check("navigation is registry-derived; canvas never gets old rail or footer", () => {
   assert.match(page, /const navigation = surfaceAdapter\.navigation\(\)/);
@@ -23,6 +23,8 @@ check("navigation is registry-derived; canvas never gets old rail or footer", ()
   assert.doesNotMatch(page, /md:left-\[108px\]|<BottomNav|Living intelligence|How can I help\?/);
 });
 check("hero is not a second microphone; captions are real response content", () => {
+  assert.equal((page.match(/<OyiOrb size="identity" state="idle" \/>/g) || []).length, 2);
+  assert.doesNotMatch(page, /<OyiOrb size="icon" state="idle" \/><span>Oyi<\/span>/);
   assert.match(page, /<OyiOrb size="large" state=\{orbState\} \/>/);
   assert.match(page, /text: message\.content/);
   assert.match(page, /onStartVoice=\{startVoiceCapture\}/);
